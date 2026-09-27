@@ -1,0 +1,77 @@
+/* DevTools MCP – helles, ruhiges Theme auf Basis von Modena */
+.root {
+    -fx-font-family: "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
+    -fx-font-size: 13px;
+    -accent: #2b6cb0;
+    -fx-accent: #2b6cb0;
+    -fx-focus-color: #2b6cb0;
+    -fx-faint-focus-color: #2b6cb022;
+    -fx-base: #f4f6f8;
+    -fx-background: #ffffff;
+}
+
+.header {
+    -fx-background-color: #ffffff;
+    -fx-border-color: transparent transparent #dde2e8 transparent;
+}
+.app-title { -fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #1a202c; }
+.endpoint { -fx-font-family: "Consolas", "Menlo", monospace; -fx-text-fill: #4a5568; }
+.status-dot { -fx-fill: #38a169; }
+
+.badge {
+    -fx-background-color: #edf2f7;
+    -fx-background-radius: 10;
+    -fx-padding: 2 8 2 8;
+    -fx-text-fill: #4a5568;
+    -fx-font-size: 11px;
+}
+
+.button.accent {
+    -fx-background-color: -accent;
+    -fx-text-fill: white;
+    -fx-background-radius: 4;
+}
+.button.accent:hover { -fx-background-color: #2c5282; }
+.button.accent:disabled { -fx-opacity: 0.45; }
+
+.tab-pane > .tab-header-area > .headers-region > .tab { -fx-padding: 4 14 4 14; }
+
+/* Modulliste */
+.module-list { -fx-background-color: #f7f9fb; -fx-border-color: transparent #dde2e8 transparent transparent; }
+.module-list .list-cell { -fx-padding: 10 12 10 12; -fx-background-color: transparent; }
+.module-list .list-cell:selected { -fx-background-color: #e2ecf7; }
+.module-list .list-cell:hover { -fx-background-color: #edf2f7; }
+.module-list .list-cell:selected:hover { -fx-background-color: #e2ecf7; }
+.module-name { -fx-font-weight: bold; -fx-text-fill: #1a202c; }
+.module-sub { -fx-font-size: 11px; -fx-text-fill: #718096; }
+.module-dot.on { -fx-fill: #38a169; }
+.module-dot.off { -fx-fill: #cbd5e0; }
+.module-dot.error { -fx-fill: #e53e3e; }
+
+/* Detailbereich */
+.detail-scroll, .detail-scroll > .viewport { -fx-background-color: white; }
+.detail-title { -fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #1a202c; }
+.detail-description { -fx-text-fill: #4a5568; }
+.section-title { -fx-font-weight: bold; -fx-text-fill: #2d3748; -fx-font-size: 13px; }
+.form-label { -fx-text-fill: #2d3748; }
+.form-help { -fx-font-size: 11px; -fx-text-fill: #718096; }
+.status-text { -fx-font-size: 12px; -fx-text-fill: #4a5568; }
+.status-text.ok { -fx-text-fill: #276749; }
+.status-text.error { -fx-text-fill: #c53030; }
+
+.toggle-button.switch {
+    -fx-background-radius: 14;
+    -fx-padding: 4 14 4 14;
+    -fx-background-color: #e2e8f0;
+    -fx-text-fill: #4a5568;
+}
+.toggle-button.switch:selected { -fx-background-color: #38a169; -fx-text-fill: white; }
+
+.tool-row { -fx-padding: 6 8 6 8; -fx-background-color: #f7f9fb; -fx-background-radius: 4; }
+.tool-name { -fx-font-family: "Consolas", "Menlo", monospace; -fx-font-weight: bold; }
+.tool-description { -fx-font-size: 11px; -fx-text-fill: #4a5568; -fx-padding: 0 0 0 24; }
+
+/* Protokoll */
+.mono, .mono .content { -fx-font-family: "Consolas", "Menlo", monospace; -fx-font-size: 12px; }
+.table-cell.ok { -fx-text-fill: #38a169; -fx-alignment: center; }
+.table-cell.error { -fx-text-fill: #e53e3e; -fx-alignment: center; }
