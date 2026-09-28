@@ -8,17 +8,24 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.function.Function;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import org.hibernate.Session;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Fachlogik des Skill-Speichers: Validierung, Suche, Anlegen, gezieltes Patchen, Zusatzdateien und Historie. Jede
- * Methode läuft in genau einer Transaktion und liefert kompakten Text für das LLM; fachliche Fehler werden als
- * {@link IllegalArgumentException} mit einem Hinweis auf den nächsten sinnvollen Schritt gemeldet.
+ * Fachlogik des Skill-Speichers: Validierung, Suche, Anlegen, gezieltes Patchen, Zusatzdateien und Historie über die
+ * Spring-Data-Repositories. Jede öffentliche Methode läuft in einer Transaktion und liefert kompakten Text für das
+ * LLM; fachliche Fehler werden als {@link IllegalArgumentException} mit einem Hinweis auf den nächsten sinnvollen
+ * Schritt gemeldet und rollen die Transaktion zurück.
+ *
+ * <p>Die Inhaltsgrenze kommt als Parameter, weil sie in der UI zur Laufzeit geändert werden kann, der Service aber
+ * ein Singleton ist.
  */
+@Service
+@Transactional
 public class SkillService {
 
     static final Pattern NAME = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
@@ -31,185 +38,160 @@ public class SkillService {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
             .withZone(ZoneId.systemDefault());
 
-    private final SkillDatabase database;
-    private final SkillDatabase.Connection connection;
-    private final int maxContentChars;
+    private final SkillRepository skills;
+    private final SkillRevisionRepository revisions;
 
-    public SkillService(SkillDatabase database, SkillDatabase.Connection connection, int maxContentChars) {
-        this.database = database;
-        this.connection = connection;
-        this.maxContentChars = maxContentChars;
-    }
-
-    private <R> R tx(Function<Session, R> work) {
-        return database.inTransaction(connection, work);
+    public SkillService(SkillRepository skills, SkillRevisionRepository revisions) {
+        this.skills = skills;
+        this.revisions = revisions;
     }
 
     // ------------------------------------------------------------------ Lesen
 
+    @Transactional(readOnly = true)
     public String list(String query, String category) {
         String q = blankToNull(query);
         String c = blankToNull(category);
-        return tx(s -> {
-            StringBuilder jpql = new StringBuilder("from Skill k where 1=1");
-            if (c != null) {
-                jpql.append(" and k.category = :category");
+        List<Skill> found = skills.search(q == null ? null : "%" + q.toLowerCase(Locale.ROOT) + "%",
+                c == null ? null : c.toLowerCase(Locale.ROOT));
+        if (found.isEmpty()) {
+            return q == null && c == null
+                    ? "Noch keine Skills gespeichert. Nach einer schwierigen oder mehrstufigen Aufgabe mit "
+                    + "skills_create den Ablauf festhalten."
+                    : "Keine Skills gefunden" + (q != null ? " für '" + q + "'" : "")
+                    + (c != null ? " in Kategorie '" + c + "'" : "") + ". skills_list ohne Filter zeigt alle.";
+        }
+        StringBuilder sb = new StringBuilder(found.size() + " Skill(s)")
+                .append(q != null ? " für '" + q + "'" : "").append(":\n");
+        String lastCategory = "\u0000";
+        for (Skill k : found) {
+            String cat = k.getCategory() == null ? "(ohne Kategorie)" : k.getCategory();
+            if (!cat.equals(lastCategory)) {
+                sb.append(cat).append(":\n");
+                lastCategory = cat;
             }
-            if (q != null) {
-                jpql.append(" and (lower(k.name) like :q or lower(k.description) like :q or lower(k.tags) like :q"
-                        + " or lower(k.content) like :q)");
+            sb.append("  - ").append(k.getName()).append(": ").append(k.getDescription());
+            if (!k.tagList().isEmpty()) {
+                sb.append("  [").append(String.join(", ", k.tagList())).append(']');
             }
-            jpql.append(" order by k.category nulls first, k.name");
-            var query1 = s.createSelectionQuery(jpql.toString(), Skill.class);
-            if (c != null) {
-                query1.setParameter("category", c.toLowerCase(Locale.ROOT));
-            }
-            if (q != null) {
-                query1.setParameter("q", "%" + q.toLowerCase(Locale.ROOT) + "%");
-            }
-            List<Skill> skills = query1.getResultList();
-            if (skills.isEmpty()) {
-                return q == null && c == null
-                        ? "Noch keine Skills gespeichert. Nach einer schwierigen oder mehrstufigen Aufgabe mit "
-                        + "skills_create den Ablauf festhalten."
-                        : "Keine Skills gefunden" + (q != null ? " für '" + q + "'" : "")
-                        + (c != null ? " in Kategorie '" + c + "'" : "") + ". skills_list ohne Filter zeigt alle.";
-            }
-            StringBuilder sb = new StringBuilder(skills.size() + " Skill(s)")
-                    .append(q != null ? " für '" + q + "'" : "").append(":\n");
-            String lastCategory = "\u0000";
-            for (Skill k : skills) {
-                String cat = k.getCategory() == null ? "(ohne Kategorie)" : k.getCategory();
-                if (!cat.equals(lastCategory)) {
-                    sb.append(cat).append(":\n");
-                    lastCategory = cat;
-                }
-                sb.append("  - ").append(k.getName()).append(": ").append(k.getDescription());
-                if (!k.tagList().isEmpty()) {
-                    sb.append("  [").append(String.join(", ", k.tagList())).append(']');
-                }
-                sb.append('\n');
-            }
-            return sb.append("Passende Skills vor Beginn der Aufgabe mit skills_view laden.").toString();
-        });
+            sb.append('\n');
+        }
+        return sb.append("Passende Skills vor Beginn der Aufgabe mit skills_view laden.").toString();
     }
 
+    /** Schreibend, weil die Nutzung gezählt wird. */
     public String view(String name, String filePath) {
         String n = requireName(name);
-        String path = blankToNull(filePath);
-        return tx(s -> {
-            Skill k = find(s, n);
-            if (path != null) {
-                String p = normalizePath(path);
-                SkillFile f = k.file(p).orElseThrow(() -> new IllegalArgumentException(
-                        "Skill '" + n + "' hat keine Datei '" + p + "'. Vorhanden: " + filePaths(k)));
-                return "# " + n + " / " + p + "\n\n" + f.getContent();
-            }
-            // Nutzung per Bulk-Update zählen: berührt die @Version nicht, damit Lesen nie mit Änderungen kollidiert.
-            s.createMutationQuery("update Skill k set k.useCount = k.useCount + 1, k.lastUsedAt = :now where k.id = :id")
-                    .setParameter("now", Instant.now()).setParameter("id", k.getId()).executeUpdate();
-            StringBuilder sb = new StringBuilder();
-            sb.append("---\nname: ").append(k.getName())
-                    .append("\ndescription: ").append(k.getDescription());
-            if (k.getCategory() != null) {
-                sb.append("\ncategory: ").append(k.getCategory());
-            }
-            if (!k.tagList().isEmpty()) {
-                sb.append("\ntags: [").append(String.join(", ", k.tagList())).append(']');
-            }
-            sb.append("\nrevision: ").append(k.getRevision())
-                    .append("\nupdated: ").append(DATE.format(k.getUpdatedAt()))
-                    .append("\n---\n\n").append(k.getContent());
-            if (!k.getFiles().isEmpty()) {
-                sb.append("\n\n---\nZusatzdateien (mit skills_view(name, file_path) laden): ")
-                        .append(filePaths(k));
-            }
-            return sb.toString();
-        });
+        String path = blankToNull(filePath) == null ? null : normalizePath(filePath);
+        Skill k = find(n);
+        if (path != null) {
+            SkillFile f = k.file(path).orElseThrow(() -> new IllegalArgumentException(
+                    "Skill '" + n + "' hat keine Datei '" + path + "'. Vorhanden: " + filePaths(k)));
+            return "# " + n + " / " + path + "\n\n" + f.getContent();
+        }
+        skills.markUsed(k.getId(), Instant.now());
+        StringBuilder sb = new StringBuilder();
+        sb.append("---\nname: ").append(k.getName())
+                .append("\ndescription: ").append(k.getDescription());
+        if (k.getCategory() != null) {
+            sb.append("\ncategory: ").append(k.getCategory());
+        }
+        if (!k.tagList().isEmpty()) {
+            sb.append("\ntags: [").append(String.join(", ", k.tagList())).append(']');
+        }
+        sb.append("\nrevision: ").append(k.getRevision())
+                .append("\nupdated: ").append(DATE.format(k.getUpdatedAt()))
+                .append("\n---\n\n").append(k.getContent());
+        if (!k.getFiles().isEmpty()) {
+            sb.append("\n\n---\nZusatzdateien (mit skills_view(name, file_path) laden): ").append(filePaths(k));
+        }
+        return sb.toString();
     }
 
+    @Transactional(readOnly = true)
     public String history(String name, Integer revision) {
         String n = requireName(name);
-        return tx(s -> {
-            Skill k = find(s, n);
-            if (revision != null) {
-                SkillRevision r = k.getRevisions().stream().filter(x -> x.getRevision() == revision).findFirst()
-                        .orElseThrow(() -> new IllegalArgumentException("Skill '" + n + "' hat keine Revision "
-                                + revision + " (aktuell " + k.getRevision() + ")."));
-                return "# " + n + " – Revision " + r.getRevision() + " (" + r.getAction() + ", "
-                        + DATE.format(r.getChangedAt()) + ")\ndescription: " + r.getDescription() + "\n\n"
-                        + r.getContent();
+        Skill k = find(n);
+        if (revision != null) {
+            SkillRevision r = revisions.findBySkillAndRevision(k, revision)
+                    .orElseThrow(() -> new IllegalArgumentException("Skill '" + n + "' hat keine Revision "
+                            + revision + " (aktuell " + k.getRevision() + ")."));
+            return "# " + n + " – Revision " + r.getRevision() + " (" + r.getAction() + ", "
+                    + DATE.format(r.getChangedAt()) + ")\ndescription: " + r.getDescription() + "\n\n"
+                    + r.getContent();
+        }
+        StringBuilder sb = new StringBuilder("Historie von '" + n + "' (neueste zuerst):\n");
+        for (SkillRevision r : revisions.findBySkillOrderByRevisionDesc(k)) {
+            sb.append("  ").append(r.getRevision()).append("  ").append(DATE.format(r.getChangedAt()))
+                    .append("  ").append(r.getAction());
+            if (r.getNote() != null) {
+                sb.append("  – ").append(r.getNote());
             }
-            StringBuilder sb = new StringBuilder("Historie von '" + n + "' (neueste zuerst):\n");
-            for (SkillRevision r : k.getRevisions()) {
-                sb.append("  ").append(r.getRevision()).append("  ").append(DATE.format(r.getChangedAt()))
-                        .append("  ").append(r.getAction());
-                if (r.getNote() != null) {
-                    sb.append("  – ").append(r.getNote());
-                }
-                sb.append('\n');
-            }
-            return sb.append("Einzelne Stände mit skills_history(name, revision) ansehen.").toString();
-        });
+            sb.append('\n');
+        }
+        return sb.append("Einzelne Stände mit skills_history(name, revision) ansehen.").toString();
+    }
+
+    /** Anzahl gespeicherter Skills – für „Verbindung testen“. */
+    @Transactional(readOnly = true)
+    public long count() {
+        return skills.count();
     }
 
     // ------------------------------------------------------------------ Schreiben
 
-    public String create(String name, String description, String content, String category, List<String> tags) {
+    public String create(String name, String description, String content, String category, List<String> tags,
+                         int maxContentChars) {
         String n = requireName(name);
         String d = requireDescription(description);
-        String body = requireContent(content, "content");
+        String body = requireContent(content, "content", maxContentChars);
         String cat = normalizeCategory(category);
         String t = normalizeTags(tags);
-        return tx(s -> {
-            if (findOrNull(s, n) != null) {
-                throw new IllegalArgumentException("Skill '" + n + "' existiert bereits. Mit skills_view ansehen und "
-                        + "mit skills_patch ergänzen, statt ihn neu anzulegen.");
-            }
-            Skill k = new Skill(n, d, body, cat, t, Instant.now());
-            k.recordRevision("create", null, k.getCreatedAt());
-            s.persist(k);
-            return "Skill '" + n + "' angelegt (Revision 1).";
-        });
+        if (skills.existsByName(n)) {
+            throw new IllegalArgumentException("Skill '" + n + "' existiert bereits. Mit skills_view ansehen und "
+                    + "mit skills_patch ergänzen, statt ihn neu anzulegen.");
+        }
+        Skill k = new Skill(n, d, body, cat, t, Instant.now());
+        k.recordRevision("create", null, k.getCreatedAt());
+        skills.save(k);
+        return "Skill '" + n + "' angelegt (Revision 1).";
     }
 
     public String update(String name, String description, String content, String category, List<String> tags,
-                         String note, Integer expectedRevision) {
+                         String note, Integer expectedRevision, int maxContentChars) {
         String n = requireName(name);
-        return tx(s -> {
-            Skill k = find(s, n);
-            checkRevision(k, expectedRevision);
-            boolean changed = false;
-            if (description != null) {
-                String d = requireDescription(description);
-                changed |= !d.equals(k.getDescription());
-                k.setDescription(d);
-            }
-            if (content != null) {
-                String body = requireContent(content, "content");
-                changed |= !body.equals(k.getContent());
-                k.setContent(body);
-            }
-            if (category != null) {
-                String cat = normalizeCategory(category);
-                changed |= !java.util.Objects.equals(cat, k.getCategory());
-                k.setCategory(cat);
-            }
-            if (tags != null) {
-                String t = normalizeTags(tags);
-                changed |= !java.util.Objects.equals(t, k.getTags());
-                k.setTags(t);
-            }
-            if (!changed) {
-                return "Keine Änderung an '" + n + "' (Revision " + k.getRevision() + ").";
-            }
-            k.recordRevision("update", normalizeNote(note), Instant.now());
-            return "Skill '" + n + "' aktualisiert (Revision " + k.getRevision() + ").";
-        });
+        Skill k = find(n);
+        checkRevision(k, expectedRevision);
+        boolean changed = false;
+        if (description != null) {
+            String d = requireDescription(description);
+            changed |= !d.equals(k.getDescription());
+            k.setDescription(d);
+        }
+        if (content != null) {
+            String body = requireContent(content, "content", maxContentChars);
+            changed |= !body.equals(k.getContent());
+            k.setContent(body);
+        }
+        if (category != null) {
+            String cat = normalizeCategory(category);
+            changed |= !Objects.equals(cat, k.getCategory());
+            k.setCategory(cat);
+        }
+        if (tags != null) {
+            String t = normalizeTags(tags);
+            changed |= !Objects.equals(t, k.getTags());
+            k.setTags(t);
+        }
+        if (!changed) {
+            return "Keine Änderung an '" + n + "' (Revision " + k.getRevision() + ").";
+        }
+        k.recordRevision("update", normalizeNote(note), Instant.now());
+        return "Skill '" + n + "' aktualisiert (Revision " + k.getRevision() + ").";
     }
 
     public String patch(String name, String oldString, String newString, Boolean replaceAll, String filePath,
-                        String note, Integer expectedRevision) {
+                        String note, Integer expectedRevision, int maxContentChars) {
         String n = requireName(name);
         if (oldString == null || oldString.isEmpty()) {
             throw new IllegalArgumentException("'old_string' darf nicht leer sein.");
@@ -219,101 +201,72 @@ public class SkillService {
             throw new IllegalArgumentException("'new_string' muss sich von 'old_string' unterscheiden.");
         }
         boolean all = Boolean.TRUE.equals(replaceAll);
-        String path = blankToNull(filePath);
-        return tx(s -> {
-            Skill k = find(s, n);
-            checkRevision(k, expectedRevision);
-            SkillFile file = null;
-            String before;
-            if (path == null) {
-                before = k.getContent();
-            } else {
-                String p = normalizePath(path);
-                file = k.file(p).orElseThrow(() -> new IllegalArgumentException(
-                        "Skill '" + n + "' hat keine Datei '" + p + "'. Vorhanden: " + filePaths(k)));
-                before = file.getContent();
-            }
-            int count = occurrences(before, oldString);
-            if (count == 0) {
-                throw new IllegalArgumentException("'old_string' kommt in " + target(n, path) + " nicht vor. "
-                        + "Aktuellen Stand mit skills_view laden und den Text exakt übernehmen.");
-            }
-            if (count > 1 && !all) {
-                throw new IllegalArgumentException("'old_string' kommt " + count + "-mal in " + target(n, path)
-                        + " vor. Mehr Kontext angeben, damit die Stelle eindeutig ist, oder replace_all=true setzen.");
-            }
-            String after = all ? before.replace(oldString, replacement)
-                    : before.substring(0, before.indexOf(oldString)) + replacement
-                    + before.substring(before.indexOf(oldString) + oldString.length());
-            Instant now = Instant.now();
-            if (file == null) {
-                k.setContent(requireContent(after, "content"));
-            } else {
-                file.update(requireContent(after, "Dateiinhalt"), now);
-            }
-            k.recordRevision("patch", normalizeNote(note), now);
-            return "Skill '" + n + "' gepatcht" + (path == null ? "" : " (" + normalizePath(path) + ")") + ": "
-                    + (all ? count : 1) + " Stelle(n) ersetzt, Revision " + k.getRevision() + ".";
-        });
+        String path = blankToNull(filePath) == null ? null : normalizePath(filePath);
+        Skill k = find(n);
+        checkRevision(k, expectedRevision);
+        SkillFile file = path == null ? null : k.file(path).orElseThrow(() -> new IllegalArgumentException(
+                "Skill '" + n + "' hat keine Datei '" + path + "'. Vorhanden: " + filePaths(k)));
+        String before = file == null ? k.getContent() : file.getContent();
+        int count = occurrences(before, oldString);
+        if (count == 0) {
+            throw new IllegalArgumentException("'old_string' kommt in " + target(n, path) + " nicht vor. "
+                    + "Aktuellen Stand mit skills_view laden und den Text exakt übernehmen.");
+        }
+        if (count > 1 && !all) {
+            throw new IllegalArgumentException("'old_string' kommt " + count + "-mal in " + target(n, path)
+                    + " vor. Mehr Kontext angeben, damit die Stelle eindeutig ist, oder replace_all=true setzen.");
+        }
+        int at = before.indexOf(oldString);
+        String after = all ? before.replace(oldString, replacement)
+                : before.substring(0, at) + replacement + before.substring(at + oldString.length());
+        Instant now = Instant.now();
+        if (file == null) {
+            k.setContent(requireContent(after, "content", maxContentChars));
+        } else {
+            file.update(requireContent(after, "Dateiinhalt", maxContentChars), now);
+        }
+        k.recordRevision("patch", normalizeNote(note), now);
+        return "Skill '" + n + "' gepatcht" + (path == null ? "" : " (" + path + ")") + ": "
+                + (all ? count : 1) + " Stelle(n) ersetzt, Revision " + k.getRevision() + ".";
     }
 
-    public String writeFile(String name, String filePath, String content, String note) {
+    public String writeFile(String name, String filePath, String content, String note, int maxContentChars) {
         String n = requireName(name);
         String p = normalizePath(filePath);
-        String body = requireContent(content, "file_content");
-        return tx(s -> {
-            Skill k = find(s, n);
-            Instant now = Instant.now();
-            boolean exists = k.file(p).isPresent();
-            k.file(p).ifPresentOrElse(f -> f.update(body, now), () -> k.addFile(new SkillFile(k, p, body, now)));
-            k.recordRevision("write_file", noteOr(note, p), now);
-            return "Datei '" + p + "' in Skill '" + n + "' " + (exists ? "überschrieben" : "angelegt")
-                    + " (Revision " + k.getRevision() + ").";
-        });
+        String body = requireContent(content, "file_content", maxContentChars);
+        Skill k = find(n);
+        Instant now = Instant.now();
+        boolean exists = k.file(p).isPresent();
+        k.file(p).ifPresentOrElse(f -> f.update(body, now), () -> k.addFile(new SkillFile(k, p, body, now)));
+        k.recordRevision("write_file", noteOr(note, p), now);
+        return "Datei '" + p + "' in Skill '" + n + "' " + (exists ? "überschrieben" : "angelegt")
+                + " (Revision " + k.getRevision() + ").";
     }
 
     public String removeFile(String name, String filePath, String note) {
         String n = requireName(name);
         String p = normalizePath(filePath);
-        return tx(s -> {
-            Skill k = find(s, n);
-            SkillFile f = k.file(p).orElseThrow(() -> new IllegalArgumentException(
-                    "Skill '" + n + "' hat keine Datei '" + p + "'. Vorhanden: " + filePaths(k)));
-            k.removeFile(f);
-            k.recordRevision("remove_file", noteOr(note, p), Instant.now());
-            return "Datei '" + p + "' aus Skill '" + n + "' entfernt (Revision " + k.getRevision() + ").";
-        });
+        Skill k = find(n);
+        SkillFile f = k.file(p).orElseThrow(() -> new IllegalArgumentException(
+                "Skill '" + n + "' hat keine Datei '" + p + "'. Vorhanden: " + filePaths(k)));
+        k.removeFile(f);
+        k.recordRevision("remove_file", noteOr(note, p), Instant.now());
+        return "Datei '" + p + "' aus Skill '" + n + "' entfernt (Revision " + k.getRevision() + ").";
     }
 
     public String delete(String name) {
         String n = requireName(name);
-        return tx(s -> {
-            Skill k = find(s, n);
-            int files = k.getFiles().size();
-            s.remove(k);
-            return "Skill '" + n + "' samt " + files + " Datei(en) und Historie gelöscht.";
-        });
-    }
-
-    /** Anzahl gespeicherter Skills – für „Verbindung testen“. */
-    static long count(Session s) {
-        return s.createSelectionQuery("select count(k) from Skill k", Long.class).getSingleResult();
+        Skill k = find(n);
+        int files = k.getFiles().size();
+        skills.delete(k);
+        return "Skill '" + n + "' samt " + files + " Datei(en) und Historie gelöscht.";
     }
 
     // ------------------------------------------------------------------ intern
 
-    private static Skill find(Session s, String name) {
-        Skill k = findOrNull(s, name);
-        if (k == null) {
-            throw new IllegalArgumentException("Skill '" + name + "' gibt es nicht. Vorhandene mit skills_list "
-                    + "anzeigen oder mit skills_create anlegen.");
-        }
-        return k;
-    }
-
-    private static Skill findOrNull(Session s, String name) {
-        return s.createSelectionQuery("from Skill k where k.name = :name", Skill.class)
-                .setParameter("name", name).getSingleResultOrNull();
+    private Skill find(String name) {
+        return skills.findByName(name).orElseThrow(() -> new IllegalArgumentException("Skill '" + name
+                + "' gibt es nicht. Vorhandene mit skills_list anzeigen oder mit skills_create anlegen."));
     }
 
     private static void checkRevision(Skill k, Integer expected) {
@@ -362,7 +315,7 @@ public class SkillService {
         return d;
     }
 
-    private String requireContent(String content, String field) {
+    private static String requireContent(String content, String field, int maxContentChars) {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("'" + field + "' darf nicht leer sein.");
         }

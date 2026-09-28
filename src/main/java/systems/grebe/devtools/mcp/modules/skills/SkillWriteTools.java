@@ -14,9 +14,11 @@ public class SkillWriteTools {
             + "Weicht sie ab, wird abgelehnt statt fremde Änderungen zu überschreiben.";
 
     private final SkillService service;
+    private final int maxContentChars;
 
-    SkillWriteTools(SkillService service) {
+    SkillWriteTools(SkillService service, int maxContentChars) {
         this.service = service;
+        this.maxContentChars = maxContentChars;
     }
 
     @Tool(name = "create", description = "Legt einen neuen Skill an. Anlegen, wenn eine Aufgabe schwierig oder "
@@ -32,7 +34,7 @@ public class SkillWriteTools {
             @ToolParam(description = "Inhalt als Markdown (ohne Frontmatter)") String content,
             @ToolParam(required = false, description = "Kategorie, z.B. 'software-development', 'devops'") String category,
             @ToolParam(required = false, description = "Schlagwörter für die Suche, z.B. ['wildfly','heap']") List<String> tags) {
-        return service.create(name, description, content, category, tags);
+        return service.create(name, description, content, category, tags, maxContentChars);
     }
 
     @Tool(name = "patch", description = "Ersetzt gezielt eine Textstelle im Skill-Inhalt oder – mit file_path – in "
@@ -47,7 +49,8 @@ public class SkillWriteTools {
             @ToolParam(required = false, description = "Zusatzdatei, z.B. 'references/api.md'; leer = Hauptinhalt") String file_path,
             @ToolParam(required = false, description = NOTE) String note,
             @ToolParam(required = false, description = EXPECTED) Integer expected_revision) {
-        return service.patch(name, old_string, new_string, replace_all, file_path, note, expected_revision);
+        return service.patch(name, old_string, new_string, replace_all, file_path, note, expected_revision,
+                maxContentChars);
     }
 
     @Tool(name = "update", description = "Ersetzt Beschreibung, gesamten Inhalt, Kategorie und/oder Tags eines "
@@ -61,7 +64,7 @@ public class SkillWriteTools {
             @ToolParam(required = false, description = "Neue Tags (ersetzt alle); leere Liste entfernt sie") List<String> tags,
             @ToolParam(required = false, description = NOTE) String note,
             @ToolParam(required = false, description = EXPECTED) Integer expected_revision) {
-        return service.update(name, description, content, category, tags, note, expected_revision);
+        return service.update(name, description, content, category, tags, note, expected_revision, maxContentChars);
     }
 
     @Tool(name = "write_file", description = "Legt eine Zusatzdatei eines Skills an oder überschreibt sie – für "
@@ -73,7 +76,7 @@ public class SkillWriteTools {
             @ToolParam(description = "Relativer Pfad, z.B. 'references/jdbc-urls.md'") String file_path,
             @ToolParam(description = "Dateiinhalt") String file_content,
             @ToolParam(required = false, description = NOTE) String note) {
-        return service.writeFile(name, file_path, file_content, note);
+        return service.writeFile(name, file_path, file_content, note, maxContentChars);
     }
 
     @Tool(name = "remove_file", description = "Entfernt eine Zusatzdatei aus einem Skill." + ShellHints.SKILLS)

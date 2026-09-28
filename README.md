@@ -15,7 +15,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **VisualVM** | `visualvm_heap_analyze` (Heap-Engine: Histogramm, Retained Size, Pfad zur GC-Wurzel), `visualvm_sample_cpu` (JMX-Sampler, `.nps`-Snapshot), `visualvm_open`, `visualvm_open_file` (externe VisualVM-GUI) |
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
-| **Skills** (Hibernate, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Schalter (Standard aus): `skills_delete` |
+| **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
 und JMX-Ziele für alle Performance-Module. Container-Laufzeit und freigegebene Container kommen aus dem
@@ -117,10 +117,15 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
   Tags, Markdown-Inhalt, dazu Zusatzdateien unter `references/`, `templates/`, `scripts/`, `assets/`.
 * **Historie:** jede Änderung erzeugt eine Revision mit Aktion und Notiz (`skills_history`). Mit
   `expected_revision` lehnt ein Patch ab, wenn der Skill inzwischen woanders geändert wurde.
-* **Persistenz:** Hibernate ORM 7 (ohne Spring Data, keine Boot-DataSource) über HikariCP. Standard ist eine lokale
+* **Persistenz:** Spring Data JPA (`SkillRepository`, `SkillRevisionRepository`; Zusatzdateien hängen per Cascade am Skill) auf
+  Hibernate ORM 7 und HikariCP, Transaktionen per `@Transactional` im `SkillService`. Standard ist eine lokale
   H2-Datei `~/.devtools-mcp/skills.mv.db`; Schema per `hibernate.hbm2ddl.auto=update`. JDBC-URL, Benutzer, Passwort
-  (verschlüsselt) und Schema-Modus sind im Modul einstellbar, *Verbindung testen* öffnet die Datenbank probeweise.
-  Andere Datenbanken brauchen ihren JDBC-Treiber auf dem Classpath.
+  (verschlüsselt) und Schema-Modus sind im Modul einstellbar. Andere Datenbanken brauchen ihren JDBC-Treiber auf dem
+  Classpath.
+* **Verbindung ändern:** `SkillsPersistenceConfig` baut die `DataSource` beim Start aus den Modul-Einstellungen
+  (nicht aus `application.properties`). Neue Werte gelten deshalb **erst nach einem Neustart der App**;
+  *Verbindung testen* prüft sie vorher per JDBC, ohne die laufende Verbindung anzufassen. Ist die Datenbank beim
+  Start nicht erreichbar, startet die App trotzdem – das Skills-Modul zeigt dann einen Fehler statt Tools.
 * Die H2-Datei ist exklusiv gesperrt, solange die App läuft. Wer parallel mit IntelliJ o.ä. hineinschauen will,
   hängt `;AUTO_SERVER=TRUE` an die JDBC-URL.
 

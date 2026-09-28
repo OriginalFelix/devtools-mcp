@@ -1,11 +1,15 @@
 package systems.grebe.devtools.mcp.modules.skills;
 
 import java.nio.file.Path;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -17,7 +21,8 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 /**
  * Skill-Speicher für das LLM, angelehnt an das Skill-Management von Hermes: Das LLM sucht vor einer Aufgabe passende
  * Skills, lädt sie und legt nach einer schwierigen oder neu gelernten Aufgabe selbst einen an bzw. korrigiert einen
- * bestehenden. Persistenz über Hibernate ORM, standardmäßig eine lokale H2-Datei im Einstellungsordner.
+ * bestehenden. Persistenz über Spring Data JPA (Hibernate), standardmäßig eine lokale H2-Datei im
+ * Einstellungsordner; die DataSource baut {@link SkillsPersistenceConfig} beim Start aus diesen Einstellungen.
  */
 @Component
 public class SkillsModule implements ToolModule {
@@ -32,11 +37,13 @@ public class SkillsModule implements ToolModule {
     static final String ALLOW_DELETE = "allowDelete";
     static final String MAX_CONTENT = "maxContentChars";
 
-    private final SkillDatabase database;
+    private final SkillService service;
+    private final SkillsPersistenceConfig.Status status;
     private final Path home;
 
-    public SkillsModule(SkillDatabase database, SettingsStore store) {
-        this.database = database;
+    public SkillsModule(SkillService service, SkillsPersistenceConfig.Status status, SettingsStore store) {
+        this.service = service;
+        this.status = status;
         this.home = store.file().toAbsolutePath().getParent();
     }
 
@@ -53,8 +60,8 @@ public class SkillsModule implements ToolModule {
     @Override
     public String description() {
         return "Wiederverwendbare Abläufe (Skills) für das LLM: suchen, laden und nach gelösten Aufgaben selbst anlegen "
-                + "oder verbessern – mit Zusatzdateien und Änderungshistorie. Gespeichert per Hibernate, "
-                + "standardmäßig in einer lokalen H2-Datenbank.";
+                + "oder verbessern – mit Zusatzdateien und Änderungshistorie. Gespeichert per Spring Data JPA, "
+                + "standardmäßig in einer lokalen H2-Datenbank. Verbindungsänderungen gelten nach Neustart.";
     }
 
     @Override
@@ -93,10 +100,16 @@ public class SkillsModule implements ToolModule {
 
     @Override
     public List<ConfigField> configSchema() {
+        return schema(home);
+    }
+
+    /** Schema ohne Modul-Instanz – {@link SkillsPersistenceConfig} braucht es, bevor die Beans stehen. */
+    static List<ConfigField> schema(Path home) {
         return List.of(
-                ConfigField.of(JDBC_URL, "JDBC-URL", FieldType.STRING).asRequired().withDefault(defaultJdbcUrl())
+                ConfigField.of(JDBC_URL, "JDBC-URL", FieldType.STRING).asRequired().withDefault(defaultJdbcUrl(home))
                         .withHelp("Standard: lokale H2-Datei im Einstellungsordner. Andere Datenbanken brauchen ihren "
-                                + "JDBC-Treiber auf dem Classpath."),
+                                + "JDBC-Treiber auf dem Classpath. Änderungen an Verbindung und Schema gelten nach "
+                                + "einem Neustart der App."),
                 ConfigField.of(USERNAME, "Benutzer", FieldType.STRING).withDefault("sa"),
                 ConfigField.of(PASSWORD, "Passwort", FieldType.SECRET)
                         .withHelp("Wird verschlüsselt gespeichert. Für die lokale H2-Datei leer lassen."),
@@ -110,16 +123,21 @@ public class SkillsModule implements ToolModule {
                         .withHelp("Obergrenze für Skill-Inhalt und Zusatzdateien."));
     }
 
-    String defaultJdbcUrl() {
+    static String defaultJdbcUrl(Path home) {
         return "jdbc:h2:file:" + home.resolve("skills").toString().replace('\\', '/');
     }
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        SkillService service = new SkillService(database, connection(config), maxContent(config));
+        if (!status.available()) {
+            // Erscheint in der UI als Modulfehler; die übrigen Module laufen weiter.
+            throw new IllegalStateException("Skill-Datenbank " + status.configured().jdbcUrl()
+                    + " war beim Start nicht erreichbar: " + status.error()
+                    + ". Einstellungen prüfen (Verbindung testen) und die App neu starten.");
+        }
         List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(new SkillReadTools(service))));
         if (config.getBoolean(ALLOW_WRITE)) {
-            tools.addAll(List.of(ToolCallbacks.from(new SkillWriteTools(service))));
+            tools.addAll(List.of(ToolCallbacks.from(new SkillWriteTools(service, maxContent(config)))));
         }
         if (config.getBoolean(ALLOW_DELETE)) {
             tools.addAll(List.of(ToolCallbacks.from(new SkillDeleteTools(service))));
@@ -133,18 +151,46 @@ public class SkillsModule implements ToolModule {
         if (!errors.isEmpty()) {
             return ConnectionTestResult.failed(String.join("\n", errors));
         }
-        SkillDatabase.Connection c = connection(config);
+        SkillsPersistenceConfig.Connection c = SkillsPersistenceConfig.Connection.from(config);
+        SkillsPersistenceConfig.Connection active = status.configured();
+        if (status.available() && c.equals(active)) {
+            try {
+                return ConnectionTestResult.ok("Verbunden mit " + c.jdbcUrl() + " – " + service.count()
+                        + " Skill(s) gespeichert.");
+            } catch (RuntimeException e) {
+                return ConnectionTestResult.failed("Verbindung fehlgeschlagen: " + rootMessage(e));
+            }
+        }
+        // Neue Werte: ohne Pool und ohne Hibernate prüfen, ob die Datenbank erreichbar ist. Die laufende
+        // DataSource bleibt unberührt, die neuen Werte gelten erst nach einem Neustart.
         try {
-            long count = SkillDatabase.withTemporary(c, SkillService::count);
-            return ConnectionTestResult.ok("Verbunden mit " + c.jdbcUrl() + " – " + count + " Skill(s) gespeichert.");
+            SimpleDriverDataSource ds = DataSourceBuilder.create().type(SimpleDriverDataSource.class)
+                    .url(c.jdbcUrl()).username(c.username()).password(c.password()).build();
+            Boolean hasTable = new JdbcTemplate(ds).execute((java.sql.Connection con) -> {
+                try (ResultSet rs = con.getMetaData().getTables(null, null, "%", new String[] {"TABLE"})) {
+                    while (rs.next()) {
+                        if ("skill".equalsIgnoreCase(rs.getString("TABLE_NAME"))) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            });
+            return ConnectionTestResult.ok("Verbindung zu " + c.jdbcUrl() + " möglich"
+                    + (Boolean.TRUE.equals(hasTable) ? " (Skill-Tabellen vorhanden)" : " (Tabellen werden beim Start angelegt)")
+                    + ". Wirksam nach einem Neustart der App" + (status.available()
+                    ? " – aktiv ist noch " + active.jdbcUrl() + "." : "."));
         } catch (RuntimeException e) {
-            return ConnectionTestResult.failed("Verbindung fehlgeschlagen: " + SkillDatabase.rootMessage(e));
+            return ConnectionTestResult.failed("Verbindung fehlgeschlagen: " + rootMessage(e));
         }
     }
 
-    static SkillDatabase.Connection connection(ModuleConfig config) {
-        return new SkillDatabase.Connection(config.require(JDBC_URL), config.getString(USERNAME, "sa"),
-                config.getString(PASSWORD, ""), config.getString(SCHEMA_ACTION, "update"));
+    static String rootMessage(Throwable e) {
+        Throwable root = e;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        return root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
     }
 
     private static int maxContent(ModuleConfig config) {

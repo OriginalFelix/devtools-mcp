@@ -45,11 +45,10 @@ dependencies {
     implementation("org.graalvm.visualvm.modules:org-graalvm-visualvm-lib-jfluid-heap:2.2")
     implementation("org.graalvm.visualvm.modules:org-graalvm-visualvm-lib-jfluid:2.2")
 
-    // Skills: Hibernate ORM direkt (bewusst ohne Spring Data JPA, damit Spring Boot keine DataSource
-    // autokonfiguriert), Verbindungspool HikariCP, Standard-Datenbank H2 als lokale Datei. Versionen aus der Boot-BOM.
-    implementation("org.hibernate.orm:hibernate-core")
-    implementation("com.zaxxer:HikariCP")
-    implementation("com.h2database:h2")
+    // Skills: Spring Data JPA (Hibernate ORM + HikariCP), Standard-Datenbank H2 als lokale Datei.
+    // Die DataSource baut SkillsPersistenceConfig aus den Modul-Einstellungen. Versionen aus der Boot-BOM.
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    runtimeOnly("com.h2database:h2")
 
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
