@@ -15,6 +15,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **VisualVM** | `visualvm_heap_analyze` (Heap-Engine: Histogramm, Retained Size, Pfad zur GC-Wurzel), `visualvm_sample_cpu` (JMX-Sampler, `.nps`-Snapshot), `visualvm_open`, `visualvm_open_file` (externe VisualVM-GUI) |
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
+| **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
 und JMX-Ziele für alle Performance-Module. Container-Laufzeit und freigegebene Container kommen aus dem
@@ -81,6 +82,7 @@ claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
   die ungespeicherten Eingaben.
 * **Tools**: jedes Tool einzeln abschaltbar.
 * **Aufrufe**: Live-Protokoll aller Tool-Aufrufe mit Argumenten, Ergebnis, Dauer und Fehlern.
+* **Skills**: Übersicht der gespeicherten Skills mit Inhalt, Zusatzdateien und Historie (aktualisiert sich live).
 * **Einstellungen**: Port (nach Neustart), optionales Bearer-Token (sofort wirksam), Tray-Verhalten.
 * Fenster schließen → läuft im System-Tray weiter; *Beenden* über das Tray-Menü.
 
@@ -104,6 +106,64 @@ der Schlüssel liegt in `secret.key` daneben.
   sind einzeln schaltbar und standardmäßig aus. exec optional nur mit freigegebenen Programmen, `run` bindet Ports
   an 127.0.0.1 und erlaubt Bind-Mounts nur aus freigegebenen Host-Verzeichnissen, `rm` standardmäßig nur für über
   `container_run` angelegte Container (Label `devtools-mcp`). Passwörter/Tokens in Umgebungsvariablen werden maskiert.
+
+### Skills – prozedurales Gedächtnis des LLM
+
+Angelehnt an das Skill-Management von Hermes: Das LLM sucht vor einer Aufgabe mit `skills_list` passende Skills und
+lädt sie mit `skills_view`. Nach einer schwierigen, mehrstufigen oder korrigierten Aufgabe legt es selbst einen Skill
+an (`skills_create`) oder verbessert einen bestehenden gezielt (`skills_patch`, `old_string` → `new_string`, muss
+eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und in den Tool-Beschreibungen.
+
+* **Aufbau** wie ein `SKILL.md`: Name (`a-z0-9._-`), ein Satz `description` („wann greift der Skill“), Kategorie,
+  Tags, Markdown-Inhalt, dazu Zusatzdateien unter `references/`, `templates/`, `scripts/`, `assets/`.
+* **Historie:** jede Änderung erzeugt eine Revision mit Aktion und Notiz (`skills_history`). Mit
+  `expected_revision` lehnt ein Patch ab, wenn der Skill inzwischen woanders geändert wurde.
+* **Persistenz:** Spring Data JPA (`SkillRepository`, `SkillRevisionRepository`; Zusatzdateien hängen per Cascade am Skill) auf
+  Hibernate ORM 7 und HikariCP, Transaktionen per `@Transactional` im `SkillService`. Standard ist eine lokale
+  H2-Datei `~/.devtools-mcp/skills.mv.db`; Schema per `hibernate.hbm2ddl.auto=update`. JDBC-URL, Benutzer, Passwort
+  (verschlüsselt) und Schema-Modus sind im Modul einstellbar. Andere Datenbanken brauchen ihren JDBC-Treiber auf dem
+  Classpath.
+* **Verbindung ändern:** `SkillsPersistenceConfig` baut die `DataSource` beim Start aus den Modul-Einstellungen
+  (nicht aus `application.properties`). Neue Werte gelten deshalb **erst nach einem Neustart der App**;
+  *Verbindung testen* prüft sie vorher per JDBC, ohne die laufende Verbindung anzufassen. Ist die Datenbank beim
+  Start nicht erreichbar, startet die App trotzdem – das Skills-Modul zeigt dann einen Fehler statt Tools.
+* **Selbstverbesserung** (angelehnt an Hermes' Skill-Review):
+  * `skills_review` liefert eine Review-Checkliste (Signale, Reihenfolge *geladenen Skill patchen → übergreifenden
+    erweitern → Zusatzdatei → neu anlegen*, was nicht festzuhalten ist), die in dieser Client-Session geladenen und
+    geänderten Skills und die vorhandene Bibliothek.
+  * **Erinnerung:** Nach *N* Tool-Aufrufen (Einstellung „Review-Erinnerung“, Standard 10 wie Hermes'
+    `creation_nudge_interval`, 0 = aus) ohne Skill-Pflege hängt der Server an das Tool-Ergebnis einen Hinweis auf
+    `skills_review`. Gezählt wird je MCP-Session über alle Module; `skills_create/patch/update/…/review` setzen
+    zurück. Ein MCP-Server kann das Modell nicht selbst anstoßen – Tool-Ergebnisse sind der einzige Kanal, der bei
+    jedem Client ankommt.
+  * **MCP-Prompt** `skills_review` (Argument `focus`) für den manuellen Anstoß, z.B. als Slash-Befehl.
+  * Review, Prompt und Erinnerung gibt es nur, wenn „Anlegen und Bearbeiten“ an ist.
+  * **Mit Hermes:** Hermes hat einen eigenen Hintergrund-Review, der in `~/.hermes/skills` schreibt. Sollen die
+    Skills nur hier liegen, dort `skills.creation_nudge_interval: 0` setzen – sonst entstehen zwei Bibliotheken.
+* **Mehrere Benutzer (User-Scoping):** Jeder Skill gehört einem Benutzer, erkannt an der Git-E-Mail
+  (`git config --global user.email`) oder der „Benutzer-E-Mail“ im Modul. Auf einer gemeinsamen Datenbank sieht und
+  ändert jeder nur seine eigenen Skills; gleiche Namen bei verschiedenen Benutzern sind erlaubt. Die Historie hält fest,
+  wer geändert hat.
+* **Globale Vorlagen:** schreibgeschützte Skills für alle Benutzer, in `skills_list` mit „(global)“ markiert.
+  Ändert das LLM eine Vorlage (`skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file`), entsteht in
+  derselben Transaktion eine persönliche Kopie samt Zusatzdateien, auf die die Änderung wirkt; sie verdeckt ab dann die
+  Vorlage. Schlägt die Änderung fehl, bleibt auch keine Kopie zurück. Löschen der Kopie zeigt wieder die Vorlage;
+  Vorlagen selbst sind nicht löschbar.
+  * Veröffentlichen/Aktualisieren und Zurückziehen nur in der App (Tab **Skills**) mit dem Schalter „Globale Vorlagen
+    verwalten“. Der Schalter ist Komfort, kein Zugriffsschutz – wer Vorlagen wirklich absichern will, vergibt die
+    Schreibrechte in der Datenbank entsprechend.
+  * Wurde eine Vorlage nach dem Kopieren weiterentwickelt, zeigt die Übersicht die Kopie als „Kopie ⟳“ mit beiden
+    Revisionen.
+* **Bestehende Datenbanken** (vor dem User-Scoping) werden beim Start einmalig angehoben: Spalte `owner` ergänzen, alle
+  vorhandenen Skills dem aktuellen Benutzer zuordnen, alte Regel „Name global eindeutig“ entfernen. Nur mit Schema
+  `update`; ohne bekannten Benutzer bleibt die Datenbank unangetastet und das Modul meldet den Fehler.
+* **Übersicht in der App:** Tab **Skills** – links alle Skills (Name, Kategorie, Revision, wie oft geladen, zuletzt
+  geändert) mit Suche über Name/Beschreibung/Tags und Kategorie-Filter, rechts Beschreibung, Metadaten, Inhalt,
+  Zusatzdateien und Änderungshistorie mit dem jeweiligen Stand. Legt oder ändert das LLM einen Skill, aktualisiert
+  sich die Übersicht selbst (nach dem Commit, nicht bei Rollback). Löschen geht hier auch ohne den Schalter
+  „Löschen erlauben“ – der gilt nur für das LLM.
+* Die H2-Datei ist exklusiv gesperrt, solange die App läuft. Wer parallel mit IntelliJ o.ä. hineinschauen will,
+  hängt `;AUTO_SERVER=TRUE` an die JDBC-URL.
 
 ### Instructions für das LLM
 

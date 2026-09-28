@@ -36,6 +36,9 @@ public final class ShellHints {
 
     public static final String DEBUG = " Breakpoint-Debugging immer über die debug_*-Tools, nicht mit `jdb` in der Shell.";
 
+    public static final String SKILLS = " Skills (wiederverwendbare Abläufe) immer über die skills_*-Tools lesen und "
+            + "pflegen, nicht als SKILL.md-Dateien in der Shell oder im Dateisystem.";
+
     private ShellHints() {
     }
 }

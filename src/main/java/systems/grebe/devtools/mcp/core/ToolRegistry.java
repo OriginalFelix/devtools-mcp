@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.McpToolUtils;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -38,12 +39,16 @@ public class ToolRegistry {
     private final ToolInvocationLog invocationLog;
     private final Map<String, ModuleState> states = new LinkedHashMap<>();
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
+    private final ObjectProvider<ToolCallListener> callListenerProvider;
+    private volatile List<ToolCallListener> callListeners;
 
     public ToolRegistry(McpSyncServer server, SettingsStore store, ToolInvocationLog invocationLog,
-                        List<ToolModule> modules) {
+                        List<ToolModule> modules, ObjectProvider<ToolCallListener> callListeners) {
         this.server = server;
         this.store = store;
         this.invocationLog = invocationLog;
+        // Lazy: Listener dürfen ihrerseits die Registry brauchen (ObjectProvider), ohne Zirkelbezug beim Start.
+        this.callListenerProvider = callListeners;
         modules.stream()
                 .sorted(Comparator.comparingInt(ToolModule::order)
                         .thenComparing(ToolModule::displayName, String.CASE_INSENSITIVE_ORDER))
@@ -169,7 +174,7 @@ public class ToolRegistry {
             try {
                 ModuleConfig cfg = ModuleConfig.of(s.module.configSchema(), s.settings.values());
                 for (ToolCallback cb : s.module.createTools(cfg)) {
-                    tools.add(new ManagedToolCallback(s.module.id(), cb, invocationLog));
+                    tools.add(new ManagedToolCallback(s.module.id(), cb, invocationLog, callListeners()));
                 }
             } catch (RuntimeException e) {
                 LOG.error("Tools für Modul {} konnten nicht erzeugt werden", moduleId, e);
@@ -204,6 +209,15 @@ public class ToolRegistry {
         // Kein explizites notifyToolsListChanged(): addTool/removeTool benachrichtigen die Clients bereits selbst
         // (spring.ai.mcp.server.tool-change-notification=true).
         changeListeners.forEach(Runnable::run);
+    }
+
+    private List<ToolCallListener> callListeners() {
+        List<ToolCallListener> l = callListeners;
+        if (l == null) {
+            l = callListenerProvider.orderedStream().toList();
+            callListeners = l;
+        }
+        return l;
     }
 
     private ModuleState state(String moduleId) {

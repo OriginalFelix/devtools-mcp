@@ -43,6 +43,13 @@ class McpServerIntegrationTest {
         SettingsStore settingsStore() {
             return new SettingsStore(home);
         }
+
+        /** Fester Benutzer statt ~/.gitconfig des Entwicklers. */
+        @Bean
+        @Primary
+        systems.grebe.devtools.mcp.modules.skills.SkillUser testSkillUser(SettingsStore settingsStore) {
+            return systems.grebe.devtools.mcp.modules.skills.SkillTestContext.user(settingsStore, "mcp@example.com");
+        }
     }
 
     @LocalServerPort
@@ -152,9 +159,11 @@ class McpServerIntegrationTest {
                         "`git_commit` (statt `git commit`)", "`git_list_repositories`")
                 // alle Module mit Hinweisen, auch standardmäßig deaktivierte (Instructions stehen ab Start fest)
                 .contains("Tools `build_*`", "Tools `container_*`", "Tools `sonar_*`", "Tools `jvm_*`",
-                        "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`")
+                        "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`",
+                        "## Skills – Tools `skills_*`", "`skills_list`", "`skills_create`", "`skills_patch`")
                 .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
-        // Reihenfolge wie in der Modulliste: order, dann Anzeigename
+        // Reihenfolge wie in der Modulliste: order, dann Anzeigename – Skills zuerst, damit sie vor jeder Aufgabe greifen
+        assertThat(instructions.indexOf("Tools `skills_*`")).isLessThan(instructions.indexOf("Tools `git_*`"));
         assertThat(instructions.indexOf("Tools `git_*`")).isLessThan(instructions.indexOf("Tools `container_*`"));
         assertThat(instructions.indexOf("Tools `container_*`")).isLessThan(instructions.indexOf("Tools `jvm_*`"));
         assertThat(instructions.indexOf("Tools `jvm_*`")).isLessThan(instructions.indexOf("Tools `debug_*`"));
@@ -171,13 +180,15 @@ class McpServerIntegrationTest {
         registry.updateConfig("container", Map.of("allowExec", "true", "allowLifecycle", "true", "allowCopy", "true",
                 "allowCreate", "true", "allowRemove", "true", "allowCompose", "true",
                 "composeProjects", composeDir.toString()));
+        registry.updateConfig("skills", Map.of("allowDelete", "true"));
         try {
             Map<String, String> hintByPrefix = Map.of(
                     "git_", ShellHints.GIT, "build_", ShellHints.BUILD, "container_", ShellHints.CONTAINER,
                     "sonar_", ShellHints.SONAR, "jvm_", ShellHints.JVM, "jfr_", ShellHints.JFR,
-                    "asprof_", ShellHints.ASPROF, "visualvm_", ShellHints.VISUALVM, "debug_", ShellHints.DEBUG);
+                    "asprof_", ShellHints.ASPROF, "visualvm_", ShellHints.VISUALVM, "debug_", ShellHints.DEBUG,
+                    "skills_", ShellHints.SKILLS);
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(86); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(96); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -191,7 +202,98 @@ class McpServerIntegrationTest {
         } finally {
             List.of("sonar", "debug", "asprof", "build").forEach(id -> registry.setModuleEnabled(id, false));
             registry.updateConfig("container", Map.of());
+            registry.updateConfig("skills", Map.of());
         }
+    }
+
+    @Test
+    void skillsRoundTripOverMcp() {
+        // Standard: H2-Datei im (hier temporären) Einstellungsordner
+        assertThat(toolNames()).contains("skills_list", "skills_view", "skills_history", "skills_create",
+                "skills_patch", "skills_update", "skills_write_file", "skills_remove_file")
+                .doesNotContain("skills_delete");
+
+        McpSchema.CallToolResult created = client.callTool(callRequest("skills_create", Map.of(
+                "name", "mcp-roundtrip", "description", "Verwenden, wenn der Roundtrip geprüft wird.",
+                "content", "## Schritte\n1. anlegen\n", "category", "testing", "tags", List.of("mcp", "h2"))));
+        assertThat(created.isError()).isNotEqualTo(Boolean.TRUE);
+        assertThat(text(created)).contains("angelegt (Revision 1)");
+
+        assertThat(text(client.callTool(callRequest("skills_patch", Map.of("name", "mcp-roundtrip",
+                "old_string", "1. anlegen\n", "new_string", "1. anlegen\n2. patchen\n", "note", "Schritt 2")))))
+                .contains("Revision 2");
+        assertThat(text(client.callTool(callRequest("skills_list", Map.of("query", "roundtrip")))))
+                .contains("testing:", "mcp-roundtrip: Verwenden, wenn der Roundtrip geprüft wird.", "[mcp, h2]");
+        assertThat(text(client.callTool(callRequest("skills_view", Map.of("name", "mcp-roundtrip")))))
+                .contains("revision: 2", "2. patchen");
+
+        // Fachlicher Fehler kommt als isError-Ergebnis mit Hinweis auf den nächsten Schritt beim LLM an
+        McpSchema.CallToolResult duplicate = client.callTool(callRequest("skills_create", Map.of(
+                "name", "mcp-roundtrip", "description", "x", "content", "y")));
+        assertThat(duplicate.isError()).isTrue();
+        assertThat(text(duplicate)).contains("existiert bereits", "skills_patch");
+
+        registry.updateConfig("skills", Map.of("allowWrite", "false"));
+        try {
+            assertThat(toolNames()).contains("skills_list", "skills_view").doesNotContain("skills_create", "skills_patch");
+        } finally {
+            registry.updateConfig("skills", Map.of());
+        }
+        assertThat(Files.exists(home.resolve("skills.mv.db"))).isTrue();
+    }
+
+    @Test
+    void selfImprovementNudgeReviewToolAndPromptOverMcp() {
+        registry.updateConfig("skills", Map.of("reviewNudgeInterval", "3"));
+        McpSyncClient second = connect(null);
+        try {
+            // B: Erinnerung nach 3 Aufrufen ohne Skill-Pflege – je Session gezählt
+            assertThat(text(client.callTool(callRequest("git_status", Map.of())))).doesNotContain("[DevTools-Skills]");
+            assertThat(text(client.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
+            assertThat(text(second.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
+            assertThat(text(client.callTool(callRequest("git_log", Map.of()))))
+                    .contains("Initialer Commit", "[DevTools-Skills] 3 Tool-Aufrufe", "skills_review");
+
+            // Skill-Pflege setzt zurück und wird für den Review gemerkt
+            client.callTool(callRequest("skills_create", Map.of("name", "review-demo",
+                    "description", "Verwenden für den Review-Test.", "content", "## Schritte\n1. a\n")));
+            client.callTool(callRequest("skills_view", Map.of("name", "review-demo")));
+            assertThat(text(client.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
+
+            // A: Review-Tool mit Checkliste und Session-Kontext
+            McpSchema.CallToolResult reviewed = client.callTool(callRequest("skills_review",
+                    Map.of("focus", "Korrektur zur Formatierung")));
+            assertThat(reviewed.isError()).isNotEqualTo(Boolean.TRUE);
+            assertThat(text(reviewed)).startsWith("# Skill-Review")
+                    .contains("Geladenen Skill patchen", "Nicht festhalten", "Korrektur zur Formatierung",
+                            "Geladen (skills_view): review-demo", "Bereits geändert: review-demo",
+                            "review-demo: Verwenden für den Review-Test.");
+            // die zweite Session hat nichts geladen
+            assertThat(text(second.callTool(callRequest("skills_review", Map.of()))))
+                    .contains("Geladen (skills_view): keine", "Bereits geändert: keine");
+
+            // C: derselbe Review als MCP-Prompt
+            assertThat(client.listPrompts().prompts()).extracting(McpSchema.Prompt::name).contains("skills_review");
+            McpSchema.GetPromptResult prompt = client.getPrompt(
+                    new McpSchema.GetPromptRequest("skills_review", Map.of("focus", "neuer Workaround")));
+            String promptText = ((McpSchema.TextContent) prompt.messages().getFirst().content()).text();
+            assertThat(promptText).startsWith("# Skill-Review")
+                    .contains("neuer Workaround", "Geladen (skills_view): review-demo", "skills_*-Tools ab");
+
+            // ohne Schreibrecht: kein Review-Tool, kein Prompt, keine Erinnerung
+            registry.updateConfig("skills", Map.of("allowWrite", "false", "reviewNudgeInterval", "1"));
+            assertThat(toolNames()).doesNotContain("skills_review");
+            assertThat(client.listPrompts().prompts()).extracting(McpSchema.Prompt::name).doesNotContain("skills_review");
+            assertThat(text(client.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
+        } finally {
+            second.closeGracefully();
+            registry.updateConfig("skills", Map.of());
+        }
+        assertThat(client.listPrompts().prompts()).extracting(McpSchema.Prompt::name).contains("skills_review");
+    }
+
+    private static String text(McpSchema.CallToolResult result) {
+        return ((McpSchema.TextContent) result.content().getFirst()).text();
     }
 
     @Test
