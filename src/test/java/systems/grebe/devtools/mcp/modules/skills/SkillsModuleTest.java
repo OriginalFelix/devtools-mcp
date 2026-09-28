@@ -19,7 +19,7 @@ class SkillsModuleTest {
     Path home;
 
     private SkillsModule module(SkillsPersistenceConfig.Status status) {
-        return new SkillsModule(null, status, new SettingsStore(home));
+        return new SkillsModule(null, status, new SkillReview(), new SkillReviewTracker(null), new SettingsStore(home));
     }
 
     private static SkillsPersistenceConfig.Connection h2(Path file) {
@@ -44,9 +44,9 @@ class SkillsModuleTest {
     void toolSelectionFollowsSwitches() {
         SkillsPersistenceConfig.Connection c = h2(home.resolve("skills"));
         SkillsModule m = module(new SkillsPersistenceConfig.Status(c, c, null));
-        assertThat(m.createTools(config(m, Map.of()))).hasSize(8);
+        assertThat(m.createTools(config(m, Map.of()))).hasSize(9);
         assertThat(m.createTools(config(m, Map.of(SkillsModule.ALLOW_WRITE, "false")))).hasSize(3);
-        assertThat(m.createTools(config(m, Map.of(SkillsModule.ALLOW_DELETE, "true")))).hasSize(9);
+        assertThat(m.createTools(config(m, Map.of(SkillsModule.ALLOW_DELETE, "true")))).hasSize(10);
     }
 
     @Test

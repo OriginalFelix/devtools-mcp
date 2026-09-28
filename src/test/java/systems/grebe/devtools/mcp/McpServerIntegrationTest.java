@@ -181,7 +181,7 @@ class McpServerIntegrationTest {
                     "asprof_", ShellHints.ASPROF, "visualvm_", ShellHints.VISUALVM, "debug_", ShellHints.DEBUG,
                     "skills_", ShellHints.SKILLS);
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(95); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(96); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -233,6 +233,56 @@ class McpServerIntegrationTest {
             registry.updateConfig("skills", Map.of());
         }
         assertThat(Files.exists(home.resolve("skills.mv.db"))).isTrue();
+    }
+
+    @Test
+    void selfImprovementNudgeReviewToolAndPromptOverMcp() {
+        registry.updateConfig("skills", Map.of("reviewNudgeInterval", "3"));
+        McpSyncClient second = connect(null);
+        try {
+            // B: Erinnerung nach 3 Aufrufen ohne Skill-Pflege – je Session gezählt
+            assertThat(text(client.callTool(callRequest("git_status", Map.of())))).doesNotContain("[DevTools-Skills]");
+            assertThat(text(client.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
+            assertThat(text(second.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
+            assertThat(text(client.callTool(callRequest("git_log", Map.of()))))
+                    .contains("Initialer Commit", "[DevTools-Skills] 3 Tool-Aufrufe", "skills_review");
+
+            // Skill-Pflege setzt zurück und wird für den Review gemerkt
+            client.callTool(callRequest("skills_create", Map.of("name", "review-demo",
+                    "description", "Verwenden für den Review-Test.", "content", "## Schritte\n1. a\n")));
+            client.callTool(callRequest("skills_view", Map.of("name", "review-demo")));
+            assertThat(text(client.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
+
+            // A: Review-Tool mit Checkliste und Session-Kontext
+            McpSchema.CallToolResult reviewed = client.callTool(callRequest("skills_review",
+                    Map.of("focus", "Korrektur zur Formatierung")));
+            assertThat(reviewed.isError()).isNotEqualTo(Boolean.TRUE);
+            assertThat(text(reviewed)).startsWith("# Skill-Review")
+                    .contains("Geladenen Skill patchen", "Nicht festhalten", "Korrektur zur Formatierung",
+                            "Geladen (skills_view): review-demo", "Bereits geändert: review-demo",
+                            "review-demo: Verwenden für den Review-Test.");
+            // die zweite Session hat nichts geladen
+            assertThat(text(second.callTool(callRequest("skills_review", Map.of()))))
+                    .contains("Geladen (skills_view): keine", "Bereits geändert: keine");
+
+            // C: derselbe Review als MCP-Prompt
+            assertThat(client.listPrompts().prompts()).extracting(McpSchema.Prompt::name).contains("skills_review");
+            McpSchema.GetPromptResult prompt = client.getPrompt(
+                    new McpSchema.GetPromptRequest("skills_review", Map.of("focus", "neuer Workaround")));
+            String promptText = ((McpSchema.TextContent) prompt.messages().getFirst().content()).text();
+            assertThat(promptText).startsWith("# Skill-Review")
+                    .contains("neuer Workaround", "Geladen (skills_view): review-demo", "skills_*-Tools ab");
+
+            // ohne Schreibrecht: kein Review-Tool, kein Prompt, keine Erinnerung
+            registry.updateConfig("skills", Map.of("allowWrite", "false", "reviewNudgeInterval", "1"));
+            assertThat(toolNames()).doesNotContain("skills_review");
+            assertThat(client.listPrompts().prompts()).extracting(McpSchema.Prompt::name).doesNotContain("skills_review");
+            assertThat(text(client.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
+        } finally {
+            second.closeGracefully();
+            registry.updateConfig("skills", Map.of());
+        }
+        assertThat(client.listPrompts().prompts()).extracting(McpSchema.Prompt::name).contains("skills_review");
     }
 
     private static String text(McpSchema.CallToolResult result) {

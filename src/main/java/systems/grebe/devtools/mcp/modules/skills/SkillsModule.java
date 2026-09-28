@@ -36,14 +36,20 @@ public class SkillsModule implements ToolModule {
     static final String ALLOW_WRITE = "allowWrite";
     static final String ALLOW_DELETE = "allowDelete";
     static final String MAX_CONTENT = "maxContentChars";
+    static final String REVIEW_INTERVAL = "reviewNudgeInterval";
 
     private final SkillService service;
     private final SkillsPersistenceConfig.Status status;
+    private final SkillReview review;
+    private final SkillReviewTracker tracker;
     private final Path home;
 
-    public SkillsModule(SkillService service, SkillsPersistenceConfig.Status status, SettingsStore store) {
+    public SkillsModule(SkillService service, SkillsPersistenceConfig.Status status, SkillReview review,
+                        SkillReviewTracker tracker, SettingsStore store) {
         this.service = service;
         this.status = status;
+        this.review = review;
+        this.tracker = tracker;
         this.home = store.file().toAbsolutePath().getParent();
     }
 
@@ -81,6 +87,10 @@ public class SkillsModule implements ToolModule {
                 Dann: gibt es einen passenden Skill → `skills_patch` (gezielt ergänzen/korrigieren); sonst → \
                 `skills_create`. War ein geladener Skill falsch oder lückenhaft, ihn sofort mit `skills_patch` \
                 korrigieren. Nach größeren Aufgaben kurz anbieten, den Ablauf als Skill zu speichern.
+
+                Selbstverbesserung: Nach einer abgeschlossenen mehrstufigen Aufgabe `skills_review` aufrufen und die \
+                Checkliste abarbeiten. Hängt der Server an ein Tool-Ergebnis den Hinweis „[DevTools-Skills] … \
+                skills_review“, gilt das ebenso – sobald die laufende Aufgabe fertig ist, nicht mittendrin.
 
                 Inhalt: Lehren statt Protokoll – Regel plus Begründung, konkrete Befehle/Tool-Aufrufe, Prüfschritte. \
                 Keine Einmal-Details (Datumsangaben, Ticketnummern, PIDs) und niemals Passwörter, Tokens oder andere \
@@ -120,7 +130,12 @@ public class SkillsModule implements ToolModule {
                         .withHelp("create, patch, update, write_file, remove_file."),
                 ConfigField.of(ALLOW_DELETE, "Löschen erlauben", FieldType.BOOLEAN).withDefault("false"),
                 ConfigField.of(MAX_CONTENT, "Max. Zeichen je Inhalt", FieldType.INT).withDefault("100000")
-                        .withHelp("Obergrenze für Skill-Inhalt und Zusatzdateien."));
+                        .withHelp("Obergrenze für Skill-Inhalt und Zusatzdateien."),
+                ConfigField.of(REVIEW_INTERVAL, "Review-Erinnerung nach N Tool-Aufrufen", FieldType.INT)
+                        .withDefault("10")
+                        .withHelp("Wie Hermes' creation_nudge_interval: nach so vielen Aufrufen ohne Skill-Pflege "
+                                + "(je Client-Session) erinnert ein Hinweis im Tool-Ergebnis an skills_review. "
+                                + "0 = aus."));
     }
 
     static String defaultJdbcUrl(Path home) {
@@ -138,6 +153,8 @@ public class SkillsModule implements ToolModule {
         List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(new SkillReadTools(service))));
         if (config.getBoolean(ALLOW_WRITE)) {
             tools.addAll(List.of(ToolCallbacks.from(new SkillWriteTools(service, maxContent(config)))));
+            // Review nur, wenn das LLM das Gelernte auch speichern darf
+            tools.addAll(List.of(ToolCallbacks.from(new SkillReviewTools(service, review, tracker))));
         }
         if (config.getBoolean(ALLOW_DELETE)) {
             tools.addAll(List.of(ToolCallbacks.from(new SkillDeleteTools(service))));
