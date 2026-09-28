@@ -61,6 +61,14 @@ final class GraphBuilder {
     private final boolean includeTests;
     private final int maxFiles;
 
+    /** Nur für Tests: feste Zahl Worker-Threads (0 = je nach CPU, höchstens 8). */
+    private int threads;
+
+    GraphBuilder threads(int n) {
+        this.threads = n;
+        return this;
+    }
+
     GraphBuilder(Path root, List<String> excludes, boolean includeTests, int maxFiles) {
         this.root = root;
         this.excludes = excludes.stream().map(GraphBuilder::normalizeExclude).filter(s -> !s.isEmpty()).toList();
@@ -208,7 +216,8 @@ final class GraphBuilder {
      * bricht ab ({@link IllegalStateException} mit {@link InterruptedException} als Ursache).
      */
     GraphFile build(List<Source> sources, String projectName, ModuleAction.Progress progress) {
-        int threads = Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), 8));
+        int threads = this.threads > 0 ? this.threads
+                : Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), 8));
         int n = sources.size();
         try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
             List<Future<FileDecl>> declFutures = sources.stream()

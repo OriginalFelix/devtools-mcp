@@ -7,6 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
 import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.Ctx;
@@ -37,12 +38,24 @@ final class JavaResolver {
             "ProcessBuilder", "Runtime", "StackTraceElement", "Appendable", "Readable", "ClassLoader", "Module",
             "Package", "InheritableThreadLocal", "ScopedValue", "StrictMath");
 
+    /** Platzhalter für „nicht auflösbar“ im Cache (ConcurrentHashMap erlaubt kein {@code null}). */
+    private static final String UNRESOLVED = "\u0000unresolved";
+
+    // Nur im Konstruktor befüllt, danach nur gelesen – von mehreren Threads gleichzeitig (GraphBuilder-Pool).
     private final Map<String, TypeDecl> types = new HashMap<>();
     private final Map<String, FileDecl> fileOf = new HashMap<>();
     private final Map<String, List<String>> typesByPackage = new HashMap<>();
     private final Map<String, List<MemberDecl>> methodsByName = new HashMap<>();
-    private final Map<String, List<String>> supertypesCache = new HashMap<>();
-    private final Map<String, String> resolveCache = new HashMap<>();
+
+    // Caches: werden während der Referenzauflösung parallel beschrieben.
+    private final Map<String, List<String>> supertypesCache = new ConcurrentHashMap<>();
+    private final Map<String, String> resolveCache = new ConcurrentHashMap<>();
+    /**
+     * Zyklenschutz je Thread (A extends B, B extends A bzw. Auflösung, die über Obertypen zurückführt). Liegt bewusst
+     * nicht im gemeinsamen Cache: ein Platzhalter dort wäre für andere Threads als „keine Obertypen“ sichtbar.
+     * Wird geleert, sobald die äußerste Berechnung fertig ist – bleibt also nicht an Pool-Threads hängen.
+     */
+    private final ThreadLocal<Set<String>> supertypesInProgress = ThreadLocal.withInitial(HashSet::new);
 
     JavaResolver(List<FileDecl> files) {
         for (FileDecl f : files) {
@@ -94,21 +107,31 @@ final class JavaResolver {
         if (cached != null) {
             return cached;
         }
-        supertypesCache.put(fqn, List.of()); // Zyklenschutz
-        TypeDecl t = types.get(fqn);
-        List<String> out = new ArrayList<>();
-        if (t != null) {
-            Ctx ctx = ctxOf(t);
-            if (t.superclass() != null) {
-                add(out, resolveType(JavaExtractor.erase(t.superclass()), ctx));
+        Set<String> inProgress = supertypesInProgress.get();
+        if (!inProgress.add(fqn)) {
+            return List.of(); // Zyklus in dieser Berechnung – nicht cachen
+        }
+        try {
+            TypeDecl t = types.get(fqn);
+            List<String> out = new ArrayList<>();
+            if (t != null) {
+                Ctx ctx = ctxOf(t);
+                if (t.superclass() != null) {
+                    add(out, resolveType(JavaExtractor.erase(t.superclass()), ctx));
+                }
+                for (String i : t.interfaces()) {
+                    add(out, resolveType(JavaExtractor.erase(i), ctx));
+                }
             }
-            for (String i : t.interfaces()) {
-                add(out, resolveType(JavaExtractor.erase(i), ctx));
+            List<String> result = List.copyOf(out);
+            List<String> other = supertypesCache.putIfAbsent(fqn, result);
+            return other != null ? other : result;
+        } finally {
+            inProgress.remove(fqn);
+            if (inProgress.isEmpty()) {
+                supertypesInProgress.remove();
             }
         }
-        List<String> result = List.copyOf(out);
-        supertypesCache.put(fqn, result);
-        return result;
     }
 
     private static void add(List<String> out, String v) {
@@ -140,11 +163,12 @@ final class JavaResolver {
             return null;
         }
         String key = (ctx.type() == null ? ctx.file().path() : ctx.type()) + "|" + name;
-        if (resolveCache.containsKey(key)) {
-            return resolveCache.get(key);
+        String cached = resolveCache.get(key);
+        if (cached != null) {
+            return UNRESOLVED.equals(cached) ? null : cached;
         }
         String result = doResolve(name, ctx);
-        resolveCache.put(key, result);
+        resolveCache.putIfAbsent(key, result == null ? UNRESOLVED : result);
         return result;
     }
 
