@@ -143,6 +143,57 @@ public class ToolRegistry {
         }
     }
 
+    // ------------------------------------------------------------------ Modul-Aktionen (UI)
+
+    public List<ModuleAction> actions(String moduleId) {
+        return state(moduleId).module.actions();
+    }
+
+    /** Ziele der Aktion für die gespeicherte Konfiguration; bei Fehlern leer. */
+    public List<String> actionTargets(String moduleId, String actionId) {
+        try {
+            return action(moduleId, actionId).targets(config(moduleId));
+        } catch (RuntimeException e) {
+            LOG.warn("Ziele für Aktion {}/{} nicht ermittelbar", moduleId, actionId, e);
+            return List.of();
+        }
+    }
+
+    /** Zustand eines Ziels für die Anzeige; bei Fehlern die Meldung. */
+    public String describeActionTarget(String moduleId, String actionId, String target) {
+        try {
+            return action(moduleId, actionId).describe(config(moduleId), target);
+        } catch (RuntimeException e) {
+            return ManagedToolCallback.describe(e);
+        }
+    }
+
+    /**
+     * Führt eine Aktion mit der gespeicherten Konfiguration aus (blockierend – aus einem Hintergrund-Thread aufrufen).
+     * Ein Thread-Interrupt bricht ab. Anschließend werden die Change-Listener benachrichtigt.
+     */
+    public ModuleAction.ActionResult runAction(String moduleId, String actionId, String target, Set<String> flags,
+                                               ModuleAction.Progress progress) {
+        ModuleAction a = action(moduleId, actionId);
+        try {
+            return a.run(config(moduleId), target, flags == null ? Set.of() : flags,
+                    progress == null ? ModuleAction.Progress.NONE : progress);
+        } catch (RuntimeException e) {
+            if (Thread.currentThread().isInterrupted() || e.getCause() instanceof InterruptedException) {
+                return ModuleAction.ActionResult.failed("Abgebrochen.");
+            }
+            LOG.error("Aktion {}/{} fehlgeschlagen", moduleId, actionId, e);
+            return ModuleAction.ActionResult.failed(ManagedToolCallback.describe(e));
+        } finally {
+            changeListeners.forEach(Runnable::run);
+        }
+    }
+
+    private ModuleAction action(String moduleId, String actionId) {
+        return state(moduleId).module.actions().stream().filter(a -> a.id().equals(actionId)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unbekannte Aktion " + moduleId + "/" + actionId));
+    }
+
     public void addChangeListener(Runnable listener) {
         changeListeners.add(listener);
     }

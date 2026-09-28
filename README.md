@@ -153,6 +153,10 @@ Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekunde
   Treffer, Testcode nachrangig → verbindender Teilgraph).
 * **Einstellungen:** Projekte/Sammelordner, Standardprojekt, Ausschlüsse (Ordnername außerhalb von `src/`,
   relativer Pfad oder `*.endung`), Tests einbeziehen, max. Dateien.
+* **Indizieren in der App:** Im Modul unter **Aktionen** ein Projekt wählen und *Indizieren* klicken (optional
+  *Komplett neu*) – mit Fortschrittsbalken, Abbrechen und dem Stand der vorhandenen Graph-Datei. Läuft mit der
+  gespeicherten Konfiguration und auch bei inaktivem Modul, d.h. ohne dass `graph_*`-Tools beim LLM erscheinen.
+  Andere Module können eigene Aktionen über `ToolModule#actions()` (`core/ModuleAction`) anbieten.
 
 ### Skills – prozedurales Gedächtnis des LLM
 

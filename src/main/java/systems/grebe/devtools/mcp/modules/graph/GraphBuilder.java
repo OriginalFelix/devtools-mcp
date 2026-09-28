@@ -30,6 +30,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Community;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Confidence;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Edge;
@@ -197,10 +198,24 @@ final class GraphBuilder {
     // ------------------------------------------------------------------ Bauen
 
     GraphFile build(List<Source> sources, String projectName) {
+        return build(sources, projectName, ModuleAction.Progress.NONE);
+    }
+
+    /**
+     * Baut den Graphen; meldet den Fortschritt je Phase (Anteil 0,05–0,95). Ein Interrupt des aufrufenden Threads
+     * bricht ab ({@link IllegalStateException} mit {@link InterruptedException} als Ursache).
+     */
+    GraphFile build(List<Source> sources, String projectName, ModuleAction.Progress progress) {
         int threads = Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), 8));
+        int n = sources.size();
         try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
-            List<FileDecl> decls = all(pool, sources.stream()
-                    .map(s -> pool.submit(() -> JavaExtractor.declarations(s.path(), text(s)))).toList());
+            List<Future<FileDecl>> declFutures = sources.stream()
+                    .map(s -> pool.submit(() -> JavaExtractor.declarations(s.path(), text(s)))).toList();
+            List<FileDecl> decls = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) {
+                decls.add(get(pool, declFutures.get(i)));
+                report(progress, "Deklarationen", i + 1, n, 0.05, 0.45);
+            }
             Map<String, Node> nodes = new LinkedHashMap<>();
             Map<String, EdgeAcc> edges = new LinkedHashMap<>();
             List<FileEntry> files = declarationNodes(sources, decls, nodes, edges);
@@ -215,17 +230,18 @@ final class GraphBuilder {
             for (int i = 0; i < futures.size(); i++) {
                 referenceEdges(get(pool, futures.get(i)), nodes, edges);
                 futures.set(i, null); // Ergebnis freigeben
+                report(progress, "Aufrufe und Referenzen", i + 1, n, 0.45, 0.85);
             }
+            progress.update("Communities …", 0.9);
             return finish(files, nodes, edges, projectName);
         }
     }
 
-    private static <T> List<T> all(ExecutorService pool, List<Future<T>> futures) {
-        List<T> out = new ArrayList<>(futures.size());
-        for (Future<T> f : futures) {
-            out.add(get(pool, f));
+    /** Meldet höchstens ~100 Schritte je Phase, damit die UI nicht mit Aktualisierungen geflutet wird. */
+    private static void report(ModuleAction.Progress p, String phase, int done, int total, double from, double to) {
+        if (done == total || done % Math.max(1, total / 100) == 0) {
+            p.update(phase + " " + done + "/" + total, from + (to - from) * done / Math.max(1, total));
         }
-        return out;
     }
 
     private static <T> T get(ExecutorService pool, Future<T> f) {

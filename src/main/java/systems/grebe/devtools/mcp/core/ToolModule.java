@@ -58,6 +58,11 @@ public interface ToolModule {
         return ConnectionTestResult.ok("Für dieses Modul ist keine Verbindungsprüfung vorgesehen.");
     }
 
+    /** Aktionen, die die UI für dieses Modul anbietet (z.B. „Projekt indizieren“); Standard keine. */
+    default List<ModuleAction> actions() {
+        return List.of();
+    }
+
     /** Ob das Modul beim allerersten Start aktiv ist. */
     default boolean enabledByDefault() {
         return false;

@@ -333,6 +333,32 @@ class McpServerIntegrationTest {
     }
 
     @Test
+    void graphIndexActionRunsFromRegistryWhileModuleIsDisabled() throws Exception {
+        Path src = Files.createDirectories(repoDir.resolve("src/main/java/demo"));
+        Files.writeString(src.resolve("A.java"), "package demo;\nclass A { void a() { } }\n");
+        registry.updateConfig("graph", Map.of("projects", repoDir.toString()));
+        int[] changes = {0};
+        registry.addChangeListener(() -> changes[0]++);
+        try {
+            assertThat(registry.settings("graph").enabled()).isFalse();
+            assertThat(registry.actions("graph")).extracting(a -> a.id()).containsExactly("index");
+            String project = repoDir.getFileName().toString();
+            assertThat(registry.actionTargets("graph", "index")).containsExactly(project);
+            int before = changes[0];
+            var result = registry.runAction("graph", "index", project, java.util.Set.of(), null);
+            assertThat(result.success()).as(result.message()).isTrue();
+            assertThat(Files.exists(repoDir.resolve("devtools-fileinfo.graph"))).isTrue();
+            assertThat(changes[0]).isGreaterThan(before);
+            assertThat(registry.describeActionTarget("graph", "index", project)).contains("Graph vom", "1 Dateien");
+            assertThat(registry.runAction("graph", "index", "gibt-es-nicht", java.util.Set.of(), null).message())
+                    .contains("nicht freigegeben");
+            assertThat(registry.actions("git")).isEmpty();
+        } finally {
+            registry.updateConfig("graph", Map.of());
+        }
+    }
+
+    @Test
     void callsGitToolAndLogsInvocation() {
         McpSchema.CallToolResult result = client.callTool(callRequest("git_log", Map.of()));
         assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);

@@ -5,11 +5,13 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Confidence;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Edge;
@@ -368,6 +370,49 @@ class GraphToolsTest {
         assertThat(GraphQueries.globMatches(both, "orderjpadao", true)).isTrue();
         assertThat(GraphQueries.globMatches(both, "orderdaox", true)).isFalse();
         assertThat(GraphQueries.globMatches("aba*aba".split("\\*", -1), "aba", true)).isFalse(); // keine Überlappung
+    }
+
+    @Test
+    void indexActionReportsProgressStateAndCanBeCancelled() throws Exception {
+        Map<String, String> values = new HashMap<>();
+        values.put(GraphModule.PROJECTS, project.toString());
+        ModuleConfig cfg = ModuleConfig.of(new GraphModule().configSchema(), values);
+        GraphIndexAction action = (GraphIndexAction) new GraphModule().actions().getFirst();
+
+        assertThat(action.targets(cfg)).containsExactly(project.getFileName().toString());
+        String target = action.targets(cfg).getFirst();
+        assertThat(action.describe(cfg, target)).endsWith("noch kein Graph");
+        assertThat(action.run(cfg, null, Set.of(), ModuleAction.Progress.NONE).success()).isFalse();
+
+        List<Double> fractions = new java.util.concurrent.CopyOnWriteArrayList<>();
+        List<String> messages = new java.util.concurrent.CopyOnWriteArrayList<>();
+        ModuleAction.ActionResult first = action.run(cfg, target, Set.of(), (m, f) -> {
+            messages.add(m);
+            fractions.add(f);
+        });
+        assertThat(first.success()).isTrue();
+        assertThat(first.message()).startsWith("Graph gebaut").contains("4 Dateien", GraphStore.FILE_NAME);
+        assertThat(messages).anyMatch(m -> m.startsWith("Deklarationen"))
+                .anyMatch(m -> m.startsWith("Aufrufe und Referenzen")).contains("Fertig");
+        assertThat(fractions.getLast()).isEqualTo(1.0);
+        assertThat(fractions.stream().filter(f -> f >= 0).toList()).isSorted();
+
+        assertThat(action.describe(cfg, target)).contains("Graph vom", "4 Dateien", "Knoten");
+        assertThat(action.run(cfg, target, Set.of(), ModuleAction.Progress.NONE).message()).startsWith("Graph ist aktuell");
+        assertThat(action.run(cfg, target, Set.of(GraphIndexAction.FORCE), ModuleAction.Progress.NONE).message())
+                .startsWith("Graph gebaut");
+
+        // Abbruch: Interrupt vor dem Start -> kein Graph geschrieben, Fehler statt Ergebnis
+        Files.delete(GraphStore.fileFor(project));
+        GraphStore.clearCache();
+        Thread t = Thread.ofVirtual().unstarted(() -> {
+            Thread.currentThread().interrupt();
+            assertThatThrownBy(() -> action.run(cfg, target, Set.of(GraphIndexAction.FORCE), ModuleAction.Progress.NONE))
+                    .hasMessageContaining("abgebrochen");
+        });
+        t.start();
+        t.join();
+        assertThat(Files.exists(GraphStore.fileFor(project))).isFalse();
     }
 
     @Test

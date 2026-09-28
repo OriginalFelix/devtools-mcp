@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
+import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.Workspaces;
@@ -97,6 +98,11 @@ public class GraphModule implements ToolModule {
         projects.all().forEach((name, dir) -> sb.append(name).append("  ").append(dir)
                 .append(Files.exists(GraphStore.fileFor(dir)) ? "  [Graph vorhanden]" : "").append('\n'));
         return ConnectionTestResult.ok(sb.toString().trim());
+    }
+
+    @Override
+    public List<ModuleAction> actions() {
+        return List.of(new GraphIndexAction());
     }
 
     @Override

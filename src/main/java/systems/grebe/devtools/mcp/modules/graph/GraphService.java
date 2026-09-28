@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
+import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.FileEntry;
@@ -64,16 +65,36 @@ final class GraphService {
      * {@code force} gesetzt ist; sonst wird die vorhandene Datei geliefert.
      */
     BuildResult build(String project, boolean force) {
+        return build(project, force, ModuleAction.Progress.NONE);
+    }
+
+    /** Wie {@link #build(String, boolean)}, mit Fortschritt; ein Thread-Interrupt bricht ab. */
+    BuildResult build(String project, boolean force, ModuleAction.Progress progress) {
         Path root = resolve(project);
         ReentrantLock lock = LOCKS.computeIfAbsent(root, k -> new ReentrantLock());
-        lock.lock(); // parallele Abfragen warten auf denselben Aufbau, statt ihn doppelt zu starten
+        if (lock.isLocked()) {
+            progress.update("Warte auf laufenden Aufbau …", -1);
+        }
+        try {
+            lock.lockInterruptibly(); // parallele Aufrufe warten auf denselben Aufbau, statt ihn doppelt zu starten
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Graph-Aufbau abgebrochen", e);
+        }
         try {
             long start = System.nanoTime();
             GraphBuilder builder = new GraphBuilder(root, excludes, includeTests, maxFiles);
+            progress.update("Suche Java-Dateien …", -1);
             List<Path> paths = builder.scan();
             List<GraphBuilder.Source> sources = new ArrayList<>(paths.size());
-            for (Path p : paths) {
-                sources.add(builder.read(p));
+            for (int i = 0; i < paths.size(); i++) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new IllegalStateException("Graph-Aufbau abgebrochen", new InterruptedException());
+                }
+                sources.add(builder.read(paths.get(i)));
+                if ((i + 1) % Math.max(1, paths.size() / 50) == 0 || i + 1 == paths.size()) {
+                    progress.update("Prüfsummen " + (i + 1) + "/" + paths.size(), 0.05 * (i + 1) / paths.size());
+                }
             }
             CodeGraph existing = force ? null : safeLoad(root);
             int changed = 0;
@@ -104,8 +125,10 @@ final class GraphService {
                 }
             }
             String name = root.getFileName() == null ? root.toString() : root.getFileName().toString();
-            GraphFile data = builder.build(sources, name);
+            GraphFile data = builder.build(sources, name, progress);
+            progress.update("Schreibe " + GraphStore.FILE_NAME + " …", 0.95);
             CodeGraph graph = GraphStore.write(root, data);
+            progress.update("Fertig", 1);
             return new BuildResult(root, graph, true, changed, added, removed, Duration.ofNanos(System.nanoTime() - start));
         } finally {
             lock.unlock();

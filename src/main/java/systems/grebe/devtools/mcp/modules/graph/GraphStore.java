@@ -364,6 +364,32 @@ final class GraphStore {
         w.write(last ? "\n" : ",\n");
     }
 
+    /**
+     * Nur den Kopf der Datei lesen (bis zum ersten Abschnitt) – schnell auch bei großen Graphen. Liefert
+     * {@code builtAt}, {@code project} und die Zahlen aus {@code stats} ({@code files}, {@code nodes} …).
+     */
+    static Map<String, Object> header(Path projectRoot) throws IOException {
+        StringBuilder head = new StringBuilder();
+        try (BufferedReader r = Files.newBufferedReader(fileFor(projectRoot), StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                String s = line.strip();
+                if (s.startsWith("\"") && s.endsWith("[")) {
+                    break;
+                }
+                head.append(line).append('\n');
+            }
+        }
+        Map<String, Object> raw = JSON.readValue(head.append("\"_\":0}").toString(), new TypeReference<>() { });
+        Map<String, Object> out = new HashMap<>();
+        out.put("builtAt", raw.get("builtAt"));
+        out.put("project", raw.get("project"));
+        if (raw.get("stats") instanceof Map<?, ?> stats) {
+            stats.forEach((k, v) -> out.put(String.valueOf(k), v));
+        }
+        return out;
+    }
+
     /** Nur für Tests: Zwischenspeicher leeren, damit die Datei neu gelesen wird. */
     static void clearCache() {
         CACHE.clear();
