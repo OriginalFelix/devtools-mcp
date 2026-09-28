@@ -27,6 +27,14 @@ import systems.grebe.devtools.mcp.core.Workspaces;
 /** Gemeinsame Infrastruktur der Git-Tools. */
 final class GitSupport {
 
+    /**
+     * Anhang für jede Git-Tool-Beschreibung. Nicht alle Clients übernehmen die Server-{@code instructions}
+     * (siehe {@code ServerInstructions}), die Tool-Beschreibungen sieht dagegen jeder. Muss eine Konstante bleiben,
+     * weil sie in {@code @Tool(description = …)} verwendet wird.
+     */
+    static final String SHELL_HINT = " Für freigegebene Repositories gilt: Git immer über die git_*-Tools, "
+            + "`git` in der Shell nur für Befehle ohne passendes Tool (push, pull, fetch, merge, rebase, stash …).";
+
     static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
 
     private final Workspaces repositories;

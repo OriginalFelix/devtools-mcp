@@ -160,6 +160,19 @@ class McpServerIntegrationTest {
     }
 
     @Test
+    void gitToolDescriptionsPointAwayFromShell() {
+        // Fallback für Clients, die die Server-Instructions nicht übernehmen (z.B. Hermes): jede git_*-Beschreibung
+        // nennt den ersetzten Shell-Befehl und die Grundregel.
+        List<McpSchema.Tool> gitTools = client.listTools().tools().stream()
+                .filter(t -> t.name().startsWith("git_")).toList();
+        assertThat(gitTools).hasSize(13);
+        assertThat(gitTools).allSatisfy(t -> assertThat(t.description())
+                .as(t.name()).contains("in der Shell verwenden.", "Git immer über die git_*-Tools"));
+        assertThat(gitTools).filteredOn(t -> t.name().equals("git_status"))
+                .singleElement().extracting(McpSchema.Tool::description).asString().contains("Statt `git status`");
+    }
+
+    @Test
     void callsGitToolAndLogsInvocation() {
         McpSchema.CallToolResult result = client.callTool(callRequest("git_log", Map.of()));
         assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
