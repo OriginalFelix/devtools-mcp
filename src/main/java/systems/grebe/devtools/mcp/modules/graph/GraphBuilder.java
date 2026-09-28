@@ -47,6 +47,8 @@ import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.TypeDecl;
 /** Baut aus allen {@code .java}-Dateien eines Projekts den {@link CodeGraph}. */
 final class GraphBuilder {
 
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(GraphBuilder.class);
+
     static final String GENERATOR = "devtools-mcp graph (tree-sitter-java)";
 
     /** Relationen, die für die Community-Erkennung zählen – mit Gewicht. */
@@ -210,7 +212,7 @@ final class GraphBuilder {
         int n = sources.size();
         try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
             List<Future<FileDecl>> declFutures = sources.stream()
-                    .map(s -> pool.submit(() -> JavaExtractor.declarations(s.path(), text(s)))).toList();
+                    .map(s -> pool.submit(() -> declarationsOrEmpty(s))).toList();
             List<FileDecl> decls = new ArrayList<>(n);
             for (int i = 0; i < n; i++) {
                 decls.add(get(pool, declFutures.get(i)));
@@ -225,7 +227,7 @@ final class GraphBuilder {
             for (int i = 0; i < sources.size(); i++) {
                 FileDecl d = decls.get(i);
                 Source s = sources.get(i);
-                futures.add(pool.submit(() -> JavaExtractor.references(d, text(s), resolver)));
+                futures.add(pool.submit(() -> referencesOrEmpty(d, s, resolver)));
             }
             for (int i = 0; i < futures.size(); i++) {
                 referenceEdges(get(pool, futures.get(i)), nodes, edges);
@@ -234,6 +236,34 @@ final class GraphBuilder {
             }
             progress.update("Communities …", 0.9);
             return finish(files, nodes, edges, projectName);
+        }
+    }
+
+    /**
+     * Ein Fehler in einer einzelnen Datei (Randfall im Extractor) darf nicht den ganzen Aufbau abbrechen: die Datei
+     * wird ohne Inhalt übernommen, als fehlerhaft markiert und im Bericht genannt. Abbruch (Interrupt) geht durch.
+     */
+    private FileDecl declarationsOrEmpty(Source s) {
+        try {
+            return JavaExtractor.declarations(s.path(), text(s));
+        } catch (RuntimeException e) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw e;
+            }
+            LOG.warn("Graph: Deklarationen aus {} nicht lesbar – Datei übersprungen", s.path(), e);
+            return new FileDecl(s.path(), "", List.of(), List.of(), 0, true);
+        }
+    }
+
+    private List<RawEdge> referencesOrEmpty(FileDecl d, Source s, JavaResolver resolver) {
+        try {
+            return JavaExtractor.references(d, text(s), resolver);
+        } catch (RuntimeException e) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw e;
+            }
+            LOG.warn("Graph: Referenzen aus {} nicht lesbar – Kanten der Datei fehlen", s.path(), e);
+            return List.of();
         }
     }
 

@@ -166,7 +166,8 @@ final class JavaExtractor {
             return null;
         }
         String raw = p.text(prev);
-        if (!raw.startsWith("/**")) {
+        // "/**/" ist ein leerer Blockkommentar, kein Javadoc (Javadoc braucht "/**" plus schließendes "*/")
+        if (!raw.startsWith("/**") || raw.length() < 5 || !raw.endsWith("*/")) {
             return null;
         }
         String body = raw.substring(3, raw.length() - 2);

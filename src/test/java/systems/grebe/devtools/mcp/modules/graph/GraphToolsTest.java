@@ -453,6 +453,35 @@ class GraphToolsTest {
     }
 
     @Test
+    void handlesDegenerateCommentsBeforeDeclarations() throws Exception {
+        write("com/acme/shop/Comments.java", """
+                package com.acme.shop;
+                /**/
+                class EmptyComment { }
+                /***/
+                class StarsOnly { }
+                /** */
+                class BlankDoc { }
+                /**
+                 * @deprecated nur Tags
+                 */
+                class TagsOnly { }
+                /** Richtig. */
+                class Proper {
+                    /**/ void m() { }
+                    /**/ int f;
+                }
+                """);
+        CodeGraph g = graph();
+        assertThat(g.node("com.acme.shop.EmptyComment").doc()).isNull();
+        assertThat(g.node("com.acme.shop.StarsOnly").doc()).isNull();
+        assertThat(g.node("com.acme.shop.BlankDoc").doc()).isNull();
+        assertThat(g.node("com.acme.shop.TagsOnly").doc()).isNull();
+        assertThat(g.node("com.acme.shop.Proper").doc()).isEqualTo("Richtig.");
+        assertThat(g.node("com.acme.shop.Proper#m()")).isNotNull();
+    }
+
+    @Test
     void handlesLatin1SourcesAndSyntaxErrors() throws Exception {
         Path file = project.resolve("src/main/java/com/acme/shop/Alt.java");
         Files.write(file, "package com.acme.shop;\n/** Grüße aus Köln. */\nclass Alt { void m() { } }\n"
@@ -463,7 +492,7 @@ class GraphToolsTest {
         assertThat(g.node("com.acme.shop.Broken")).isNotNull();
         assertThat(g.data().files()).filteredOn(f -> f.path().endsWith("Broken.java")).singleElement()
                 .extracting(CodeGraph.FileEntry::parseErrors).isEqualTo(Boolean.TRUE);
-        assertThat(tools().report(null, 5)).contains("Syntaxfehlern");
+        assertThat(tools().report(null, 5)).contains("Syntax- oder Lesefehlern", "src/main/java/com/acme/shop/Broken.java");
     }
 
     /** Plattform → Ressourcenname der nativen Bibliothek (liegt in den bonede-Artefakten). */
@@ -510,7 +539,7 @@ class GraphToolsTest {
         values.put(GraphModule.PROJECTS, copy.toString());
         GraphTools t = new GraphTools(new GraphService(ModuleConfig.of(new GraphModule().configSchema(), values)));
         String out = t.build(null, false);
-        assertThat(out).startsWith("Graph gebaut").doesNotContain("Syntaxfehlern");
+        assertThat(out).startsWith("Graph gebaut").doesNotContain("Lesefehlern");
 
         CodeGraph g = GraphStore.load(copy);
         String p = "systems.grebe.devtools.mcp.modules.graph.";

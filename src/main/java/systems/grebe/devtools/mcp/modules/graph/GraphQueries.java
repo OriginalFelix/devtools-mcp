@@ -287,7 +287,11 @@ final class GraphQueries {
                 .append(" (EXTRACTED = steht im Code, INFERRED = abgeleitet, AMBIGUOUS = mehrere mögliche Ziele)\n");
         Object errors = s.get("filesWithParseErrors");
         if (errors instanceof Number num && num.longValue() > 0) {
-            sb.append("Achtung: ").append(errors).append(" Datei(en) mit Syntaxfehlern – dort fehlen evtl. Kanten.\n");
+            List<String> broken = d.files().stream().filter(f -> Boolean.TRUE.equals(f.parseErrors()))
+                    .map(CodeGraph.FileEntry::path).limit(5).toList();
+            sb.append("Achtung: ").append(errors).append(" Datei(en) mit Syntax- oder Lesefehlern – dort fehlen evtl. ")
+                    .append("Kanten: ").append(String.join(", ", broken)).append(num.longValue() > 5 ? " …" : "")
+                    .append('\n');
         }
 
         sb.append("\n## God Nodes (meistverbundene Typen)\n");
