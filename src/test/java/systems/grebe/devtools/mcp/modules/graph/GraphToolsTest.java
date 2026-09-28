@@ -1,0 +1,479 @@
+package systems.grebe.devtools.mcp.modules.graph;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Confidence;
+import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Edge;
+import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
+import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class GraphToolsTest {
+
+    @TempDir
+    Path project;
+
+    @BeforeEach
+    void writeFixture() throws Exception {
+        Files.writeString(project.resolve("build.gradle"), "");
+        write("com/acme/shop/OrderService.java", """
+                package com.acme.shop;
+
+                import com.acme.shop.repo.OrderRepository;
+                import java.util.List;
+
+                /** Service für Aufträge. Speichert und lädt sie. */
+                public class OrderService implements Service {
+                    private final OrderRepository repo;
+                    private final Printer printer = new Printer();
+
+                    public OrderService(OrderRepository repo) {
+                        this.repo = repo;
+                    }
+
+                    @Override
+                    public void start() {
+                        load(1L);
+                    }
+
+                    public Order load(long id) {
+                        return repo.findById(id);
+                    }
+
+                    public void save(Order o) {
+                        repo.save(o);
+                        o.total().add(1);
+                        validate(o);
+                        Util.check(o);
+                        printer.print(o);
+                    }
+
+                    private void validate(Order o) {
+                    }
+
+                    void chain(List<String> names) {
+                        load(2).total();
+                        names.get(0).frobnicate();
+                        Runnable r = this::start;
+                    }
+                }
+
+                interface Service {
+                    void start();
+                }
+                """);
+        write("com/acme/shop/Order.java", """
+                package com.acme.shop;
+
+                /** Ein Auftrag. */
+                public record Order(int amount) {
+                    Money total() {
+                        return new Money();
+                    }
+                }
+
+                class Money {
+                    void add(int x) {
+                    }
+                }
+
+                class Util {
+                    static void check(Object o) {
+                    }
+                }
+
+                class Printer {
+                    void print(Order o) {
+                    }
+
+                    void print(String s) {
+                    }
+                }
+
+                class Weird {
+                    void frobnicate() {
+                    }
+                }
+                """);
+        write("com/acme/shop/repo/OrderRepository.java", """
+                package com.acme.shop.repo;
+
+                import com.acme.shop.Order;
+
+                public interface OrderRepository {
+                    Order findById(long id);
+
+                    void save(Order o);
+                }
+                """);
+        write("com/acme/shop/repo/JpaOrderRepository.java", """
+                package com.acme.shop.repo;
+
+                import com.acme.shop.Order;
+                import jakarta.persistence.Entity;
+
+                @Entity
+                public class JpaOrderRepository implements OrderRepository {
+                    public Order findById(long id) {
+                        return null;
+                    }
+
+                    @Override
+                    public void save(Order o) {
+                        helper();
+                    }
+
+                    private void helper() {
+                    }
+                }
+                """);
+    }
+
+    private void write(String rel, String content) throws Exception {
+        Path file = project.resolve("src/main/java").resolve(rel);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, content);
+    }
+
+    private GraphTools tools() {
+        Map<String, String> values = new HashMap<>();
+        values.put(GraphModule.PROJECTS, project.toString());
+        return new GraphTools(new GraphService(ModuleConfig.of(new GraphModule().configSchema(), values)));
+    }
+
+    private CodeGraph graph() {
+        tools().build(null, false);
+        return GraphStore.load(project);
+    }
+
+    private static Edge edge(CodeGraph g, String from, String to, Relation rel) {
+        return g.outgoing(from).stream().filter(e -> e.to().equals(to) && e.rel() == rel).findFirst()
+                .orElseThrow(() -> new AssertionError("Kante fehlt: " + from + " --" + rel + "--> " + to
+                        + "\nvorhanden: " + g.outgoing(from)));
+    }
+
+    @Test
+    void extractsDeclarationsWithLocationSignatureAndJavadoc() {
+        CodeGraph g = graph();
+        assertThat(g.node("com.acme.shop.OrderService").kind()).isEqualTo(Kind.CLASS);
+        assertThat(g.node("com.acme.shop.OrderService").doc()).isEqualTo("Service für Aufträge.");
+        assertThat(g.node("com.acme.shop.OrderService").line()).isEqualTo(7);
+        assertThat(g.node("com.acme.shop.Service").kind()).isEqualTo(Kind.INTERFACE);
+        assertThat(g.node("com.acme.shop.Order").kind()).isEqualTo(Kind.RECORD);
+        assertThat(g.node("com.acme.shop.Order#amount").kind()).isEqualTo(Kind.FIELD); // Record-Komponente
+        assertThat(g.node("com.acme.shop.Order#amount()").kind()).isEqualTo(Kind.METHOD); // Accessor
+        assertThat(g.node("com.acme.shop.OrderService#<init>(OrderRepository)").kind()).isEqualTo(Kind.CONSTRUCTOR);
+        assertThat(g.node("com.acme.shop.OrderService#save(Order)").signature()).isEqualTo("void save(Order o)");
+        assertThat(g.node("com.acme.shop.OrderService#repo").modifiers()).isEqualTo("private final");
+        assertThat(g.node("file:src/main/java/com/acme/shop/Order.java").kind()).isEqualTo(Kind.FILE);
+        edge(g, "pkg:com.acme.shop", "file:src/main/java/com/acme/shop/Order.java", Relation.CONTAINS);
+        edge(g, "file:src/main/java/com/acme/shop/OrderService.java", "com.acme.shop.repo.OrderRepository", Relation.IMPORTS);
+        edge(g, "file:src/main/java/com/acme/shop/OrderService.java", "java.util.List", Relation.IMPORTS);
+        assertThat(g.node("java.util.List").kind()).isEqualTo(Kind.EXTERNAL);
+    }
+
+    @Test
+    void resolvesHierarchyAnnotationsAndFieldTypes() {
+        CodeGraph g = graph();
+        edge(g, "com.acme.shop.OrderService", "com.acme.shop.Service", Relation.IMPLEMENTS);
+        edge(g, "com.acme.shop.repo.JpaOrderRepository", "com.acme.shop.repo.OrderRepository", Relation.IMPLEMENTS);
+        edge(g, "com.acme.shop.repo.JpaOrderRepository", "jakarta.persistence.Entity", Relation.ANNOTATED_WITH);
+        edge(g, "com.acme.shop.OrderService#repo", "com.acme.shop.repo.OrderRepository", Relation.HAS_TYPE);
+        // @Override vorhanden -> EXTRACTED, ohne @Override nur INFERRED
+        assertThat(edge(g, "com.acme.shop.repo.JpaOrderRepository#save(Order)",
+                "com.acme.shop.repo.OrderRepository#save(Order)", Relation.OVERRIDES).conf()).isEqualTo(Confidence.EXTRACTED);
+        assertThat(edge(g, "com.acme.shop.repo.JpaOrderRepository#findById(long)",
+                "com.acme.shop.repo.OrderRepository#findById(long)", Relation.OVERRIDES).conf()).isEqualTo(Confidence.INFERRED);
+        assertThat(edge(g, "com.acme.shop.OrderService#start()", "com.acme.shop.Service#start()", Relation.OVERRIDES)
+                .conf()).isEqualTo(Confidence.EXTRACTED);
+    }
+
+    @Test
+    void buildsCallGraphWithConfidence() {
+        CodeGraph g = graph();
+        String save = "com.acme.shop.OrderService#save(Order)";
+        // Feld mit deklariertem Typ
+        assertThat(edge(g, save, "com.acme.shop.repo.OrderRepository#save(Order)", Relation.CALLS).conf())
+                .isEqualTo(Confidence.EXTRACTED);
+        // Aufruf ohne Empfänger im eigenen Typ, statischer Aufruf über Klassennamen
+        assertThat(edge(g, save, "com.acme.shop.OrderService#validate(Order)", Relation.CALLS).conf())
+                .isEqualTo(Confidence.EXTRACTED);
+        assertThat(edge(g, save, "com.acme.shop.Util#check(Object)", Relation.CALLS).conf()).isEqualTo(Confidence.EXTRACTED);
+        // Parameter mit Typ, dann Kette über den Rückgabetyp -> INFERRED
+        assertThat(edge(g, save, "com.acme.shop.Order#total()", Relation.CALLS).conf()).isEqualTo(Confidence.EXTRACTED);
+        Edge add = edge(g, save, "com.acme.shop.Money#add(int)", Relation.CALLS);
+        assertThat(add.conf()).isEqualTo(Confidence.INFERRED);
+        assertThat(add.score()).isEqualTo(0.8);
+        // Überladung gleicher Stelligkeit -> AMBIGUOUS auf beide
+        assertThat(edge(g, save, "com.acme.shop.Printer#print(Order)", Relation.CALLS).conf()).isEqualTo(Confidence.AMBIGUOUS);
+        assertThat(edge(g, save, "com.acme.shop.Printer#print(String)", Relation.CALLS).conf()).isEqualTo(Confidence.AMBIGUOUS);
+        // Konstruktor und Instanziierung
+        edge(g, "com.acme.shop.Order#total()", "com.acme.shop.Money", Relation.INSTANTIATES);
+        edge(g, "com.acme.shop.OrderService#printer", "com.acme.shop.Printer", Relation.INSTANTIATES);
+        // Kette über eigene Methode
+        String chain = "com.acme.shop.OrderService#chain(List)";
+        edge(g, chain, "com.acme.shop.OrderService#load(long)", Relation.CALLS);
+        assertThat(edge(g, chain, "com.acme.shop.Order#total()", Relation.CALLS).conf()).isEqualTo(Confidence.INFERRED);
+        // unbekannter Empfänger (externe Liste): nur über den Namen geraten, einziger Kandidat
+        Edge guessed = edge(g, chain, "com.acme.shop.Weird#frobnicate()", Relation.CALLS);
+        assertThat(guessed.conf()).isEqualTo(Confidence.INFERRED);
+        assertThat(guessed.score()).isEqualTo(0.6);
+        // Methodenreferenz
+        edge(g, chain, "com.acme.shop.OrderService#start()", Relation.CALLS);
+        // Aufrufe auf externe Typen (List#get) erzeugen keine Kante
+        assertThat(g.outgoing(chain)).noneMatch(e -> e.to().startsWith("java."));
+    }
+
+    @Test
+    void writesSingleFileAndRebuildsOnlyOnChange() throws Exception {
+        GraphTools t = tools();
+        String first = t.build(null, false);
+        Path file = project.resolve("devtools-fileinfo.graph");
+        assertThat(first).startsWith("Graph gebaut").contains(file.toString()).contains("# Code-Graph");
+        assertThat(Files.exists(file)).isTrue();
+        String json = Files.readString(file);
+        assertThat(json).startsWith("{\n  \"format\": \"devtools-fileinfo-graph\",")
+                .contains("\"nodes\": [\n    {\"id\":")
+                .contains("\"edges\": [\n    [");
+        assertThat(Files.list(project).map(p -> p.getFileName().toString()))
+                .contains("devtools-fileinfo.graph").doesNotContain("devtools-fileinfo.graph.tmp");
+
+        assertThat(t.build(null, false)).startsWith("Graph ist aktuell");
+        assertThat(t.build(null, true)).startsWith("Graph gebaut");
+
+        write("com/acme/shop/Extra.java", "package com.acme.shop;\nclass Extra { void x() { new Money().add(2); } }\n");
+        Files.writeString(project.resolve("src/main/java/com/acme/shop/Order.java"),
+                Files.readString(project.resolve("src/main/java/com/acme/shop/Order.java")) + "\n// geändert\n");
+        assertThat(t.build(null, false)).startsWith("Graph gebaut").contains("geändert 1, neu 1, entfernt 0");
+        CodeGraph g = GraphStore.load(project);
+        edge(g, "com.acme.shop.Extra#x()", "com.acme.shop.Money#add(int)", Relation.CALLS);
+    }
+
+    @Test
+    void fileRoundTripRestoresIdenticalGraph() {
+        CodeGraph built = graph();
+        GraphStore.clearCache();
+        CodeGraph loaded = GraphStore.load(project);
+        assertThat(loaded).isNotSameAs(built);
+        assertThat(loaded.nodes()).containsExactlyElementsOf(built.nodes());
+        assertThat(loaded.edges()).containsExactlyElementsOf(built.edges());
+        assertThat(loaded.data().files()).containsExactlyElementsOf(built.data().files());
+        assertThat(loaded.data().communities()).containsExactlyElementsOf(built.data().communities());
+        assertThat(loaded.data().stats().toString()).isEqualTo(built.data().stats().toString());
+    }
+
+    @Test
+    void emptyProjectAndForeignFile() throws Exception {
+        Path empty = Files.createDirectories(project.resolve("leer"));
+        Files.writeString(empty.resolve("pom.xml"), "<project/>");
+        Map<String, String> values = new HashMap<>();
+        values.put(GraphModule.PROJECTS, empty.toString());
+        GraphTools t = new GraphTools(new GraphService(ModuleConfig.of(new GraphModule().configSchema(), values)));
+        assertThat(t.build(null, false)).startsWith("Graph gebaut").contains("0 Dateien, 0 Knoten");
+        GraphStore.clearCache();
+        assertThat(GraphStore.load(empty).nodes()).isEmpty();
+
+        Files.writeString(empty.resolve(GraphStore.FILE_NAME), "{\n  \"format\": \"etwas-anderes\",\n  \"nodes\": [\n  ]\n}\n");
+        GraphStore.clearCache();
+        assertThatThrownBy(() -> GraphStore.load(empty)).hasMessageContaining("keine Graph-Datei")
+                .hasMessageContaining("force=true");
+        assertThat(t.build(null, false)).startsWith("Graph gebaut"); // wird überschrieben
+    }
+
+    @Test
+    void queryToolsAnswerStructureQuestions() {
+        GraphTools t = tools();
+        t.build(null, false);
+
+        assertThat(t.find(null, "Order*", "class", null)).contains("com.acme.shop.OrderService  [class]")
+                .doesNotContain("[record]");
+        assertThat(t.find(null, "save", "method", null))
+                .contains("com.acme.shop.OrderService#save(Order)", "com.acme.shop.repo.OrderRepository#save(Order)");
+
+        String explain = t.explain(null, "OrderRepository#save", null);
+        assertThat(explain).contains("com.acme.shop.repo.OrderRepository#save(Order)  [method]  void save(Order o)")
+                .contains("Eingehend:", "calls (1):", "com.acme.shop.OrderService#save(Order)",
+                        "overrides (1):", "JpaOrderRepository#save(Order)");
+        assertThat(t.explain(null, "OrderService", null)).contains("Doku: Service für Aufträge.", "Enthält (",
+                "implements (1):", "com.acme.shop.Service");
+
+        // Wer ruft Money#add auf – über zwei Ebenen
+        String callers = t.neighbors(null, "Money#add", "in", List.of("calls"), 2, null);
+        assertThat(callers).contains("<-- calls com.acme.shop.OrderService#save(Order)")
+                .contains("INFERRED 0.8");
+        // Implementierungen eines Interfaces
+        assertThat(t.neighbors(null, "OrderRepository", "in", List.of("implements"), 1, null))
+                .contains("<-- implements com.acme.shop.repo.JpaOrderRepository");
+
+        String path = t.path(null, "OrderService#start", "JpaOrderRepository#findById", false, null, null);
+        assertThat(path).startsWith("Pfad (").contains("--calls--> com.acme.shop.OrderService#load(long)")
+                .contains("com.acme.shop.repo.JpaOrderRepository#findById(long)");
+        assertThat(t.path(null, "Money", "Weird", true, List.of("calls"), 3)).startsWith("Kein Pfad");
+
+        String answer = t.query(null, "Wie wird ein Order gespeichert (save)?", null);
+        assertThat(answer).contains("Suchbegriffe: [order, gespeichert, save]")
+                .contains("Beste Treffer:", "OrderService", "Zusammenhang (");
+
+        String report = t.report(null, 5);
+        assertThat(report).contains("## God Nodes", "## Communities", "## Meistaufgerufene Methoden",
+                "OrderService", "EXTRACTED");
+    }
+
+    @Test
+    void queryMatchesWordFormsAndPrefersProductionCode() throws Exception {
+        assertThat(GraphQueries.stem("gebucht")).isEqualTo(GraphQueries.stem("buchen")).isEqualTo("buch");
+        assertThat(GraphQueries.stem("gespeichert")).isEqualTo(GraphQueries.stem("speichern"));
+        assertThat(GraphQueries.stem("saved")).isEqualTo(GraphQueries.stem("saves"));
+        write("com/acme/shop/Ledger.java", """
+                package com.acme.shop;
+                /** Hauptbuch. */
+                public class Ledger {
+                    public void buchen(Order o) { o.total(); }
+                }
+                """);
+        Path test = project.resolve("src/test/java/com/acme/shop/LedgerBuchenTest.java");
+        Files.createDirectories(test.getParent());
+        Files.writeString(test, "package com.acme.shop;\nclass LedgerBuchenTest { void testBuchenWirdGebucht() { new Ledger().buchen(null); } }\n");
+        GraphTools t = tools();
+        t.build(null, false);
+        String answer = t.query(null, "Wie wird gebucht?", 10);
+        int prod = answer.indexOf("com.acme.shop.Ledger#buchen(Order)");
+        int testHit = answer.indexOf("LedgerBuchenTest#testBuchenWirdGebucht()");
+        assertThat(prod).as(answer).isPositive();
+        assertThat(testHit < 0 || prod < testHit).as(answer).isTrue();
+    }
+
+    @Test
+    void globMatchingIsAnchoredLikeShellPatterns() {
+        String[] dao = "*dao".split("\\*", -1);
+        assertThat(GraphQueries.globMatches(dao, "orderdao", true)).isTrue();
+        assertThat(GraphQueries.globMatches(dao, "orderdaoimpl", true)).isFalse();
+        assertThat(GraphQueries.globMatches(dao, "orderdaoimpl", false)).isTrue();
+        String[] mid = "*buch*".split("\\*", -1);
+        assertThat(GraphQueries.globMatches(mid, "fibubuchung", true)).isTrue();
+        assertThat(GraphQueries.globMatches(mid, "fibu", true)).isFalse();
+        String[] both = "order*dao".split("\\*", -1);
+        assertThat(GraphQueries.globMatches(both, "orderdao", true)).isTrue();
+        assertThat(GraphQueries.globMatches(both, "orderjpadao", true)).isTrue();
+        assertThat(GraphQueries.globMatches(both, "orderdaox", true)).isFalse();
+        assertThat(GraphQueries.globMatches("aba*aba".split("\\*", -1), "aba", true)).isFalse(); // keine Überlappung
+    }
+
+    @Test
+    void reportsHelpfulErrors() {
+        GraphTools t = tools();
+        t.build(null, false);
+        assertThatThrownBy(() -> t.explain(null, "Printer#print", null)).hasMessageContaining("mehrdeutig")
+                .hasMessageContaining("Printer#print(Order)").hasMessageContaining("Printer#print(String)");
+        assertThat(t.explain(null, "Printer#print(String)", null)).contains("void print(String s)");
+        assertThatThrownBy(() -> t.explain(null, "Gibtsnicht", null)).hasMessageContaining("Kein Knoten");
+        assertThatThrownBy(() -> t.neighbors(null, "Money", "seitwärts", null, null, null))
+                .hasMessageContaining("direction");
+        assertThatThrownBy(() -> t.neighbors(null, "Money", "in", List.of("ruft"), null, null))
+                .hasMessageContaining("Unbekannte Relation");
+        assertThatThrownBy(() -> t.build("anderswo", false)).hasMessageContaining("nicht freigegeben");
+    }
+
+    @Test
+    void honoursExcludesAndTestSwitch() throws Exception {
+        Path gen = project.resolve("build/generated/Gen.java");
+        Files.createDirectories(gen.getParent());
+        Files.writeString(gen, "class Gen {}");
+        Path test = project.resolve("src/test/java/com/acme/shop/OrderServiceTest.java");
+        Files.createDirectories(test.getParent());
+        Files.writeString(test, "package com.acme.shop;\nclass OrderServiceTest { void t() { new Money().add(1); } }");
+        write("com/acme/build/Tool.java", "package com.acme.build;\npublic class Tool {}\n"); // Paket heißt wie Ausschluss
+
+        CodeGraph withTests = graph();
+        assertThat(withTests.node("Gen")).isNull();
+        assertThat(withTests.node("com.acme.build.Tool")).isNotNull();
+        assertThat(withTests.node("com.acme.shop.OrderServiceTest")).isNotNull();
+
+        Map<String, String> values = new HashMap<>();
+        values.put(GraphModule.PROJECTS, project.toString());
+        values.put(GraphModule.INCLUDE_TESTS, "false");
+        new GraphTools(new GraphService(ModuleConfig.of(new GraphModule().configSchema(), values))).build(null, true);
+        assertThat(GraphStore.load(project).node("com.acme.shop.OrderServiceTest")).isNull();
+    }
+
+    @Test
+    void handlesLatin1SourcesAndSyntaxErrors() throws Exception {
+        Path file = project.resolve("src/main/java/com/acme/shop/Alt.java");
+        Files.write(file, "package com.acme.shop;\n/** Grüße aus Köln. */\nclass Alt { void m() { } }\n"
+                .getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+        write("com/acme/shop/Broken.java", "package com.acme.shop;\nclass Broken { void ok() {} void kaputt( { }\n");
+        CodeGraph g = graph();
+        assertThat(g.node("com.acme.shop.Alt").doc()).isEqualTo("Grüße aus Köln.");
+        assertThat(g.node("com.acme.shop.Broken")).isNotNull();
+        assertThat(g.data().files()).filteredOn(f -> f.path().endsWith("Broken.java")).singleElement()
+                .extracting(CodeGraph.FileEntry::parseErrors).isEqualTo(Boolean.TRUE);
+        assertThat(tools().report(null, 5)).contains("Syntaxfehlern");
+    }
+
+    /** Plattform → Ressourcenname der nativen Bibliothek (liegt in den bonede-Artefakten). */
+    @Test
+    void resolvesNativeLibraryPerPlatform() {
+        assertThat(TreeSitterNatives.resource("tree-sitter", "Mac OS X", "aarch64")).isEqualTo("lib/aarch64-macos-tree-sitter.dylib");
+        assertThat(TreeSitterNatives.resource("tree-sitter-java", "Linux", "amd64")).isEqualTo("lib/x86_64-linux-gnu-tree-sitter-java.so");
+        assertThat(TreeSitterNatives.resource("tree-sitter", "Windows 11", "amd64")).isEqualTo("lib/x86_64-windows-tree-sitter.dll");
+        assertThatThrownBy(() -> TreeSitterNatives.resource("tree-sitter", "Windows 11", "aarch64"))
+                .hasMessageContaining("nicht verfügbar");
+        for (String os : List.of("Mac OS X|aarch64", "Mac OS X|x86_64", "Linux|aarch64", "Linux|amd64", "Windows 11|amd64")) {
+            String[] p = os.split("\\|");
+            for (String lib : List.of("tree-sitter", "tree-sitter-java")) {
+                String res = TreeSitterNatives.resource(lib, p[0], p[1]);
+                assertThat(getClass().getClassLoader().getResource(res)).as(res).isNotNull();
+            }
+        }
+    }
+
+    /** Die JNI-Bindings (org.treesitter) stürzen bei vollem Heap mit SIGSEGV ab – sie dürfen nicht benutzt werden. */
+    @Test
+    void graphCodeDoesNotUseJniBindings() throws Exception {
+        try (Stream<Path> files = Files.walk(Path.of("src/main/java/systems/grebe/devtools/mcp/modules/graph"))) {
+            for (Path f : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                assertThat(Files.readString(f)).as(f.toString()).doesNotContain("import org.treesitter");
+            }
+        }
+    }
+
+    /** Echter Code: die Quellen dieses Servers. Prüft Robustheit und einige bekannte Kanten. */
+    @Test
+    void graphOfOwnSources() throws Exception {
+        Path own = Path.of("src/main/java").toAbsolutePath();
+        Path copy = project.resolve("self");
+        try (Stream<Path> files = Files.walk(own)) {
+            for (Path p : files.filter(Files::isRegularFile).toList()) {
+                Path target = copy.resolve("src/main/java").resolve(own.relativize(p).toString());
+                Files.createDirectories(target.getParent());
+                Files.copy(p, target);
+            }
+        }
+        Files.writeString(copy.resolve("build.gradle.kts"), "");
+        Map<String, String> values = new HashMap<>();
+        values.put(GraphModule.PROJECTS, copy.toString());
+        GraphTools t = new GraphTools(new GraphService(ModuleConfig.of(new GraphModule().configSchema(), values)));
+        String out = t.build(null, false);
+        assertThat(out).startsWith("Graph gebaut").doesNotContain("Syntaxfehlern");
+
+        CodeGraph g = GraphStore.load(copy);
+        String p = "systems.grebe.devtools.mcp.modules.graph.";
+        edge(g, p + "GraphTools#build(String,Boolean)", p + "GraphService#build(String,boolean)", Relation.CALLS);
+        edge(g, p + "GraphModule", "systems.grebe.devtools.mcp.core.ToolModule", Relation.IMPLEMENTS);
+        edge(g, p + "GraphModule#id()", "systems.grebe.devtools.mcp.core.ToolModule#id()", Relation.OVERRIDES);
+        assertThat(t.neighbors(null, "systems.grebe.devtools.mcp.core.ToolModule", "in", List.of("implements"), 1, 100))
+                .contains("GitModule", "BuildModule", "SkillsModule", "GraphModule");
+        assertThat(((Number) g.data().stats().get("communities")).intValue()).isGreaterThan(3);
+    }
+}

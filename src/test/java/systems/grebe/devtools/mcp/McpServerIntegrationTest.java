@@ -159,7 +159,8 @@ class McpServerIntegrationTest {
                         "`git_commit` (statt `git commit`)", "`git_list_repositories`")
                 // alle Module mit Hinweisen, auch standardmäßig deaktivierte (Instructions stehen ab Start fest)
                 .contains("Tools `build_*`", "Tools `container_*`", "Tools `sonar_*`", "Tools `jvm_*`",
-                        "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`",
+                        "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`", "Tools `graph_*`",
+                        "`graph_report`", "`graph_neighbors`",
                         "## Skills – Tools `skills_*`", "`skills_list`", "`skills_create`", "`skills_patch`")
                 .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
         // Reihenfolge wie in der Modulliste: order, dann Anzeigename – Skills zuerst, damit sie vor jeder Aufgabe greifen
@@ -176,19 +177,21 @@ class McpServerIntegrationTest {
         // ungeprüft bleibt.
         Path composeDir = Files.createDirectories(repoDir.resolve("compose-app"));
         Files.writeString(composeDir.resolve("compose.yaml"), "services: {}\n");
-        List.of("sonar", "debug", "asprof", "build").forEach(id -> registry.setModuleEnabled(id, true));
+        List.of("sonar", "debug", "asprof", "build", "graph").forEach(id -> registry.setModuleEnabled(id, true));
         registry.updateConfig("container", Map.of("allowExec", "true", "allowLifecycle", "true", "allowCopy", "true",
                 "allowCreate", "true", "allowRemove", "true", "allowCompose", "true",
                 "composeProjects", composeDir.toString()));
         registry.updateConfig("skills", Map.of("allowDelete", "true"));
         try {
-            Map<String, String> hintByPrefix = Map.of(
-                    "git_", ShellHints.GIT, "build_", ShellHints.BUILD, "container_", ShellHints.CONTAINER,
-                    "sonar_", ShellHints.SONAR, "jvm_", ShellHints.JVM, "jfr_", ShellHints.JFR,
-                    "asprof_", ShellHints.ASPROF, "visualvm_", ShellHints.VISUALVM, "debug_", ShellHints.DEBUG,
-                    "skills_", ShellHints.SKILLS);
+            Map<String, String> hintByPrefix = Map.ofEntries(
+                    Map.entry("git_", ShellHints.GIT), Map.entry("build_", ShellHints.BUILD),
+                    Map.entry("container_", ShellHints.CONTAINER), Map.entry("sonar_", ShellHints.SONAR),
+                    Map.entry("jvm_", ShellHints.JVM), Map.entry("jfr_", ShellHints.JFR),
+                    Map.entry("asprof_", ShellHints.ASPROF), Map.entry("visualvm_", ShellHints.VISUALVM),
+                    Map.entry("debug_", ShellHints.DEBUG), Map.entry("skills_", ShellHints.SKILLS),
+                    Map.entry("graph_", ShellHints.GRAPH));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(96); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(103); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -200,7 +203,7 @@ class McpServerIntegrationTest {
             assertThat(tools).filteredOn(t -> t.name().equals("container_list")).singleElement()
                     .extracting(McpSchema.Tool::description).asString().contains("Statt `podman ps -a` verwenden.");
         } finally {
-            List.of("sonar", "debug", "asprof", "build").forEach(id -> registry.setModuleEnabled(id, false));
+            List.of("sonar", "debug", "asprof", "build", "graph").forEach(id -> registry.setModuleEnabled(id, false));
             registry.updateConfig("container", Map.of());
             registry.updateConfig("skills", Map.of());
         }
@@ -294,6 +297,39 @@ class McpServerIntegrationTest {
 
     private static String text(McpSchema.CallToolResult result) {
         return ((McpSchema.TextContent) result.content().getFirst()).text();
+    }
+
+    @Test
+    void graphBuildAndQueryOverMcp() throws Exception {
+        Path src = Files.createDirectories(repoDir.resolve("src/main/java/demo"));
+        Files.writeString(src.resolve("Greeter.java"), """
+                package demo;
+                public class Greeter {
+                    String greet(String name) { return helper(name); }
+                    private String helper(String n) { return n; }
+                }
+                """);
+        registry.updateConfig("graph", Map.of("projects", repoDir.toString()));
+        registry.setModuleEnabled("graph", true);
+        try {
+            assertThat(toolNames()).contains("graph_build", "graph_report", "graph_find", "graph_explain",
+                    "graph_neighbors", "graph_path", "graph_query");
+            McpSchema.CallToolResult built = client.callTool(callRequest("graph_build", Map.of()));
+            assertThat(built.isError()).isNotEqualTo(Boolean.TRUE);
+            assertThat(text(built)).startsWith("Graph gebaut").contains("devtools-fileinfo.graph");
+            assertThat(Files.exists(repoDir.resolve("devtools-fileinfo.graph"))).isTrue();
+
+            assertThat(text(client.callTool(callRequest("graph_neighbors",
+                    Map.of("node", "Greeter#helper", "direction", "in", "relations", List.of("calls"))))))
+                    .contains("<-- calls demo.Greeter#greet(String)");
+
+            McpSchema.CallToolResult unknown = client.callTool(callRequest("graph_explain", Map.of("node", "Nix")));
+            assertThat(unknown.isError()).isTrue();
+            assertThat(text(unknown)).contains("Kein Knoten", "graph_find");
+        } finally {
+            registry.setModuleEnabled("graph", false);
+            registry.updateConfig("graph", Map.of());
+        }
     }
 
     @Test
