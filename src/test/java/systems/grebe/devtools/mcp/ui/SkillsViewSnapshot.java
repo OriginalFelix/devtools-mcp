@@ -30,7 +30,8 @@ public final class SkillsViewSnapshot {
         CountDownLatch done = new CountDownLatch(1);
         Platform.startup(() -> {
             SkillsView view = new SkillsView(ctx.getBean(SkillService.class),
-                    ctx.getBean(SkillsPersistenceConfig.Status.class));
+                    ctx.getBean(SkillsPersistenceConfig.Status.class),
+                    ctx.getBean(systems.grebe.devtools.mcp.modules.skills.SkillUser.class));
             Stage stage = new Stage();
             Scene scene = new Scene(view, 1180, 640);
             scene.getStylesheets().add(SkillsViewSnapshot.class.getResource("/ui/app.css").toExternalForm());

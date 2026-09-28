@@ -15,10 +15,11 @@ public class SkillReadTools {
         this.service = service;
     }
 
-    @Tool(name = "list", description = "Listet gespeicherte Skills (Name, Beschreibung, Kategorie, Tags), optional "
-            + "gefiltert per Suchtext über Name, Beschreibung, Tags und Inhalt. VOR Beginn einer Aufgabe aufrufen und "
-            + "passende Skills mit skills_view laden – sie enthalten erprobte Abläufe, Befehle, Fallstricke und "
-            + "Vorlieben des Nutzers." + ShellHints.SKILLS)
+    @Tool(name = "list", description = "Listet die Skills des Nutzers und die globalen Vorlagen (markiert mit "
+            + "(global)) mit Beschreibung, Kategorie und Tags, optional gefiltert per Suchtext über Name, "
+            + "Beschreibung, Tags und Inhalt. VOR Beginn einer Aufgabe aufrufen und passende Skills mit skills_view "
+            + "laden – sie enthalten erprobte Abläufe, Befehle, Fallstricke und Vorlieben des Nutzers."
+            + ShellHints.SKILLS)
     public String list(
             @ToolParam(required = false, description = "Suchtext (Groß-/Kleinschreibung egal), z.B. 'heap' oder 'gradle'") String query,
             @ToolParam(required = false, description = "Nur diese Kategorie, z.B. 'software-development'") String category) {

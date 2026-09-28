@@ -68,18 +68,32 @@ public class SkillsPersistenceConfig {
     }
 
     @Bean
-    Status skillsDatabaseStatus(SettingsStore store) {
+    Status skillsDatabaseStatus(SettingsStore store, SkillUser users) {
         Path home = store.file().toAbsolutePath().getParent();
         Map<String, String> values = store.module(SkillsModule.ID).map(m -> m.values()).orElse(Map.of());
         Connection configured = Connection.from(ModuleConfig.of(SkillsModule.schema(home), values));
         try {
             probe(configured);
+            if ("update".equals(configured.schemaAction())) {
+                migrate(configured, users);
+            }
             LOG.info("Skill-Datenbank: {}", configured);
             return new Status(configured, configured, null);
         } catch (RuntimeException e) {
             String reason = SkillsModule.rootMessage(e);
             LOG.error("Skill-Datenbank {} nicht erreichbar, Skills sind deaktiviert: {}", configured, reason);
             return new Status(configured, new Connection(UNAVAILABLE_URL, "sa", "", "update"), reason);
+        }
+    }
+
+    /** Schema-Anhebung vor Hibernate (siehe {@link SkillSchemaMigration}); Fehler machen die Datenbank unbenutzbar. */
+    static void migrate(Connection c, SkillUser users) {
+        SimpleDriverDataSource ds = DataSourceBuilder.create().type(SimpleDriverDataSource.class)
+                .url(c.jdbcUrl()).username(c.username()).password(c.password()).build();
+        try (java.sql.Connection con = ds.getConnection()) {
+            SkillSchemaMigration.migrate(con, users::emailIfKnown);
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException("Migration auf User-Scoping fehlgeschlagen: " + e.getMessage(), e);
         }
     }
 

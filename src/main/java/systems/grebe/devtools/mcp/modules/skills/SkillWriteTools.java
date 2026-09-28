@@ -40,7 +40,8 @@ public class SkillWriteTools {
     @Tool(name = "patch", description = "Ersetzt gezielt eine Textstelle im Skill-Inhalt oder – mit file_path – in "
             + "einer Zusatzdatei. Bevorzugter Weg für Ergänzungen und Korrekturen: old_string muss exakt und "
             + "eindeutig vorkommen (sonst replace_all=true). Zum Anhängen den letzten Abschnitt als old_string "
-            + "nehmen und erweitert als new_string übergeben." + ShellHints.SKILLS)
+            + "nehmen und erweitert als new_string übergeben. Bei einer globalen Vorlage entsteht automatisch eine "
+            + "persönliche Kopie, die geändert wird." + ShellHints.SKILLS)
     public String patch(
             @ToolParam(description = SkillReadTools.NAME) String name,
             @ToolParam(description = "Zu ersetzender Text, exakt wie in skills_view") String old_string,

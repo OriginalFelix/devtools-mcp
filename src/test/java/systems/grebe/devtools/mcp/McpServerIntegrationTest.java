@@ -43,6 +43,13 @@ class McpServerIntegrationTest {
         SettingsStore settingsStore() {
             return new SettingsStore(home);
         }
+
+        /** Fester Benutzer statt ~/.gitconfig des Entwicklers. */
+        @Bean
+        @Primary
+        systems.grebe.devtools.mcp.modules.skills.SkillUser testSkillUser(SettingsStore settingsStore) {
+            return systems.grebe.devtools.mcp.modules.skills.SkillTestContext.user(settingsStore, "mcp@example.com");
+        }
     }
 
     @LocalServerPort

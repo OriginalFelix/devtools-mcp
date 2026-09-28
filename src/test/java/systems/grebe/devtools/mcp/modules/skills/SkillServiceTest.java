@@ -39,6 +39,9 @@ class SkillServiceTest {
     static class SkillsOnly {
     }
 
+    /** Benutzer der Tests, sofern nicht per Modul-Einstellung überschrieben – bewusst nicht aus ~/.gitconfig. */
+    static final String USER = "felix@example.com";
+
     @TempDir
     Path home;
 
@@ -47,13 +50,22 @@ class SkillServiceTest {
     JdbcTemplate jdbc;
 
     static ConfigurableApplicationContext start(Path home, Map<String, String> moduleValues) {
+        return start(home, moduleValues, USER);
+    }
+
+    /** {@code gitEmail} = Git-E-Mail, die {@link SkillUser} sieht ({@code null} = keine gesetzt). */
+    static ConfigurableApplicationContext start(Path home, Map<String, String> moduleValues, String gitEmail) {
         SettingsStore store = new SettingsStore(home);
         if (!moduleValues.isEmpty()) {
             store.saveModule(SkillsModule.ID, new ModuleSettings(true, Set.of(), moduleValues), Set.of());
         }
+        SkillUser users = new SkillUser(store, () -> java.util.Optional.ofNullable(gitEmail));
         return new SpringApplicationBuilder(SkillsOnly.class)
                 .web(WebApplicationType.NONE)
-                .initializers(ctx -> ctx.getBeanFactory().registerSingleton("settingsStore", store))
+                .initializers(ctx -> {
+                    ctx.getBeanFactory().registerSingleton("settingsStore", store);
+                    ctx.getBeanFactory().registerSingleton("skillUser", users);
+                })
                 .run();
     }
 
@@ -147,7 +159,7 @@ class SkillServiceTest {
         assertThat(service.view("wildfly-heap-leak", null)).contains("jvm_Heap", "visualvm_Heap_analyze");
 
         assertThat(service.history("wildfly-heap-leak", null))
-                .contains("1  ", "create", "2  ", "patch  – GC-Wurzel ergänzt", "3  ");
+                .contains("1  ", "create", "2  ", "patch  (" + USER + ")  – GC-Wurzel ergänzt", "3  ");
         assertThat(service.history("wildfly-heap-leak", 1)).contains("Revision 1 (create").doesNotContain("GC-Wurzel");
         assertThat(service.history("wildfly-heap-leak", 2)).contains("GC-Wurzel");
         assertThatThrownBy(() -> service.history("wildfly-heap-leak", 9)).hasMessageContaining("keine Revision 9");
@@ -250,7 +262,7 @@ class SkillServiceTest {
         context = start(home, Map.of());
         SkillService again = context.getBean(SkillService.class);
         assertThat(again.view("wildfly-heap-leak", null)).contains("1. jvm_heap zweimal vergleichen");
-        assertThat(again.count()).isEqualTo(1);
+        assertThat(again.countText()).startsWith("1 eigene Skill(s) von " + USER);
     }
 
     @Test
@@ -264,7 +276,7 @@ class SkillServiceTest {
         // (settings.json im selben Ordner behält die URL, deshalb die Standard-URL explizit zurücksetzen.)
         context.close();
         context = start(home, Map.of(SkillsModule.JDBC_URL, SkillsModule.defaultJdbcUrl(home.toAbsolutePath())));
-        assertThat(context.getBean(SkillService.class).count()).isZero();
+        assertThat(context.getBean(SkillService.class).countText()).startsWith("0 eigene Skill(s)");
     }
 
     @Test

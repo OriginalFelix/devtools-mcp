@@ -12,6 +12,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
@@ -22,9 +23,15 @@ import jakarta.persistence.Version;
  * Ein Skill: wiederverwendbares Vorgehen für einen Aufgabentyp (Ablauf, Befehle, Fallstricke, Vorlieben des Nutzers),
  * das das LLM nach einer gelösten Aufgabe festhält und bei ähnlichen Aufgaben wieder lädt. Entspricht einem
  * {@code SKILL.md} mit optionalen Zusatzdateien ({@link SkillFile}); jede Änderung erzeugt eine {@link SkillRevision}.
+ *
+ * <p>Jeder Skill gehört einem Benutzer ({@link #owner} = E-Mail) oder ist eine globale, schreibgeschützte Vorlage
+ * ({@link SkillUser#GLOBAL}). Der Name ist je Eigentümer eindeutig: Eine persönliche Kopie verdeckt die Vorlage
+ * gleichen Namens.
  */
 @Entity
-@Table(name = "skill", uniqueConstraints = @UniqueConstraint(name = "uk_skill_name", columnNames = "name"))
+@Table(name = "skill",
+        uniqueConstraints = @UniqueConstraint(name = "uk_skill_owner_name", columnNames = {"owner", "name"}),
+        indexes = @Index(name = "ix_skill_owner", columnList = "owner"))
 public class Skill {
 
     /** Spaltenbreite für Markdown-Inhalte; die tatsächliche Obergrenze setzt die Modulkonfiguration. */
@@ -34,8 +41,15 @@ public class Skill {
     @GeneratedValue
     private Long id;
 
+    /** E-Mail des Benutzers (klein geschrieben) oder {@link SkillUser#GLOBAL}. */
+    @Column(nullable = false, length = SkillUser.MAX_EMAIL)
+    private String owner;
+
     @Column(nullable = false, length = 64)
     private String name;
+
+    /** Bei einer persönlichen Kopie: Revision der globalen Vorlage, aus der sie entstanden ist. */
+    private Integer templateRevision;
 
     @Column(nullable = false, length = 1024)
     private String description;
@@ -81,7 +95,8 @@ public class Skill {
         // JPA
     }
 
-    Skill(String name, String description, String content, String category, String tags, Instant now) {
+    Skill(String owner, String name, String description, String content, String category, String tags, Instant now) {
+        this.owner = owner;
         this.name = name;
         this.description = description;
         this.content = content;
@@ -92,11 +107,44 @@ public class Skill {
         this.revision = 0;
     }
 
+    /** Persönliche Kopie einer globalen Vorlage samt Zusatzdateien; die Historie beginnt neu. */
+    Skill copyFor(String newOwner, Instant now) {
+        Skill copy = new Skill(newOwner, name, description, content, category, tags, now);
+        copy.templateRevision = revision;
+        files.forEach(f -> copy.addFile(new SkillFile(copy, f.getPath(), f.getContent(), now)));
+        return copy;
+    }
+
+    /** Übernimmt Inhalt, Metadaten und Dateien eines anderen Skills (erneutes Veröffentlichen einer Vorlage). */
+    void replaceWith(Skill source, Instant now) {
+        description = source.description;
+        content = source.content;
+        category = source.category;
+        tags = source.tags;
+        files.clear();
+        source.files.forEach(f -> addFile(new SkillFile(this, f.getPath(), f.getContent(), now)));
+    }
+
+    /** Macht aus einem persönlichen Skill eine globale Vorlage (Historie bleibt erhalten). */
+    void makeGlobal() {
+        owner = SkillUser.GLOBAL;
+        templateRevision = null;
+    }
+
+    /** Verknüpft einen eigenen Skill nach dem Veröffentlichen mit der Vorlage (er gilt dann als deren Kopie). */
+    void linkTemplate(int templateRevision) {
+        this.templateRevision = templateRevision;
+    }
+
+    boolean isGlobal() {
+        return SkillUser.GLOBAL.equals(owner);
+    }
+
     /** Erhöht die Revision und hält den neuen Stand in der Historie fest. */
-    SkillRevision recordRevision(String action, String note, Instant now) {
+    SkillRevision recordRevision(String action, String note, String changedBy, Instant now) {
         revision++;
         updatedAt = now;
-        SkillRevision r = new SkillRevision(this, revision, action, note, description, content, now);
+        SkillRevision r = new SkillRevision(this, revision, action, note, changedBy, description, content, now);
         revisions.add(r);
         return r;
     }
@@ -121,8 +169,16 @@ public class Skill {
         return id;
     }
 
+    public String getOwner() {
+        return owner;
+    }
+
     public String getName() {
         return name;
+    }
+
+    public Integer getTemplateRevision() {
+        return templateRevision;
     }
 
     public String getDescription() {

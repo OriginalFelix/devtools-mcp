@@ -53,7 +53,8 @@ class SkillsViewLiveUpdateTest {
             SkillService service = ctx.getBean(SkillService.class);
             AtomicReference<SkillsView> view = new AtomicReference<>();
             onFx(() -> {
-                SkillsView v = new SkillsView(service, ctx.getBean(SkillsPersistenceConfig.Status.class));
+                SkillsView v = new SkillsView(service, ctx.getBean(SkillsPersistenceConfig.Status.class),
+                        ctx.getBean(systems.grebe.devtools.mcp.modules.skills.SkillUser.class));
                 Stage stage = new Stage();
                 stage.setScene(new Scene(v, 900, 500));
                 stage.show();

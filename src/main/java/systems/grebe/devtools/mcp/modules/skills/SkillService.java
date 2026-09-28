@@ -5,11 +5,14 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -26,6 +29,11 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * Spring-Data-Repositories. Jede öffentliche Methode läuft in einer Transaktion und liefert kompakten Text für das
  * LLM; fachliche Fehler werden als {@link IllegalArgumentException} mit einem Hinweis auf den nächsten sinnvollen
  * Schritt gemeldet und rollen die Transaktion zurück.
+ *
+ * <p><b>User-Scoping:</b> Jede Abfrage ist auf den aktuellen Benutzer ({@link SkillUser}) und die globalen Vorlagen
+ * beschränkt. Ein eigener Skill verdeckt die Vorlage gleichen Namens. Globale Vorlagen sind schreibgeschützt: Ändert
+ * das LLM eine, entsteht in derselben Transaktion zuerst eine persönliche Kopie ({@code adopt}), auf die die Änderung
+ * wirkt. Veröffentlichen und Zurückziehen von Vorlagen gibt es nur in der App und nur mit Admin-Schalter.
  *
  * <p>Die Inhaltsgrenze kommt als Parameter, weil sie in der UI zur Laufzeit geändert werden kann, der Service aber
  * ein Singleton ist.
@@ -47,11 +55,13 @@ public class SkillService {
 
     private final SkillRepository skills;
     private final SkillRevisionRepository revisions;
+    private final SkillUser users;
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
-    public SkillService(SkillRepository skills, SkillRevisionRepository revisions) {
+    public SkillService(SkillRepository skills, SkillRevisionRepository revisions, SkillUser users) {
         this.skills = skills;
         this.revisions = revisions;
+        this.users = users;
     }
 
     // ------------------------------------------------------------------ Oberfläche
@@ -64,25 +74,90 @@ public class SkillService {
         changeListeners.add(listener);
     }
 
-    /** Alle Skills für die Übersicht, sortiert nach Kategorie und Name. */
+    /** Für den aktuellen Benutzer sichtbare Skills (eigene und nicht verdeckte Vorlagen), nach Kategorie und Name. */
     @Transactional(readOnly = true)
     public List<SkillViews.Summary> overview() {
-        return skills.search(null, null).stream().map(SkillService::summary).toList();
+        String user = users.email();
+        Map<String, Integer> templates = templateRevisions();
+        return visible(user, null, null).stream().map(k -> summary(k, templates)).toList();
     }
 
-    /** Vollständiger Skill samt Dateien und Historie (neueste Revision zuerst). */
+    /** Vollständiger sichtbarer Skill samt Dateien und Historie (neueste Revision zuerst). */
     @Transactional(readOnly = true)
     public Optional<SkillViews.Details> details(String name) {
-        return skills.findByName(name).map(k -> new SkillViews.Details(summary(k), k.getContent(), k.getCreatedAt(),
+        return resolve(users.email(), name).map(k -> new SkillViews.Details(summary(k, templateRevisions()),
+                k.getContent(), k.getCreatedAt(),
                 k.getFiles().stream().map(f -> new SkillViews.File(f.getPath(), f.getContent(), f.getUpdatedAt()))
                         .toList(),
                 revisions.findBySkillOrderByRevisionDesc(k).stream().map(r -> new SkillViews.Revision(r.getRevision(),
-                        r.getAction(), r.getNote(), r.getChangedAt(), r.getDescription(), r.getContent())).toList()));
+                        r.getAction(), r.getNote(), r.getChangedBy(), r.getChangedAt(), r.getDescription(),
+                        r.getContent())).toList()));
     }
 
-    private static SkillViews.Summary summary(Skill k) {
+    private static SkillViews.Summary summary(Skill k, Map<String, Integer> templates) {
+        SkillViews.Scope scope = scope(k);
         return new SkillViews.Summary(k.getName(), k.getDescription(), k.getCategory(), k.tagList(), k.getRevision(),
-                k.getUseCount(), k.getLastUsedAt(), k.getUpdatedAt(), k.getFiles().size());
+                k.getUseCount(), k.getLastUsedAt(), k.getUpdatedAt(), k.getFiles().size(), scope,
+                k.getTemplateRevision(), scope == SkillViews.Scope.COPY ? templates.get(k.getName()) : null);
+    }
+
+    private static SkillViews.Scope scope(Skill k) {
+        return k.isGlobal() ? SkillViews.Scope.GLOBAL
+                : k.getTemplateRevision() != null ? SkillViews.Scope.COPY : SkillViews.Scope.OWN;
+    }
+
+    private Map<String, Integer> templateRevisions() {
+        return skills.search(List.of(SkillUser.GLOBAL), null, null).stream()
+                .collect(Collectors.toMap(Skill::getName, Skill::getRevision));
+    }
+
+    // ------------------------------------------------------------------ Vorlagen verwalten (nur App, nur Admin)
+
+    /**
+     * Veröffentlicht einen eigenen Skill als globale Vorlage bzw. aktualisiert die bestehende Vorlage gleichen Namens.
+     * Der eigene Skill bleibt als persönliche Kopie mit Bezug auf die neue Vorlagen-Revision erhalten.
+     */
+    public String publish(String name) {
+        String user = requireAdmin();
+        String n = requireName(name);
+        Skill own = skills.findByOwnerAndName(user, n).orElseThrow(() -> new IllegalArgumentException(
+                "Nur eigene Skills können veröffentlicht werden – '" + n + "' gehört nicht " + user + "."));
+        Instant now = Instant.now();
+        Optional<Skill> existing = skills.findByOwnerAndName(SkillUser.GLOBAL, n);
+        Skill template;
+        if (existing.isPresent()) {
+            template = existing.get();
+            template.replaceWith(own, now);
+            template.recordRevision("publish", "aktualisiert aus dem Skill von " + user, user, now);
+        } else {
+            template = own.copyFor(SkillUser.GLOBAL, now);
+            template.makeGlobal();
+            template.recordRevision("publish", "veröffentlicht aus dem Skill von " + user, user, now);
+            skills.save(template);
+        }
+        own.linkTemplate(template.getRevision());
+        changed();
+        return "Skill '" + n + "' als globale Vorlage " + (existing.isPresent() ? "aktualisiert" : "veröffentlicht")
+                + " (Vorlage Revision " + template.getRevision() + ").";
+    }
+
+    /** Zieht eine globale Vorlage zurück; persönliche Kopien der Benutzer bleiben erhalten. */
+    public String unpublish(String name) {
+        requireAdmin();
+        String n = requireName(name);
+        Skill template = skills.findByOwnerAndName(SkillUser.GLOBAL, n).orElseThrow(() ->
+                new IllegalArgumentException("Es gibt keine globale Vorlage '" + n + "'."));
+        skills.delete(template);
+        changed();
+        return "Globale Vorlage '" + n + "' zurückgezogen. Persönliche Kopien bleiben erhalten.";
+    }
+
+    private String requireAdmin() {
+        if (!users.admin()) {
+            throw new IllegalStateException("Globale Vorlagen verwalten ist nicht freigegeben (Schalter im Modul "
+                    + "„Skills“).");
+        }
+        return users.email();
     }
 
     private void changed() {
@@ -117,7 +192,7 @@ public class SkillService {
     public String list(String query, String category) {
         String q = blankToNull(query);
         String c = blankToNull(category);
-        List<Skill> found = skills.search(q == null ? null : "%" + q.toLowerCase(Locale.ROOT) + "%",
+        List<Skill> found = visible(users.email(), q == null ? null : "%" + q.toLowerCase(Locale.ROOT) + "%",
                 c == null ? null : c.toLowerCase(Locale.ROOT));
         if (found.isEmpty()) {
             return q == null && c == null
@@ -139,16 +214,23 @@ public class SkillService {
             if (!k.tagList().isEmpty()) {
                 sb.append("  [").append(String.join(", ", k.tagList())).append(']');
             }
+            if (k.isGlobal()) {
+                sb.append("  (global)");
+            }
             sb.append('\n');
         }
-        return sb.append("Passende Skills vor Beginn der Aufgabe mit skills_view laden.").toString();
+        sb.append("Passende Skills vor Beginn der Aufgabe mit skills_view laden.");
+        if (found.stream().anyMatch(Skill::isGlobal)) {
+            sb.append(" (global) = schreibgeschützte Vorlage; eine Änderung legt automatisch eine persönliche Kopie an.");
+        }
+        return sb.toString();
     }
 
     /** Schreibend, weil die Nutzung gezählt wird. */
     public String view(String name, String filePath) {
         String n = requireName(name);
         String path = blankToNull(filePath) == null ? null : normalizePath(filePath);
-        Skill k = find(n);
+        Skill k = find(users.email(), n);
         if (path != null) {
             SkillFile f = k.file(path).orElseThrow(() -> new IllegalArgumentException(
                     "Skill '" + n + "' hat keine Datei '" + path + "'. Vorhanden: " + filePaths(k)));
@@ -164,6 +246,12 @@ public class SkillService {
         if (!k.tagList().isEmpty()) {
             sb.append("\ntags: [").append(String.join(", ", k.tagList())).append(']');
         }
+        if (k.isGlobal()) {
+            sb.append("\nscope: global (schreibgeschützt – eine Änderung legt automatisch eine persönliche Kopie an)");
+        } else if (k.getTemplateRevision() != null) {
+            sb.append("\nscope: persönliche Kopie der globalen Vorlage (Revision ").append(k.getTemplateRevision())
+                    .append(')');
+        }
         sb.append("\nrevision: ").append(k.getRevision())
                 .append("\nupdated: ").append(DATE.format(k.getUpdatedAt()))
                 .append("\n---\n\n").append(k.getContent());
@@ -176,7 +264,7 @@ public class SkillService {
     @Transactional(readOnly = true)
     public String history(String name, Integer revision) {
         String n = requireName(name);
-        Skill k = find(n);
+        Skill k = find(users.email(), n);
         if (revision != null) {
             SkillRevision r = revisions.findBySkillAndRevision(k, revision)
                     .orElseThrow(() -> new IllegalArgumentException("Skill '" + n + "' hat keine Revision "
@@ -189,6 +277,9 @@ public class SkillService {
         for (SkillRevision r : revisions.findBySkillOrderByRevisionDesc(k)) {
             sb.append("  ").append(r.getRevision()).append("  ").append(DATE.format(r.getChangedAt()))
                     .append("  ").append(r.getAction());
+            if (r.getChangedBy() != null) {
+                sb.append("  (").append(r.getChangedBy()).append(')');
+            }
             if (r.getNote() != null) {
                 sb.append("  – ").append(r.getNote());
             }
@@ -197,10 +288,12 @@ public class SkillService {
         return sb.append("Einzelne Stände mit skills_history(name, revision) ansehen.").toString();
     }
 
-    /** Anzahl gespeicherter Skills – für „Verbindung testen“. */
+    /** Eigene Skills und globale Vorlagen – für „Verbindung testen“. */
     @Transactional(readOnly = true)
-    public long count() {
-        return skills.count();
+    public String countText() {
+        String user = users.email();
+        return skills.countByOwner(user) + " eigene Skill(s) von " + user + ", "
+                + skills.countByOwner(SkillUser.GLOBAL) + " globale Vorlage(n)";
     }
 
     // ------------------------------------------------------------------ Schreiben
@@ -212,12 +305,18 @@ public class SkillService {
         String body = requireContent(content, "content", maxContentChars);
         String cat = normalizeCategory(category);
         String t = normalizeTags(tags);
-        if (skills.existsByName(n)) {
+        String user = users.email();
+        if (skills.existsByOwnerAndName(user, n)) {
             throw new IllegalArgumentException("Skill '" + n + "' existiert bereits. Mit skills_view ansehen und "
                     + "mit skills_patch ergänzen, statt ihn neu anzulegen.");
         }
-        Skill k = new Skill(n, d, body, cat, t, Instant.now());
-        k.recordRevision("create", null, k.getCreatedAt());
+        if (skills.existsByOwnerAndName(SkillUser.GLOBAL, n)) {
+            throw new IllegalArgumentException("Es gibt bereits die globale Vorlage '" + n + "'. Mit skills_view "
+                    + "laden und mit skills_patch anpassen – das legt automatisch eine persönliche Kopie an – oder "
+                    + "einen anderen Namen wählen.");
+        }
+        Skill k = new Skill(user, n, d, body, cat, t, Instant.now());
+        k.recordRevision("create", null, user, k.getCreatedAt());
         skills.save(k);
         changed();
         return "Skill '" + n + "' angelegt (Revision 1).";
@@ -226,35 +325,27 @@ public class SkillService {
     public String update(String name, String description, String content, String category, List<String> tags,
                          String note, Integer expectedRevision, int maxContentChars) {
         String n = requireName(name);
-        Skill k = find(n);
-        checkRevision(k, expectedRevision);
-        boolean changed = false;
-        if (description != null) {
-            String d = requireDescription(description);
-            changed |= !d.equals(k.getDescription());
-            k.setDescription(d);
+        String user = users.email();
+        Skill current = find(user, n);
+        checkRevision(current, expectedRevision);
+        String d = description == null ? current.getDescription() : requireDescription(description);
+        String body = content == null ? current.getContent() : requireContent(content, "content", maxContentChars);
+        String cat = category == null ? current.getCategory() : normalizeCategory(category);
+        String t = tags == null ? current.getTags() : normalizeTags(tags);
+        if (d.equals(current.getDescription()) && body.equals(current.getContent())
+                && Objects.equals(cat, current.getCategory()) && Objects.equals(t, current.getTags())) {
+            // Ohne Änderung auch keine Kopie einer Vorlage anlegen
+            return "Keine Änderung an '" + n + "' (Revision " + current.getRevision() + ").";
         }
-        if (content != null) {
-            String body = requireContent(content, "content", maxContentChars);
-            changed |= !body.equals(k.getContent());
-            k.setContent(body);
-        }
-        if (category != null) {
-            String cat = normalizeCategory(category);
-            changed |= !Objects.equals(cat, k.getCategory());
-            k.setCategory(cat);
-        }
-        if (tags != null) {
-            String t = normalizeTags(tags);
-            changed |= !Objects.equals(t, k.getTags());
-            k.setTags(t);
-        }
-        if (!changed) {
-            return "Keine Änderung an '" + n + "' (Revision " + k.getRevision() + ").";
-        }
-        k.recordRevision("update", normalizeNote(note), Instant.now());
+        Writable w = writable(user, current);
+        Skill k = w.skill();
+        k.setDescription(d);
+        k.setContent(body);
+        k.setCategory(cat);
+        k.setTags(t);
+        k.recordRevision("update", normalizeNote(note), user, Instant.now());
         changed();
-        return "Skill '" + n + "' aktualisiert (Revision " + k.getRevision() + ").";
+        return w.prefix() + "Skill '" + n + "' aktualisiert (Revision " + k.getRevision() + ").";
     }
 
     public String patch(String name, String oldString, String newString, Boolean replaceAll, String filePath,
@@ -269,8 +360,12 @@ public class SkillService {
         }
         boolean all = Boolean.TRUE.equals(replaceAll);
         String path = blankToNull(filePath) == null ? null : normalizePath(filePath);
-        Skill k = find(n);
-        checkRevision(k, expectedRevision);
+        String user = users.email();
+        Skill current = find(user, n);
+        checkRevision(current, expectedRevision);
+        // Schlägt die Ersetzung fehl, rollt die Transaktion eine eben angelegte Kopie wieder zurück.
+        Writable w = writable(user, current);
+        Skill k = w.skill();
         SkillFile file = path == null ? null : k.file(path).orElseThrow(() -> new IllegalArgumentException(
                 "Skill '" + n + "' hat keine Datei '" + path + "'. Vorhanden: " + filePaths(k)));
         String before = file == null ? k.getContent() : file.getContent();
@@ -292,9 +387,9 @@ public class SkillService {
         } else {
             file.update(requireContent(after, "Dateiinhalt", maxContentChars), now);
         }
-        k.recordRevision("patch", normalizeNote(note), now);
+        k.recordRevision("patch", normalizeNote(note), user, now);
         changed();
-        return "Skill '" + n + "' gepatcht" + (path == null ? "" : " (" + path + ")") + ": "
+        return w.prefix() + "Skill '" + n + "' gepatcht" + (path == null ? "" : " (" + path + ")") + ": "
                 + (all ? count : 1) + " Stelle(n) ersetzt, Revision " + k.getRevision() + ".";
     }
 
@@ -302,42 +397,96 @@ public class SkillService {
         String n = requireName(name);
         String p = normalizePath(filePath);
         String body = requireContent(content, "file_content", maxContentChars);
-        Skill k = find(n);
+        String user = users.email();
+        Writable w = writable(user, find(user, n));
+        Skill k = w.skill();
         Instant now = Instant.now();
         boolean exists = k.file(p).isPresent();
         k.file(p).ifPresentOrElse(f -> f.update(body, now), () -> k.addFile(new SkillFile(k, p, body, now)));
-        k.recordRevision("write_file", noteOr(note, p), now);
+        k.recordRevision("write_file", noteOr(note, p), user, now);
         changed();
-        return "Datei '" + p + "' in Skill '" + n + "' " + (exists ? "überschrieben" : "angelegt")
+        return w.prefix() + "Datei '" + p + "' in Skill '" + n + "' " + (exists ? "überschrieben" : "angelegt")
                 + " (Revision " + k.getRevision() + ").";
     }
 
     public String removeFile(String name, String filePath, String note) {
         String n = requireName(name);
         String p = normalizePath(filePath);
-        Skill k = find(n);
-        SkillFile f = k.file(p).orElseThrow(() -> new IllegalArgumentException(
-                "Skill '" + n + "' hat keine Datei '" + p + "'. Vorhanden: " + filePaths(k)));
-        k.removeFile(f);
-        k.recordRevision("remove_file", noteOr(note, p), Instant.now());
+        String user = users.email();
+        Skill current = find(user, n);
+        if (current.file(p).isEmpty()) {
+            throw new IllegalArgumentException("Skill '" + n + "' hat keine Datei '" + p + "'. Vorhanden: "
+                    + filePaths(current));
+        }
+        Writable w = writable(user, current);
+        Skill k = w.skill();
+        k.removeFile(k.file(p).orElseThrow());
+        k.recordRevision("remove_file", noteOr(note, p), user, Instant.now());
         changed();
-        return "Datei '" + p + "' aus Skill '" + n + "' entfernt (Revision " + k.getRevision() + ").";
+        return w.prefix() + "Datei '" + p + "' aus Skill '" + n + "' entfernt (Revision " + k.getRevision() + ").";
     }
 
+    /** Löscht einen eigenen Skill (auch eine persönliche Kopie); globale Vorlagen sind nicht löschbar. */
     public String delete(String name) {
         String n = requireName(name);
-        Skill k = find(n);
-        int files = k.getFiles().size();
-        skills.delete(k);
+        String user = users.email();
+        Optional<Skill> own = skills.findByOwnerAndName(user, n);
+        boolean template = skills.existsByOwnerAndName(SkillUser.GLOBAL, n);
+        if (own.isEmpty()) {
+            if (template) {
+                throw new IllegalArgumentException("'" + n + "' ist eine globale Vorlage und schreibgeschützt – sie "
+                        + "kann nicht gelöscht werden.");
+            }
+            throw notFound(n);
+        }
+        int files = own.get().getFiles().size();
+        skills.delete(own.get());
         changed();
-        return "Skill '" + n + "' samt " + files + " Datei(en) und Historie gelöscht.";
+        return "Skill '" + n + "' samt " + files + " Datei(en) und Historie gelöscht."
+                + (template ? " Die globale Vorlage '" + n + "' ist wieder sichtbar." : "");
     }
 
     // ------------------------------------------------------------------ intern
 
-    private Skill find(String name) {
-        return skills.findByName(name).orElseThrow(() -> new IllegalArgumentException("Skill '" + name
-                + "' gibt es nicht. Vorhandene mit skills_list anzeigen oder mit skills_create anlegen."));
+    /** Sichtbarer Skill: der eigene vor der globalen Vorlage gleichen Namens. */
+    private Optional<Skill> resolve(String user, String name) {
+        return skills.findByOwnerAndName(user, name).or(() -> skills.findByOwnerAndName(SkillUser.GLOBAL, name));
+    }
+
+    private Skill find(String user, String name) {
+        return resolve(user, name).orElseThrow(() -> notFound(name));
+    }
+
+    private static IllegalArgumentException notFound(String name) {
+        return new IllegalArgumentException("Skill '" + name
+                + "' gibt es nicht. Vorhandene mit skills_list anzeigen oder mit skills_create anlegen.");
+    }
+
+    /** Eigene Skills und globale Vorlagen, ohne die Vorlagen, die ein eigener Skill gleichen Namens verdeckt. */
+    private List<Skill> visible(String user, String pattern, String category) {
+        List<Skill> found = skills.search(List.of(user, SkillUser.GLOBAL), pattern, category);
+        Set<String> own = new HashSet<>(skills.namesOf(user));
+        return found.stream().filter(k -> !k.isGlobal() || !own.contains(k.getName())).toList();
+    }
+
+    /** Ziel einer Änderung und ggf. Hinweis, dass dafür eine persönliche Kopie entstanden ist. */
+    private record Writable(Skill skill, String prefix) {
+    }
+
+    /**
+     * Globale Vorlagen sind schreibgeschützt: Statt sie zu ändern, entsteht eine persönliche Kopie des Benutzers
+     * (Aktion {@code adopt}), auf die die Änderung wirkt. Eigene Skills werden direkt geändert.
+     */
+    private Writable writable(String user, Skill visible) {
+        if (!visible.isGlobal()) {
+            return new Writable(visible, "");
+        }
+        Instant now = Instant.now();
+        Skill copy = visible.copyFor(user, now);
+        copy.recordRevision("adopt", "Kopie der globalen Vorlage (Revision " + visible.getRevision() + ")", user, now);
+        skills.save(copy);
+        return new Writable(copy, "Globale Vorlage '" + visible.getName() + "' ist schreibgeschützt – persönliche "
+                + "Kopie angelegt (Vorlage Revision " + visible.getRevision() + "). ");
     }
 
     private static void checkRevision(Skill k, Integer expected) {

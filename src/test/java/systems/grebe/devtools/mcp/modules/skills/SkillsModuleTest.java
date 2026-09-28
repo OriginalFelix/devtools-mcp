@@ -19,7 +19,9 @@ class SkillsModuleTest {
     Path home;
 
     private SkillsModule module(SkillsPersistenceConfig.Status status) {
-        return new SkillsModule(null, status, new SkillReview(), new SkillReviewTracker(null), new SettingsStore(home));
+        SettingsStore store = new SettingsStore(home);
+        return new SkillsModule(null, status, new SkillReview(), new SkillReviewTracker(null),
+                new SkillUser(store, () -> java.util.Optional.of(SkillServiceTest.USER)), store);
     }
 
     private static SkillsPersistenceConfig.Connection h2(Path file) {

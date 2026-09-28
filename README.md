@@ -140,6 +140,23 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
   * Review, Prompt und Erinnerung gibt es nur, wenn „Anlegen und Bearbeiten“ an ist.
   * **Mit Hermes:** Hermes hat einen eigenen Hintergrund-Review, der in `~/.hermes/skills` schreibt. Sollen die
     Skills nur hier liegen, dort `skills.creation_nudge_interval: 0` setzen – sonst entstehen zwei Bibliotheken.
+* **Mehrere Benutzer (User-Scoping):** Jeder Skill gehört einem Benutzer, erkannt an der Git-E-Mail
+  (`git config --global user.email`) oder der „Benutzer-E-Mail“ im Modul. Auf einer gemeinsamen Datenbank sieht und
+  ändert jeder nur seine eigenen Skills; gleiche Namen bei verschiedenen Benutzern sind erlaubt. Die Historie hält fest,
+  wer geändert hat.
+* **Globale Vorlagen:** schreibgeschützte Skills für alle Benutzer, in `skills_list` mit „(global)“ markiert.
+  Ändert das LLM eine Vorlage (`skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file`), entsteht in
+  derselben Transaktion eine persönliche Kopie samt Zusatzdateien, auf die die Änderung wirkt; sie verdeckt ab dann die
+  Vorlage. Schlägt die Änderung fehl, bleibt auch keine Kopie zurück. Löschen der Kopie zeigt wieder die Vorlage;
+  Vorlagen selbst sind nicht löschbar.
+  * Veröffentlichen/Aktualisieren und Zurückziehen nur in der App (Tab **Skills**) mit dem Schalter „Globale Vorlagen
+    verwalten“. Der Schalter ist Komfort, kein Zugriffsschutz – wer Vorlagen wirklich absichern will, vergibt die
+    Schreibrechte in der Datenbank entsprechend.
+  * Wurde eine Vorlage nach dem Kopieren weiterentwickelt, zeigt die Übersicht die Kopie als „Kopie ⟳“ mit beiden
+    Revisionen.
+* **Bestehende Datenbanken** (vor dem User-Scoping) werden beim Start einmalig angehoben: Spalte `owner` ergänzen, alle
+  vorhandenen Skills dem aktuellen Benutzer zuordnen, alte Regel „Name global eindeutig“ entfernen. Nur mit Schema
+  `update`; ohne bekannten Benutzer bleibt die Datenbank unangetastet und das Modul meldet den Fehler.
 * **Übersicht in der App:** Tab **Skills** – links alle Skills (Name, Kategorie, Revision, wie oft geladen, zuletzt
   geändert) mit Suche über Name/Beschreibung/Tags und Kategorie-Filter, rechts Beschreibung, Metadaten, Inhalt,
   Zusatzdateien und Änderungshistorie mit dem jeweiligen Stand. Legt oder ändert das LLM einen Skill, aktualisiert

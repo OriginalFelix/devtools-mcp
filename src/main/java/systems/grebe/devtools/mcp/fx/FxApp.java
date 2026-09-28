@@ -19,6 +19,7 @@ import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
 import systems.grebe.devtools.mcp.modules.skills.SkillService;
+import systems.grebe.devtools.mcp.modules.skills.SkillUser;
 import systems.grebe.devtools.mcp.modules.skills.SkillsPersistenceConfig;
 import systems.grebe.devtools.mcp.modules.visualvm.VisualVmModule;
 import systems.grebe.devtools.mcp.ui.AppIcons;
@@ -66,7 +67,7 @@ public class FxApp extends Application {
 
         MainView view = new MainView(registry, log, store, endpoint, stage, List.of(
                 new Tab("Skills", new SkillsView(context.getBean(SkillService.class),
-                        context.getBean(SkillsPersistenceConfig.Status.class))),
+                        context.getBean(SkillsPersistenceConfig.Status.class), context.getBean(SkillUser.class))),
                 new Tab("Artefakte", new ArtifactsView(context.getBean(JavaEnvironmentProvider.class), getHostServices(),
                         context.getBean(VisualVmModule.class)::openFile))));
         Scene scene = new Scene(view, 1180, 760);

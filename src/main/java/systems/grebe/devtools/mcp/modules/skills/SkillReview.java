@@ -30,7 +30,8 @@ public class SkillReview {
 
             ## Reihenfolge – nimm die erste passende Option
             1. **Geladenen Skill patchen.** Deckt ein in dieser Session geladener Skill das Thema ab, ihn mit \
-            skills_patch ergänzen (vorher mit skills_view frisch laden – Zitate aus der Unterhaltung zählen nicht).
+            skills_patch ergänzen (vorher mit skills_view frisch laden – Zitate aus der Unterhaltung zählen nicht). \
+            Das gilt auch für globale Vorlagen: Die Änderung landet automatisch in einer persönlichen Kopie.
             2. **Übergreifenden Skill erweitern.** Mit skills_list suchen; passt ein bestehender Skill für diese \
             Klasse von Aufgaben, einen Abschnitt, Fallstrick oder Auslöser ergänzen.
             3. **Zusatzdatei anlegen.** Längere Details mit skills_write_file ablegen: references/<thema>.md für \

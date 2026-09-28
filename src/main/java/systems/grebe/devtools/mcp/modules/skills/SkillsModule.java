@@ -37,19 +37,23 @@ public class SkillsModule implements ToolModule {
     static final String ALLOW_DELETE = "allowDelete";
     static final String MAX_CONTENT = "maxContentChars";
     static final String REVIEW_INTERVAL = "reviewNudgeInterval";
+    static final String USER_EMAIL = "userEmail";
+    static final String ADMIN = "manageGlobal";
 
     private final SkillService service;
     private final SkillsPersistenceConfig.Status status;
     private final SkillReview review;
     private final SkillReviewTracker tracker;
+    private final SkillUser users;
     private final Path home;
 
     public SkillsModule(SkillService service, SkillsPersistenceConfig.Status status, SkillReview review,
-                        SkillReviewTracker tracker, SettingsStore store) {
+                        SkillReviewTracker tracker, SkillUser users, SettingsStore store) {
         this.service = service;
         this.status = status;
         this.review = review;
         this.tracker = tracker;
+        this.users = users;
         this.home = store.file().toAbsolutePath().getParent();
     }
 
@@ -67,7 +71,8 @@ public class SkillsModule implements ToolModule {
     public String description() {
         return "Wiederverwendbare Abläufe (Skills) für das LLM: suchen, laden und nach gelösten Aufgaben selbst anlegen "
                 + "oder verbessern – mit Zusatzdateien und Änderungshistorie. Gespeichert per Spring Data JPA, "
-                + "standardmäßig in einer lokalen H2-Datenbank. Verbindungsänderungen gelten nach Neustart.";
+                + "standardmäßig in einer lokalen H2-Datenbank; auf einer gemeinsamen Datenbank je Benutzer (Git-E-Mail) "
+                + "getrennt, plus schreibgeschützte globale Vorlagen. Verbindungsänderungen gelten nach Neustart.";
     }
 
     @Override
@@ -87,6 +92,11 @@ public class SkillsModule implements ToolModule {
                 Dann: gibt es einen passenden Skill → `skills_patch` (gezielt ergänzen/korrigieren); sonst → \
                 `skills_create`. War ein geladener Skill falsch oder lückenhaft, ihn sofort mit `skills_patch` \
                 korrigieren. Nach größeren Aufgaben kurz anbieten, den Ablauf als Skill zu speichern.
+
+                Globale Vorlagen: In `skills_list` mit „(global)“ markierte Skills sind schreibgeschützte Vorlagen \
+                für alle Benutzer. Genauso laden und befolgen wie eigene. Eine Änderung (`skills_patch`, \
+                `skills_update`, `skills_write_file`, `skills_remove_file`) legt automatisch eine persönliche Kopie an, \
+                die ab dann statt der Vorlage gilt – dafür nichts Besonderes tun und keinen neuen Skill anlegen.
 
                 Selbstverbesserung: Nach einer abgeschlossenen mehrstufigen Aufgabe `skills_review` aufrufen und die \
                 Checkliste abarbeiten. Hängt der Server an ein Tool-Ergebnis den Hinweis „[DevTools-Skills] … \
@@ -126,6 +136,13 @@ public class SkillsModule implements ToolModule {
                 ConfigField.of(SCHEMA_ACTION, "Schema", FieldType.ENUM).withDefault("update")
                         .withOptions("update", "validate", "none")
                         .withHelp("update = Tabellen anlegen/ergänzen (hibernate.hbm2ddl.auto), validate = nur prüfen."),
+                ConfigField.of(USER_EMAIL, "Benutzer-E-Mail", FieldType.STRING)
+                        .withHelp("Eigentümer der Skills auf einer gemeinsamen Datenbank. Leer = Git-E-Mail "
+                                + "(git config --global user.email). Gilt sofort."),
+                ConfigField.of(ADMIN, "Globale Vorlagen verwalten", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("Erlaubt in der App, eigene Skills als globale Vorlage zu veröffentlichen und "
+                                + "Vorlagen zurückzuziehen. Das LLM kann Vorlagen nie ändern. Komfortschalter, kein "
+                                + "Zugriffsschutz – den regeln die Rechte in der Datenbank."),
                 ConfigField.of(ALLOW_WRITE, "Anlegen und Bearbeiten erlauben", FieldType.BOOLEAN).withDefault("true")
                         .withHelp("create, patch, update, write_file, remove_file."),
                 ConfigField.of(ALLOW_DELETE, "Löschen erlauben", FieldType.BOOLEAN).withDefault("false"),
@@ -150,6 +167,7 @@ public class SkillsModule implements ToolModule {
                     + " war beim Start nicht erreichbar: " + status.error()
                     + ". Einstellungen prüfen (Verbindung testen) und die App neu starten.");
         }
+        users.email(); // ohne Benutzer kein Scoping – Fehler erscheint als Modulfehler
         List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(new SkillReadTools(service))));
         if (config.getBoolean(ALLOW_WRITE)) {
             tools.addAll(List.of(ToolCallbacks.from(new SkillWriteTools(service, maxContent(config)))));
@@ -172,8 +190,7 @@ public class SkillsModule implements ToolModule {
         SkillsPersistenceConfig.Connection active = status.configured();
         if (status.available() && c.equals(active)) {
             try {
-                return ConnectionTestResult.ok("Verbunden mit " + c.jdbcUrl() + " – " + service.count()
-                        + " Skill(s) gespeichert.");
+                return ConnectionTestResult.ok("Verbunden mit " + c.jdbcUrl() + " – " + service.countText() + ".");
             } catch (RuntimeException e) {
                 return ConnectionTestResult.failed("Verbindung fehlgeschlagen: " + rootMessage(e));
             }

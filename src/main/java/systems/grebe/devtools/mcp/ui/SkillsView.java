@@ -39,16 +39,21 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import systems.grebe.devtools.mcp.modules.skills.SkillService;
+import systems.grebe.devtools.mcp.modules.skills.SkillUser;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillsPersistenceConfig;
 
 /**
- * Übersicht der gespeicherten Skills: links Liste mit Suche und Kategorie-Filter, rechts Inhalt, Zusatzdateien und
- * Änderungshistorie. Aktualisiert sich selbst, sobald das LLM einen Skill anlegt oder ändert.
+ * Übersicht der Skills des aktuellen Benutzers und der globalen Vorlagen: links Liste mit Suche und Filtern, rechts
+ * Inhalt, Zusatzdateien und Änderungshistorie. Aktualisiert sich selbst, sobald das LLM einen Skill anlegt oder ändert.
+ * Mit dem Admin-Schalter lassen sich eigene Skills als Vorlage veröffentlichen und Vorlagen zurückziehen.
  */
 public class SkillsView extends BorderPane {
 
     static final String ALL_CATEGORIES = "Alle Kategorien";
+    static final String ALL_SCOPES = "Eigene und global";
+    static final String ONLY_OWN = "Nur eigene";
+    static final String ONLY_GLOBAL = "Nur globale Vorlagen";
     static final String NO_CATEGORY = "(ohne Kategorie)";
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("dd.MM.yy HH:mm")
             .withZone(ZoneId.systemDefault());
@@ -56,6 +61,13 @@ public class SkillsView extends BorderPane {
             .withZone(ZoneId.systemDefault());
 
     private final SkillService service;
+    private final SkillUser users;
+    private final ComboBox<String> scopeFilter = new ComboBox<>();
+    private final Label userLabel = new Label();
+    private final Label readOnlyHint = new Label();
+    private final Button publish = new Button("Als Vorlage veröffentlichen…");
+    private final Button unpublish = new Button("Vorlage zurückziehen…");
+    private final Button delete = new Button("Löschen…");
     private final ObservableList<SkillViews.Summary> items = FXCollections.observableArrayList();
     private final FilteredList<SkillViews.Summary> filtered = new FilteredList<>(items);
     private final TableView<SkillViews.Summary> table = new TableView<>(filtered);
@@ -78,8 +90,9 @@ public class SkillsView extends BorderPane {
     private final Tab historyTab = new Tab("Historie");
     private final VBox detail;
 
-    public SkillsView(SkillService service, SkillsPersistenceConfig.Status status) {
+    public SkillsView(SkillService service, SkillsPersistenceConfig.Status status, SkillUser users) {
         this.service = service;
+        this.users = users;
         getStyleClass().add("skills-view");
         if (!status.available()) {
             Label error = new Label("Skill-Datenbank " + status.configured().jdbcUrl() + " war beim Start nicht "
@@ -110,24 +123,40 @@ public class SkillsView extends BorderPane {
 
     // ------------------------------------------------------------------ Aufbau
 
-    private HBox buildToolbar() {
+    private VBox buildToolbar() {
         search.setPromptText("Suchen (Name, Beschreibung, Tags, Inhalt)");
-        search.setPrefWidth(320);
+        search.setPrefWidth(300);
+        scopeFilter.setMinWidth(Region.USE_PREF_SIZE);
+        category.setMinWidth(Region.USE_PREF_SIZE);
         search.textProperty().addListener((o, a, b) -> applyFilter());
         category.getItems().setAll(ALL_CATEGORIES);
         category.getSelectionModel().selectFirst();
         category.valueProperty().addListener((o, a, b) -> applyFilter());
+        scopeFilter.getItems().setAll(ALL_SCOPES, ONLY_OWN, ONLY_GLOBAL);
+        scopeFilter.getSelectionModel().selectFirst();
+        scopeFilter.valueProperty().addListener((o, a, b) -> applyFilter());
         Button refresh = new Button("Aktualisieren");
         refresh.setOnAction(e -> refresh());
-        Button delete = new Button("Löschen…");
-        delete.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull());
         delete.setOnAction(e -> selected().ifPresent(this::confirmDelete));
+        publish.setOnAction(e -> selected().ifPresent(this::confirmPublish));
+        unpublish.setOnAction(e -> selected().ifPresent(this::confirmUnpublish));
+        table.getSelectionModel().selectedItemProperty().addListener((o, a, s) -> updateActions(s));
+        updateActions(null);
         countLabel.getStyleClass().add("form-help");
+        userLabel.getStyleClass().add("form-help");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox bar = new HBox(8, search, category, spacer, countLabel, delete, refresh);
-        bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setPadding(new Insets(10, 12, 10, 12));
+        HBox filters = new HBox(8, search, category, scopeFilter, spacer, countLabel, refresh);
+        filters.setAlignment(Pos.CENTER_LEFT);
+        Region spacer2 = new Region();
+        HBox.setHgrow(spacer2, Priority.ALWAYS);
+        HBox actions = new HBox(8, userLabel, spacer2, publish, unpublish, delete);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        for (javafx.scene.control.Control c : List.of(publish, unpublish, delete, refresh, userLabel, countLabel)) {
+            c.setMinWidth(Region.USE_PREF_SIZE);
+        }
+        VBox bar = new VBox(6, filters, actions);
+        bar.setPadding(new Insets(10, 12, 8, 12));
         return bar;
     }
 
@@ -136,6 +165,7 @@ public class SkillsView extends BorderPane {
                 + "skills_create an."));
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.getColumns().add(col("Name", 170, SkillViews.Summary::name));
+        table.getColumns().add(col("Herkunft", 80, SkillsView::scopeLabel));
         table.getColumns().add(col("Kategorie", 150, s -> s.category() == null ? "" : s.category()));
         table.getColumns().add(numberCol("Rev.", 42, SkillViews.Summary::revision));
         table.getColumns().add(numberCol("Genutzt", 58, s -> s.useCount()));
@@ -158,6 +188,10 @@ public class SkillsView extends BorderPane {
         meta.getStyleClass().add("form-help");
         meta.setWrapText(true);
         meta.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
+        readOnlyHint.getStyleClass().add("skill-readonly");
+        readOnlyHint.setWrapText(true);
+        readOnlyHint.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
+        readOnlyHint.managedProperty().bind(readOnlyHint.visibleProperty());
 
         fileList.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
             @Override
@@ -178,6 +212,7 @@ public class SkillsView extends BorderPane {
         revisionTable.getColumns().add(revCol("Rev.", 45, r -> String.valueOf(r.revision())));
         revisionTable.getColumns().add(revCol("Zeit", 110, r -> TIME.format(r.changedAt())));
         revisionTable.getColumns().add(revCol("Aktion", 90, SkillViews.Revision::action));
+        revisionTable.getColumns().add(revCol("Von", 150, r -> r.changedBy() == null ? "" : r.changedBy()));
         revisionTable.getColumns().add(revCol("Notiz", 300, r -> r.note() == null ? "" : r.note()));
         revisionTable.getSelectionModel().selectedItemProperty().addListener((o, a, r) ->
                 revisionContent.setText(r == null ? "" : "description: " + r.description() + "\n\n" + r.content()));
@@ -190,7 +225,7 @@ public class SkillsView extends BorderPane {
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
-        VBox box = new VBox(6, title, description, meta, tabs);
+        VBox box = new VBox(6, title, description, meta, readOnlyHint, tabs);
         box.setPadding(new Insets(14, 16, 12, 16));
         return box;
     }
@@ -199,6 +234,8 @@ public class SkillsView extends BorderPane {
 
     /** Lädt die Übersicht neu (Hintergrund-Thread) und behält Auswahl und Filter. */
     public void refresh() {
+        userLabel.setText(users.emailIfKnown().map(e -> "Benutzer: " + e + " (" + users.source() + ")")
+                .orElse("Kein Benutzer – im Modul „Skills“ eintragen oder git config --global user.email setzen"));
         background(service::overview, list -> {
             String keep = selected().map(SkillViews.Summary::name).orElse(null);
             items.setAll(list);
@@ -220,7 +257,8 @@ public class SkillsView extends BorderPane {
     void applyFilter() {
         String q = search.getText() == null ? "" : search.getText().trim().toLowerCase(Locale.ROOT);
         String cat = category.getValue();
-        filtered.setPredicate(s -> matchesCategory(s, cat) && matchesQuery(s, q));
+        String scope = scopeFilter.getValue();
+        filtered.setPredicate(s -> matchesCategory(s, cat) && matchesScope(s, scope) && matchesQuery(s, q));
         countLabel.setText(filtered.size() == items.size() ? items.size() + " Skill(s)"
                 : filtered.size() + " von " + items.size() + " Skill(s)");
     }
@@ -230,6 +268,48 @@ public class SkillsView extends BorderPane {
             return true;
         }
         return cat.equals(NO_CATEGORY) ? s.category() == null : cat.equals(s.category());
+    }
+
+    static boolean matchesScope(SkillViews.Summary s, String scope) {
+        if (scope == null || scope.equals(ALL_SCOPES)) {
+            return true;
+        }
+        return scope.equals(ONLY_GLOBAL) == s.global();
+    }
+
+    static String scopeLabel(SkillViews.Summary s) {
+        return switch (s.scope()) {
+            case GLOBAL -> "global";
+            case COPY -> s.templateUpdated() ? "Kopie ⟳" : "Kopie";
+            case OWN -> "eigen";
+        };
+    }
+
+    /** Hinweis im Detailbereich; {@code null} = keiner. */
+    static String scopeHint(SkillViews.Summary s) {
+        return switch (s.scope()) {
+            case GLOBAL -> "Globale Vorlage – schreibgeschützt. Ändert das LLM sie, entsteht automatisch eine "
+                    + "persönliche Kopie, die ab dann statt der Vorlage gilt.";
+            case COPY -> s.currentTemplateRevision() == null
+                    ? "Persönliche Kopie einer inzwischen zurückgezogenen Vorlage (Revision " + s.templateRevision() + ")."
+                    : s.templateUpdated()
+                    ? "Persönliche Kopie der Vorlage Revision " + s.templateRevision() + " – die Vorlage ist inzwischen "
+                    + "bei Revision " + s.currentTemplateRevision() + ". Löschen der Kopie zeigt wieder die Vorlage."
+                    : "Persönliche Kopie der globalen Vorlage (Revision " + s.templateRevision() + "); sie verdeckt die "
+                    + "Vorlage. Löschen der Kopie zeigt wieder die Vorlage.";
+            case OWN -> null;
+        };
+    }
+
+    private void updateActions(SkillViews.Summary s) {
+        boolean admin = users.admin();
+        delete.setDisable(s == null || s.global());
+        publish.setVisible(admin);
+        publish.setManaged(admin);
+        unpublish.setVisible(admin);
+        unpublish.setManaged(admin);
+        publish.setDisable(s == null || s.global());
+        unpublish.setDisable(s == null || !s.global());
     }
 
     /** Filtert lokal über Name, Beschreibung und Tags; die Volltextsuche im Inhalt bietet skills_list. */
@@ -257,6 +337,10 @@ public class SkillsView extends BorderPane {
             title.setText(sum.name());
             description.setText(sum.description());
             meta.setText(metaLine(det));
+            String hint = scopeHint(sum);
+            readOnlyHint.setText(hint == null ? "" : hint);
+            readOnlyHint.setVisible(hint != null);
+            updateActions(sum);
             content.setText(det.content());
             content.positionCaret(0);
             fileList.getItems().setAll(det.files());
@@ -298,6 +382,25 @@ public class SkillsView extends BorderPane {
         }
         a.showAndWait().filter(b -> b == ButtonType.OK)
                 .ifPresent(b -> background(() -> service.delete(s.name()), msg -> refresh()));
+    }
+
+    private void confirmPublish(SkillViews.Summary s) {
+        confirm("Skill „" + s.name() + "“ als globale Vorlage für alle Benutzer veröffentlichen? Eine bestehende "
+                + "Vorlage gleichen Namens wird mit deinem Stand aktualisiert.", () -> service.publish(s.name()));
+    }
+
+    private void confirmUnpublish(SkillViews.Summary s) {
+        confirm("Globale Vorlage „" + s.name() + "“ zurückziehen? Persönliche Kopien der Benutzer bleiben erhalten.",
+                () -> service.unpublish(s.name()));
+    }
+
+    private void confirm(String question, Supplier<String> action) {
+        Alert a = new Alert(Alert.AlertType.CONFIRMATION, question, ButtonType.CANCEL, ButtonType.OK);
+        a.setHeaderText(null);
+        if (getScene() != null) {
+            a.initOwner(getScene().getWindow());
+        }
+        a.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> background(action, msg -> refresh()));
     }
 
     private Optional<SkillViews.Summary> selected() {

@@ -30,12 +30,16 @@ public class SkillRevision {
     @Column(nullable = false)
     private int revision;
 
-    /** create, update, patch, write_file, remove_file */
+    /** create, update, patch, write_file, remove_file, adopt, publish */
     @Column(nullable = false, length = 20)
     private String action;
 
     @Column(length = 500)
     private String note;
+
+    /** Wer geändert hat (E-Mail); bei Revisionen vor dem User-Scoping leer. */
+    @Column(length = SkillUser.MAX_EMAIL)
+    private String changedBy;
 
     @Column(nullable = false, length = 1024)
     private String description;
@@ -50,12 +54,13 @@ public class SkillRevision {
         // JPA
     }
 
-    SkillRevision(Skill skill, int revision, String action, String note, String description, String content,
-                  Instant changedAt) {
+    SkillRevision(Skill skill, int revision, String action, String note, String changedBy, String description,
+                  String content, Instant changedAt) {
         this.skill = skill;
         this.revision = revision;
         this.action = action;
         this.note = note;
+        this.changedBy = changedBy;
         this.description = description;
         this.content = content;
         this.changedAt = changedAt;
@@ -71,6 +76,10 @@ public class SkillRevision {
 
     public String getNote() {
         return note;
+    }
+
+    public String getChangedBy() {
+        return changedBy;
     }
 
     public String getDescription() {

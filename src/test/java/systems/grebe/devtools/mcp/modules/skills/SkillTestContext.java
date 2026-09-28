@@ -14,4 +14,9 @@ public final class SkillTestContext {
     public static ConfigurableApplicationContext start(Path home) {
         return SkillServiceTest.start(home, Map.of());
     }
+
+    /** Benutzer mit fester Git-E-Mail statt ~/.gitconfig. */
+    public static SkillUser user(systems.grebe.devtools.mcp.config.SettingsStore store, String gitEmail) {
+        return new SkillUser(store, () -> java.util.Optional.ofNullable(gitEmail));
+    }
 }
