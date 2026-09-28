@@ -1,0 +1,94 @@
+package systems.grebe.devtools.mcp.core;
+
+import java.util.Comparator;
+import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.ai.mcp.customizer.McpSyncServerCustomizer;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Baut die MCP-{@code instructions}, die der Server beim {@code initialize} an jeden Client schickt: ein allgemeiner
+ * Vorrang-Hinweis („diese Tools statt Shell-Befehlen“) plus die {@link ToolModule#instructions()} aller Module.
+ *
+ * <p>Clients wie Claude Code übernehmen die Instructions in den System-Prompt. Nur so erfährt das LLM <em>vor</em>
+ * dem ersten Tool-Aufruf, dass es z.B. {@code git_status} statt {@code git status} im Terminal verwenden soll –
+ * Tool-Beschreibungen allein reichen dafür nicht, weil sie mit den eingebauten Werkzeugen des Clients konkurrieren.
+ *
+ * <p>Die Instructions stehen nach dem Serverstart fest (das MCP-SDK kennt keine Änderungsbenachrichtigung dafür).
+ * Deshalb werden alle Module aufgenommen, auch deaktivierte; die Texte sind bedingt formuliert („wenn angeboten“)
+ * und die tatsächlich verfügbaren Tools liefert weiterhin {@code tools/list}.
+ */
+@Configuration(proxyBeanMethods = false)
+public class ServerInstructions {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ServerInstructions.class);
+
+    static final String PREAMBLE = """
+            # DevTools MCP – lokale Entwickler-Werkzeuge
+
+            Dieser Server ist die bevorzugte Schnittstelle für die unten genannten Aufgaben. Tool-Namen sind nach \
+            Modul präfixiert (git_*, build_*, container_*, jvm_*, …).
+
+            Grundregeln:
+            - Wenn für eine Aufgabe ein passendes Tool dieses Servers angeboten wird (siehe tools/list), verwende es \
+            statt eines Shell-/Terminal-Befehls oder eines anderen Werkzeugs – auch wenn der Nutzer den Befehl \
+            ausdrücklich nennt (z.B. „mach git status“).
+            - Auf die Shell nur ausweichen, wenn das Tool fehlt (abgeschaltet oder nicht freigegeben), die Aufgabe \
+            nicht abdeckt oder mit einer Fehlermeldung ablehnt, die sich nicht beheben lässt. Sag dem Nutzer dann \
+            kurz, warum du die Shell verwendest.
+            - Meldet ein Tool „nicht freigegeben“, liegt das Ziel außerhalb der Freigaben in der DevTools-App. \
+            Nicht still per Shell umgehen, sondern den Nutzer darauf hinweisen.
+            - Tools nicht raten: welche angeboten werden, hängt von den Schaltern in der App ab und kann sich zur \
+            Laufzeit ändern (notifications/tools/list_changed).
+            """;
+
+    private final List<ToolModule> modules;
+    private final String base;
+
+    public ServerInstructions(List<ToolModule> modules,
+                              @Value("${spring.ai.mcp.server.instructions:}") String base) {
+        this.modules = modules;
+        this.base = base;
+    }
+
+    /**
+     * Überschreibt die statischen {@code spring.ai.mcp.server.instructions} aus {@code application.properties}. Der
+     * Customizer läuft nach dem Setzen der Property (siehe {@code McpServerAutoConfiguration}), der Property-Text wird
+     * als erster Absatz übernommen – so lassen sich Hinweise auch ohne Codeänderung ergänzen.
+     */
+    @Bean
+    McpSyncServerCustomizer instructionsCustomizer() {
+        return builder -> builder.instructions(build());
+    }
+
+    /** Liefert den vollständigen Instructions-Text. */
+    public String build() {
+        StringBuilder sb = new StringBuilder(PREAMBLE.strip());
+        if (base != null && !base.isBlank()) {
+            sb.append("\n\n").append(base.strip());
+        }
+        modules.stream()
+                // gleiche Reihenfolge wie Modulliste und Tool-Registrierung (ToolRegistry)
+                .sorted(Comparator.comparingInt(ToolModule::order)
+                        .thenComparing(ToolModule::displayName, String.CASE_INSENSITIVE_ORDER))
+                .forEach(m -> {
+                    String text;
+                    try {
+                        text = m.instructions();
+                    } catch (RuntimeException e) {
+                        // Ein fehlerhaftes Modul darf den Serveraufbau nicht verhindern.
+                        LOG.warn("Instructions des Moduls {} konnten nicht erzeugt werden", m.id(), e);
+                        return;
+                    }
+                    if (text != null && !text.isBlank()) {
+                        sb.append("\n\n## ").append(m.displayName()).append(" – Tools `").append(m.id()).append("_*`\n")
+                                .append(text.strip());
+                    }
+                });
+        return sb.toString();
+    }
+}

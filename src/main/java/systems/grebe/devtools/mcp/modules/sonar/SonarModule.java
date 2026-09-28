@@ -39,6 +39,14 @@ public class SonarModule implements ToolModule {
     }
 
     @Override
+    public String instructions() {
+        return """
+                Für SonarQube/SonarCloud diese Tools statt `curl` gegen die Web-API oder eines Browsers verwenden: \
+                `sonar_list_projects` (Projektschlüssel finden), `sonar_quality_gate`, `sonar_issues` → `sonar_issue_detail` → \
+                `sonar_rule` (Finding verstehen und beheben), `sonar_measures`, `sonar_hotspots`, `sonar_source`.""";
+    }
+
+    @Override
     public List<ConfigField> configSchema() {
         return List.of(
                 ConfigField.of(BASE_URL, "Server-URL", FieldType.URL).asRequired().withDefault("http://localhost:9000")

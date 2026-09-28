@@ -44,6 +44,15 @@ public class DebugModule implements ToolModule {
     }
 
     @Override
+    public String instructions() {
+        return """
+                Für Breakpoint-Debugging einer JVM mit JDWP diese Tools statt `jdb` verwenden: `debug_attach` → \
+                `debug_set_breakpoint` → `debug_wait_for_break` → `debug_stack`/`debug_variables` → `debug_step`/`debug_resume`; zum \
+                Schluss `debug_detach`. Breakpoints halten Threads der Ziel-JVM an – vorher mit dem Nutzer klären, wenn er gerade \
+                selbst in der JVM arbeitet oder einen eigenen Debugger verbunden hat.""";
+    }
+
+    @Override
     public int order() {
         return 250;
     }

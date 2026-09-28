@@ -141,6 +141,25 @@ class McpServerIntegrationTest {
     }
 
     @Test
+    void initializeSendsInstructionsPreferringMcpToolsOverShell() {
+        String instructions = client.getServerInstructions();
+        assertThat(instructions)
+                .startsWith("# DevTools MCP")
+                .contains("statt eines Shell-/Terminal-Befehls")
+                // Git-Abschnitt mit Zuordnung Shell-Befehl -> Tool
+                .contains("## Git – Tools `git_*`", "NICHT `git` im Terminal", "`git_status` (statt `git status`)",
+                        "`git_commit` (statt `git commit`)", "`git_list_repositories`")
+                // alle Module mit Hinweisen, auch standardmäßig deaktivierte (Instructions stehen ab Start fest)
+                .contains("Tools `build_*`", "Tools `container_*`", "Tools `sonar_*`", "Tools `jvm_*`",
+                        "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`")
+                .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
+        // Reihenfolge wie in der Modulliste: order, dann Anzeigename
+        assertThat(instructions.indexOf("Tools `git_*`")).isLessThan(instructions.indexOf("Tools `container_*`"));
+        assertThat(instructions.indexOf("Tools `container_*`")).isLessThan(instructions.indexOf("Tools `jvm_*`"));
+        assertThat(instructions.indexOf("Tools `jvm_*`")).isLessThan(instructions.indexOf("Tools `debug_*`"));
+    }
+
+    @Test
     void callsGitToolAndLogsInvocation() {
         McpSchema.CallToolResult result = client.callTool(callRequest("git_log", Map.of()));
         assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
