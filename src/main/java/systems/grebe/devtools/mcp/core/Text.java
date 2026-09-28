@@ -15,7 +15,7 @@ public final class Text {
         }
         String[] lines = text.split("\\R", -1);
         if (lines.length <= maxLines) {
-            return text;
+            return String.join("\n", lines); // Zeilenenden vereinheitlichen (jcmd liefert unter Windows CRLF)
         }
         return String.join("\n", List.of(lines).subList(0, maxLines))
                 + "\n… [gekürzt: " + (lines.length - maxLines) + " weitere Zeilen. Eingrenzen, z.B. über 'path'.]";

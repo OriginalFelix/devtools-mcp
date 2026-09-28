@@ -43,7 +43,8 @@ public class MainView extends BorderPane {
     private final Label toolCount = new Label();
     private final Label authBadge = new Label();
 
-    public MainView(ToolRegistry registry, ToolInvocationLog log, SettingsStore store, String endpoint, Stage stage) {
+    public MainView(ToolRegistry registry, ToolInvocationLog log, SettingsStore store, String endpoint, Stage stage,
+                    java.util.List<Tab> extraTabs) {
         this.registry = registry;
         this.store = store;
         this.endpoint = endpoint;
@@ -56,6 +57,7 @@ public class MainView extends BorderPane {
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getTabs().add(new Tab("Module", modulesPane()));
         tabs.getTabs().add(new Tab("Aufrufe", new InvocationLogView(log)));
+        tabs.getTabs().addAll(extraTabs);
         setCenter(tabs);
 
         registry.addChangeListener(() -> Platform.runLater(this::refresh));
@@ -148,10 +150,11 @@ public class MainView extends BorderPane {
             long active = registry.availableTools(m.id()).stream()
                     .filter(t -> registry.isToolActive(m.id(), t.name())).count();
             Circle dot = new Circle(5);
-            dot.getStyleClass().addAll("module-dot", error ? "error" : enabled ? "on" : "off");
+            dot.getStyleClass().addAll("module-dot", !m.hasTools() ? "settings" : error ? "error" : enabled ? "on" : "off");
             Label name = new Label(m.displayName());
             name.getStyleClass().add("module-name");
-            Label sub = new Label(error ? "Fehler" : enabled ? active + " von " + total + " Tools aktiv" : "deaktiviert");
+            Label sub = new Label(!m.hasTools() ? "Einstellungen" : error ? "Fehler"
+                    : enabled ? active + " von " + total + " Tools aktiv" : "deaktiviert");
             sub.getStyleClass().add("module-sub");
             HBox row = new HBox(10, dot, new VBox(1, name, sub));
             row.setAlignment(Pos.CENTER_LEFT);

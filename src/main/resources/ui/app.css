@@ -47,6 +47,7 @@
 .module-dot.on { -fx-fill: #38a169; }
 .module-dot.off { -fx-fill: #cbd5e0; }
 .module-dot.error { -fx-fill: #e53e3e; }
+.module-dot.settings { -fx-fill: #805ad5; }
 
 /* Detailbereich */
 .detail-scroll, .detail-scroll > .viewport { -fx-background-color: white; }

@@ -45,7 +45,8 @@ public class ToolRegistry {
         this.store = store;
         this.invocationLog = invocationLog;
         modules.stream()
-                .sorted(Comparator.comparing(ToolModule::displayName, String.CASE_INSENSITIVE_ORDER))
+                .sorted(Comparator.comparingInt(ToolModule::order)
+                        .thenComparing(ToolModule::displayName, String.CASE_INSENSITIVE_ORDER))
                 .forEach(m -> {
                     if (states.containsKey(m.id())) {
                         throw new IllegalStateException("Doppelte Modul-ID: " + m.id());

@@ -84,8 +84,14 @@ public class ModuleDetailPane extends ScrollPane {
         toolsHint.setWrapText(true);
 
         VBox formHolder = new VBox();
-        content.getChildren().addAll(header, description, new Separator(), configTitle, formHolder, actions, status,
-                new Separator(), toolsTitle, toolsHint, toolBox);
+        content.getChildren().addAll(header, description, new Separator(), configTitle, formHolder, actions, status);
+        if (module.hasTools()) {
+            content.getChildren().addAll(new Separator(), toolsTitle, toolsHint, toolBox);
+        } else {
+            enabled.setVisible(false);
+            enabled.setManaged(false);
+            configTitle.setText("Einstellungen (gelten für alle Java-Diagnosemodule)");
+        }
 
         this.formHolder = formHolder;
         reload();

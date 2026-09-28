@@ -1,11 +1,13 @@
 package systems.grebe.devtools.mcp.fx;
 
+import java.util.List;
 import java.util.Optional;
 
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Tab;
 import javafx.scene.control.TextArea;
 import javafx.stage.Stage;
 import org.slf4j.Logger;
@@ -15,7 +17,10 @@ import systems.grebe.devtools.mcp.DevToolsMcpApplication;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.modules.visualvm.VisualVmModule;
 import systems.grebe.devtools.mcp.ui.AppIcons;
+import systems.grebe.devtools.mcp.ui.ArtifactsView;
 import systems.grebe.devtools.mcp.ui.MainView;
 import systems.grebe.devtools.mcp.ui.TrayManager;
 
@@ -56,7 +61,9 @@ public class FxApp extends Application {
         String endpoint = "http://127.0.0.1:" + port
                 + context.getEnvironment().getProperty("spring.ai.mcp.server.streamable-http.mcp-endpoint", "/mcp");
 
-        MainView view = new MainView(registry, log, store, endpoint, stage);
+        MainView view = new MainView(registry, log, store, endpoint, stage, List.of(
+                new Tab("Artefakte", new ArtifactsView(context.getBean(JavaEnvironmentProvider.class), getHostServices(),
+                        context.getBean(VisualVmModule.class)::openFile))));
         Scene scene = new Scene(view, 1180, 760);
         scene.getStylesheets().add(getClass().getResource("/ui/app.css").toExternalForm());
         stage.setScene(scene);

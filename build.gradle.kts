@@ -40,6 +40,11 @@ dependencies {
     implementation("org.springframework.ai:spring-ai-starter-mcp-server-webflux")
     implementation("org.eclipse.jgit:org.eclipse.jgit:$jgitVersion")
 
+    // Performance/Diagnose: Flame Graphs aus JFR (async-profiler-Konverter) und VisualVM-Engines (Heap, Sampler)
+    implementation("tools.profiler:jfr-converter:4.5")
+    implementation("org.graalvm.visualvm.modules:org-graalvm-visualvm-lib-jfluid-heap:2.2")
+    implementation("org.graalvm.visualvm.modules:org-graalvm-visualvm-lib-jfluid:2.2")
+
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
     }

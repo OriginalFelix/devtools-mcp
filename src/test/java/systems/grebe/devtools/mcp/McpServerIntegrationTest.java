@@ -112,6 +112,25 @@ class McpServerIntegrationTest {
     }
 
     @Test
+    void performanceModulesAreRegistered() {
+        // jvm, jfr, visualvm standardmäßig an; asprof und debug aus; 'java' ist reines Einstellungsmodul
+        assertThat(toolNames()).contains("jvm_processes", "jvm_threads", "jvm_heap_dump", "jfr_record", "jfr_analyze",
+                        "jfr_flamegraph", "visualvm_heap_analyze", "visualvm_sample_cpu")
+                .noneMatch(n -> n.startsWith("asprof_") || n.startsWith("debug_") || n.startsWith("java_"));
+
+        registry.setModuleEnabled("debug", true);
+        registry.setModuleEnabled("asprof", true);
+        assertThat(toolNames()).contains("debug_attach", "debug_set_breakpoint", "debug_variables", "asprof_profile");
+        registry.setModuleEnabled("debug", false);
+        registry.setModuleEnabled("asprof", false);
+        assertThat(toolNames()).noneMatch(n -> n.startsWith("debug_"));
+
+        McpSchema.CallToolResult result = client.callTool(callRequest("jvm_processes", Map.of()));
+        assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
+        assertThat(((McpSchema.TextContent) result.content().getFirst()).text()).contains("Lokale JVMs");
+    }
+
+    @Test
     void callsGitToolAndLogsInvocation() {
         McpSchema.CallToolResult result = client.callTool(callRequest("git_log", Map.of()));
         assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);

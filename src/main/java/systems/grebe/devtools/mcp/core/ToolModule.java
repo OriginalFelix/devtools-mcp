@@ -45,4 +45,17 @@ public interface ToolModule {
     default boolean enabledByDefault() {
         return false;
     }
+
+    /**
+     * {@code false} für reine Einstellungs-Module (z.B. gemeinsame Grundeinstellungen mehrerer Module):
+     * die UI blendet dann Schalter und Tool-Liste aus.
+     */
+    default boolean hasTools() {
+        return true;
+    }
+
+    /** Sortierung in der Modulliste (aufsteigend, danach Anzeigename). */
+    default int order() {
+        return 100;
+    }
 }
