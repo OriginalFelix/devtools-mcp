@@ -82,6 +82,7 @@ claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
   die ungespeicherten Eingaben.
 * **Tools**: jedes Tool einzeln abschaltbar.
 * **Aufrufe**: Live-Protokoll aller Tool-Aufrufe mit Argumenten, Ergebnis, Dauer und Fehlern.
+* **Skills**: Übersicht der gespeicherten Skills mit Inhalt, Zusatzdateien und Historie (aktualisiert sich live).
 * **Einstellungen**: Port (nach Neustart), optionales Bearer-Token (sofort wirksam), Tray-Verhalten.
 * Fenster schließen → läuft im System-Tray weiter; *Beenden* über das Tray-Menü.
 
@@ -139,6 +140,11 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
   * Review, Prompt und Erinnerung gibt es nur, wenn „Anlegen und Bearbeiten“ an ist.
   * **Mit Hermes:** Hermes hat einen eigenen Hintergrund-Review, der in `~/.hermes/skills` schreibt. Sollen die
     Skills nur hier liegen, dort `skills.creation_nudge_interval: 0` setzen – sonst entstehen zwei Bibliotheken.
+* **Übersicht in der App:** Tab **Skills** – links alle Skills (Name, Kategorie, Revision, wie oft geladen, zuletzt
+  geändert) mit Suche über Name/Beschreibung/Tags und Kategorie-Filter, rechts Beschreibung, Metadaten, Inhalt,
+  Zusatzdateien und Änderungshistorie mit dem jeweiligen Stand. Legt oder ändert das LLM einen Skill, aktualisiert
+  sich die Übersicht selbst (nach dem Commit, nicht bei Rollback). Löschen geht hier auch ohne den Schalter
+  „Löschen erlauben“ – der gilt nur für das LLM.
 * Die H2-Datei ist exklusiv gesperrt, solange die App läuft. Wer parallel mit IntelliJ o.ä. hineinschauen will,
   hängt `;AUTO_SERVER=TRUE` an die JDBC-URL.
 

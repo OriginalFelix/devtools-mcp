@@ -76,3 +76,7 @@
 .mono, .mono .content { -fx-font-family: "Consolas", "Menlo", monospace; -fx-font-size: 12px; }
 .table-cell.ok { -fx-text-fill: #38a169; -fx-alignment: center; }
 .table-cell.error { -fx-text-fill: #e53e3e; -fx-alignment: center; }
+
+/* Skills */
+.skills-view .split-pane { -fx-background-color: white; -fx-padding: 0; }
+.skills-view .text-area.mono { -fx-background-color: #f7f9fb; }

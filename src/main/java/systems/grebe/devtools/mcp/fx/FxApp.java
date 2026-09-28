@@ -18,10 +18,13 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.modules.skills.SkillService;
+import systems.grebe.devtools.mcp.modules.skills.SkillsPersistenceConfig;
 import systems.grebe.devtools.mcp.modules.visualvm.VisualVmModule;
 import systems.grebe.devtools.mcp.ui.AppIcons;
 import systems.grebe.devtools.mcp.ui.ArtifactsView;
 import systems.grebe.devtools.mcp.ui.MainView;
+import systems.grebe.devtools.mcp.ui.SkillsView;
 import systems.grebe.devtools.mcp.ui.TrayManager;
 
 /**
@@ -62,6 +65,8 @@ public class FxApp extends Application {
                 + context.getEnvironment().getProperty("spring.ai.mcp.server.streamable-http.mcp-endpoint", "/mcp");
 
         MainView view = new MainView(registry, log, store, endpoint, stage, List.of(
+                new Tab("Skills", new SkillsView(context.getBean(SkillService.class),
+                        context.getBean(SkillsPersistenceConfig.Status.class))),
                 new Tab("Artefakte", new ArtifactsView(context.getBean(JavaEnvironmentProvider.class), getHostServices(),
                         context.getBean(VisualVmModule.class)::openFile))));
         Scene scene = new Scene(view, 1180, 760);

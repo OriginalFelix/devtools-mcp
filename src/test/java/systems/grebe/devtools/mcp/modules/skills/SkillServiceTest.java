@@ -277,4 +277,71 @@ class SkillServiceTest {
         assertThat(status.effective().jdbcUrl()).isEqualTo(SkillsPersistenceConfig.UNAVAILABLE_URL);
         assertThat(status.error()).isNotBlank();
     }
+
+    @Test
+    void overviewAndDetailsForTheGui() {
+        createHeapSkill();
+        service.create("ohne-kat", "Ohne Kategorie.", "x", null, null, 5_000);
+        service.writeFile("wildfly-heap-leak", "references/jcmd.md", "GC.class_histogram", "Referenz", 5_000);
+        service.view("wildfly-heap-leak", null);
+
+        List<SkillViews.Summary> overview = service.overview();
+        // wie skills_list: Kategorie (ohne zuerst), dann Name
+        assertThat(overview).extracting(SkillViews.Summary::name).containsExactly("ohne-kat", "wildfly-heap-leak");
+        SkillViews.Summary heap = overview.get(1);
+        assertThat(heap.category()).isEqualTo("software-development");
+        assertThat(heap.tags()).containsExactly("wildfly", "heap", "leak-suche");
+        assertThat(heap.revision()).isEqualTo(2);
+        assertThat(heap.useCount()).isEqualTo(1);
+        assertThat(heap.lastUsedAt()).isNotNull();
+        assertThat(heap.fileCount()).isEqualTo(1);
+
+        SkillViews.Details d = service.details("wildfly-heap-leak").orElseThrow();
+        assertThat(d.content()).contains("1. jvm_heap zweimal vergleichen");
+        assertThat(d.files()).extracting(SkillViews.File::path).containsExactly("references/jcmd.md");
+        assertThat(d.revisions()).extracting(SkillViews.Revision::revision).containsExactly(2, 1);
+        assertThat(d.revisions().getFirst().action()).isEqualTo("write_file");
+        assertThat(d.revisions().getFirst().note()).isEqualTo("Referenz");
+        assertThat(service.details("gibt-es-nicht")).isEmpty();
+    }
+
+    @Test
+    void changeListenerFiresAfterCommitOnly() {
+        java.util.concurrent.atomic.AtomicInteger events = new java.util.concurrent.atomic.AtomicInteger();
+        service.addChangeListener(events::incrementAndGet);
+
+        createHeapSkill();
+        assertThat(events).hasValue(1);
+        service.patch("wildfly-heap-leak", "Schritte", "Ablauf", null, null, null, null, 5_000);
+        service.writeFile("wildfly-heap-leak", "references/a.md", "a", null, 5_000);
+        service.removeFile("wildfly-heap-leak", "references/a.md", null);
+        service.update("wildfly-heap-leak", "neu", null, null, null, null, null, 5_000);
+        assertThat(events).hasValue(5);
+
+        // Lesen und Nutzung zählen lösen nichts aus
+        service.view("wildfly-heap-leak", null);
+        service.list(null, null);
+        service.overview();
+        assertThat(events).hasValue(5);
+
+        // Rollback: kein Ereignis
+        assertThatThrownBy(() -> service.patch("wildfly-heap-leak", "Ablauf", "x".repeat(5_000), null, null, null,
+                null, 5_000)).hasMessageContaining("max. 5000");
+        assertThatThrownBy(() -> service.create("wildfly-heap-leak", "x", "y", null, null, 5_000))
+                .hasMessageContaining("existiert bereits");
+        assertThat(events).hasValue(5);
+
+        service.delete("wildfly-heap-leak");
+        assertThat(events).hasValue(6);
+
+        // Rollback, nachdem die Änderung schon angemeldet war (äußere Transaktion): ebenfalls kein Ereignis
+        var tx = new org.springframework.transaction.support.TransactionTemplate(
+                context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
+        tx.executeWithoutResult(status -> {
+            service.create("verworfen", "d", "c", null, null, 5_000);
+            status.setRollbackOnly();
+        });
+        assertThat(service.details("verworfen")).isEmpty();
+        assertThat(events).hasValue(6);
+    }
 }

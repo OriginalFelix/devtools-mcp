@@ -9,11 +9,17 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Fachlogik des Skill-Speichers: Validierung, Suche, Anlegen, gezieltes Patchen, Zusatzdateien und Historie über die
@@ -37,13 +43,72 @@ public class SkillService {
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
             .withZone(ZoneId.systemDefault());
+    private static final Logger LOG = LoggerFactory.getLogger(SkillService.class);
 
     private final SkillRepository skills;
     private final SkillRevisionRepository revisions;
+    private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
     public SkillService(SkillRepository skills, SkillRevisionRepository revisions) {
         this.skills = skills;
         this.revisions = revisions;
+    }
+
+    // ------------------------------------------------------------------ Oberfläche
+
+    /**
+     * Wird nach jeder erfolgreich committeten Änderung aufgerufen (auch durch das LLM) – nicht bei Rollback und
+     * nicht, wenn nur die Nutzung gezählt wurde. Läuft im Thread des Aufrufers, nicht im FX-Thread.
+     */
+    public void addChangeListener(Runnable listener) {
+        changeListeners.add(listener);
+    }
+
+    /** Alle Skills für die Übersicht, sortiert nach Kategorie und Name. */
+    @Transactional(readOnly = true)
+    public List<SkillViews.Summary> overview() {
+        return skills.search(null, null).stream().map(SkillService::summary).toList();
+    }
+
+    /** Vollständiger Skill samt Dateien und Historie (neueste Revision zuerst). */
+    @Transactional(readOnly = true)
+    public Optional<SkillViews.Details> details(String name) {
+        return skills.findByName(name).map(k -> new SkillViews.Details(summary(k), k.getContent(), k.getCreatedAt(),
+                k.getFiles().stream().map(f -> new SkillViews.File(f.getPath(), f.getContent(), f.getUpdatedAt()))
+                        .toList(),
+                revisions.findBySkillOrderByRevisionDesc(k).stream().map(r -> new SkillViews.Revision(r.getRevision(),
+                        r.getAction(), r.getNote(), r.getChangedAt(), r.getDescription(), r.getContent())).toList()));
+    }
+
+    private static SkillViews.Summary summary(Skill k) {
+        return new SkillViews.Summary(k.getName(), k.getDescription(), k.getCategory(), k.tagList(), k.getRevision(),
+                k.getUseCount(), k.getLastUsedAt(), k.getUpdatedAt(), k.getFiles().size());
+    }
+
+    private void changed() {
+        if (changeListeners.isEmpty()) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    fireChanged();
+                }
+            });
+        } else {
+            fireChanged();
+        }
+    }
+
+    private void fireChanged() {
+        for (Runnable l : changeListeners) {
+            try {
+                l.run();
+            } catch (RuntimeException e) {
+                LOG.warn("Skill-ChangeListener fehlgeschlagen", e);
+            }
+        }
     }
 
     // ------------------------------------------------------------------ Lesen
@@ -154,6 +219,7 @@ public class SkillService {
         Skill k = new Skill(n, d, body, cat, t, Instant.now());
         k.recordRevision("create", null, k.getCreatedAt());
         skills.save(k);
+        changed();
         return "Skill '" + n + "' angelegt (Revision 1).";
     }
 
@@ -187,6 +253,7 @@ public class SkillService {
             return "Keine Änderung an '" + n + "' (Revision " + k.getRevision() + ").";
         }
         k.recordRevision("update", normalizeNote(note), Instant.now());
+        changed();
         return "Skill '" + n + "' aktualisiert (Revision " + k.getRevision() + ").";
     }
 
@@ -226,6 +293,7 @@ public class SkillService {
             file.update(requireContent(after, "Dateiinhalt", maxContentChars), now);
         }
         k.recordRevision("patch", normalizeNote(note), now);
+        changed();
         return "Skill '" + n + "' gepatcht" + (path == null ? "" : " (" + path + ")") + ": "
                 + (all ? count : 1) + " Stelle(n) ersetzt, Revision " + k.getRevision() + ".";
     }
@@ -239,6 +307,7 @@ public class SkillService {
         boolean exists = k.file(p).isPresent();
         k.file(p).ifPresentOrElse(f -> f.update(body, now), () -> k.addFile(new SkillFile(k, p, body, now)));
         k.recordRevision("write_file", noteOr(note, p), now);
+        changed();
         return "Datei '" + p + "' in Skill '" + n + "' " + (exists ? "überschrieben" : "angelegt")
                 + " (Revision " + k.getRevision() + ").";
     }
@@ -251,6 +320,7 @@ public class SkillService {
                 "Skill '" + n + "' hat keine Datei '" + p + "'. Vorhanden: " + filePaths(k)));
         k.removeFile(f);
         k.recordRevision("remove_file", noteOr(note, p), Instant.now());
+        changed();
         return "Datei '" + p + "' aus Skill '" + n + "' entfernt (Revision " + k.getRevision() + ").";
     }
 
@@ -259,6 +329,7 @@ public class SkillService {
         Skill k = find(n);
         int files = k.getFiles().size();
         skills.delete(k);
+        changed();
         return "Skill '" + n + "' samt " + files + " Datei(en) und Historie gelöscht.";
     }
 
