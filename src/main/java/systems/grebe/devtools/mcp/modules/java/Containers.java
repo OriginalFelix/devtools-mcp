@@ -4,84 +4,53 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 
 import systems.grebe.devtools.mcp.core.CommandRunner;
+import systems.grebe.devtools.mcp.modules.container.ContainerEnvironment;
+import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 
-/** Zugriff auf Container über die docker- bzw. podman-CLI. */
+/**
+ * Container-Zugriff für die Java-Diagnosemodule ({@code container:}-Ziele). Nutzt die Laufzeiten und
+ * Freigaben des Container-Moduls.
+ */
 public final class Containers {
 
-    private final String configured;
-    private final Pattern allowed;
-    private volatile String resolvedCli;
-    private volatile boolean resolved;
+    private final ContainerEnvironment env;
 
-    Containers(String configured, Pattern allowed) {
-        this.configured = configured == null ? "auto" : configured;
-        this.allowed = allowed;
+    Containers(ContainerEnvironment env) {
+        this.env = env;
     }
 
-    /** Verfügbare CLI oder {@code null}. */
+    /** ID der Standard-Laufzeit oder {@code null}, wenn keine erreichbar ist. */
     public String cli() {
-        if (!resolved) {
-            resolvedCli = detect();
-            resolved = true;
-        }
-        return resolvedCli;
+        ContainerRuntime rt = env.runtimeOrNull(null);
+        return rt == null ? null : rt.id();
     }
 
-    private String detect() {
-        if ("aus".equals(configured)) {
-            return null;
-        }
-        List<String> candidates = "auto".equals(configured) ? List.of("docker", "podman") : List.of(configured);
-        for (String c : candidates) {
-            try {
-                var r = CommandRunner.run(List.of(c, "ps", "-q"), Duration.ofSeconds(15));
-                if (r.ok()) {
-                    return c;
-                }
-            } catch (RuntimeException ignored) {
-                // nicht installiert
-            }
-        }
-        return null;
-    }
-
-    private String requireCli() {
-        String c = cli();
-        if (c == null) {
-            throw new IllegalStateException("Keine Container-Laufzeit verfügbar (docker/podman nicht gefunden oder nicht gestartet).");
-        }
-        return c;
+    private ContainerRuntime runtime() {
+        return env.runtime(null);
     }
 
     public void checkAllowed(String container) {
-        if (!container.matches("[A-Za-z0-9][A-Za-z0-9_.-]*")) {
-            throw new IllegalArgumentException("Ungültiger Containername: " + container);
-        }
-        if (allowed != null && !allowed.matcher(container).matches()) {
-            throw new IllegalArgumentException("Container '" + container + "' ist in den Java-Grundeinstellungen nicht freigegeben.");
-        }
+        env.checkContainer(container);
     }
 
     public record Container(String name, String image, String status) { }
 
     public List<Container> running() {
-        String c = cli();
-        if (c == null) {
+        ContainerRuntime rt = env.runtimeOrNull(null);
+        if (rt == null) {
             return List.of();
         }
-        var r = CommandRunner.runUtf8(List.of(c, "ps", "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}"), Duration.ofSeconds(20));
         List<Container> out = new ArrayList<>();
-        if (!r.ok()) {
-            return out;
-        }
-        for (String line : r.output().split("\\R")) {
-            String[] parts = line.split("\t");
-            if (parts.length >= 3 && (allowed == null || allowed.matcher(parts[0]).matches())) {
-                out.add(new Container(parts[0], parts[1], parts[2]));
+        try {
+            for (var c : rt.list(false)) {
+                if (env.containerAllowed(c.name())) {
+                    out.add(new Container(c.name(), c.image(), c.status()));
+                }
             }
+        } catch (RuntimeException ignored) {
+            // Laufzeit nicht erreichbar -> keine Container
         }
         return out;
     }
@@ -89,20 +58,17 @@ public final class Containers {
     /** Führt einen Befehl im Container aus. */
     public CommandRunner.Result exec(String container, Duration timeout, String... command) {
         checkAllowed(container);
-        List<String> cmd = new ArrayList<>(List.of(requireCli(), "exec", container));
-        cmd.addAll(List.of(command));
-        return CommandRunner.runUtf8(cmd, timeout);
+        var r = runtime().exec(container, List.of(command), null, null, timeout);
+        return new CommandRunner.Result(List.of(command), r.exitCode(), r.timedOut(), r.output());
     }
 
     public void copyFrom(String container, String containerPath, Path local) {
         checkAllowed(container);
-        CommandRunner.run(List.of(requireCli(), "cp", container + ":" + containerPath, local.toString()), Duration.ofMinutes(5))
-                .orThrow("Kopieren aus Container " + container);
+        runtime().copyFrom(container, containerPath, local);
     }
 
     public void copyTo(String container, Path local, String containerPath) {
         checkAllowed(container);
-        CommandRunner.run(List.of(requireCli(), "cp", local.toString(), container + ":" + containerPath), Duration.ofMinutes(5))
-                .orThrow("Kopieren in Container " + container);
+        runtime().copyTo(container, local, containerPath);
     }
 }

@@ -52,7 +52,8 @@ public class ToolRegistry {
                         throw new IllegalStateException("Doppelte Modul-ID: " + m.id());
                     }
                     ModuleSettings settings = store.module(m.id())
-                            .orElseGet(() -> new ModuleSettings(m.enabledByDefault(), Set.of(), Map.of()));
+                            .orElseGet(() -> new ModuleSettings(m.enabledByDefault(), Set.of(),
+                                    m.initialValues(other -> store.module(other).map(ModuleSettings::values).orElse(Map.of()))));
                     states.put(m.id(), new ModuleState(m, settings));
                 });
     }

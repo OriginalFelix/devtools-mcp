@@ -84,8 +84,7 @@ public final class Fixture implements AutoCloseable {
         Map<String, String> v = new java.util.HashMap<>(Map.of(
                 "artifactDir", artifactDir.toString(),
                 "includeProcesses", "testjvm\\.FixtureApp",
-                "excludeProcesses", "",
-                "containerCli", "auto"));
+                "excludeProcesses", ""));
         if (jmxPort > 0) {
             v.put("jmxTargets", "fixture=127.0.0.1:" + jmxPort);
         }

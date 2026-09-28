@@ -1,6 +1,8 @@
 package systems.grebe.devtools.mcp.core;
 
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 
 import org.springframework.ai.tool.ToolCallback;
 
@@ -57,5 +59,15 @@ public interface ToolModule {
     /** Sortierung in der Modulliste (aufsteigend, danach Anzeigename). */
     default int order() {
         return 100;
+    }
+
+    /**
+     * Anfangswerte, solange für dieses Modul noch keine Einstellungen gespeichert sind – z.B. um Werte aus
+     * einem anderen Modul zu übernehmen, wenn Einstellungen umgezogen sind.
+     *
+     * @param savedValues liefert die gespeicherten Werte eines anderen Moduls (leer, falls keine)
+     */
+    default Map<String, String> initialValues(Function<String, Map<String, String>> savedValues) {
+        return Map.of();
     }
 }

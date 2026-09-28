@@ -14,9 +14,35 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **async-profiler** 4.5 | `asprof_profile`, `asprof_start`, `asprof_stop`, `asprof_status` – Linux/macOS nativ, unter Windows für JVMs in Docker/Podman-Containern (Standard: aus) |
 | **VisualVM** | `visualvm_heap_analyze` (Heap-Engine: Histogramm, Retained Size, Pfad zur GC-Wurzel), `visualvm_sample_cpu` (JMX-Sampler, `.nps`-Snapshot), `visualvm_open`, `visualvm_open_file` (externe VisualVM-GUI) |
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
+| **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
 
-Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter,
-Container-CLI und JMX-Ziele für alle Performance-Module.
+Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
+und JMX-Ziele für alle Performance-Module. Container-Laufzeit und freigegebene Container kommen aus dem
+Container-Modul (ältere Einstellungen werden beim ersten Start übernommen).
+
+### Container-Laufzeiten erweitern (ServiceLoader)
+
+Laufzeiten sind über `modules/container/spi` austauschbar. Docker und Podman liefert die App mit; eine weitere
+Laufzeit (z.B. nerdctl) braucht nur zwei Dinge:
+
+```java
+public class NerdctlRuntimeProvider implements ContainerRuntimeProvider {
+    public String id() { return "nerdctl"; }
+    public String displayName() { return "nerdctl (containerd)"; }
+    public List<ConfigField> configFields() {
+        return List.of(ConfigField.of("binary", "Programm", FieldType.STRING).withDefault("nerdctl"));
+    }
+    public ContainerRuntime create(RuntimeSettings s) {
+        // Docker-kompatible CLI -> gemeinsame Basis wiederverwenden
+        return new CliContainerRuntime("nerdctl", s.getString("binary", "nerdctl"), List.of()) { };
+    }
+}
+```
+
+und eine Zeile in `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider`.
+Die UI zeigt dann automatisch „nerdctl (containerd): aktiv / Programm“, die Laufzeit erscheint in `container_runtimes`
+und ist über den Parameter `runtime` in allen `container_*`-Tools wählbar. Laufzeiten ohne CLI implementieren
+`ContainerRuntime` direkt (z.B. über eine REST-API).
 
 ### Ziel-JVMs
 
@@ -74,6 +100,10 @@ der Schlüssel liegt in `secret.key` daneben.
   Befehlen aus der Allowlist. Der Debugger verbindet sich nur mit freigegebenen Hosts, wertet keine Ausdrücke
   aus und verändert keine Werte; Sitzungen werden beim Deaktivieren/Beenden getrennt (Ziel-JVM läuft weiter).
 * Downloads (async-profiler, VisualVM) sind per SHA-256 geprüft und abschaltbar.
+* Container: Namens- und Image-Filter (Regex); exec, Lifecycle, Kopieren, run/pull, rm/rmi und Compose up/down
+  sind einzeln schaltbar und standardmäßig aus. exec optional nur mit freigegebenen Programmen, `run` bindet Ports
+  an 127.0.0.1 und erlaubt Bind-Mounts nur aus freigegebenen Host-Verzeichnissen, `rm` standardmäßig nur für über
+  `container_run` angelegte Container (Label `devtools-mcp`). Passwörter/Tokens in Umgebungsvariablen werden maskiert.
 
 ## Eigenes Modul schreiben
 

@@ -66,8 +66,9 @@ class AsyncProfilerContainerTest {
                 .orThrow("Quelle kopieren");
         Thread.sleep(8000);
 
-        env = new JavaEnvironment(ModuleConfig.of(new JavaSettingsModule().configSchema(), Map.of(
-                "artifactDir", artifacts.toString(), "containerCli", cli, "allowedContainers", "devtools-mcp-.*")));
+        env = new JavaEnvironment(ModuleConfig.of(new JavaSettingsModule().configSchema(), Map.of("artifactDir", artifacts.toString())),
+                systems.grebe.devtools.mcp.modules.container.ContainerEnvironment.withValues(Map.of(
+                        "defaultRuntime", cli, "allowedContainers", "devtools-mcp-.*")));
         var installer = new AsprofInstaller(ModuleConfig.of(new AsyncProfilerModule(null).configSchema(), Map.of()));
         tools = new AsyncProfilerTools(() -> env, installer, 60);
     }

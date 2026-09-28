@@ -112,6 +112,16 @@ class McpServerIntegrationTest {
     }
 
     @Test
+    void containerModuleOffersReadToolsByDefault() {
+        assertThat(toolNames()).contains("container_runtimes", "container_list", "container_inspect", "container_logs")
+                .doesNotContain("container_exec", "container_run", "container_rm", "container_stop");
+        registry.updateConfig("container", Map.of("allowExec", "true", "allowLifecycle", "true"));
+        assertThat(toolNames()).contains("container_exec", "container_start", "container_stop").doesNotContain("container_run");
+        registry.updateConfig("container", Map.of());
+        assertThat(toolNames()).doesNotContain("container_exec");
+    }
+
+    @Test
     void performanceModulesAreRegistered() {
         // jvm, jfr, visualvm standardmäßig an; asprof und debug aus; 'java' ist reines Einstellungsmodul
         assertThat(toolNames()).contains("jvm_processes", "jvm_threads", "jvm_heap_dump", "jfr_record", "jfr_analyze",

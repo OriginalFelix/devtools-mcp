@@ -10,6 +10,7 @@ import java.util.regex.PatternSyntaxException;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.CommandRunner;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.modules.container.ContainerEnvironment;
 
 /** Ausgewertete Grundeinstellungen + Zugriff auf Prozesse, Container, JMX und Artefakte. */
 public final class JavaEnvironment {
@@ -32,14 +33,17 @@ public final class JavaEnvironment {
     private final int maxLines;
 
     public JavaEnvironment(ModuleConfig c) {
+        this(c, ContainerEnvironment.defaults());
+    }
+
+    public JavaEnvironment(ModuleConfig c, ContainerEnvironment containerEnv) {
         this.jdkHome = c.get(JavaSettingsModule.JDK_HOME).map(Path::of).orElse(Path.of(System.getProperty("java.home")));
         Path dir = c.get(JavaSettingsModule.ARTIFACT_DIR).map(Path::of)
                 .orElse(SettingsStore.defaultHome().resolve("diagnostics"));
         this.artifacts = ArtifactStore.forDirectory(dir, c.getInt(JavaSettingsModule.MAX_ARTIFACTS, 50));
         this.processes = new LocalJvms(regex(c.getString(JavaSettingsModule.INCLUDE, null)),
                 regex(c.getString(JavaSettingsModule.EXCLUDE, null)), jcmd());
-        this.containers = new Containers(c.getString(JavaSettingsModule.CONTAINER_CLI, "auto"),
-                regex(c.getString(JavaSettingsModule.CONTAINERS, ".*")));
+        this.containers = new Containers(containerEnv);
         for (String line : c.getList(JavaSettingsModule.JMX_TARGETS)) {
             int eq = line.indexOf('=');
             int colon = line.lastIndexOf(':');

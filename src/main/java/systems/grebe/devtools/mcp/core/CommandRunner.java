@@ -46,7 +46,15 @@ public final class CommandRunner {
     }
 
     public static Result run(List<String> command, Duration timeout, Charset charset) {
+        return run(command, timeout, charset, null);
+    }
+
+    /** Wie {@link #run(List, Duration, Charset)}, mit Arbeitsverzeichnis ({@code null} = aktuelles). */
+    public static Result run(List<String> command, Duration timeout, Charset charset, java.nio.file.Path workDir) {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
+        if (workDir != null) {
+            pb.directory(workDir.toFile());
+        }
         Process p;
         try {
             p = pb.start();

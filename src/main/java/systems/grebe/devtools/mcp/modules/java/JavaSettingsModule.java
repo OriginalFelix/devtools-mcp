@@ -19,13 +19,23 @@ public class JavaSettingsModule implements ToolModule {
 
     public static final String ID = "java";
 
+    private final org.springframework.beans.factory.ObjectProvider<JavaEnvironmentProvider> envProvider;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public JavaSettingsModule(org.springframework.beans.factory.ObjectProvider<JavaEnvironmentProvider> envProvider) {
+        this.envProvider = envProvider;
+    }
+
+    /** Für Tests (nur Schema). */
+    public JavaSettingsModule() {
+        this(null);
+    }
+
     static final String JDK_HOME = "jdkHome";
     static final String ARTIFACT_DIR = "artifactDir";
     static final String MAX_ARTIFACTS = "maxArtifacts";
     static final String INCLUDE = "includeProcesses";
     static final String EXCLUDE = "excludeProcesses";
-    static final String CONTAINER_CLI = "containerCli";
-    static final String CONTAINERS = "allowedContainers";
     static final String JMX_TARGETS = "jmxTargets";
     static final String JMX_USER = "jmxUser";
     static final String JMX_PASSWORD = "jmxPassword";
@@ -77,12 +87,8 @@ public class JavaSettingsModule implements ToolModule {
                         .withHelp("Regulärer Ausdruck auf Hauptklasse/Kommandozeile. Leer = alle JVMs des Benutzers."),
                 ConfigField.of(EXCLUDE, "Prozesse ausschließen", FieldType.STRING)
                         .withDefault("com\\.intellij\\.idea\\.Main|org\\.gradle\\.launcher\\.daemon|org\\.jetbrains\\.")
-                        .withHelp("Regulärer Ausdruck. Diese App selbst ist immer ausgeschlossen."),
-                ConfigField.of(CONTAINER_CLI, "Container-Laufzeit", FieldType.ENUM).withDefault("auto")
-                        .withOptions("auto", "docker", "podman", "aus")
-                        .withHelp("Für Ziele der Form container:<name>. 'auto' probiert docker, dann podman."),
-                ConfigField.of(CONTAINERS, "Erlaubte Container", FieldType.STRING).withDefault(".*")
-                        .withHelp("Regulärer Ausdruck auf den Containernamen."),
+                        .withHelp("Regulärer Ausdruck. Diese App selbst ist immer ausgeschlossen. Container-Laufzeit und "
+                                + "erlaubte Container werden im Modul 'Container (OCI)' eingestellt."),
                 ConfigField.of(JMX_TARGETS, "JMX-Ziele", FieldType.STRING_LIST)
                         .withHelp("Eine Zeile je Ziel: alias=host:port (z.B. test=srv01:9010). Ansprechbar als jmx:<alias>."),
                 ConfigField.of(JMX_USER, "JMX-Benutzer", FieldType.STRING),
@@ -105,13 +111,13 @@ public class JavaSettingsModule implements ToolModule {
         if (!errors.isEmpty()) {
             return ConnectionTestResult.failed(String.join("\n", errors));
         }
-        JavaEnvironment env = new JavaEnvironment(config);
+        JavaEnvironment env = envProvider == null ? new JavaEnvironment(config) : envProvider.getObject().with(config);
         StringBuilder sb = new StringBuilder();
         sb.append("JDK: ").append(env.jdkHome()).append(env.jcmdAvailable() ? " (jcmd gefunden)" : " – jcmd FEHLT").append('\n');
         var procs = env.processes().list();
         sb.append("Lokale JVMs: ").append(procs.size()).append('\n');
         String cli = env.containers().cli();
-        sb.append("Container-Laufzeit: ").append(cli == null ? "keine" : cli).append('\n');
+        sb.append("Container-Laufzeit (Modul 'Container'): ").append(cli == null ? "keine erreichbar" : cli).append('\n');
         sb.append("JMX-Ziele: ").append(env.jmxTargets().isEmpty() ? "keine" : String.join(", ", env.jmxTargets().keySet()));
         return env.jcmdAvailable() ? ConnectionTestResult.ok(sb.toString()) : ConnectionTestResult.failed(sb.toString());
     }
