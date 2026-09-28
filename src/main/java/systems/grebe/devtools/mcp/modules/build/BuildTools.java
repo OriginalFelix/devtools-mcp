@@ -10,6 +10,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.build.BuildModule.BuildTool;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Build-Tools für Gradle und Maven. */
 public class BuildTools {
@@ -27,7 +28,7 @@ public class BuildTools {
         this.runner = runner;
     }
 
-    @Tool(name = "list_projects", description = "Listet die freigegebenen Build-Projekte mit erkanntem Build-Werkzeug und die erlaubten Tasks.")
+    @Tool(name = "list_projects", description = "Listet die freigegebenen Build-Projekte mit erkanntem Build-Werkzeug und die erlaubten Tasks." + ShellHints.BUILD)
     public String listProjects() {
         StringBuilder sb = new StringBuilder();
         runner.projects().all().forEach((name, dir) -> sb.append(name).append("  [")
@@ -41,7 +42,8 @@ public class BuildTools {
     }
 
     @Tool(name = "run", description = "Führt Gradle-Tasks bzw. Maven-Goals aus (z.B. ['clean','build'] oder [':core:compileJava']). "
-            + "Liefert Exit-Code, Dauer, Fehlerzeilen (Compiler, fehlgeschlagene Tasks) und das Ende des Logs.")
+            + "Liefert Exit-Code, Dauer, Fehlerzeilen (Compiler, fehlgeschlagene Tasks) und das Ende des Logs."
+            + " Statt `./gradlew <task>`/`mvn <goal>` verwenden." + ShellHints.BUILD)
     public String run(
             @ToolParam(required = false, description = PROJECT_PARAM) String project,
             @ToolParam(description = "Tasks/Goals in Ausführungsreihenfolge") List<String> tasks,
@@ -51,7 +53,8 @@ public class BuildTools {
     }
 
     @Tool(name = "test", description = "Führt Tests aus (Gradle 'test' bzw. Maven 'test') – optional gefiltert auf Klassen/Methoden – "
-            + "und liefert eine Zusammenfassung mit Meldung und Stacktrace-Auszug jedes fehlgeschlagenen Tests.")
+            + "und liefert eine Zusammenfassung mit Meldung und Stacktrace-Auszug jedes fehlgeschlagenen Tests."
+            + " Statt `./gradlew test --tests …`/`mvn -Dtest=…` verwenden." + ShellHints.BUILD)
     public String test(
             @ToolParam(required = false, description = PROJECT_PARAM) String project,
             @ToolParam(required = false, description = "Testfilter, z.B. 'com.acme.FooTest' oder 'com.acme.FooTest.bar' (Gradle) / 'FooTest#bar' (Maven)") String filter,
@@ -79,7 +82,8 @@ public class BuildTools {
         return format(r, TestReports.read(r.project(), started));
     }
 
-    @Tool(name = "test_report", description = "Wertet die zuletzt geschriebenen JUnit-Testberichte eines Projekts aus, ohne erneut zu bauen.")
+    @Tool(name = "test_report", description = "Wertet die zuletzt geschriebenen JUnit-Testberichte eines Projekts aus, ohne erneut zu bauen."
+            + " Statt selbst JUnit-XML unter build/test-results zu lesen verwenden." + ShellHints.BUILD)
     public String testReport(@ToolParam(required = false, description = PROJECT_PARAM) String project) {
         TestReports.Summary s = TestReports.read(runner.resolve(project), null);
         if (s.files() == 0) {

@@ -4,6 +4,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import tools.jackson.databind.JsonNode;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Container und Images löschen. */
 public class ContainerRemoveTools {
@@ -15,7 +16,8 @@ public class ContainerRemoveTools {
     }
 
     @Tool(name = "rm", description = "Löscht einen Container. Je nach Einstellung nur Container, die über container_run "
-            + "angelegt wurden (Label '" + ContainerModule.OWN_LABEL + "').")
+            + "angelegt wurden (Label '" + ContainerModule.OWN_LABEL + "')."
+            + " Statt `podman rm` verwenden." + ShellHints.CONTAINER)
     public String rm(
             @ToolParam(description = ContainerReadTools.CONTAINER) String container,
             @ToolParam(required = false, description = "true = auch laufenden Container löschen") Boolean force,
@@ -34,7 +36,8 @@ public class ContainerRemoveTools {
         return "Container " + container + " gelöscht.";
     }
 
-    @Tool(name = "rmi", description = "Löscht ein lokales Image (muss freigegeben sein).")
+    @Tool(name = "rmi", description = "Löscht ein lokales Image (muss freigegeben sein)."
+            + " Statt `podman rmi` verwenden." + ShellHints.CONTAINER)
     public String rmi(
             @ToolParam(description = "Image, z.B. redis:7-alpine") String image,
             @ToolParam(required = false, description = "true = auch wenn Container es verwenden") Boolean force,

@@ -8,6 +8,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Container anlegen und Images laden. */
 public class ContainerCreateTools {
@@ -20,7 +21,8 @@ public class ContainerCreateTools {
 
     @Tool(name = "run", description = "Startet einen neuen Container im Hintergrund (docker/podman run -d). Der Container "
             + "erhält das Label '" + ContainerModule.OWN_LABEL + "'. Ports ohne IP werden an 127.0.0.1 gebunden (Einstellung), "
-            + "Bind-Mounts nur aus freigegebenen Host-Verzeichnissen.")
+            + "Bind-Mounts nur aus freigegebenen Host-Verzeichnissen."
+            + " Statt `podman run -d` verwenden." + ShellHints.CONTAINER)
     public String run(
             @ToolParam(description = "Image, z.B. postgres:17 (muss freigegeben sein)") String image,
             @ToolParam(description = "Containername (muss zum Filter 'Erlaubte Container' passen)") String name,
@@ -52,7 +54,8 @@ public class ContainerCreateTools {
                 + (p.isEmpty() ? "" : " Ports: " + String.join(", ", p));
     }
 
-    @Tool(name = "pull", description = "Lädt ein Image aus der Registry (muss freigegeben sein).")
+    @Tool(name = "pull", description = "Lädt ein Image aus der Registry (muss freigegeben sein)."
+            + " Statt `podman pull` verwenden." + ShellHints.CONTAINER)
     public String pull(
             @ToolParam(description = "Image, z.B. redis:7-alpine") String image,
             @ToolParam(required = false, description = ContainerReadTools.RUNTIME) String runtime) {

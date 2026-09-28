@@ -27,6 +27,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.core.Workspaces;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Lesende Git-Tools. */
 public class GitReadTools {
@@ -40,7 +41,7 @@ public class GitReadTools {
     }
 
     @Tool(name = "list_repositories", description = "Listet die freigegebenen Git-Repositories (Name -> Pfad) mit aktuellem Branch."
-            + " Statt `git rev-parse`/`git branch --show-current` in der Shell verwenden." + GitSupport.SHELL_HINT)
+            + " Statt `git rev-parse`/`git branch --show-current` in der Shell verwenden." + ShellHints.GIT)
     public String listRepositories() {
         Workspaces repos = git.repositories();
         if (repos.isEmpty()) {
@@ -56,7 +57,7 @@ public class GitReadTools {
 
     @Tool(name = "status", description = "Zeigt den Arbeitsstand eines Repositories: aktueller Branch, Ahead/Behind "
             + "zum Upstream, gestagte, geänderte, gelöschte, unversionierte und konfliktbehaftete Dateien."
-            + " Statt `git status` in der Shell verwenden." + GitSupport.SHELL_HINT)
+            + " Statt `git status` in der Shell verwenden." + ShellHints.GIT)
     public String status(@ToolParam(required = false, description = REPO_PARAM) String repository) {
         return git.with(repository, (g, root) -> {
             Repository repo = g.getRepository();
@@ -96,7 +97,7 @@ public class GitReadTools {
 
     @Tool(name = "log", description = "Commit-Historie (neueste zuerst): Hash, Datum, Autor, Betreff. "
             + "Optional für einen Branch/Tag/Commit und/oder eingeschränkt auf eine Datei bzw. ein Verzeichnis."
-            + " Statt `git log` in der Shell verwenden." + GitSupport.SHELL_HINT)
+            + " Statt `git log` in der Shell verwenden." + ShellHints.GIT)
     public String log(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(required = false, description = "Startrevision (Branch, Tag, Commit, z.B. 'origin/main'); Standard HEAD") String ref,
@@ -137,7 +138,7 @@ public class GitReadTools {
     @Tool(name = "diff", description = "Unified Diff. Ohne 'from': nicht gestagte Änderungen (bzw. mit staged=true "
             + "die gestagten). Mit 'from' und ohne 'to': Revision gegen Arbeitsverzeichnis. Mit 'from' und 'to': "
             + "zwischen zwei Revisionen (z.B. from='main', to='feature/x')."
-            + " Statt `git diff` in der Shell verwenden." + GitSupport.SHELL_HINT)
+            + " Statt `git diff` in der Shell verwenden." + ShellHints.GIT)
     public String diff(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(required = false, description = "Ausgangsrevision") String from,
@@ -181,7 +182,7 @@ public class GitReadTools {
     }
 
     @Tool(name = "show_commit", description = "Details eines Commits: vollständige Nachricht, Autor, Eltern und Diff zum ersten Elterncommit."
-            + " Statt `git show <commit>` in der Shell verwenden." + GitSupport.SHELL_HINT)
+            + " Statt `git show <commit>` in der Shell verwenden." + ShellHints.GIT)
     public String showCommit(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(description = "Commit-Hash, Branch oder Tag") String commit,
@@ -212,7 +213,7 @@ public class GitReadTools {
     }
 
     @Tool(name = "branches", description = "Listet lokale und Remote-Branches mit letztem Commit; der aktuelle Branch ist mit * markiert."
-            + " Statt `git branch -a` in der Shell verwenden." + GitSupport.SHELL_HINT)
+            + " Statt `git branch -a` in der Shell verwenden." + ShellHints.GIT)
     public String branches(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(required = false, description = "true = auch Remote-Branches") Boolean includeRemote) {
@@ -239,7 +240,7 @@ public class GitReadTools {
     }
 
     @Tool(name = "blame", description = "Zeilenweise Herkunft einer Datei (Commit, Autor, Datum) – optional für einen Zeilenbereich."
-            + " Statt `git blame` in der Shell verwenden." + GitSupport.SHELL_HINT)
+            + " Statt `git blame` in der Shell verwenden." + ShellHints.GIT)
     public String blame(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(description = "Relativer Dateipfad") String path,
@@ -268,7 +269,7 @@ public class GitReadTools {
     }
 
     @Tool(name = "file_at_revision", description = "Liefert den Inhalt einer Datei in einer bestimmten Revision (Branch, Tag, Commit)."
-            + " Statt `git show <rev>:<pfad>` in der Shell verwenden." + GitSupport.SHELL_HINT)
+            + " Statt `git show <rev>:<pfad>` in der Shell verwenden." + ShellHints.GIT)
     public String fileAtRevision(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(description = "Relativer Dateipfad") String path,

@@ -5,6 +5,7 @@ import java.nio.file.Path;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Dateien zwischen Host (freigegebene Verzeichnisse) und Container kopieren. */
 public class ContainerCopyTools {
@@ -16,7 +17,8 @@ public class ContainerCopyTools {
     }
 
     @Tool(name = "copy_from", description = "Kopiert eine Datei oder ein Verzeichnis aus dem Container auf den Host "
-            + "(Ziel muss in einem freigegebenen Host-Verzeichnis liegen).")
+            + "(Ziel muss in einem freigegebenen Host-Verzeichnis liegen)."
+            + " Statt `podman cp <container>:<pfad> …` verwenden." + ShellHints.CONTAINER)
     public String copyFrom(
             @ToolParam(description = ContainerReadTools.CONTAINER) String container,
             @ToolParam(description = "Absoluter Pfad im Container") String containerPath,
@@ -29,7 +31,8 @@ public class ContainerCopyTools {
         return "Kopiert: " + container + ":" + containerPath + " -> " + target;
     }
 
-    @Tool(name = "copy_to", description = "Kopiert eine Datei oder ein Verzeichnis vom Host (freigegebene Verzeichnisse) in den Container.")
+    @Tool(name = "copy_to", description = "Kopiert eine Datei oder ein Verzeichnis vom Host (freigegebene Verzeichnisse) in den Container."
+            + " Statt `podman cp … <container>:<pfad>` verwenden." + ShellHints.CONTAINER)
     public String copyTo(
             @ToolParam(description = ContainerReadTools.CONTAINER) String container,
             @ToolParam(description = "Quellpfad auf dem Host") String hostPath,

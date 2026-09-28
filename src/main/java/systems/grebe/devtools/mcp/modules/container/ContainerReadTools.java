@@ -11,6 +11,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import tools.jackson.databind.JsonNode;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Lesende Container-Tools. */
 public class ContainerReadTools {
@@ -25,7 +26,8 @@ public class ContainerReadTools {
     }
 
     @Tool(name = "runtimes", description = "Listet die konfigurierten Container-Laufzeiten (Docker, Podman …) mit "
-            + "Erreichbarkeit, Version und Compose-Unterstützung.")
+            + "Erreichbarkeit, Version und Compose-Unterstützung."
+            + " Statt `podman version`/`docker version` verwenden." + ShellHints.CONTAINER)
     public String runtimes() {
         StringBuilder sb = new StringBuilder();
         for (ContainerEnvironment.Entry e : env.entries()) {
@@ -44,7 +46,8 @@ public class ContainerReadTools {
         return sb.toString();
     }
 
-    @Tool(name = "list", description = "Listet Container (Name, Image, Zustand, Status, Ports). Nur freigegebene Container.")
+    @Tool(name = "list", description = "Listet Container (Name, Image, Zustand, Status, Ports). Nur freigegebene Container."
+            + " Statt `podman ps -a` verwenden." + ShellHints.CONTAINER)
     public String list(
             @ToolParam(required = false, description = "true = auch gestoppte Container (Standard true)") Boolean all,
             @ToolParam(required = false, description = "Filter: Teil von Name oder Image") String filter,
@@ -71,7 +74,8 @@ public class ContainerReadTools {
     }
 
     @Tool(name = "inspect", description = "Details zu einem Container: Zustand, Image, Befehl, Umgebung (Geheimnisse maskiert), "
-            + "Ports, Netzwerke, Mounts, Restart-Policy, Health. Mit full=true das komplette Inspect-JSON.")
+            + "Ports, Netzwerke, Mounts, Restart-Policy, Health. Mit full=true das komplette Inspect-JSON."
+            + " Statt `podman inspect` verwenden." + ShellHints.CONTAINER)
     public String inspect(
             @ToolParam(description = CONTAINER) String container,
             @ToolParam(required = false, description = "true = vollständiges JSON statt Zusammenfassung") Boolean full,
@@ -148,7 +152,8 @@ public class ContainerReadTools {
         return String.join(" ", out);
     }
 
-    @Tool(name = "logs", description = "Liest die Logs eines Containers (letzte Zeilen), optional ab Zeitpunkt und gefiltert.")
+    @Tool(name = "logs", description = "Liest die Logs eines Containers (letzte Zeilen), optional ab Zeitpunkt und gefiltert."
+            + " Statt `podman logs` verwenden." + ShellHints.CONTAINER)
     public String logs(
             @ToolParam(description = CONTAINER) String container,
             @ToolParam(required = false, description = "Anzahl letzter Zeilen (Standard aus Einstellungen)") Integer tail,
@@ -180,7 +185,8 @@ public class ContainerReadTools {
     }
 
     @Tool(name = "stats", description = "Momentaufnahme der Ressourcennutzung (CPU, Speicher, Netz, Block-I/O, Prozesse). "
-            + "Ohne Angabe alle laufenden freigegebenen Container.")
+            + "Ohne Angabe alle laufenden freigegebenen Container."
+            + " Statt `podman stats --no-stream` verwenden." + ShellHints.CONTAINER)
     public String stats(
             @ToolParam(required = false, description = "Container, kommagetrennt. Leer = alle laufenden") String containers,
             @ToolParam(required = false, description = RUNTIME) String runtime) {
@@ -206,14 +212,16 @@ public class ContainerReadTools {
         return sb.toString().strip();
     }
 
-    @Tool(name = "top", description = "Prozesse in einem laufenden Container.")
+    @Tool(name = "top", description = "Prozesse in einem laufenden Container."
+            + " Statt `podman top` verwenden." + ShellHints.CONTAINER)
     public String top(@ToolParam(description = CONTAINER) String container,
                       @ToolParam(required = false, description = RUNTIME) String runtime) {
         env.checkContainer(container);
         return Text.limitLines(env.runtime(runtime).top(container).strip(), env.maxLines());
     }
 
-    @Tool(name = "diff", description = "Änderungen im Dateisystem des Containers gegenüber dem Image (A=hinzugefügt, C=geändert, D=gelöscht).")
+    @Tool(name = "diff", description = "Änderungen im Dateisystem des Containers gegenüber dem Image (A=hinzugefügt, C=geändert, D=gelöscht)."
+            + " Statt `podman diff` verwenden." + ShellHints.CONTAINER)
     public String diff(@ToolParam(description = CONTAINER) String container,
                        @ToolParam(required = false, description = RUNTIME) String runtime) {
         env.checkContainer(container);
@@ -221,7 +229,8 @@ public class ContainerReadTools {
         return d.isEmpty() ? "Keine Änderungen." : Text.limitLines(String.join("\n", d), env.maxLines());
     }
 
-    @Tool(name = "images", description = "Listet lokale Images (Repository, Tag, ID, Größe, Alter).")
+    @Tool(name = "images", description = "Listet lokale Images (Repository, Tag, ID, Größe, Alter)."
+            + " Statt `podman images` verwenden." + ShellHints.CONTAINER)
     public String images(@ToolParam(required = false, description = "Filter: Teil des Repository-Namens") String filter,
                          @ToolParam(required = false, description = RUNTIME) String runtime) {
         ContainerRuntime rt = env.runtime(runtime);
@@ -236,14 +245,16 @@ public class ContainerReadTools {
         return sb.isEmpty() ? "Keine Images gefunden." : Text.limitLines(sb.toString().strip(), env.maxLines());
     }
 
-    @Tool(name = "networks", description = "Listet Container-Netzwerke.")
+    @Tool(name = "networks", description = "Listet Container-Netzwerke."
+            + " Statt `podman network ls` verwenden." + ShellHints.CONTAINER)
     public String networks(@ToolParam(required = false, description = RUNTIME) String runtime) {
         StringBuilder sb = new StringBuilder();
         env.runtime(runtime).networks().forEach(n -> sb.append("- ").append(n.name()).append(" (").append(n.driver()).append(")\n"));
         return sb.isEmpty() ? "Keine Netzwerke." : sb.toString().strip();
     }
 
-    @Tool(name = "volumes", description = "Listet benannte Volumes.")
+    @Tool(name = "volumes", description = "Listet benannte Volumes."
+            + " Statt `podman volume ls` verwenden." + ShellHints.CONTAINER)
     public String volumes(@ToolParam(required = false, description = RUNTIME) String runtime) {
         StringBuilder sb = new StringBuilder();
         env.runtime(runtime).volumes().forEach(n -> sb.append("- ").append(n.name()).append(" (").append(n.driver()).append(")\n"));

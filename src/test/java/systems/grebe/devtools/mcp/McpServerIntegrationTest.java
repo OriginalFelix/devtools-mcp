@@ -22,6 +22,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 
@@ -160,16 +161,37 @@ class McpServerIntegrationTest {
     }
 
     @Test
-    void gitToolDescriptionsPointAwayFromShell() {
-        // Fallback für Clients, die die Server-Instructions nicht übernehmen (z.B. Hermes): jede git_*-Beschreibung
-        // nennt den ersetzten Shell-Befehl und die Grundregel.
-        List<McpSchema.Tool> gitTools = client.listTools().tools().stream()
-                .filter(t -> t.name().startsWith("git_")).toList();
-        assertThat(gitTools).hasSize(13);
-        assertThat(gitTools).allSatisfy(t -> assertThat(t.description())
-                .as(t.name()).contains("in der Shell verwenden.", "Git immer über die git_*-Tools"));
-        assertThat(gitTools).filteredOn(t -> t.name().equals("git_status"))
-                .singleElement().extracting(McpSchema.Tool::description).asString().contains("Statt `git status`");
+    void everyToolDescriptionPointsAwayFromShell() throws Exception {
+        // Fallback für Clients, die die Server-Instructions nicht übernehmen (z.B. Hermes): jede Tool-Beschreibung
+        // trägt die Grundregel ihres Moduls. Alle Module und schreibenden Container-Tools einschalten, damit nichts
+        // ungeprüft bleibt.
+        Path composeDir = Files.createDirectories(repoDir.resolve("compose-app"));
+        Files.writeString(composeDir.resolve("compose.yaml"), "services: {}\n");
+        List.of("sonar", "debug", "asprof", "build").forEach(id -> registry.setModuleEnabled(id, true));
+        registry.updateConfig("container", Map.of("allowExec", "true", "allowLifecycle", "true", "allowCopy", "true",
+                "allowCreate", "true", "allowRemove", "true", "allowCompose", "true",
+                "composeProjects", composeDir.toString()));
+        try {
+            Map<String, String> hintByPrefix = Map.of(
+                    "git_", ShellHints.GIT, "build_", ShellHints.BUILD, "container_", ShellHints.CONTAINER,
+                    "sonar_", ShellHints.SONAR, "jvm_", ShellHints.JVM, "jfr_", ShellHints.JFR,
+                    "asprof_", ShellHints.ASPROF, "visualvm_", ShellHints.VISUALVM, "debug_", ShellHints.DEBUG);
+            List<McpSchema.Tool> tools = client.listTools().tools();
+            assertThat(tools).hasSize(86); // alle @Tool-Methoden aller Module
+            assertThat(tools).allSatisfy(t -> {
+                String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
+                        .map(Map.Entry::getValue).findFirst().orElse(null);
+                assertThat(hint).as("Präfix von " + t.name()).isNotBlank();
+                assertThat(t.description()).as(t.name()).endsWith(hint);
+            });
+            assertThat(tools).filteredOn(t -> t.name().equals("git_status")).singleElement()
+                    .extracting(McpSchema.Tool::description).asString().contains("Statt `git status` in der Shell verwenden.");
+            assertThat(tools).filteredOn(t -> t.name().equals("container_list")).singleElement()
+                    .extracting(McpSchema.Tool::description).asString().contains("Statt `podman ps -a` verwenden.");
+        } finally {
+            List.of("sonar", "debug", "asprof", "build").forEach(id -> registry.setModuleEnabled(id, false));
+            registry.updateConfig("container", Map.of());
+        }
     }
 
     @Test

@@ -119,9 +119,11 @@ deshalb auch abgeschaltete Module. Sie sind bedingt formuliert („wenn angebote
 liefert weiterhin `tools/list`. Geänderte Texte kommen beim Client erst nach Neustart der App **und** neuer
 Client-Session an.
 
-Nicht jeder Client übernimmt die Instructions (Hermes z.B. wertet nur die Tool-Beschreibungen aus). Deshalb nennt
-zusätzlich jede `git_*`-Beschreibung den ersetzten Shell-Befehl („Statt `git status` in der Shell verwenden.“) samt
-Grundregel (`GitSupport.SHELL_HINT`).
+Nicht jeder Client übernimmt die Instructions (Hermes z.B. wertet nur die Tool-Beschreibungen aus). Deshalb endet
+zusätzlich **jede** Tool-Beschreibung mit der Grundregel ihres Moduls (`core/ShellHints`) und nennt, wo es einen
+gibt, den ersetzten Befehl („Statt `git status` in der Shell verwenden.“, „Statt `podman ps -a` verwenden.“).
+Ein Integrationstest prüft das für alle Tools; neue `@Tool`-Methoden brauchen `+ ShellHints.<MODUL>` am Ende der
+Beschreibung.
 
 ## Eigenes Modul schreiben
 

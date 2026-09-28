@@ -11,6 +11,7 @@ import systems.grebe.devtools.mcp.modules.java.ArtifactStore;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironment;
 import systems.grebe.devtools.mcp.modules.java.JvmTarget;
 import systems.grebe.devtools.mcp.modules.java.StackProfile;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** JFR-Tools. */
 public class JfrTools {
@@ -30,7 +31,8 @@ public class JfrTools {
     }
 
     @Tool(name = "record", description = "Zeichnet eine JVM für N Sekunden mit JFR auf, wartet, speichert die .jfr-Datei "
-            + "und liefert direkt Überblick und CPU-Hotspots. Während der Aufzeichnung sollte die zu messende Last laufen.")
+            + "und liefert direkt Überblick und CPU-Hotspots. Während der Aufzeichnung sollte die zu messende Last laufen."
+            + " Statt `jcmd JFR.start duration=…` verwenden." + ShellHints.JFR)
     public String record(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = "Dauer in Sekunden (Standard 30)") Integer seconds,
@@ -58,7 +60,8 @@ public class JfrTools {
     }
 
     @Tool(name = "start", description = "Startet eine JFR-Aufzeichnung ohne festes Ende (für längere Szenarien). "
-            + "Später mit jfr_dump sichern und mit jfr_stop beenden.")
+            + "Später mit jfr_dump sichern und mit jfr_stop beenden."
+            + " Statt `jcmd JFR.start` verwenden." + ShellHints.JFR)
     public String start(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = "Name der Aufzeichnung (Standard devtools-mcp)") String name,
@@ -71,14 +74,16 @@ public class JfrTools {
         return t.describe() + ": " + out.strip();
     }
 
-    @Tool(name = "status", description = "Zeigt laufende JFR-Aufzeichnungen einer JVM.")
+    @Tool(name = "status", description = "Zeigt laufende JFR-Aufzeichnungen einer JVM."
+            + " Statt `jcmd JFR.check` verwenden." + ShellHints.JFR)
     public String status(@ToolParam(required = false, description = TARGET) String target) {
         JvmTarget t = env.get().target(target);
         return t.describe() + "\n" + t.dcmd("JFR.check").strip();
     }
 
     @Tool(name = "dump", description = "Sichert den aktuellen Stand einer laufenden Aufzeichnung als .jfr-Datei (läuft weiter) "
-            + "und liefert den Überblick.")
+            + "und liefert den Überblick."
+            + " Statt `jcmd JFR.dump` verwenden." + ShellHints.JFR)
     public String dump(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = "Name der Aufzeichnung (Standard devtools-mcp)") String name) {
@@ -88,7 +93,8 @@ public class JfrTools {
         return Text.limitLines("Gespeichert: " + file + "\n\n" + new JfrAnalyzer(file, null, 15).analyze(JfrAnalyzer.Aspect.SUMMARY), e.maxLines());
     }
 
-    @Tool(name = "stop", description = "Beendet eine laufende JFR-Aufzeichnung (ohne zu speichern – vorher jfr_dump).")
+    @Tool(name = "stop", description = "Beendet eine laufende JFR-Aufzeichnung (ohne zu speichern – vorher jfr_dump)."
+            + " Statt `jcmd JFR.stop` verwenden." + ShellHints.JFR)
     public String stop(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = "Name der Aufzeichnung (Standard devtools-mcp)") String name) {
@@ -97,7 +103,8 @@ public class JfrTools {
     }
 
     @Tool(name = "analyze", description = "Wertet eine .jfr-Datei aus. Aspekte: summary, cpu, allocation, gc, locks, "
-            + "exceptions, io, threads. Mit packageFilter nur Stacks mit eigenem Code betrachten.")
+            + "exceptions, io, threads. Mit packageFilter nur Stacks mit eigenem Code betrachten."
+            + " Statt `jfr print`/`jfr summary` verwenden." + ShellHints.JFR)
     public String analyze(
             @ToolParam(required = false, description = FILE) String file,
             @ToolParam(required = false, description = "Aspekt (Standard summary)") String aspect,
@@ -110,7 +117,8 @@ public class JfrTools {
     }
 
     @Tool(name = "flamegraph", description = "Erzeugt aus einer .jfr-Datei (JDK- oder async-profiler-Aufzeichnung) einen "
-            + "interaktiven Flame Graph (HTML, im Artefakte-Tab öffnen) und liefert die heißesten Methoden und Aufrufpfade als Text.")
+            + "interaktiven Flame Graph (HTML, im Artefakte-Tab öffnen) und liefert die heißesten Methoden und Aufrufpfade als Text."
+            + " Statt `jfrconv` verwenden." + ShellHints.JFR)
     public String flamegraph(
             @ToolParam(required = false, description = FILE) String file,
             @ToolParam(required = false, description = "cpu (Standard), wall, alloc oder lock") String kind,

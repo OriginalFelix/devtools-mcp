@@ -6,6 +6,7 @@ import java.util.function.Supplier;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.Text;
 import tools.jackson.databind.JsonNode;
 
@@ -40,7 +41,8 @@ public class SonarTools {
         return defaultProject;
     }
 
-    @Tool(name = "list_projects", description = "Sucht SonarQube-Projekte (Schlüssel, Name, letzte Analyse).")
+    @Tool(name = "list_projects", description = "Sucht SonarQube-Projekte (Schlüssel, Name, letzte Analyse)."
+            + " Statt der Web-API `/api/projects/search` verwenden." + ShellHints.SONAR)
     public String listProjects(
             @ToolParam(required = false, description = "Suchtext im Namen oder Schlüssel") String query,
             @ToolParam(required = false, description = "Seite (1-basiert)") Integer page) {
@@ -53,7 +55,8 @@ public class SonarTools {
         return paging(res) + (lines.isEmpty() ? "(keine Projekte gefunden)" : String.join("\n", lines));
     }
 
-    @Tool(name = "quality_gate", description = "Status des Quality Gates eines Projekts inkl. aller Bedingungen (Metrik, Schwelle, Istwert).")
+    @Tool(name = "quality_gate", description = "Status des Quality Gates eines Projekts inkl. aller Bedingungen (Metrik, Schwelle, Istwert)."
+            + " Statt der Web-API `/api/qualitygates/project_status` verwenden." + ShellHints.SONAR)
     public String qualityGate(
             @ToolParam(required = false, description = PROJECT_PARAM) String projectKey,
             @ToolParam(required = false, description = BRANCH_PARAM) String branch,
@@ -77,7 +80,8 @@ public class SonarTools {
     }
 
     @Tool(name = "issues", description = "Sucht offene Issues eines Projekts (Bugs, Vulnerabilities, Code Smells). "
-            + "Filterbar nach Schweregrad, Typ und Datei. Liefert Schlüssel, Regel, Datei:Zeile und Meldung.")
+            + "Filterbar nach Schweregrad, Typ und Datei. Liefert Schlüssel, Regel, Datei:Zeile und Meldung."
+            + " Statt der Web-API `/api/issues/search` verwenden." + ShellHints.SONAR)
     public String issues(
             @ToolParam(required = false, description = PROJECT_PARAM) String projectKey,
             @ToolParam(required = false, description = BRANCH_PARAM) String branch,
@@ -106,7 +110,8 @@ public class SonarTools {
         return paging(res) + (lines.isEmpty() ? "(keine Issues gefunden)" : String.join("\n", lines));
     }
 
-    @Tool(name = "issue_detail", description = "Details zu einem Issue: Regel, Schweregrad, Position, Aufwand, Tags, Kommentare und den betroffenen Quelltextausschnitt.")
+    @Tool(name = "issue_detail", description = "Details zu einem Issue: Regel, Schweregrad, Position, Aufwand, Tags, Kommentare und den betroffenen Quelltextausschnitt."
+            + " Statt der Web-API `/api/issues/search?issues=…` verwenden." + ShellHints.SONAR)
     public String issueDetail(@ToolParam(description = "Issue-Schlüssel (aus sonar_issues)") String issueKey) {
         JsonNode res = client.get().get("/api/issues/search", params("issues", issueKey, "additionalFields", "_all"));
         JsonNode issues = res.path("issues");
@@ -150,7 +155,8 @@ public class SonarTools {
         return sb.toString().trim();
     }
 
-    @Tool(name = "rule", description = "Beschreibung einer Sonar-Regel (warum problematisch, wie beheben).")
+    @Tool(name = "rule", description = "Beschreibung einer Sonar-Regel (warum problematisch, wie beheben)."
+            + " Statt der Web-API `/api/rules/show` verwenden." + ShellHints.SONAR)
     public String rule(@ToolParam(description = "Regelschlüssel, z.B. java:S1192") String ruleKey) {
         JsonNode r = client.get().get("/api/rules/show", params("key", ruleKey)).path("rule");
         StringBuilder sb = new StringBuilder();
@@ -170,7 +176,8 @@ public class SonarTools {
         return Text.limitLines(sb.toString().trim(), 300);
     }
 
-    @Tool(name = "measures", description = "Kennzahlen eines Projekts (Coverage, Duplikate, Bugs, technische Schuld, Ratings, New-Code-Werte).")
+    @Tool(name = "measures", description = "Kennzahlen eines Projekts (Coverage, Duplikate, Bugs, technische Schuld, Ratings, New-Code-Werte)."
+            + " Statt der Web-API `/api/measures/component` verwenden." + ShellHints.SONAR)
     public String measures(
             @ToolParam(required = false, description = PROJECT_PARAM) String projectKey,
             @ToolParam(required = false, description = BRANCH_PARAM) String branch,
@@ -189,7 +196,8 @@ public class SonarTools {
         return sb.toString().trim();
     }
 
-    @Tool(name = "hotspots", description = "Security Hotspots eines Projekts (standardmäßig nur 'zu prüfen').")
+    @Tool(name = "hotspots", description = "Security Hotspots eines Projekts (standardmäßig nur 'zu prüfen')."
+            + " Statt der Web-API `/api/hotspots/search` verwenden." + ShellHints.SONAR)
     public String hotspots(
             @ToolParam(required = false, description = PROJECT_PARAM) String projectKey,
             @ToolParam(required = false, description = BRANCH_PARAM) String branch,
@@ -209,7 +217,8 @@ public class SonarTools {
         return paging(res) + (lines.isEmpty() ? "(keine Hotspots)" : String.join("\n", lines));
     }
 
-    @Tool(name = "source", description = "Quelltextzeilen einer Datei, wie sie SonarQube analysiert hat.")
+    @Tool(name = "source", description = "Quelltextzeilen einer Datei, wie sie SonarQube analysiert hat."
+            + " Statt der Web-API `/api/sources/lines` verwenden." + ShellHints.SONAR)
     public String source(
             @ToolParam(required = false, description = PROJECT_PARAM) String projectKey,
             @ToolParam(description = "Relativer Dateipfad im Projekt") String file,
