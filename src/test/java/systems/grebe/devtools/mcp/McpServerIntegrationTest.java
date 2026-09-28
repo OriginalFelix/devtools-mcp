@@ -152,9 +152,11 @@ class McpServerIntegrationTest {
                         "`git_commit` (statt `git commit`)", "`git_list_repositories`")
                 // alle Module mit Hinweisen, auch standardmäßig deaktivierte (Instructions stehen ab Start fest)
                 .contains("Tools `build_*`", "Tools `container_*`", "Tools `sonar_*`", "Tools `jvm_*`",
-                        "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`")
+                        "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`",
+                        "## Skills – Tools `skills_*`", "`skills_list`", "`skills_create`", "`skills_patch`")
                 .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
-        // Reihenfolge wie in der Modulliste: order, dann Anzeigename
+        // Reihenfolge wie in der Modulliste: order, dann Anzeigename – Skills zuerst, damit sie vor jeder Aufgabe greifen
+        assertThat(instructions.indexOf("Tools `skills_*`")).isLessThan(instructions.indexOf("Tools `git_*`"));
         assertThat(instructions.indexOf("Tools `git_*`")).isLessThan(instructions.indexOf("Tools `container_*`"));
         assertThat(instructions.indexOf("Tools `container_*`")).isLessThan(instructions.indexOf("Tools `jvm_*`"));
         assertThat(instructions.indexOf("Tools `jvm_*`")).isLessThan(instructions.indexOf("Tools `debug_*`"));
@@ -171,13 +173,15 @@ class McpServerIntegrationTest {
         registry.updateConfig("container", Map.of("allowExec", "true", "allowLifecycle", "true", "allowCopy", "true",
                 "allowCreate", "true", "allowRemove", "true", "allowCompose", "true",
                 "composeProjects", composeDir.toString()));
+        registry.updateConfig("skills", Map.of("allowDelete", "true"));
         try {
             Map<String, String> hintByPrefix = Map.of(
                     "git_", ShellHints.GIT, "build_", ShellHints.BUILD, "container_", ShellHints.CONTAINER,
                     "sonar_", ShellHints.SONAR, "jvm_", ShellHints.JVM, "jfr_", ShellHints.JFR,
-                    "asprof_", ShellHints.ASPROF, "visualvm_", ShellHints.VISUALVM, "debug_", ShellHints.DEBUG);
+                    "asprof_", ShellHints.ASPROF, "visualvm_", ShellHints.VISUALVM, "debug_", ShellHints.DEBUG,
+                    "skills_", ShellHints.SKILLS);
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(86); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(95); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -191,7 +195,48 @@ class McpServerIntegrationTest {
         } finally {
             List.of("sonar", "debug", "asprof", "build").forEach(id -> registry.setModuleEnabled(id, false));
             registry.updateConfig("container", Map.of());
+            registry.updateConfig("skills", Map.of());
         }
+    }
+
+    @Test
+    void skillsRoundTripOverMcp() {
+        // Standard: H2-Datei im (hier temporären) Einstellungsordner
+        assertThat(toolNames()).contains("skills_list", "skills_view", "skills_history", "skills_create",
+                "skills_patch", "skills_update", "skills_write_file", "skills_remove_file")
+                .doesNotContain("skills_delete");
+
+        McpSchema.CallToolResult created = client.callTool(callRequest("skills_create", Map.of(
+                "name", "mcp-roundtrip", "description", "Verwenden, wenn der Roundtrip geprüft wird.",
+                "content", "## Schritte\n1. anlegen\n", "category", "testing", "tags", List.of("mcp", "h2"))));
+        assertThat(created.isError()).isNotEqualTo(Boolean.TRUE);
+        assertThat(text(created)).contains("angelegt (Revision 1)");
+
+        assertThat(text(client.callTool(callRequest("skills_patch", Map.of("name", "mcp-roundtrip",
+                "old_string", "1. anlegen\n", "new_string", "1. anlegen\n2. patchen\n", "note", "Schritt 2")))))
+                .contains("Revision 2");
+        assertThat(text(client.callTool(callRequest("skills_list", Map.of("query", "roundtrip")))))
+                .contains("testing:", "mcp-roundtrip: Verwenden, wenn der Roundtrip geprüft wird.", "[mcp, h2]");
+        assertThat(text(client.callTool(callRequest("skills_view", Map.of("name", "mcp-roundtrip")))))
+                .contains("revision: 2", "2. patchen");
+
+        // Fachlicher Fehler kommt als isError-Ergebnis mit Hinweis auf den nächsten Schritt beim LLM an
+        McpSchema.CallToolResult duplicate = client.callTool(callRequest("skills_create", Map.of(
+                "name", "mcp-roundtrip", "description", "x", "content", "y")));
+        assertThat(duplicate.isError()).isTrue();
+        assertThat(text(duplicate)).contains("existiert bereits", "skills_patch");
+
+        registry.updateConfig("skills", Map.of("allowWrite", "false"));
+        try {
+            assertThat(toolNames()).contains("skills_list", "skills_view").doesNotContain("skills_create", "skills_patch");
+        } finally {
+            registry.updateConfig("skills", Map.of());
+        }
+        assertThat(Files.exists(home.resolve("skills.mv.db"))).isTrue();
+    }
+
+    private static String text(McpSchema.CallToolResult result) {
+        return ((McpSchema.TextContent) result.content().getFirst()).text();
     }
 
     @Test
