@@ -15,6 +15,7 @@ import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.java.ArtifactStore;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironment;
 import systems.grebe.devtools.mcp.modules.java.JvmTarget;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** VisualVM-Tools. */
 public class VisualVmTools {
@@ -31,7 +32,8 @@ public class VisualVmTools {
 
     @Tool(name = "heap_analyze", description = "Analysiert einen Heap-Dump (.hprof) mit der VisualVM-Heap-Engine: Klassen nach Speicher, "
             + "größte Objekte nach zurückgehaltenem Speicher mit Pfad zur GC-Wurzel (zeigt, wer ein Leck festhält). "
-            + "Mit instance=<Klasse#Nr> die Felder eines Objekts ansehen.")
+            + "Mit instance=<Klasse#Nr> die Felder eines Objekts ansehen."
+            + " Statt Eclipse MAT oder eigenen Parsern verwenden." + ShellHints.VISUALVM)
     public String heapAnalyze(
             @ToolParam(required = false, description = "Heap-Dump: Dateiname im Ablageordner, absoluter Pfad oder leer = neuester") String file,
             @ToolParam(required = false, description = "Regulärer Ausdruck für Klassennamen, z.B. com\\.acme") String classFilter,
@@ -49,7 +51,8 @@ public class VisualVmTools {
     }
 
     @Tool(name = "sample_cpu", description = "CPU-Sampling wie in VisualVM: holt für N Sekunden Thread-Dumps über JMX und ermittelt Hotspots "
-            + "(ohne JFR, funktioniert auch bei entfernten JVMs über jmx:<alias>). Speichert einen .nps-Snapshot, den VisualVM öffnen kann.")
+            + "(ohne JFR, funktioniert auch bei entfernten JVMs über jmx:<alias>). Speichert einen .nps-Snapshot, den VisualVM öffnen kann."
+            + " Statt wiederholtem `jstack` verwenden." + ShellHints.VISUALVM)
     public String sampleCpu(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = "Dauer in Sekunden (Standard 20)") Integer seconds,
@@ -77,7 +80,7 @@ public class VisualVmTools {
     }
 
     @Tool(name = "open", description = "Öffnet eine JVM in der VisualVM-Oberfläche beim Benutzer (Monitor, Threads, Sampler). "
-            + "Optional direkt den CPU- oder Memory-Sampler starten.")
+            + "Optional direkt den CPU- oder Memory-Sampler starten." + ShellHints.VISUALVM)
     public String open(
             @ToolParam(required = false, description = "PID/Name einer lokalen JVM oder jmx:<alias>") String target,
             @ToolParam(required = false, description = "none (Standard), cpu oder memory") String sampler) {
@@ -102,7 +105,7 @@ public class VisualVmTools {
     }
 
     @Tool(name = "open_file", description = "Öffnet eine Datei in der VisualVM-Oberfläche beim Benutzer: Heap-Dump (.hprof), "
-            + "JFR-Aufzeichnung (.jfr), Sampler-Snapshot (.nps) oder Thread-Dump (.tdump).")
+            + "JFR-Aufzeichnung (.jfr), Sampler-Snapshot (.nps) oder Thread-Dump (.tdump)." + ShellHints.VISUALVM)
     public String openFile(@ToolParam(description = "Dateiname im Ablageordner oder absoluter Pfad") String file) {
         Path f = env.get().artifacts().resolve(file);
         String name = f.getFileName().toString().toLowerCase();

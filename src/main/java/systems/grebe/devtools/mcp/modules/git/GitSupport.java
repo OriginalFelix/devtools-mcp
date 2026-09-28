@@ -27,6 +27,7 @@ import systems.grebe.devtools.mcp.core.Workspaces;
 /** Gemeinsame Infrastruktur der Git-Tools. */
 final class GitSupport {
 
+
     static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
 
     private final Workspaces repositories;

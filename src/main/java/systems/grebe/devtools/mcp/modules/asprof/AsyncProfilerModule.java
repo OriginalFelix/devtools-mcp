@@ -48,6 +48,14 @@ public class AsyncProfilerModule implements ToolModule {
     }
 
     @Override
+    public String instructions() {
+        return """
+                Statt `asprof`/`profiler.sh` in der Shell: `asprof_profile` für eine feste Dauer, sonst \
+                `asprof_start` → `asprof_stop`; `asprof_status` zeigt verfügbare Events. Genauer als JFR bei nativen Frames und ohne \
+                Safepoint-Bias; fehlt das Modul, `jfr_record` verwenden.""";
+    }
+
+    @Override
     public int order() {
         return 230;
     }

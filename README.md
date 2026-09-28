@@ -105,6 +105,26 @@ der Schlüssel liegt in `secret.key` daneben.
   an 127.0.0.1 und erlaubt Bind-Mounts nur aus freigegebenen Host-Verzeichnissen, `rm` standardmäßig nur für über
   `container_run` angelegte Container (Label `devtools-mcp`). Passwörter/Tokens in Umgebungsvariablen werden maskiert.
 
+### Instructions für das LLM
+
+Beim `initialize` schickt der Server MCP-`instructions`, die Clients wie Claude Code in den System-Prompt übernehmen.
+Sie legen fest, **wann welches Tool statt eines Shell-Befehls** zu verwenden ist – z.B. `git_status` statt
+`git status`, `build_test` statt `./gradlew test`, `container_list` statt `podman ps`. `ServerInstructions` setzt den
+Text aus einem allgemeinen Vorrang-Hinweis, dem optionalen `spring.ai.mcp.server.instructions` und den
+`instructions()` aller Module zusammen (Reihenfolge wie die Modulliste). Ein eigenes Modul ergänzt seine Hinweise
+über `ToolModule#instructions()`.
+
+Die Instructions stehen ab dem Serverstart fest (MCP sieht keine Änderungsbenachrichtigung dafür) und enthalten
+deshalb auch abgeschaltete Module. Sie sind bedingt formuliert („wenn angeboten“), die aktuell verfügbaren Tools
+liefert weiterhin `tools/list`. Geänderte Texte kommen beim Client erst nach Neustart der App **und** neuer
+Client-Session an.
+
+Nicht jeder Client übernimmt die Instructions (Hermes z.B. wertet nur die Tool-Beschreibungen aus). Deshalb endet
+zusätzlich **jede** Tool-Beschreibung mit der Grundregel ihres Moduls (`core/ShellHints`) und nennt, wo es einen
+gibt, den ersetzten Befehl („Statt `git status` in der Shell verwenden.“, „Statt `podman ps -a` verwenden.“).
+Ein Integrationstest prüft das für alle Tools; neue `@Tool`-Methoden brauchen `+ ShellHints.<MODUL>` am Ende der
+Beschreibung.
+
 ## Eigenes Modul schreiben
 
 1. Tool-Klasse mit `@Tool`-Methoden (Spring AI). Rückgabe: kompakter Text für das LLM.

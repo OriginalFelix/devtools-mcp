@@ -11,6 +11,7 @@ import systems.grebe.devtools.mcp.modules.java.Containers;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironment;
 import systems.grebe.devtools.mcp.modules.java.JvmTarget;
 import systems.grebe.devtools.mcp.modules.java.LocalJvms;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Lesende JVM-Diagnose. */
 public class JvmTools {
@@ -25,7 +26,8 @@ public class JvmTools {
     }
 
     @Tool(name = "processes", description = "Listet erreichbare JVMs: lokale Prozesse (PID, Hauptklasse), laufende Container "
-            + "(als container:<name> ansprechbar) und konfigurierte JMX-Ziele (jmx:<alias>).")
+            + "(als container:<name> ansprechbar) und konfigurierte JMX-Ziele (jmx:<alias>)."
+            + " Statt `jps -l` verwenden." + ShellHints.JVM)
     public String processes(@ToolParam(required = false, description = "true = auch Container nach JVMs durchsuchen (langsamer)") Boolean scanContainers) {
         JavaEnvironment e = env.get();
         StringBuilder sb = new StringBuilder("Lokale JVMs:\n");
@@ -57,7 +59,8 @@ public class JvmTools {
         return sb.toString().stripTrailing();
     }
 
-    @Tool(name = "info", description = "Überblick über eine JVM: Version, Laufzeit, Kommandozeile, gesetzte VM-Flags, Heap-Belegung.")
+    @Tool(name = "info", description = "Überblick über eine JVM: Version, Laufzeit, Kommandozeile, gesetzte VM-Flags, Heap-Belegung."
+            + " Statt `jinfo`/`jcmd VM.flags` verwenden." + ShellHints.JVM)
     public String info(@ToolParam(required = false, description = TARGET) String target) {
         JvmTarget t = env.get().target(target);
         StringBuilder sb = new StringBuilder(t.describe()).append("\n\n");
@@ -70,7 +73,8 @@ public class JvmTools {
     }
 
     @Tool(name = "threads", description = "Thread-Dump mit Auswertung: Zustände, Deadlock-Erkennung, Threads mit identischem Stack "
-            + "gruppiert (größte Gruppen zuerst). Mehrfach im Abstand aufrufen, um hängende Threads zu erkennen.")
+            + "gruppiert (größte Gruppen zuerst). Mehrfach im Abstand aufrufen, um hängende Threads zu erkennen."
+            + " Statt `jstack`/`jcmd Thread.print` verwenden." + ShellHints.JVM)
     public String threads(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = "Nur Threads, deren Name diesen Text enthält") String nameFilter,
@@ -88,7 +92,8 @@ public class JvmTools {
     }
 
     @Tool(name = "heap", description = "Heap-Belegung und Klassenhistogramm (Top-N Klassen nach belegtem Speicher). "
-            + "Mehrfach aufrufen und vergleichen, um wachsende Klassen (Lecks) zu finden.")
+            + "Mehrfach aufrufen und vergleichen, um wachsende Klassen (Lecks) zu finden."
+            + " Statt `jmap -histo`/`jcmd GC.class_histogram` verwenden." + ShellHints.JVM)
     public String heap(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = "Anzahl Klassen (Standard 30)") Integer top,
@@ -122,7 +127,8 @@ public class JvmTools {
     }
 
     @Tool(name = "native_memory", description = "Native-Memory-Übersicht (NMT: Heap, Metaspace, Threads, Code, GC …). "
-            + "Erfordert Start mit -XX:NativeMemoryTracking=summary.")
+            + "Erfordert Start mit -XX:NativeMemoryTracking=summary."
+            + " Statt `jcmd VM.native_memory` verwenden." + ShellHints.JVM)
     public String nativeMemory(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = "summary (Standard) oder detail") String mode) {

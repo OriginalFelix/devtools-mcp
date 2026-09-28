@@ -42,6 +42,15 @@ public class JfrModule implements ToolModule {
     }
 
     @Override
+    public String instructions() {
+        return """
+                Für Java-Flight-Recorder-Aufzeichnungen diese Tools statt `jcmd JFR.*` oder `jfr print` verwenden: \
+                `jfr_record` für eine feste Dauer, sonst `jfr_start` → `jfr_dump` → `jfr_stop`; auswerten mit `jfr_analyze` \
+                (cpu, allocation, gc, locks, io, exceptions, threads) und `jfr_flamegraph`. Erste Wahl für CPU-, Allokations- und \
+                Lock-Analysen auf jeder Plattform.""";
+    }
+
+    @Override
     public int order() {
         return 220;
     }

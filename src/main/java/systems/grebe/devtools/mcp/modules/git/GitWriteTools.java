@@ -10,6 +10,7 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Workspaces;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Schreibende Git-Tools (nur registriert, wenn in der Konfiguration erlaubt). Push wird bewusst nicht angeboten. */
 public class GitWriteTools {
@@ -22,7 +23,8 @@ public class GitWriteTools {
         this.git = git;
     }
 
-    @Tool(name = "create_branch", description = "Legt einen neuen lokalen Branch an, optional ab einer Startrevision, und wechselt optional darauf.")
+    @Tool(name = "create_branch", description = "Legt einen neuen lokalen Branch an, optional ab einer Startrevision, und wechselt optional darauf."
+            + " Statt `git checkout -b`/`git switch -c` in der Shell verwenden." + ShellHints.GIT)
     public String createBranch(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(description = "Name des neuen Branches, z.B. 'feature/login'") String name,
@@ -41,7 +43,8 @@ public class GitWriteTools {
         });
     }
 
-    @Tool(name = "checkout", description = "Wechselt auf einen bestehenden lokalen Branch. Schlägt fehl, wenn lokale Änderungen überschrieben würden.")
+    @Tool(name = "checkout", description = "Wechselt auf einen bestehenden lokalen Branch. Schlägt fehl, wenn lokale Änderungen überschrieben würden."
+            + " Statt `git checkout`/`git switch` in der Shell verwenden." + ShellHints.GIT)
     public String checkout(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(description = "Branch-Name") String branch) {
@@ -51,7 +54,8 @@ public class GitWriteTools {
         });
     }
 
-    @Tool(name = "stage", description = "Nimmt Dateien in den Index auf (git add). Ohne Pfade werden alle Änderungen inkl. Löschungen und neuer Dateien gestaged.")
+    @Tool(name = "stage", description = "Nimmt Dateien in den Index auf (git add). Ohne Pfade werden alle Änderungen inkl. Löschungen und neuer Dateien gestaged."
+            + " Statt `git add` in der Shell verwenden." + ShellHints.GIT)
     public String stage(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(required = false, description = "Relative Pfade; leer = alles") List<String> paths) {
@@ -73,7 +77,8 @@ public class GitWriteTools {
         });
     }
 
-    @Tool(name = "unstage", description = "Entfernt Dateien aus dem Index (git reset -- <pfade>); die Änderungen im Arbeitsverzeichnis bleiben erhalten.")
+    @Tool(name = "unstage", description = "Entfernt Dateien aus dem Index (git reset -- <pfade>); die Änderungen im Arbeitsverzeichnis bleiben erhalten."
+            + " Statt `git reset -- <pfade>` in der Shell verwenden." + ShellHints.GIT)
     public String unstage(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(required = false, description = "Relative Pfade; leer = alles") List<String> paths) {
@@ -89,7 +94,8 @@ public class GitWriteTools {
         });
     }
 
-    @Tool(name = "commit", description = "Erstellt einen Commit aus dem aktuellen Index. Autor aus der Git-Konfiguration (user.name/user.email). Kein Push.")
+    @Tool(name = "commit", description = "Erstellt einen Commit aus dem aktuellen Index. Autor aus der Git-Konfiguration (user.name/user.email). Kein Push."
+            + " Statt `git commit` in der Shell verwenden." + ShellHints.GIT)
     public String commit(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(description = "Commit-Nachricht (erste Zeile = Betreff)") String message,

@@ -9,6 +9,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironment;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Debugger-Tools. */
 public class DebugTools {
@@ -29,7 +30,8 @@ public class DebugTools {
     }
 
     @Tool(name = "attach", description = "Verbindet den Debugger mit einer JVM, die mit JDWP gestartet wurde "
-            + "(-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005). Liefert eine Sitzungs-ID.")
+            + "(-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005). Liefert eine Sitzungs-ID."
+            + " Statt `jdb -attach` verwenden." + ShellHints.DEBUG)
     public String attach(
             @ToolParam(required = false, description = "Host (Standard localhost)") String host,
             @ToolParam(description = "JDWP-Port, z.B. 5005") Integer port) {
@@ -45,7 +47,7 @@ public class DebugTools {
                 + "Nächste Schritte: debug_set_breakpoint → Szenario auslösen → debug_wait_for_break.";
     }
 
-    @Tool(name = "sessions", description = "Listet offene Debug-Sitzungen mit Breakpoints und Status.")
+    @Tool(name = "sessions", description = "Listet offene Debug-Sitzungen mit Breakpoints und Status." + ShellHints.DEBUG)
     public String sessionsList() {
         List<DebugSession> all = sessions.all();
         if (all.isEmpty()) {
@@ -62,7 +64,7 @@ public class DebugTools {
         return sb.toString().stripTrailing();
     }
 
-    @Tool(name = "detach", description = "Trennt eine Debug-Sitzung. Breakpoints werden entfernt, angehaltene Threads laufen weiter.")
+    @Tool(name = "detach", description = "Trennt eine Debug-Sitzung. Breakpoints werden entfernt, angehaltene Threads laufen weiter." + ShellHints.DEBUG)
     public String detach(@ToolParam(required = false, description = SESSION) String session) {
         DebugSession s = sessions.get(session);
         sessions.close(s.id());
@@ -70,7 +72,8 @@ public class DebugTools {
     }
 
     @Tool(name = "set_breakpoint", description = "Setzt einen Zeilen-Breakpoint (voll qualifizierte Klasse + Zeilennummer). "
-            + "Ist die Klasse noch nicht geladen, wird er beim Laden aktiv.")
+            + "Ist die Klasse noch nicht geladen, wird er beim Laden aktiv."
+            + " Statt `stop at` in jdb verwenden." + ShellHints.DEBUG)
     public String setBreakpoint(
             @ToolParam(required = false, description = SESSION) String session,
             @ToolParam(description = "Voll qualifizierter Klassenname, z.B. com.acme.OrderService") String className,
@@ -81,7 +84,8 @@ public class DebugTools {
                 + (bp.requests().isEmpty() ? " – Klasse noch nicht geladen, wird beim Laden aktiviert." : " aktiv.");
     }
 
-    @Tool(name = "clear_breakpoint", description = "Entfernt einen Breakpoint (ID aus debug_set_breakpoint/debug_sessions).")
+    @Tool(name = "clear_breakpoint", description = "Entfernt einen Breakpoint (ID aus debug_set_breakpoint/debug_sessions)."
+            + " Statt `clear` in jdb verwenden." + ShellHints.DEBUG)
     public String clearBreakpoint(
             @ToolParam(required = false, description = SESSION) String session,
             @ToolParam(description = "Breakpoint-ID") Integer id) {
@@ -89,7 +93,7 @@ public class DebugTools {
     }
 
     @Tool(name = "wait_for_break", description = "Wartet, bis ein Thread an einem Breakpoint oder nach einem Schritt anhält, "
-            + "und liefert Position, Stack und Variablen des obersten Frames. Das Szenario muss parallel ausgelöst werden.")
+            + "und liefert Position, Stack und Variablen des obersten Frames. Das Szenario muss parallel ausgelöst werden." + ShellHints.DEBUG)
     public String waitForBreak(
             @ToolParam(required = false, description = SESSION) String session,
             @ToolParam(required = false, description = "Wartezeit in Sekunden (Standard 30)") Integer timeoutSeconds) {
@@ -114,7 +118,8 @@ public class DebugTools {
                 + "\nWeiter mit debug_step (over/into/out) oder debug_resume.", env.get().maxLines());
     }
 
-    @Tool(name = "threads", description = "Listet die Threads der Ziel-JVM mit Status (angehaltene markiert).")
+    @Tool(name = "threads", description = "Listet die Threads der Ziel-JVM mit Status (angehaltene markiert)."
+            + " Statt `threads` in jdb verwenden." + ShellHints.DEBUG)
     public String threads(@ToolParam(required = false, description = SESSION) String session) {
         DebugSession s = sessions.get(session);
         StringBuilder sb = new StringBuilder();
@@ -124,7 +129,8 @@ public class DebugTools {
         return Text.limitLines(sb.toString(), env.get().maxLines());
     }
 
-    @Tool(name = "stack", description = "Stack eines angehaltenen Threads.")
+    @Tool(name = "stack", description = "Stack eines angehaltenen Threads."
+            + " Statt `where` in jdb verwenden." + ShellHints.DEBUG)
     public String stack(
             @ToolParam(required = false, description = SESSION) String session,
             @ToolParam(required = false, description = THREAD) String thread,
@@ -134,7 +140,8 @@ public class DebugTools {
         return t.name() + ":\n  " + String.join("\n  ", s.stack(t, max == null ? 40 : Math.max(1, max)));
     }
 
-    @Tool(name = "variables", description = "Lokale Variablen und Felder von this in einem Frame eines angehaltenen Threads.")
+    @Tool(name = "variables", description = "Lokale Variablen und Felder von this in einem Frame eines angehaltenen Threads."
+            + " Statt `locals`/`dump this` in jdb verwenden." + ShellHints.DEBUG)
     public String variables(
             @ToolParam(required = false, description = SESSION) String session,
             @ToolParam(required = false, description = THREAD) String thread,
@@ -146,7 +153,8 @@ public class DebugTools {
                 env.get().maxLines());
     }
 
-    @Tool(name = "resume", description = "Setzt den angehaltenen Thread fort (oder alle mit all=true).")
+    @Tool(name = "resume", description = "Setzt den angehaltenen Thread fort (oder alle mit all=true)."
+            + " Statt `cont` in jdb verwenden." + ShellHints.DEBUG)
     public String resume(
             @ToolParam(required = false, description = SESSION) String session,
             @ToolParam(required = false, description = THREAD) String thread,
@@ -162,7 +170,8 @@ public class DebugTools {
     }
 
     @Tool(name = "step", description = "Führt einen Schritt im angehaltenen Thread aus (over, into, out; JDK-Klassen werden übersprungen) "
-            + "und wartet auf das Anhalten.")
+            + "und wartet auf das Anhalten."
+            + " Statt `next`/`step`/`step up` in jdb verwenden." + ShellHints.DEBUG)
     public String step(
             @ToolParam(required = false, description = SESSION) String session,
             @ToolParam(required = false, description = THREAD) String thread,

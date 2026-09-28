@@ -22,6 +22,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 
@@ -138,6 +139,59 @@ class McpServerIntegrationTest {
         McpSchema.CallToolResult result = client.callTool(callRequest("jvm_processes", Map.of()));
         assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
         assertThat(((McpSchema.TextContent) result.content().getFirst()).text()).contains("Lokale JVMs");
+    }
+
+    @Test
+    void initializeSendsInstructionsPreferringMcpToolsOverShell() {
+        String instructions = client.getServerInstructions();
+        assertThat(instructions)
+                .startsWith("# DevTools MCP")
+                .contains("statt eines Shell-/Terminal-Befehls")
+                // Git-Abschnitt mit Zuordnung Shell-Befehl -> Tool
+                .contains("## Git – Tools `git_*`", "NICHT `git` im Terminal", "`git_status` (statt `git status`)",
+                        "`git_commit` (statt `git commit`)", "`git_list_repositories`")
+                // alle Module mit Hinweisen, auch standardmäßig deaktivierte (Instructions stehen ab Start fest)
+                .contains("Tools `build_*`", "Tools `container_*`", "Tools `sonar_*`", "Tools `jvm_*`",
+                        "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`")
+                .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
+        // Reihenfolge wie in der Modulliste: order, dann Anzeigename
+        assertThat(instructions.indexOf("Tools `git_*`")).isLessThan(instructions.indexOf("Tools `container_*`"));
+        assertThat(instructions.indexOf("Tools `container_*`")).isLessThan(instructions.indexOf("Tools `jvm_*`"));
+        assertThat(instructions.indexOf("Tools `jvm_*`")).isLessThan(instructions.indexOf("Tools `debug_*`"));
+    }
+
+    @Test
+    void everyToolDescriptionPointsAwayFromShell() throws Exception {
+        // Fallback für Clients, die die Server-Instructions nicht übernehmen (z.B. Hermes): jede Tool-Beschreibung
+        // trägt die Grundregel ihres Moduls. Alle Module und schreibenden Container-Tools einschalten, damit nichts
+        // ungeprüft bleibt.
+        Path composeDir = Files.createDirectories(repoDir.resolve("compose-app"));
+        Files.writeString(composeDir.resolve("compose.yaml"), "services: {}\n");
+        List.of("sonar", "debug", "asprof", "build").forEach(id -> registry.setModuleEnabled(id, true));
+        registry.updateConfig("container", Map.of("allowExec", "true", "allowLifecycle", "true", "allowCopy", "true",
+                "allowCreate", "true", "allowRemove", "true", "allowCompose", "true",
+                "composeProjects", composeDir.toString()));
+        try {
+            Map<String, String> hintByPrefix = Map.of(
+                    "git_", ShellHints.GIT, "build_", ShellHints.BUILD, "container_", ShellHints.CONTAINER,
+                    "sonar_", ShellHints.SONAR, "jvm_", ShellHints.JVM, "jfr_", ShellHints.JFR,
+                    "asprof_", ShellHints.ASPROF, "visualvm_", ShellHints.VISUALVM, "debug_", ShellHints.DEBUG);
+            List<McpSchema.Tool> tools = client.listTools().tools();
+            assertThat(tools).hasSize(86); // alle @Tool-Methoden aller Module
+            assertThat(tools).allSatisfy(t -> {
+                String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
+                        .map(Map.Entry::getValue).findFirst().orElse(null);
+                assertThat(hint).as("Präfix von " + t.name()).isNotBlank();
+                assertThat(t.description()).as(t.name()).endsWith(hint);
+            });
+            assertThat(tools).filteredOn(t -> t.name().equals("git_status")).singleElement()
+                    .extracting(McpSchema.Tool::description).asString().contains("Statt `git status` in der Shell verwenden.");
+            assertThat(tools).filteredOn(t -> t.name().equals("container_list")).singleElement()
+                    .extracting(McpSchema.Tool::description).asString().contains("Statt `podman ps -a` verwenden.");
+        } finally {
+            List.of("sonar", "debug", "asprof", "build").forEach(id -> registry.setModuleEnabled(id, false));
+            registry.updateConfig("container", Map.of());
+        }
     }
 
     @Test

@@ -42,6 +42,17 @@ public class JvmModule implements ToolModule {
     }
 
     @Override
+    public String instructions() {
+        return """
+                Für laufende JVMs diese Tools statt `jps`, `jcmd`, `jstack`, `jmap` oder `jinfo` in der Shell verwenden:
+                - `jvm_processes` zuerst: liefert die gültigen Ziele (PID, Name, `container:<name>`, `jmx:<alias>`).
+                - `jvm_info` (statt `jinfo`/`jcmd VM.flags`), `jvm_threads` (statt `jstack`, inkl. Deadlock-Erkennung), \
+                `jvm_heap` (statt `jmap -histo`), `jvm_native_memory` (statt `jcmd VM.native_memory`).
+                - Invasiv, nur wenn angeboten und nötig: `jvm_heap_dump` (statt `jmap -dump`), `jvm_gc_run`, `jvm_jcmd`.
+                PIDs ändern sich nach jedem Neustart der Ziel-JVM – vor Aufrufen mit PID erneut `jvm_processes` abfragen.""";
+    }
+
+    @Override
     public int order() {
         return 210;
     }

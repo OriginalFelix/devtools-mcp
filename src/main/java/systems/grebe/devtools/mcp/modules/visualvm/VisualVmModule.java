@@ -50,6 +50,16 @@ public class VisualVmModule implements ToolModule {
     }
 
     @Override
+    public String instructions() {
+        return """
+                - `visualvm_heap_analyze` für `.hprof`-Dateien (größte Objekte, Retained Size, Pfad zur GC-Wurzel) – statt \
+                Heap-Dumps selbst zu parsen oder `jhat`/Eclipse MAT per Shell zu starten.
+                - `visualvm_sample_cpu` für CPU-Sampling über JMX, auch bei entfernten JVMs.
+                - `visualvm_open`/`visualvm_open_file` nur, wenn der Nutzer die Oberfläche selbst sehen will; sie öffnen ein Fenster \
+                bei ihm und liefern keine Auswertung.""";
+    }
+
+    @Override
     public int order() {
         return 240;
     }

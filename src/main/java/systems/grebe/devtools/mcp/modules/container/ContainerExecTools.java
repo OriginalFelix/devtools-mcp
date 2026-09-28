@@ -7,6 +7,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Befehle in Containern ausführen (nur wenn im Modul erlaubt). */
 public class ContainerExecTools {
@@ -18,7 +19,8 @@ public class ContainerExecTools {
     }
 
     @Tool(name = "exec", description = "Führt einen Befehl in einem laufenden Container aus (ohne Shell; für Pipes/Umleitungen "
-            + "explizit [\"sh\",\"-c\",\"…\"] übergeben). Liefert Exit-Code und Ausgabe.")
+            + "explizit [\"sh\",\"-c\",\"…\"] übergeben). Liefert Exit-Code und Ausgabe."
+            + " Statt `podman exec` verwenden." + ShellHints.CONTAINER)
     public String exec(
             @ToolParam(description = ContainerReadTools.CONTAINER) String container,
             @ToolParam(description = "Befehl als Liste: Programm und Argumente, z.B. [\"ls\",\"-la\",\"/app\"]") List<String> command,

@@ -43,6 +43,18 @@ public class BuildModule implements ToolModule {
     }
 
     @Override
+    public String instructions() {
+        return """
+                Für Builds und Tests in freigegebenen Projekten diese Tools statt `./gradlew`, `gradle` oder `mvn` in der \
+                Shell verwenden:
+                - `build_list_projects`: welche Projekte und Tasks/Goals freigegeben sind – vor dem ersten Build aufrufen.
+                - `build_run`: Kompilieren/Bauen (statt `./gradlew build`, `mvn package`); liefert Compiler-Fehler kompakt.
+                - `build_test`: Tests ausführen, optional gefiltert (statt `./gradlew test --tests …`, `mvn -Dtest=…`).
+                - `build_test_report`: letzte Testergebnisse auswerten, ohne neu zu bauen – statt JUnit-XML selbst zu parsen.
+                Nicht freigegebene Tasks oder Projekte nicht per Shell nachholen, sondern den Nutzer fragen.""";
+    }
+
+    @Override
     public List<ConfigField> configSchema() {
         return List.of(
                 ConfigField.of(PROJECTS, "Projekte", FieldType.DIRECTORY_LIST).asRequired()

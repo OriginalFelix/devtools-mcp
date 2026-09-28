@@ -14,6 +14,7 @@ import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironment;
 import systems.grebe.devtools.mcp.modules.java.JvmTarget;
 import systems.grebe.devtools.mcp.modules.java.StackProfile;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** async-profiler-Tools. Ergebnis wird immer als JFR geschrieben und einheitlich zu Flame Graph + Text ausgewertet. */
 public class AsyncProfilerTools {
@@ -32,7 +33,8 @@ public class AsyncProfilerTools {
     }
 
     @Tool(name = "profile", description = "Profilt eine JVM für N Sekunden mit async-profiler und liefert heißeste Methoden, "
-            + "Aufrufpfade und einen Flame Graph (HTML). Die .jfr-Datei lässt sich zusätzlich mit jfr_analyze auswerten.")
+            + "Aufrufpfade und einen Flame Graph (HTML). Die .jfr-Datei lässt sich zusätzlich mit jfr_analyze auswerten."
+            + " Statt `asprof -d <s>` verwenden." + ShellHints.ASPROF)
     public String profile(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = EVENT) String event,
@@ -61,7 +63,8 @@ public class AsyncProfilerTools {
     }
 
     @Tool(name = "start", description = "Startet async-profiler ohne festes Ende (z.B. während eines Lasttests). "
-            + "Mit asprof_stop beenden und auswerten.")
+            + "Mit asprof_stop beenden und auswerten."
+            + " Statt `asprof start` verwenden." + ShellHints.ASPROF)
     public String start(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = EVENT) String event) {
@@ -77,7 +80,8 @@ public class AsyncProfilerTools {
         return t.describe() + ": Profiling gestartet (Event " + run.event(kind) + run.eventNote(kind) + "). Beenden mit asprof_stop.";
     }
 
-    @Tool(name = "stop", description = "Beendet ein mit asprof_start gestartetes Profiling und liefert Auswertung + Flame Graph.")
+    @Tool(name = "stop", description = "Beendet ein mit asprof_start gestartetes Profiling und liefert Auswertung + Flame Graph."
+            + " Statt `asprof stop` verwenden." + ShellHints.ASPROF)
     public String stop(
             @ToolParam(required = false, description = TARGET) String target,
             @ToolParam(required = false, description = "Profilart des gestarteten Laufs: " + EVENT) String event,
@@ -97,7 +101,8 @@ public class AsyncProfilerTools {
                 + res.profile().summary(20, 5, 14), e.maxLines());
     }
 
-    @Tool(name = "status", description = "Zeigt, ob async-profiler in der Ziel-JVM aktiv ist, und listet die verfügbaren Events.")
+    @Tool(name = "status", description = "Zeigt, ob async-profiler in der Ziel-JVM aktiv ist, und listet die verfügbaren Events."
+            + " Statt `asprof status` verwenden." + ShellHints.ASPROF)
     public String status(@ToolParam(required = false, description = TARGET) String target) {
         JvmTarget t = env.get().target(target);
         Run run = Run.of(this, t);

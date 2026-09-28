@@ -9,6 +9,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
+import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Lesender Zugriff auf Compose-Projekte in freigegebenen Verzeichnissen. */
 public class ComposeReadTools {
@@ -22,20 +23,22 @@ public class ComposeReadTools {
         this.env = env;
     }
 
-    @Tool(name = "compose_projects", description = "Listet die freigegebenen Compose-Projekte (Verzeichnisse mit compose.yaml).")
+    @Tool(name = "compose_projects", description = "Listet die freigegebenen Compose-Projekte (Verzeichnisse mit compose.yaml)." + ShellHints.CONTAINER)
     public String projects() {
         StringBuilder sb = new StringBuilder();
         env.composeProjects().forEach((n, p) -> sb.append("- ").append(n).append(": ").append(p).append('\n'));
         return sb.isEmpty() ? "Keine Compose-Projekte konfiguriert." : sb.toString().strip();
     }
 
-    @Tool(name = "compose_ps", description = "Zeigt die Services eines Compose-Projekts mit Zustand und Ports.")
+    @Tool(name = "compose_ps", description = "Zeigt die Services eines Compose-Projekts mit Zustand und Ports."
+            + " Statt `podman compose ps` verwenden." + ShellHints.CONTAINER)
     public String ps(@ToolParam(required = false, description = PROJECT) String project,
                      @ToolParam(required = false, description = ContainerReadTools.RUNTIME) String runtime) {
         return run(project, runtime, List.of("ps", "-a"), Duration.ofMinutes(1));
     }
 
-    @Tool(name = "compose_logs", description = "Logs eines Compose-Projekts oder einzelner Services.")
+    @Tool(name = "compose_logs", description = "Logs eines Compose-Projekts oder einzelner Services."
+            + " Statt `podman compose logs` verwenden." + ShellHints.CONTAINER)
     public String logs(@ToolParam(required = false, description = PROJECT) String project,
                        @ToolParam(required = false, description = SERVICE) String service,
                        @ToolParam(required = false, description = "Anzahl letzter Zeilen je Service (Standard aus Einstellungen)") Integer tail,
@@ -46,7 +49,8 @@ public class ComposeReadTools {
         return run(project, runtime, args, Duration.ofMinutes(2));
     }
 
-    @Tool(name = "compose_config", description = "Zeigt die aufgelöste Compose-Konfiguration (Variablen ersetzt).")
+    @Tool(name = "compose_config", description = "Zeigt die aufgelöste Compose-Konfiguration (Variablen ersetzt)."
+            + " Statt `podman compose config` verwenden." + ShellHints.CONTAINER)
     public String config(@ToolParam(required = false, description = PROJECT) String project,
                          @ToolParam(required = false, description = ContainerReadTools.RUNTIME) String runtime) {
         return run(project, runtime, List.of("config"), Duration.ofMinutes(1));

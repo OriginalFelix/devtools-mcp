@@ -76,6 +76,20 @@ public class ContainerModule implements ToolModule {
     }
 
     @Override
+    public String instructions() {
+        return """
+                Für Docker/Podman diese Tools statt `docker`/`podman` in der Shell verwenden:
+                - Lesen: `container_list` (statt `ps -a`), `container_inspect`, `container_logs`, `container_stats`, `container_top`, \
+                `container_diff`, `container_images`, `container_networks`, `container_volumes`; `container_runtimes` zeigt die Laufzeiten.
+                - Schreiben, nur wenn angeboten (einzeln in der App schaltbar): `container_start`/`stop`/`restart`, \
+                `container_exec`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, \
+                `container_compose_*`.
+                Fehlt ein schreibendes Tool, ist es in der DevTools-App abgeschaltet: dem Nutzer den Schalter nennen und nachfragen, \
+                bevor du dieselbe Aktion per Shell ausführst. `container_rm` löscht standardmäßig nur per `container_run` angelegte \
+                Container. Geheimnisse in Umgebungsvariablen sind maskiert – nicht per Shell auslesen.""";
+    }
+
+    @Override
     public boolean enabledByDefault() {
         return true;
     }
