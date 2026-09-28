@@ -57,6 +57,12 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     runtimeOnly("com.h2database:h2")
 
+    // Code-Graph-Ablage: Spring Data Neo4j (Entities für Projekt/Branch, Bulk-Cypher über Neo4jClient für Knoten/Kanten)
+    // Bewusst ohne Boot-Starter: die Verbindung kommt aus den Modul-Einstellungen und wird zur Laufzeit gebaut
+    // (Änderungen gelten sofort), eine Neo4j-Auto-Konfiguration neben JPA wäre nur im Weg.
+    implementation("org.springframework.data:spring-data-neo4j")
+    implementation("org.neo4j.driver:neo4j-java-driver")
+
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
     }

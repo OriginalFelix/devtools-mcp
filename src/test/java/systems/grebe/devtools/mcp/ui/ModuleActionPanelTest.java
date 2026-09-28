@@ -91,7 +91,7 @@ class ModuleActionPanelTest {
         Files.writeString(src.resolve("A.java"), "package demo;\nclass A { void a() { new B().b(); } }\n");
         Files.writeString(src.resolve("B.java"), "package demo;\nclass B { void b() { } }\n");
 
-        registry.updateConfig("graph", Map.of("projects", project.toString()));
+        registry.updateConfig("graph", Map.of("projects", project.toString(), "storage", "file"));
         ToolModule graph = registry.modules().stream().filter(m -> m.id().equals("graph")).findFirst().orElseThrow();
 
         AtomicReference<Scene> scene = new AtomicReference<>();
@@ -107,7 +107,9 @@ class ModuleActionPanelTest {
             pane.set(p);
         });
 
-        ComboBox<String> target = (ComboBox<String>) find(pane.get(), ComboBox.class, null);
+        // Die Aktionsleiste liegt unter dem Konfigurationsformular (dort gibt es weitere ComboBoxen, z.B. „Ablage“)
+        ComboBox<String> target = (ComboBox<String>) find(find(pane.get(), ModuleActionPanel.class, null),
+                ComboBox.class, null);
         Button index = (Button) find(pane.get(), Button.class, "Indizieren");
         CheckBox force = (CheckBox) find(pane.get(), CheckBox.class, "Komplett neu");
         String name = project.getFileName().toString();
@@ -120,6 +122,7 @@ class ModuleActionPanelTest {
 
         onFx(index::fire);
         waitFor(() -> labels(pane.get()).stream().anyMatch(t -> t.startsWith("Graph gebaut")), "Ergebnis");
+        // Projekt ohne Git: ein Graph ohne Branch
         assertThat(Files.exists(project.resolve("devtools-fileinfo.graph"))).isTrue();
         waitFor(() -> labels(pane.get()).stream().anyMatch(t -> t.contains("Graph vom") && t.contains("2 Dateien")),
                 "Zustand nach dem Lauf");

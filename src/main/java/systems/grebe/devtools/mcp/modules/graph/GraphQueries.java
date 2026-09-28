@@ -1,13 +1,10 @@
 package systems.grebe.devtools.mcp.modules.graph;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -22,11 +19,16 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Edge;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
+import systems.grebe.devtools.mcp.modules.graph.GraphReader.Direction;
+import systems.grebe.devtools.mcp.modules.graph.GraphReader.GraphInfo;
+import systems.grebe.devtools.mcp.modules.graph.GraphReader.NodeSearch;
+import systems.grebe.devtools.mcp.modules.graph.GraphReader.TypeLink;
 
-/** Abfragen auf einem geladenen {@link CodeGraph}; Ergebnisse als kompakter Text für das LLM. */
+/**
+ * Abfragen auf einem gespeicherten Code-Graphen; Ergebnisse als kompakter Text für das LLM. Alle Zugriffe laufen über
+ * {@link GraphReader} – bei der Neo4j-Ablage also als Cypher in der Datenbank, ohne den Graphen zu laden.
+ */
 final class GraphQueries {
-
-    enum Direction { OUT, IN, BOTH }
 
     private static final Pattern CAMEL = Pattern.compile("(?<=[a-z0-9])(?=[A-Z])|[^A-Za-z0-9]+");
     private static final Set<String> STOP_WORDS = Set.of("the", "a", "an", "and", "or", "of", "to", "in", "is", "are",
@@ -35,10 +37,28 @@ final class GraphQueries {
             "den", "dem", "des", "ein", "eine", "ist", "sind", "zu", "auf", "fuer", "für", "aus", "nach", "class",
             "klasse", "methode", "method");
 
-    private final CodeGraph g;
+    /** Obergrenze der Kandidaten, die {@code find}/{@code query} aus dem Graphen holen und dann bewerten. */
+    static final int MAX_CANDIDATES = 20_000;
+
+    private static final Set<Relation> CONTAINS = EnumSet.of(Relation.CONTAINS);
+
+    private final GraphReader g;
+    private final Map<Integer, Community> communities = new HashMap<>();
+
+    GraphQueries(GraphReader g) {
+        this.g = g;
+        List<Community> list = g.info().communities();
+        if (list != null) {
+            list.forEach(c -> communities.put(c.id(), c));
+        }
+    }
 
     GraphQueries(CodeGraph g) {
-        this.g = g;
+        this(new MemoryGraphReader(g, null, null, g.data().root()));
+    }
+
+    private Community community(Integer id) {
+        return id == null ? null : communities.get(id);
     }
 
     // ------------------------------------------------------------------ Knoten finden
@@ -88,7 +108,7 @@ final class GraphQueries {
             String noParams = spec.replaceAll("\\(.*", "");
             int dot = noParams.lastIndexOf('.');
             if (dot > 0 && dot + 1 < noParams.length() && Character.isLowerCase(noParams.charAt(dot + 1))
-                    && types(noParams).isEmpty() && !types(noParams.substring(0, dot)).isEmpty()) {
+                    && g.typesNamed(noParams).isEmpty() && !g.typesNamed(noParams.substring(0, dot)).isEmpty()) {
                 typePart = noParams.substring(0, dot);
                 memberPart = spec.substring(dot + 1);
             } else {
@@ -96,56 +116,25 @@ final class GraphQueries {
                 memberPart = null;
             }
         }
-        List<Node> owners = types(typePart);
+        List<Node> owners = g.typesNamed(typePart);
         if (memberPart == null) {
-            if (!owners.isEmpty()) {
-                return owners;
-            }
-            // Dateiname ohne Pfad
-            List<Node> files = g.nodes().stream().filter(n -> n.kind() == Kind.FILE
-                    && (n.name().endsWith("/" + spec) || n.name().equals(spec))).toList();
-            return files;
+            return owners.isEmpty() ? g.filesNamed(spec) : owners;
         }
         String name = memberPart.replaceAll("\\(.*", "");
         String params = memberPart.contains("(") ? memberPart.substring(memberPart.indexOf('(')).replace(" ", "") : null;
+        List<String> ownerIds = owners.stream().map(Node::id).toList();
+        List<Edge> contains = g.edges(ownerIds, Direction.OUT, CONTAINS);
+        Map<String, Node> members = g.nodes(contains.stream().map(Edge::to).toList());
         List<Node> out = new ArrayList<>();
-        for (Node owner : owners) {
-            for (Edge e : g.outgoing(owner.id())) {
-                if (e.rel() != Relation.CONTAINS) {
-                    continue;
-                }
-                Node m = g.node(e.to());
-                if (m == null || !m.kind().isMember()) {
-                    continue;
-                }
-                String memberKey = m.id().substring(m.id().indexOf('#') + 1);
-                boolean nameMatch = m.name().equals(name) || (name.equals("<init>") && m.kind() == Kind.CONSTRUCTOR);
-                if (nameMatch && (params == null || memberKey.endsWith(params))) {
-                    out.add(m);
-                }
+        for (Edge e : contains) {
+            Node m = members.get(e.to());
+            if (m == null || !m.kind().isMember()) {
+                continue;
             }
-        }
-        return out;
-    }
-
-    /** Typen mit diesem FQN oder einfachem Namen (auch {@code Outer.Inner}). */
-    private List<Node> types(String name) {
-        Node exact = g.node(name);
-        if (exact != null && (exact.kind().isType() || exact.kind() == Kind.EXTERNAL)) {
-            return List.of(exact);
-        }
-        String suffix = "." + name;
-        List<Node> out = new ArrayList<>();
-        for (Node n : g.nodes()) {
-            if (n.kind().isType() && (n.id().endsWith(suffix) || n.id().equals(name))) {
-                out.add(n);
-            }
-        }
-        if (out.isEmpty()) {
-            for (Node n : g.nodes()) {
-                if (n.kind() == Kind.EXTERNAL && (n.id().endsWith(suffix) || n.id().equals(name))) {
-                    out.add(n);
-                }
+            String memberKey = m.id().substring(m.id().indexOf('#') + 1);
+            boolean nameMatch = m.name().equals(name) || (name.equals("<init>") && m.kind() == Kind.CONSTRUCTOR);
+            if (nameMatch && (params == null || memberKey.endsWith(params))) {
+                out.add(m);
             }
         }
         return out;
@@ -159,16 +148,14 @@ final class GraphQueries {
         }
         String[] glob = q.contains("*") ? q.toLowerCase(Locale.ROOT).split("\\*", -1) : null;
         String lower = q.toLowerCase(Locale.ROOT);
+        Set<Kind> kinds = kind != null ? EnumSet.of(kind) : EnumSet.complementOf(EnumSet.of(Kind.PACKAGE));
+        NodeSearch search = glob != null
+                ? new NodeSearch(kinds, null, false, globRegex(glob, true), globRegex(glob, false), MAX_CANDIDATES)
+                : new NodeSearch(kinds, List.of(lower), false, null, null, MAX_CANDIDATES);
         record Hit(Node n, int score) {
         }
         List<Hit> hits = new ArrayList<>();
-        for (Node n : g.nodes()) {
-            if (kind != null && n.kind() != kind) {
-                continue;
-            }
-            if (kind == null && (n.kind() == Kind.PACKAGE)) {
-                continue;
-            }
+        for (Node n : g.search(search)) {
             String name = n.name().toLowerCase(Locale.ROOT);
             String id = n.id().toLowerCase(Locale.ROOT);
             int score;
@@ -189,13 +176,28 @@ final class GraphQueries {
                 hits.add(new Hit(n, score));
             }
         }
-        // Grad erst für die Treffer berechnen – bei vielen Knoten wäre das je Knoten zu teuer
+        // Grad erst für die Treffer holen – für alle Knoten wäre das zu teuer
+        Map<String, Integer> degrees = g.degrees(hits.stream().map(h -> h.n().id()).toList());
         List<Hit> ranked = new ArrayList<>(hits.size());
         for (Hit h : hits) {
-            ranked.add(new Hit(h.n(), h.score() * 100000 + Math.min(99999, g.degree(h.n().id()))));
+            ranked.add(new Hit(h.n(), h.score() * 100000 + Math.min(99999, degrees.getOrDefault(h.n().id(), 0))));
         }
         ranked.sort(Comparator.comparingInt((Hit h) -> -h.score()).thenComparing(h -> h.n().id()));
         return ranked.stream().limit(limit).map(Hit::n).toList();
+    }
+
+    /** Platzhaltermuster als Java-Regex (gilt so auch in Cypher {@code =~}): ganz verankert oder Teiltreffer. */
+    static String globRegex(String[] parts, boolean whole) {
+        StringBuilder sb = new StringBuilder(whole ? "" : ".*");
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                sb.append(".*");
+            }
+            if (!parts[i].isEmpty()) {
+                sb.append(Pattern.quote(parts[i]));
+            }
+        }
+        return sb.append(whole ? "" : ".*").toString();
     }
 
     /**
@@ -270,14 +272,20 @@ final class GraphQueries {
         return sb.isEmpty() ? "" : " (" + sb + ")";
     }
 
+    /** Kurzname; für unbekannte IDs (Knoten fehlt) die ID selbst. */
+    private static String shortName(Map<String, Node> nodes, String id) {
+        Node n = nodes.get(id);
+        return n == null ? id : CodeGraph.shortName(n);
+    }
+
     // ------------------------------------------------------------------ Bericht
 
     String report(int topN) {
         StringBuilder sb = new StringBuilder();
-        var d = g.data();
-        sb.append("# Code-Graph ").append(d.project()).append("\n");
-        sb.append("Gebaut ").append(d.builtAt()).append(" · ").append(d.root()).append('/').append(GraphStore.FILE_NAME)
-                .append('\n');
+        GraphInfo d = g.info();
+        sb.append("# Code-Graph ").append(d.project()).append(d.branch() == null ? "" : " (Branch " + d.branch()
+                + (d.commit() == null ? "" : " @ " + d.commit()) + ")").append("\n");
+        sb.append("Gebaut ").append(d.builtAt()).append(" · ").append(d.location()).append('\n');
         Map<String, Object> s = d.stats();
         sb.append(s.get("files")).append(" Dateien, ").append(s.get("nodes")).append(" Knoten, ")
                 .append(s.get("edges")).append(" Kanten, ").append(s.get("communities")).append(" Communities\n");
@@ -285,33 +293,28 @@ final class GraphQueries {
         sb.append("Kanten: ").append(s.get("edgesByRelation")).append('\n');
         sb.append("Sicherheit: ").append(s.get("edgesByConfidence"))
                 .append(" (EXTRACTED = steht im Code, INFERRED = abgeleitet, AMBIGUOUS = mehrere mögliche Ziele)\n");
-        Object errors = s.get("filesWithParseErrors");
-        if (errors instanceof Number num && num.longValue() > 0) {
-            List<String> broken = d.files().stream().filter(f -> Boolean.TRUE.equals(f.parseErrors()))
-                    .map(CodeGraph.FileEntry::path).limit(5).toList();
+        long errors = d.stat("filesWithParseErrors");
+        if (errors > 0) {
             sb.append("Achtung: ").append(errors).append(" Datei(en) mit Syntax- oder Lesefehlern – dort fehlen evtl. ")
-                    .append("Kanten: ").append(String.join(", ", broken)).append(num.longValue() > 5 ? " …" : "")
+                    .append("Kanten: ").append(String.join(", ", g.parseErrorFiles(5))).append(errors > 5 ? " …" : "")
                     .append('\n');
         }
 
         sb.append("\n## God Nodes (meistverbundene Typen)\n");
-        typeDegrees().entrySet().stream().limit(topN).forEach(e -> {
-            Node n = g.node(e.getKey());
-            sb.append("- ").append(CodeGraph.shortName(n)).append(" – ").append(e.getValue()).append(" Kanten, ")
-                    .append(n.location()).append(n.doc() == null ? "" : " – " + n.doc()).append('\n');
+        List<Map.Entry<String, Integer>> top = g.topTypes(topN);
+        Map<String, Node> topNodes = g.nodes(top.stream().map(Map.Entry::getKey).toList());
+        top.forEach(e -> {
+            Node n = topNodes.get(e.getKey());
+            sb.append("- ").append(shortName(topNodes, e.getKey())).append(" – ").append(e.getValue()).append(" Kanten, ")
+                    .append(n == null ? "" : n.location()).append(n == null || n.doc() == null ? "" : " – " + n.doc())
+                    .append('\n');
         });
 
         sb.append("\n## Meistaufgerufene Methoden\n");
-        Map<String, Integer> called = new HashMap<>();
-        for (Edge e : g.edges()) {
-            if (e.rel() == Relation.CALLS) {
-                called.merge(e.to(), e.countValue(), Integer::sum);
-            }
-        }
-        called.entrySet().stream().sorted(Map.Entry.<String, Integer>comparingByValue().reversed()
-                        .thenComparing(Map.Entry.comparingByKey())).limit(topN)
-                .forEach(e -> sb.append("- ").append(CodeGraph.shortName(g.node(e.getKey()))).append(" – ")
-                        .append(e.getValue()).append(" Aufrufe\n"));
+        List<Map.Entry<String, Integer>> called = g.mostCalled(topN);
+        Map<String, Node> calledNodes = g.nodes(called.stream().map(Map.Entry::getKey).toList());
+        called.forEach(e -> sb.append("- ").append(shortName(calledNodes, e.getKey())).append(" – ")
+                .append(e.getValue()).append(" Aufrufe\n"));
 
         sb.append("\n## Communities (größte zuerst)\n");
         List<Community> comms = d.communities() == null ? List.of() : d.communities();
@@ -332,9 +335,8 @@ final class GraphQueries {
         }
 
         sb.append("\n## Unsichere Kanten zur Prüfung\n");
-        long ambiguous = g.edges().stream().filter(e -> e.conf() == Confidence.AMBIGUOUS).count();
-        long inferred = g.edges().stream().filter(e -> e.conf() == Confidence.INFERRED).count();
-        sb.append("- ").append(ambiguous).append(" AMBIGUOUS, ").append(inferred)
+        sb.append("- ").append(confidenceCount(s, Confidence.AMBIGUOUS)).append(" AMBIGUOUS, ")
+                .append(confidenceCount(s, Confidence.INFERRED))
                 .append(" INFERRED – bei Zweifel im Quelltext an der angegebenen Zeile nachsehen.\n");
 
         sb.append("\n## Nächste Schritte\n")
@@ -345,88 +347,50 @@ final class GraphQueries {
         return sb.toString().stripTrailing();
     }
 
-    /** Typen nach Grad (Kanten ihrer Member auf den Typ hochgezählt, ohne contains/imports). */
-    private LinkedHashMap<String, Integer> typeDegrees() {
-        Map<String, Integer> deg = new HashMap<>();
-        for (Edge e : g.edges()) {
-            if (e.rel() == Relation.CONTAINS || e.rel() == Relation.IMPORTS) {
-                continue;
-            }
-            String a = typeOf(e.from());
-            String b = typeOf(e.to());
-            if (a != null && a.equals(b)) {
-                continue;
-            }
-            if (a != null) {
-                deg.merge(a, 1, Integer::sum);
-            }
-            if (b != null) {
-                deg.merge(b, 1, Integer::sum);
-            }
-        }
-        LinkedHashMap<String, Integer> out = new LinkedHashMap<>();
-        deg.entrySet().stream()
-                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
-                .forEach(e -> out.put(e.getKey(), e.getValue()));
-        return out;
-    }
-
-    /** Projekttyp eines Knotens (Member → Besitzer), sonst {@code null}. */
-    private String typeOf(String id) {
-        Node n = g.node(id);
-        if (n == null) {
-            return null;
-        }
-        if (n.kind().isType()) {
-            return id;
-        }
-        if (n.kind().isMember()) {
-            return CodeGraph.ownerOf(id);
-        }
-        return null;
+    private static long confidenceCount(Map<String, Object> stats, Confidence c) {
+        return stats.get("edgesByConfidence") instanceof Map<?, ?> m && m.get(c.name()) instanceof Number n
+                ? n.longValue() : 0;
     }
 
     private List<String> surprising(int limit) {
-        record Link(String a, String b, int weight, Edge sample) {
-        }
-        Map<String, Link> links = new HashMap<>();
-        for (Edge e : g.edges()) {
-            if (e.rel() != Relation.CALLS && e.rel() != Relation.INSTANTIATES && e.rel() != Relation.HAS_TYPE) {
-                continue;
-            }
-            String ta = typeOf(e.from());
-            String tb = typeOf(e.to());
-            if (ta == null || tb == null) {
-                continue;
-            }
-            Node na = g.node(ta);
-            Node nb = g.node(tb);
-            if (na.community() == null || nb.community() == null || na.community().equals(nb.community())) {
-                continue;
-            }
-            String pa = pkg(ta);
-            String pb = pkg(tb);
+        List<TypeLink> links = new ArrayList<>();
+        for (TypeLink l : g.typeLinks()) {
+            String pa = pkg(l.a());
+            String pb = pkg(l.b());
             if (pa.equals(pb) || commonPrefix(pa, pb) >= Math.min(depth(pa), depth(pb)) - 1) {
                 continue; // benachbarte Pakete sind nicht überraschend
             }
-            String key = ta + "→" + tb;
-            Link old = links.get(key);
-            links.put(key, new Link(ta, tb, (old == null ? 0 : old.weight()) + e.countValue(), old == null ? e : old.sample()));
+            links.add(l);
         }
+        Set<String> ids = new HashSet<>();
+        links.forEach(l -> {
+            ids.add(l.a());
+            ids.add(l.b());
+            ids.add(l.sample().from());
+            ids.add(l.sample().to());
+        });
+        Map<String, Node> nodes = g.nodes(ids);
         // selten ist überraschend: Paare, die genau einmal verbunden sind, zwischen großen Communities
-        return links.values().stream()
-                .sorted(Comparator.comparingInt((Link l) -> l.weight())
-                        .thenComparing(l -> -sizeOf(g.node(l.a()).community()) - sizeOf(g.node(l.b()).community()))
-                        .thenComparing(Link::a))
+        return links.stream()
+                .sorted(Comparator.comparingInt(TypeLink::weight)
+                        .thenComparing(l -> -sizeOf(nodes.get(l.a())) - sizeOf(nodes.get(l.b())))
+                        .thenComparing(TypeLink::a).thenComparing(TypeLink::b))
                 .limit(limit)
-                .map(l -> CodeGraph.shortName(g.node(l.sample().from())) + " --" + l.sample().rel().label() + "--> "
-                        + CodeGraph.shortName(g.node(l.sample().to())) + "  (Community #" + g.node(l.a()).community()
-                        + " → #" + g.node(l.b()).community() + ", " + g.node(l.sample().from()).location() + ")")
+                .map(l -> {
+                    Node from = nodes.get(l.sample().from());
+                    return shortName(nodes, l.sample().from()) + " --" + l.sample().rel().label() + "--> "
+                            + shortName(nodes, l.sample().to()) + "  (Community #" + communityOf(nodes.get(l.a()))
+                            + " → #" + communityOf(nodes.get(l.b())) + ", " + (from == null ? "" : from.location()) + ")";
+                })
                 .toList();
     }
 
-    private int sizeOf(Integer community) {
-        Community c = g.community(community);
+    private static Integer communityOf(Node n) {
+        return n == null ? null : n.community();
+    }
+
+    private int sizeOf(Node n) {
+        Community c = n == null ? null : community(n.community());
         return c == null ? 0 : c.size();
     }
 
@@ -459,7 +423,7 @@ final class GraphQueries {
         if (n.doc() != null) {
             sb.append("Doku: ").append(n.doc()).append('\n');
         }
-        Community c = g.community(n.community());
+        Community c = community(n.community());
         if (c != null) {
             sb.append("Community #").append(c.id()).append(": ").append(c.label()).append(" (").append(c.size())
                     .append(" Typen)\n");
@@ -470,13 +434,22 @@ final class GraphQueries {
                 sb.append("Gehört zu: ").append(owner.id()).append('\n');
             }
         }
+        List<Edge> outgoing = g.edges(n.id(), Direction.OUT, null);
+        List<Edge> incoming = g.edges(n.id(), Direction.IN, null);
+        Set<String> ids = new HashSet<>();
+        outgoing.forEach(e -> ids.add(e.to()));
+        incoming.forEach(e -> ids.add(e.from()));
+        Map<String, Node> nodes = g.nodes(ids);
         if (n.kind().isType() || n.kind() == Kind.FILE || n.kind() == Kind.PACKAGE) {
             List<Node> children = new ArrayList<>();
-            for (Edge e : g.outgoing(n.id())) {
-                if (e.rel() == Relation.CONTAINS) {
-                    children.add(g.node(e.to()));
+            for (Edge e : outgoing) {
+                if (e.rel() == Relation.CONTAINS && nodes.containsKey(e.to())) {
+                    children.add(nodes.get(e.to()));
                 }
             }
+            // Quelltextreihenfolge – unabhängig davon, in welcher Reihenfolge die Ablage die Kanten liefert
+            children.sort(Comparator.comparing((Node ch) -> ch.file() == null ? "" : ch.file())
+                    .thenComparing(ch -> ch.line() == null ? Integer.MAX_VALUE : ch.line()).thenComparing(Node::id));
             if (!children.isEmpty()) {
                 sb.append("\nEnthält (").append(children.size()).append("):\n");
                 children.stream().limit(maxPerRelation * 2L).forEach(ch -> sb.append("  ")
@@ -488,26 +461,15 @@ final class GraphQueries {
                 }
             }
         }
-        appendRelations(sb, "Ausgehend", g.outgoing(n.id()), true, maxPerRelation);
-        appendRelations(sb, "Eingehend", g.incoming(n.id()), false, maxPerRelation);
+        appendRelations(sb, "Ausgehend", outgoing, nodes, true, maxPerRelation);
+        appendRelations(sb, "Eingehend", incoming, nodes, false, maxPerRelation);
         if (n.kind().isType()) {
             // Aufrufe von außen auf Member dieses Typs zusammenfassen
+            Map<String, Integer> byType = g.callersByType(n.id());
+            Map<String, Node> typeNodes = g.nodes(byType.keySet());
             Map<String, Integer> callersByType = new TreeMap<>();
-            int total = 0;
-            for (Edge e : g.outgoing(n.id())) {
-                if (e.rel() != Relation.CONTAINS) {
-                    continue;
-                }
-                for (Edge in : g.incoming(e.to())) {
-                    if (in.rel() == Relation.CALLS || in.rel() == Relation.OVERRIDES) {
-                        String t = typeOf(in.from());
-                        if (t != null && !t.equals(n.id())) {
-                            callersByType.merge(CodeGraph.shortName(g.node(t)), in.countValue(), Integer::sum);
-                            total += in.countValue();
-                        }
-                    }
-                }
-            }
+            byType.forEach((t, count) -> callersByType.merge(shortName(typeNodes, t), count, Integer::sum));
+            int total = callersByType.values().stream().mapToInt(Integer::intValue).sum();
             if (!callersByType.isEmpty()) {
                 sb.append("\nMember werden verwendet von ").append(callersByType.size()).append(" Typen (")
                         .append(total).append(" Aufrufe): ");
@@ -523,7 +485,8 @@ final class GraphQueries {
         return sb.toString().stripTrailing();
     }
 
-    private void appendRelations(StringBuilder sb, String title, List<Edge> edges, boolean outgoing, int max) {
+    private void appendRelations(StringBuilder sb, String title, List<Edge> edges, Map<String, Node> nodes,
+                                 boolean outgoing, int max) {
         Map<Relation, List<Edge>> byRel = new TreeMap<>();
         for (Edge e : edges) {
             if (e.rel() != Relation.CONTAINS) {
@@ -537,8 +500,9 @@ final class GraphQueries {
         byRel.forEach((rel, list) -> {
             sb.append("  ").append(rel.label()).append(" (").append(list.size()).append("):\n");
             list.stream().sorted(Comparator.comparing(e -> outgoing ? e.to() : e.from())).limit(max).forEach(e -> {
-                Node other = g.node(outgoing ? e.to() : e.from());
-                sb.append("    ").append(other == null ? (outgoing ? e.to() : e.from()) : describeShort(other))
+                String otherId = outgoing ? e.to() : e.from();
+                Node other = nodes.get(otherId);
+                sb.append("    ").append(other == null ? otherId : describeShort(other))
                         .append(edgeTag(e)).append('\n');
             });
             if (list.size() > max) {
@@ -547,7 +511,7 @@ final class GraphQueries {
         });
     }
 
-    private String describeShort(Node n) {
+    private static String describeShort(Node n) {
         String loc = n.file() == null ? "" : "  " + n.location();
         return (n.kind() == Kind.EXTERNAL ? n.id() + " [extern]" : n.id()) + loc;
     }
@@ -556,11 +520,10 @@ final class GraphQueries {
 
     String neighbors(Node start, Direction dir, Set<Relation> relations, int depth, int limit) {
         StringBuilder sb = new StringBuilder(line(start)).append('\n');
-        String arrow = dir == Direction.IN ? "<--" : dir == Direction.OUT ? "-->" : "---";
         Set<String> seen = new HashSet<>();
         seen.add(start.id());
         int[] printed = {0};
-        walkTree(sb, start.id(), dir, relations, depth, 1, seen, printed, limit, arrow);
+        walkTree(sb, start.id(), dir, relations, depth, 1, seen, printed, limit);
         if (printed[0] == 0) {
             sb.append("  (keine ").append(dir == Direction.IN ? "eingehenden" : dir == Direction.OUT ? "ausgehenden" : "")
                     .append(" Kanten vom Typ ").append(relations.stream().map(Relation::label).toList()).append(")\n");
@@ -575,32 +538,27 @@ final class GraphQueries {
     }
 
     private void walkTree(StringBuilder sb, String id, Direction dir, Set<Relation> relations, int maxDepth, int level,
-                          Set<String> seen, int[] printed, int limit, String arrow) {
+                          Set<String> seen, int[] printed, int limit) {
         if (level > maxDepth) {
             return;
         }
-        List<Edge> edges = new ArrayList<>();
-        if (dir != Direction.IN) {
-            g.outgoing(id).stream().filter(e -> relations.contains(e.rel())).forEach(edges::add);
-        }
-        if (dir != Direction.OUT) {
-            g.incoming(id).stream().filter(e -> relations.contains(e.rel())).forEach(edges::add);
-        }
+        List<Edge> edges = new ArrayList<>(g.edges(id, dir, relations));
         edges.sort(Comparator.comparing((Edge e) -> e.rel()).thenComparing(e -> e.from().equals(id) ? e.to() : e.from()));
+        Map<String, Node> nodes = g.nodes(edges.stream().map(e -> e.from().equals(id) ? e.to() : e.from()).toList());
         for (Edge e : edges) {
             if (printed[0] >= limit) {
                 return;
             }
             String other = e.from().equals(id) ? e.to() : e.from();
             boolean repeat = !seen.add(other);
-            Node n = g.node(other);
+            Node n = nodes.get(other);
             sb.append("  ".repeat(level)).append(e.from().equals(id) ? "-->" : "<--").append(' ')
                     .append(e.rel().label()).append(' ')
                     .append(n == null ? other : describeShort(n)).append(edgeTag(e))
                     .append(repeat ? "  (siehe oben)" : "").append('\n');
             printed[0]++;
             if (!repeat) {
-                walkTree(sb, other, dir, relations, maxDepth, level + 1, seen, printed, limit, arrow);
+                walkTree(sb, other, dir, relations, maxDepth, level + 1, seen, printed, limit);
             }
         }
     }
@@ -608,60 +566,29 @@ final class GraphQueries {
     // ------------------------------------------------------------------ Pfad
 
     String path(Node from, Node to, Set<Relation> relations, boolean directed, int maxDepth) {
-        Map<String, Edge> via = new HashMap<>();
-        Deque<String> queue = new ArrayDeque<>();
-        Map<String, Integer> dist = new HashMap<>();
-        queue.add(from.id());
-        dist.put(from.id(), 0);
-        while (!queue.isEmpty()) {
-            String cur = queue.poll();
-            if (cur.equals(to.id())) {
-                break;
-            }
-            int d = dist.get(cur);
-            if (d >= maxDepth) {
-                continue;
-            }
-            List<Edge> next = new ArrayList<>();
-            g.outgoing(cur).stream().filter(e -> relations.contains(e.rel())).forEach(next::add);
-            if (!directed) {
-                g.incoming(cur).stream().filter(e -> relations.contains(e.rel())).forEach(next::add);
-            }
-            next.sort(Comparator.comparing((Edge e) -> e.conf()).thenComparing(e -> e.from().equals(cur) ? e.to() : e.from()));
-            for (Edge e : next) {
-                String other = e.from().equals(cur) ? e.to() : e.from();
-                if (!dist.containsKey(other)) {
-                    Node on = g.node(other);
-                    // nicht über externe Typen oder Pakete abkürzen (java.lang.String verbindet sonst alles)
-                    if (on != null && (on.kind() == Kind.EXTERNAL || on.kind() == Kind.PACKAGE) && !other.equals(to.id())) {
-                        continue;
-                    }
-                    dist.put(other, d + 1);
-                    via.put(other, e);
-                    queue.add(other);
-                }
-            }
-        }
-        if (!dist.containsKey(to.id())) {
+        List<Edge> steps = from.id().equals(to.id()) ? List.of()
+                : g.shortestPath(from.id(), to.id(), relations, directed, maxDepth);
+        if (steps == null) {
             return "Kein Pfad von " + from.id() + " nach " + to.id() + " (max. " + maxDepth + " Schritte, "
                     + (directed ? "nur in Pfeilrichtung" : "beide Richtungen") + ", Relationen "
                     + relations.stream().map(Relation::label).toList() + ")."
                     + (directed ? " Mit directed=false auch rückwärts suchen." : "");
         }
-        List<Edge> steps = new ArrayList<>();
-        for (String cur = to.id(); !cur.equals(from.id()); ) {
-            Edge e = via.get(cur);
-            steps.addFirst(e);
-            cur = e.from().equals(cur) ? e.to() : e.from();
-        }
+        Set<String> ids = new HashSet<>();
+        steps.forEach(e -> {
+            ids.add(e.from());
+            ids.add(e.to());
+        });
+        Map<String, Node> nodes = g.nodes(ids);
         StringBuilder sb = new StringBuilder("Pfad (").append(steps.size()).append(" Schritte):\n");
         String cur = from.id();
         sb.append("  ").append(describeShort(from)).append('\n');
         for (Edge e : steps) {
             boolean forward = e.from().equals(cur);
             String other = forward ? e.to() : e.from();
+            Node on = nodes.get(other);
             sb.append("  ").append(forward ? "--" + e.rel().label() + "-->" : "<--" + e.rel().label() + "--")
-                    .append(' ').append(describeShort(g.node(other))).append(edgeTag(e)).append('\n');
+                    .append(' ').append(on == null ? other : describeShort(on)).append(edgeTag(e)).append('\n');
             cur = other;
         }
         return sb.toString().stripTrailing();
@@ -675,13 +602,20 @@ final class GraphQueries {
             throw new IllegalArgumentException("Keine Suchbegriffe in der Frage erkannt. Klassen-/Methodennamen oder "
                     + "Fachbegriffe angeben, z.B. 'Wie wird ein Auftrag gespeichert?' → Begriffe auftrag, gespeichert.");
         }
+        // Kandidaten: Name/ID/Doku enthält einen Begriff oder dessen Stamm (ein Stamm ist immer Teil des Namens)
+        Set<String> needles = new LinkedHashSet<>(terms);
+        terms.forEach(t -> {
+            String stem = stem(t);
+            if (stem != null) {
+                needles.add(stem);
+            }
+        });
+        List<Node> candidates = g.search(new NodeSearch(EnumSet.complementOf(EnumSet.of(Kind.PACKAGE, Kind.FILE,
+                Kind.EXTERNAL)), new ArrayList<>(needles), true, null, null, MAX_CANDIDATES));
         record Scored(Node n, double score) {
         }
-        List<Scored> scored = new ArrayList<>();
-        for (Node n : g.nodes()) {
-            if (n.kind() == Kind.PACKAGE || n.kind() == Kind.FILE || n.kind() == Kind.EXTERNAL) {
-                continue;
-            }
+        List<Scored> raw = new ArrayList<>();
+        for (Node n : candidates) {
             double s = 0;
             Set<String> nameParts = new HashSet<>(terms(n.name()));
             String nameLower = n.name().toLowerCase(Locale.ROOT);
@@ -705,18 +639,23 @@ final class GraphQueries {
                 }
             }
             if (s > 0) {
-                s += Math.log1p(g.degree(n.id())) * 0.3;
-                if (n.kind().isType()) {
-                    s += 0.5;
-                }
-                if (isTestCode(n)) {
-                    s *= 0.4; // Tests nennen Fachbegriffe oft im Namen, erklären den Ablauf aber selten
-                }
-                scored.add(new Scored(n, s));
+                raw.add(new Scored(n, s));
             }
         }
-        if (scored.isEmpty()) {
+        if (raw.isEmpty()) {
             return "Kein Knoten passt zu " + terms + ". Mit graph_find nach Namensteilen suchen.";
+        }
+        Map<String, Integer> degrees = g.degrees(raw.stream().map(x -> x.n().id()).toList());
+        List<Scored> scored = new ArrayList<>(raw.size());
+        for (Scored x : raw) {
+            double s = x.score() + Math.log1p(degrees.getOrDefault(x.n().id(), 0)) * 0.3;
+            if (x.n().kind().isType()) {
+                s += 0.5;
+            }
+            if (isTestCode(x.n())) {
+                s *= 0.4; // Tests nennen Fachbegriffe oft im Namen, erklären den Ablauf aber selten
+            }
+            scored.add(new Scored(x.n(), s));
         }
         scored.sort(Comparator.comparingDouble((Scored x) -> -x.score()).thenComparing(x -> x.n().id()));
         int seeds = Math.max(1, Math.min(8, maxNodes / 3));
@@ -729,33 +668,37 @@ final class GraphQueries {
         seedNodes.forEach(n -> nodes.add(n.id()));
         EnumSet<Relation> rels = EnumSet.of(Relation.CALLS, Relation.INSTANTIATES, Relation.EXTENDS,
                 Relation.IMPLEMENTS, Relation.OVERRIDES, Relation.HAS_TYPE);
-        List<Edge> candidates = new ArrayList<>();
+        List<String> scope = new ArrayList<>();
+        List<String> typeSeeds = new ArrayList<>();
         for (Node seed : seedNodes) {
-            List<String> scope = new ArrayList<>(List.of(seed.id()));
+            scope.add(seed.id());
             if (seed.kind().isType()) {
-                for (Edge e : g.outgoing(seed.id())) {
-                    if (e.rel() == Relation.CONTAINS) {
-                        scope.add(e.to());
-                    }
-                }
-            }
-            for (String id : scope) {
-                g.outgoing(id).stream().filter(e -> rels.contains(e.rel())).forEach(candidates::add);
-                g.incoming(id).stream().filter(e -> rels.contains(e.rel())).forEach(candidates::add);
+                typeSeeds.add(seed.id());
             }
         }
-        candidates.sort(Comparator.comparingInt((Edge e) -> (scoredIds.contains(e.from()) && scoredIds.contains(e.to())) ? 0 : 1)
+        if (!typeSeeds.isEmpty()) {
+            g.edges(typeSeeds, Direction.OUT, CONTAINS).forEach(e -> scope.add(e.to()));
+        }
+        List<Edge> candidatesEdges = new ArrayList<>(g.edges(scope, Direction.BOTH, rels));
+        Set<String> endpoints = new HashSet<>();
+        candidatesEdges.forEach(e -> {
+            endpoints.add(e.from());
+            endpoints.add(e.to());
+        });
+        Map<String, Node> known = new HashMap<>(g.nodes(endpoints));
+        seedNodes.forEach(n -> known.put(n.id(), n));
+        candidatesEdges.sort(Comparator.comparingInt((Edge e) -> (scoredIds.contains(e.from()) && scoredIds.contains(e.to())) ? 0 : 1)
                 .thenComparingInt(e -> e.rel() == Relation.HAS_TYPE ? 1 : 0) // Aufrufe/Vererbung erklären mehr
-                .thenComparingInt(e -> isTestCode(g.node(e.from())) ? 1 : 0)
+                .thenComparingInt(e -> known.get(e.from()) != null && isTestCode(known.get(e.from())) ? 1 : 0)
                 .thenComparing(e -> e.conf()).thenComparing(e -> -e.countValue()).thenComparing(e -> e.from() + e.to()));
         List<Edge> shown = new ArrayList<>();
         Set<String> edgeKeys = new HashSet<>();
-        for (Edge e : candidates) {
+        for (Edge e : candidatesEdges) {
             if (!edgeKeys.add(e.from() + "|" + e.to() + "|" + e.rel())) {
                 continue;
             }
-            Node a = g.node(e.from());
-            Node b = g.node(e.to());
+            Node a = known.get(e.from());
+            Node b = known.get(e.to());
             if (a == null || b == null || b.kind() == Kind.EXTERNAL) {
                 continue;
             }
@@ -784,20 +727,20 @@ final class GraphQueries {
         if (!shown.isEmpty()) {
             sb.append("\nZusammenhang (").append(shown.size()).append(" Kanten):\n");
             for (Edge e : shown) {
-                sb.append("  ").append(CodeGraph.shortName(g.node(e.from()))).append(" --").append(e.rel().label())
-                        .append("--> ").append(CodeGraph.shortName(g.node(e.to()))).append(edgeTag(e)).append('\n');
+                sb.append("  ").append(shortName(known, e.from())).append(" --").append(e.rel().label())
+                        .append("--> ").append(shortName(known, e.to())).append(edgeTag(e)).append('\n');
             }
         }
         Map<Integer, Integer> comms = new TreeMap<>();
         for (String id : nodes) {
-            Node n = g.node(id);
+            Node n = known.get(id);
             if (n != null && n.community() != null) {
                 comms.merge(n.community(), 1, Integer::sum);
             }
         }
         if (!comms.isEmpty()) {
             sb.append("\nCommunities: ").append(String.join(", ", comms.keySet().stream().map(c -> {
-                Community cm = g.community(c);
+                Community cm = community(c);
                 return "#" + c + (cm == null ? "" : " " + cm.label());
             }).toList())).append('\n');
         }

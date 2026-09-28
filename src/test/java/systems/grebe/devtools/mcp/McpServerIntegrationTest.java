@@ -191,7 +191,7 @@ class McpServerIntegrationTest {
                     Map.entry("debug_", ShellHints.DEBUG), Map.entry("skills_", ShellHints.SKILLS),
                     Map.entry("graph_", ShellHints.GRAPH));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(103); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(105); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -309,15 +309,18 @@ class McpServerIntegrationTest {
                     private String helper(String n) { return n; }
                 }
                 """);
-        registry.updateConfig("graph", Map.of("projects", repoDir.toString()));
+        registry.updateConfig("graph", Map.of("projects", repoDir.toString(), "storage", "file"));
         registry.setModuleEnabled("graph", true);
         try {
             assertThat(toolNames()).contains("graph_build", "graph_report", "graph_find", "graph_explain",
-                    "graph_neighbors", "graph_path", "graph_query");
+                    "graph_neighbors", "graph_path", "graph_query", "graph_branches", "graph_cypher");
             McpSchema.CallToolResult built = client.callTool(callRequest("graph_build", Map.of()));
             assertThat(built.isError()).isNotEqualTo(Boolean.TRUE);
-            assertThat(text(built)).startsWith("Graph gebaut").contains("devtools-fileinfo.graph");
-            assertThat(Files.exists(repoDir.resolve("devtools-fileinfo.graph"))).isTrue();
+            // Graph je Branch: das Test-Repository steht auf "main"
+            assertThat(text(built)).startsWith("Graph gebaut").contains("Branch main", "devtools-fileinfo@main.graph");
+            assertThat(Files.exists(repoDir.resolve("devtools-fileinfo@main.graph"))).isTrue();
+            assertThat(text(client.callTool(callRequest("graph_branches", Map.of())))).contains("ausgecheckt: main",
+                    "- main * @ ");
 
             assertThat(text(client.callTool(callRequest("graph_neighbors",
                     Map.of("node", "Greeter#helper", "direction", "in", "relations", List.of("calls"))))))
@@ -336,7 +339,7 @@ class McpServerIntegrationTest {
     void graphIndexActionRunsFromRegistryWhileModuleIsDisabled() throws Exception {
         Path src = Files.createDirectories(repoDir.resolve("src/main/java/demo"));
         Files.writeString(src.resolve("A.java"), "package demo;\nclass A { void a() { } }\n");
-        registry.updateConfig("graph", Map.of("projects", repoDir.toString()));
+        registry.updateConfig("graph", Map.of("projects", repoDir.toString(), "storage", "file"));
         int[] changes = {0};
         registry.addChangeListener(() -> changes[0]++);
         try {
@@ -347,7 +350,7 @@ class McpServerIntegrationTest {
             int before = changes[0];
             var result = registry.runAction("graph", "index", project, java.util.Set.of(), null);
             assertThat(result.success()).as(result.message()).isTrue();
-            assertThat(Files.exists(repoDir.resolve("devtools-fileinfo.graph"))).isTrue();
+            assertThat(Files.exists(repoDir.resolve("devtools-fileinfo@main.graph"))).isTrue();
             assertThat(changes[0]).isGreaterThan(before);
             assertThat(registry.describeActionTarget("graph", "index", project)).contains("Graph vom", "1 Dateien");
             assertThat(registry.runAction("graph", "index", "gibt-es-nicht", java.util.Set.of(), null).message())

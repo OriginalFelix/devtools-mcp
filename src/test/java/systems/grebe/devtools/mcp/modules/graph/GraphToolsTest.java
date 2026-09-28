@@ -29,117 +29,7 @@ class GraphToolsTest {
     @BeforeEach
     void writeFixture() throws Exception {
         Files.writeString(project.resolve("build.gradle"), "");
-        write("com/acme/shop/OrderService.java", """
-                package com.acme.shop;
-
-                import com.acme.shop.repo.OrderRepository;
-                import java.util.List;
-
-                /** Service für Aufträge. Speichert und lädt sie. */
-                public class OrderService implements Service {
-                    private final OrderRepository repo;
-                    private final Printer printer = new Printer();
-
-                    public OrderService(OrderRepository repo) {
-                        this.repo = repo;
-                    }
-
-                    @Override
-                    public void start() {
-                        load(1L);
-                    }
-
-                    public Order load(long id) {
-                        return repo.findById(id);
-                    }
-
-                    public void save(Order o) {
-                        repo.save(o);
-                        o.total().add(1);
-                        validate(o);
-                        Util.check(o);
-                        printer.print(o);
-                    }
-
-                    private void validate(Order o) {
-                    }
-
-                    void chain(List<String> names) {
-                        load(2).total();
-                        names.get(0).frobnicate();
-                        Runnable r = this::start;
-                    }
-                }
-
-                interface Service {
-                    void start();
-                }
-                """);
-        write("com/acme/shop/Order.java", """
-                package com.acme.shop;
-
-                /** Ein Auftrag. */
-                public record Order(int amount) {
-                    Money total() {
-                        return new Money();
-                    }
-                }
-
-                class Money {
-                    void add(int x) {
-                    }
-                }
-
-                class Util {
-                    static void check(Object o) {
-                    }
-                }
-
-                class Printer {
-                    void print(Order o) {
-                    }
-
-                    void print(String s) {
-                    }
-                }
-
-                class Weird {
-                    void frobnicate() {
-                    }
-                }
-                """);
-        write("com/acme/shop/repo/OrderRepository.java", """
-                package com.acme.shop.repo;
-
-                import com.acme.shop.Order;
-
-                public interface OrderRepository {
-                    Order findById(long id);
-
-                    void save(Order o);
-                }
-                """);
-        write("com/acme/shop/repo/JpaOrderRepository.java", """
-                package com.acme.shop.repo;
-
-                import com.acme.shop.Order;
-                import jakarta.persistence.Entity;
-
-                @Entity
-                public class JpaOrderRepository implements OrderRepository {
-                    public Order findById(long id) {
-                        return null;
-                    }
-
-                    @Override
-                    public void save(Order o) {
-                        helper();
-                    }
-
-                    private void helper() {
-                    }
-                }
-                """);
+        GraphToolsTestFixture.write(project);
     }
 
     private void write(String rel, String content) throws Exception {
@@ -151,6 +41,7 @@ class GraphToolsTest {
     private GraphTools tools() {
         Map<String, String> values = new HashMap<>();
         values.put(GraphModule.PROJECTS, project.toString());
+        values.put(GraphModule.STORAGE, GraphModule.STORAGE_FILE);
         return new GraphTools(new GraphService(ModuleConfig.of(new GraphModule().configSchema(), values)));
     }
 
@@ -281,6 +172,7 @@ class GraphToolsTest {
         Files.writeString(empty.resolve("pom.xml"), "<project/>");
         Map<String, String> values = new HashMap<>();
         values.put(GraphModule.PROJECTS, empty.toString());
+        values.put(GraphModule.STORAGE, GraphModule.STORAGE_FILE);
         GraphTools t = new GraphTools(new GraphService(ModuleConfig.of(new GraphModule().configSchema(), values)));
         assertThat(t.build(null, false)).startsWith("Graph gebaut").contains("0 Dateien, 0 Knoten");
         GraphStore.clearCache();
@@ -298,36 +190,36 @@ class GraphToolsTest {
         GraphTools t = tools();
         t.build(null, false);
 
-        assertThat(t.find(null, "Order*", "class", null)).contains("com.acme.shop.OrderService  [class]")
+        assertThat(t.find(null, "Order*", "class", null, null)).contains("com.acme.shop.OrderService  [class]")
                 .doesNotContain("[record]");
-        assertThat(t.find(null, "save", "method", null))
+        assertThat(t.find(null, "save", "method", null, null))
                 .contains("com.acme.shop.OrderService#save(Order)", "com.acme.shop.repo.OrderRepository#save(Order)");
 
-        String explain = t.explain(null, "OrderRepository#save", null);
+        String explain = t.explain(null, "OrderRepository#save", null, null);
         assertThat(explain).contains("com.acme.shop.repo.OrderRepository#save(Order)  [method]  void save(Order o)")
                 .contains("Eingehend:", "calls (1):", "com.acme.shop.OrderService#save(Order)",
                         "overrides (1):", "JpaOrderRepository#save(Order)");
-        assertThat(t.explain(null, "OrderService", null)).contains("Doku: Service für Aufträge.", "Enthält (",
+        assertThat(t.explain(null, "OrderService", null, null)).contains("Doku: Service für Aufträge.", "Enthält (",
                 "implements (1):", "com.acme.shop.Service");
 
         // Wer ruft Money#add auf – über zwei Ebenen
-        String callers = t.neighbors(null, "Money#add", "in", List.of("calls"), 2, null);
+        String callers = t.neighbors(null, "Money#add", "in", List.of("calls"), 2, null, null);
         assertThat(callers).contains("<-- calls com.acme.shop.OrderService#save(Order)")
                 .contains("INFERRED 0.8");
         // Implementierungen eines Interfaces
-        assertThat(t.neighbors(null, "OrderRepository", "in", List.of("implements"), 1, null))
+        assertThat(t.neighbors(null, "OrderRepository", "in", List.of("implements"), 1, null, null))
                 .contains("<-- implements com.acme.shop.repo.JpaOrderRepository");
 
-        String path = t.path(null, "OrderService#start", "JpaOrderRepository#findById", false, null, null);
+        String path = t.path(null, "OrderService#start", "JpaOrderRepository#findById", false, null, null, null);
         assertThat(path).startsWith("Pfad (").contains("--calls--> com.acme.shop.OrderService#load(long)")
                 .contains("com.acme.shop.repo.JpaOrderRepository#findById(long)");
-        assertThat(t.path(null, "Money", "Weird", true, List.of("calls"), 3)).startsWith("Kein Pfad");
+        assertThat(t.path(null, "Money", "Weird", true, List.of("calls"), 3, null)).startsWith("Kein Pfad");
 
-        String answer = t.query(null, "Wie wird ein Order gespeichert (save)?", null);
+        String answer = t.query(null, "Wie wird ein Order gespeichert (save)?", null, null);
         assertThat(answer).contains("Suchbegriffe: [order, gespeichert, save]")
                 .contains("Beste Treffer:", "OrderService", "Zusammenhang (");
 
-        String report = t.report(null, 5);
+        String report = t.report(null, 5, null);
         assertThat(report).contains("## God Nodes", "## Communities", "## Meistaufgerufene Methoden",
                 "OrderService", "EXTRACTED");
     }
@@ -349,7 +241,7 @@ class GraphToolsTest {
         Files.writeString(test, "package com.acme.shop;\nclass LedgerBuchenTest { void testBuchenWirdGebucht() { new Ledger().buchen(null); } }\n");
         GraphTools t = tools();
         t.build(null, false);
-        String answer = t.query(null, "Wie wird gebucht?", 10);
+        String answer = t.query(null, "Wie wird gebucht?", 10, null);
         int prod = answer.indexOf("com.acme.shop.Ledger#buchen(Order)");
         int testHit = answer.indexOf("LedgerBuchenTest#testBuchenWirdGebucht()");
         assertThat(prod).as(answer).isPositive();
@@ -376,6 +268,7 @@ class GraphToolsTest {
     void indexActionReportsProgressStateAndCanBeCancelled() throws Exception {
         Map<String, String> values = new HashMap<>();
         values.put(GraphModule.PROJECTS, project.toString());
+        values.put(GraphModule.STORAGE, GraphModule.STORAGE_FILE);
         ModuleConfig cfg = ModuleConfig.of(new GraphModule().configSchema(), values);
         GraphIndexAction action = (GraphIndexAction) new GraphModule().actions().getFirst();
 
@@ -419,13 +312,13 @@ class GraphToolsTest {
     void reportsHelpfulErrors() {
         GraphTools t = tools();
         t.build(null, false);
-        assertThatThrownBy(() -> t.explain(null, "Printer#print", null)).hasMessageContaining("mehrdeutig")
+        assertThatThrownBy(() -> t.explain(null, "Printer#print", null, null)).hasMessageContaining("mehrdeutig")
                 .hasMessageContaining("Printer#print(Order)").hasMessageContaining("Printer#print(String)");
-        assertThat(t.explain(null, "Printer#print(String)", null)).contains("void print(String s)");
-        assertThatThrownBy(() -> t.explain(null, "Gibtsnicht", null)).hasMessageContaining("Kein Knoten");
-        assertThatThrownBy(() -> t.neighbors(null, "Money", "seitwärts", null, null, null))
+        assertThat(t.explain(null, "Printer#print(String)", null, null)).contains("void print(String s)");
+        assertThatThrownBy(() -> t.explain(null, "Gibtsnicht", null, null)).hasMessageContaining("Kein Knoten");
+        assertThatThrownBy(() -> t.neighbors(null, "Money", "seitwärts", null, null, null, null))
                 .hasMessageContaining("direction");
-        assertThatThrownBy(() -> t.neighbors(null, "Money", "in", List.of("ruft"), null, null))
+        assertThatThrownBy(() -> t.neighbors(null, "Money", "in", List.of("ruft"), null, null, null))
                 .hasMessageContaining("Unbekannte Relation");
         assertThatThrownBy(() -> t.build("anderswo", false)).hasMessageContaining("nicht freigegeben");
     }
@@ -447,6 +340,7 @@ class GraphToolsTest {
 
         Map<String, String> values = new HashMap<>();
         values.put(GraphModule.PROJECTS, project.toString());
+        values.put(GraphModule.STORAGE, GraphModule.STORAGE_FILE);
         values.put(GraphModule.INCLUDE_TESTS, "false");
         new GraphTools(new GraphService(ModuleConfig.of(new GraphModule().configSchema(), values))).build(null, true);
         assertThat(GraphStore.load(project).node("com.acme.shop.OrderServiceTest")).isNull();
@@ -492,7 +386,7 @@ class GraphToolsTest {
         assertThat(g.node("com.acme.shop.Broken")).isNotNull();
         assertThat(g.data().files()).filteredOn(f -> f.path().endsWith("Broken.java")).singleElement()
                 .extracting(CodeGraph.FileEntry::parseErrors).isEqualTo(Boolean.TRUE);
-        assertThat(tools().report(null, 5)).contains("Syntax- oder Lesefehlern", "src/main/java/com/acme/shop/Broken.java");
+        assertThat(tools().report(null, 5, null)).contains("Syntax- oder Lesefehlern", "src/main/java/com/acme/shop/Broken.java");
     }
 
     /** Plattform → Ressourcenname der nativen Bibliothek (liegt in den bonede-Artefakten). */
@@ -537,16 +431,17 @@ class GraphToolsTest {
         Files.writeString(copy.resolve("build.gradle.kts"), "");
         Map<String, String> values = new HashMap<>();
         values.put(GraphModule.PROJECTS, copy.toString());
+        values.put(GraphModule.STORAGE, GraphModule.STORAGE_FILE);
         GraphTools t = new GraphTools(new GraphService(ModuleConfig.of(new GraphModule().configSchema(), values)));
         String out = t.build(null, false);
         assertThat(out).startsWith("Graph gebaut").doesNotContain("Lesefehlern");
 
         CodeGraph g = GraphStore.load(copy);
         String p = "systems.grebe.devtools.mcp.modules.graph.";
-        edge(g, p + "GraphTools#build(String,Boolean)", p + "GraphService#build(String,boolean)", Relation.CALLS);
+        edge(g, p + "GraphTools#build(String,Boolean)", p + "GraphService#build(String,String,boolean,Progress)", Relation.CALLS);
         edge(g, p + "GraphModule", "systems.grebe.devtools.mcp.core.ToolModule", Relation.IMPLEMENTS);
         edge(g, p + "GraphModule#id()", "systems.grebe.devtools.mcp.core.ToolModule#id()", Relation.OVERRIDES);
-        assertThat(t.neighbors(null, "systems.grebe.devtools.mcp.core.ToolModule", "in", List.of("implements"), 1, 100))
+        assertThat(t.neighbors(null, "systems.grebe.devtools.mcp.core.ToolModule", "in", List.of("implements"), 1, 100, null))
                 .contains("GitModule", "BuildModule", "SkillsModule", "GraphModule");
         assertThat(((Number) g.data().stats().get("communities")).intValue()).isGreaterThan(3);
     }

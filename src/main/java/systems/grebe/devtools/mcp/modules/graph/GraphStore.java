@@ -78,11 +78,46 @@ final class GraphStore {
         return projectRoot.resolve(FILE_NAME);
     }
 
+    /**
+     * Datei für einen Branch: ohne Git {@value #FILE_NAME}, sonst {@code devtools-fileinfo@<branch>.graph} (Zeichen
+     * außer Buchstaben, Ziffern, '.', '-' und '_' werden zu '_').
+     */
+    static Path fileFor(Path projectRoot, String branch) {
+        if (branch == null) {
+            return fileFor(projectRoot);
+        }
+        return projectRoot.resolve(BRANCH_PREFIX + branch.replaceAll("[^A-Za-z0-9._-]", "_") + BRANCH_SUFFIX);
+    }
+
+    static final String BRANCH_PREFIX = "devtools-fileinfo@";
+    static final String BRANCH_SUFFIX = ".graph";
+
+    /** Graph-Dateien des Projekts (ohne Git und je Branch). */
+    static List<Path> files(Path projectRoot) {
+        List<Path> out = new ArrayList<>();
+        if (Files.exists(fileFor(projectRoot))) {
+            out.add(fileFor(projectRoot));
+        }
+        try (var s = Files.list(projectRoot)) {
+            s.filter(p -> {
+                String n = p.getFileName().toString();
+                return n.startsWith(BRANCH_PREFIX) && n.endsWith(BRANCH_SUFFIX);
+            }).sorted().forEach(out::add);
+        } catch (IOException ignored) {
+            // Verzeichnis nicht lesbar -> keine Dateien
+        }
+        return out;
+    }
+
     // ------------------------------------------------------------------ Laden
 
     /** Geladener Graph oder {@code null}, wenn die Datei fehlt oder ein älteres Format hat. */
     static CodeGraph load(Path projectRoot) {
-        Path file = fileFor(projectRoot);
+        return loadFile(fileFor(projectRoot));
+    }
+
+    /** Wie {@link #load(Path)}, für eine bestimmte Graph-Datei. */
+    static CodeGraph loadFile(Path file) {
         try {
             FileTime modified = Files.getLastModifiedTime(file);
             long size = Files.size(file);
@@ -166,7 +201,8 @@ final class GraphStore {
         @SuppressWarnings("unchecked")
         Map<String, Object> stats = (Map<String, Object>) header.get("stats");
         return new GraphFile((String) header.get("format"), CodeGraph.VERSION, (String) header.get("project"),
-                (String) header.get("root"), (String) header.get("builtAt"), (String) header.get("generator"),
+                (String) header.get("root"), (String) header.get("branch"), (String) header.get("commit"),
+                (String) header.get("builtAt"), (String) header.get("generator"),
                 stats, files, communities, nodes, edges);
     }
 
@@ -244,8 +280,12 @@ final class GraphStore {
 
     /** Schreibt atomar (temporäre Datei + Umbenennen) und legt den Graphen in den Cache. */
     static CodeGraph write(Path projectRoot, GraphFile data) {
-        Path file = fileFor(projectRoot);
-        Path tmp = projectRoot.resolve(FILE_NAME + ".tmp");
+        return writeFile(fileFor(projectRoot), data);
+    }
+
+    /** Wie {@link #write(Path, GraphFile)}, in eine bestimmte Graph-Datei. */
+    static CodeGraph writeFile(Path file, GraphFile data) {
+        Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
         try {
             try (Writer w = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
                 w.write("{\n");
@@ -253,6 +293,12 @@ final class GraphStore {
                 field(w, "version", data.version());
                 field(w, "project", data.project());
                 field(w, "root", data.root());
+                if (data.branch() != null) {
+                    field(w, "branch", data.branch());
+                }
+                if (data.commit() != null) {
+                    field(w, "commit", data.commit());
+                }
                 field(w, "builtAt", data.builtAt());
                 field(w, "generator", data.generator());
                 field(w, "stats", data.stats());
@@ -369,8 +415,13 @@ final class GraphStore {
      * {@code builtAt}, {@code project} und die Zahlen aus {@code stats} ({@code files}, {@code nodes} …).
      */
     static Map<String, Object> header(Path projectRoot) throws IOException {
+        return headerFile(fileFor(projectRoot));
+    }
+
+    /** Wie {@link #header(Path)}, für eine bestimmte Graph-Datei; zusätzlich {@code branch}, {@code commit}, {@code root}. */
+    static Map<String, Object> headerFile(Path file) throws IOException {
         StringBuilder head = new StringBuilder();
-        try (BufferedReader r = Files.newBufferedReader(fileFor(projectRoot), StandardCharsets.UTF_8)) {
+        try (BufferedReader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             String line;
             while ((line = r.readLine()) != null) {
                 String s = line.strip();
@@ -384,6 +435,10 @@ final class GraphStore {
         Map<String, Object> out = new HashMap<>();
         out.put("builtAt", raw.get("builtAt"));
         out.put("project", raw.get("project"));
+        out.put("branch", raw.get("branch"));
+        out.put("commit", raw.get("commit"));
+        out.put("root", raw.get("root"));
+        out.put("generator", raw.get("generator"));
         if (raw.get("stats") instanceof Map<?, ?> stats) {
             stats.forEach((k, v) -> out.put(String.valueOf(k), v));
         }

@@ -82,11 +82,16 @@ final class CodeGraph {
     record Community(int id, String label, int size, List<String> top) {
     }
 
-    /** Inhalt der Datei {@code devtools-fileinfo.graph}. */
+    /** Inhalt eines gespeicherten Graphen; {@code branch}/{@code commit} fehlen außerhalb von Git. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record GraphFile(String format, int version, String project, String root, String builtAt, String generator,
-                     Map<String, Object> stats, List<FileEntry> files, List<Community> communities,
-                     List<Node> nodes, List<Edge> edges) {
+    record GraphFile(String format, int version, String project, String root, String branch, String commit,
+                     String builtAt, String generator, Map<String, Object> stats, List<FileEntry> files,
+                     List<Community> communities, List<Node> nodes, List<Edge> edges) {
+
+        GraphFile withBranch(String newBranch, String newCommit) {
+            return new GraphFile(format, version, project, root, newBranch, newCommit, builtAt, generator, stats, files,
+                    communities, nodes, edges);
+        }
     }
 
     private final GraphFile data;

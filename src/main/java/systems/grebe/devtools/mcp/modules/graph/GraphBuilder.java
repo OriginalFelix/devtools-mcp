@@ -49,7 +49,7 @@ final class GraphBuilder {
 
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(GraphBuilder.class);
 
-    static final String GENERATOR = "devtools-mcp graph (tree-sitter-java)";
+    static final String GENERATOR = "devtools-mcp graph (tree-sitter-java) 2";
 
     /** Relationen, die für die Community-Erkennung zählen – mit Gewicht. */
     private static final Map<Relation, Double> COMMUNITY_WEIGHT = Map.of(
@@ -336,6 +336,11 @@ final class GraphBuilder {
             if (e.from().equals(e.to())) {
                 continue;
             }
+            if (!nodes.containsKey(e.from())) {
+                // Member einer doppelt deklarierten Klasse (gleicher FQN in zwei Modulen): nur die erste Deklaration
+                // ist Knoten, Kanten ihrer übersprungenen Member hätten keinen Ursprung
+                continue;
+            }
             if (!nodes.containsKey(e.to())) {
                 nodes.put(e.to(), new Node(e.to(), Kind.EXTERNAL, e.to().substring(e.to().lastIndexOf('.') + 1),
                         null, null, null, null, null, null, null));
@@ -367,7 +372,7 @@ final class GraphBuilder {
         stats.put("edgesByConfidence", byConf);
         stats.put("communities", communities.size());
 
-        return new GraphFile(CodeGraph.FORMAT, CodeGraph.VERSION, project, root.toString(),
+        return new GraphFile(CodeGraph.FORMAT, CodeGraph.VERSION, project, root.toString(), null, null,
                 Instant.now().truncatedTo(ChronoUnit.SECONDS).toString(), GENERATOR, stats, files, communities,
                 nodeList, edgeList);
     }

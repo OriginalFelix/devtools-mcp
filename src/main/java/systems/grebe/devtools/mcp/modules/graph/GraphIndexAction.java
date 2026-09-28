@@ -1,7 +1,5 @@
 package systems.grebe.devtools.mcp.modules.graph;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -12,8 +10,10 @@ import java.util.Set;
 
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.modules.graph.GraphStorage.Key;
+import systems.grebe.devtools.mcp.modules.graph.GraphStorage.Stored;
 
-/** UI-Aktion „Indizieren“: baut den Code-Graphen eines Projekts ({@code devtools-fileinfo.graph}). */
+/** UI-Aktion „Indizieren“: baut den Code-Graphen eines Projekts für den ausgecheckten Branch. */
 final class GraphIndexAction implements ModuleAction {
 
     static final String ID = "index";
@@ -33,8 +33,9 @@ final class GraphIndexAction implements ModuleAction {
 
     @Override
     public String description() {
-        return "Baut den Code-Graphen des gewählten Projekts und schreibt ihn nach " + GraphStore.FILE_NAME
-                + ". Ohne „Komplett neu“ nur, wenn sich Quelldateien geändert haben.";
+        return "Baut den Code-Graphen des gewählten Projekts für den ausgecheckten Git-Branch und speichert ihn (Neo4j "
+                + "oder Datei, siehe Ablage). Ohne „Komplett neu“ nur, wenn sich Quelldateien geändert haben. Graphen "
+                + "gelöschter Branches werden dabei entfernt.";
     }
 
     @Override
@@ -52,19 +53,29 @@ final class GraphIndexAction implements ModuleAction {
         if (target == null) {
             return null;
         }
-        Path root = new GraphService(config).resolve(target);
-        Path file = GraphStore.fileFor(root);
-        if (!Files.exists(file)) {
-            return root + " – noch kein Graph";
-        }
+        GraphService service = new GraphService(config);
+        Key key;
         try {
-            Map<String, Object> head = GraphStore.header(root);
-            Object built = head.get("builtAt");
-            String when = built == null ? "?" : TIME.format(Instant.parse(String.valueOf(built)));
-            return root + " – Graph vom " + when + ", " + head.getOrDefault("files", "?") + " Dateien, "
-                    + head.getOrDefault("nodes", "?") + " Knoten, " + size(Files.size(file));
-        } catch (Exception e) {
-            return root + " – Graph-Datei nicht lesbar: " + e.getMessage();
+            key = service.key(target, null);
+        } catch (RuntimeException e) {
+            return e.getMessage();
+        }
+        String head = key.root() + " – Branch " + key.branchLabel();
+        try {
+            List<Stored> stored = service.storage().branches(key.root());
+            Stored current = stored.stream().filter(s -> java.util.Objects.equals(s.branch(), key.branch()))
+                    .findFirst().orElse(null);
+            String others = stored.size() > (current == null ? 0 : 1)
+                    ? " (weitere gespeichert: " + String.join(", ", stored.stream().filter(s -> s != current)
+                    .map(s -> s.branch() == null ? "(ohne Git)" : s.branch()).toList()) + ")" : "";
+            if (current == null) {
+                return head + " – noch kein Graph" + others;
+            }
+            String when = current.builtAt() == null ? "?" : TIME.format(Instant.parse(current.builtAt()));
+            return head + " – Graph vom " + when + ", " + current.files() + " Dateien, " + current.nodes() + " Knoten"
+                    + others;
+        } catch (RuntimeException e) {
+            return head + " – Ablage nicht lesbar: " + GraphModule.rootMessage(e);
         }
     }
 
@@ -77,14 +88,17 @@ final class GraphIndexAction implements ModuleAction {
         if (target == null || target.isBlank()) {
             return ActionResult.failed("Bitte ein Projekt wählen (Projekte in der Konfiguration eintragen und speichern).");
         }
-        GraphService.BuildResult r = new GraphService(config).build(target, flags.contains(FORCE), progress);
-        Map<String, Object> s = r.graph().data().stats();
+        GraphService.BuildResult r = new GraphService(config).build(target, null, flags.contains(FORCE), progress);
+        Map<String, Object> s = r.graph().info().stats();
+        String removed = r.removedBranches().isEmpty() ? ""
+                : " Entfernt (Branch gelöscht): " + String.join(", ", r.removedBranches()) + ".";
         if (!r.rebuilt()) {
-            return ActionResult.ok("Graph ist aktuell (keine Quelldatei geändert) – " + s.get("files") + " Dateien, "
-                    + s.get("nodes") + " Knoten.");
+            return ActionResult.ok("Graph ist aktuell (Branch " + r.key().branchLabel() + ", keine Quelldatei geändert) – "
+                    + s.get("files") + " Dateien, " + s.get("nodes") + " Knoten." + removed);
         }
-        return ActionResult.ok("Graph gebaut in " + String.format("%.1f", r.duration().toMillis() / 1000.0) + " s: "
-                + s.get("files") + " Dateien, " + s.get("nodes") + " Knoten, " + s.get("edges") + " Kanten, "
-                + s.get("communities") + " Communities → " + GraphStore.fileFor(r.root()));
+        return ActionResult.ok("Graph gebaut in " + String.format("%.1f", r.duration().toMillis() / 1000.0) + " s (Branch "
+                + r.key().branchLabel() + "): " + s.get("files") + " Dateien, " + s.get("nodes") + " Knoten, "
+                + s.get("edges") + " Kanten, " + s.get("communities") + " Communities → " + r.graph().info().location()
+                + "." + removed);
     }
 }
