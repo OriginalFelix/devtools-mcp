@@ -8,20 +8,29 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 
 /**
  * Basisklasse eines Plugins – das Gegenstück zu Bukkits {@code JavaPlugin}. Die in {@code plugin.yml} unter
- * {@code main} genannte Klasse erweitert sie und braucht einen öffentlichen Konstruktor ohne Parameter.
+ * {@code main} genannte Klasse erweitert sie.
+ *
+ * <p>Jedes Plugin hat einen eigenen Spring-Kontext; die Hauptklasse ist darin eine Bean und Konfigurationsklasse.
+ * {@code @Component}s im Paket der Hauptklasse werden gefunden, {@code @Autowired}/Konstruktor-Injektion,
+ * {@code @Value}, {@code @Bean}, {@code @PostConstruct}/{@code @PreDestroy} funktionieren, Beans der App (z.B.
+ * {@code SettingsStore}, {@code ToolRegistry}) sind injizierbar. {@code ToolModule}-Beans werden automatisch als
+ * Module aufgenommen:
  *
  * <pre>{@code
- * public class JiraPlugin extends DevToolsPlugin {
- *     @Override
- *     public void onEnable() {
- *         registerModule(new JiraModule(dataFolder()));
- *     }
+ * public class JiraPlugin extends DevToolsPlugin { }        // reicht, wenn JiraModule ein @Component ist
+ *
+ * @Component
+ * class JiraModule implements ToolModule {
+ *     JiraModule(JiraClient client, PluginContext plugin) { … }
  * }
  * }</pre>
  *
- * <p>Lebenszyklus: {@link #onLoad()} direkt nach dem Laden (alle Abhängigkeiten sind geladen), dann
- * {@link #onEnable()}; {@link #onDisable()} beim Deaktivieren, Deinstallieren, Aktualisieren oder Beenden der App.
- * Registrierte Module werden beim Deaktivieren automatisch entfernt. Eine Exception in {@code onLoad}/{@code onEnable}
+ * <p>Ohne Spring-Annotationen geht es wie bei Bukkit: {@code registerModule(new JiraModule(dataFolder()))} in
+ * {@link #onEnable()}.
+ *
+ * <p>Lebenszyklus: Spring-Kontext aufbauen (Beans, {@code @PostConstruct}) → {@link #onLoad()} →
+ * {@code ToolModule}-Beans aufnehmen → {@link #onEnable()}; beim Deaktivieren, Deinstallieren, Aktualisieren oder
+ * Beenden der App {@link #onDisable()} → Module entfernen → Kontext schließen ({@code @PreDestroy}). Eine Exception in {@code onLoad}/{@code onEnable}
  * lässt nur dieses Plugin scheitern; die UI zeigt den Fehler.
  *
  * <p>Plugins laufen im Prozess der App mit denselben Rechten – nur Plugins aus vertrauenswürdigen Quellen installieren.

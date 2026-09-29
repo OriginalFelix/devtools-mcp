@@ -355,6 +355,52 @@ class PluginManagerTest {
     }
 
     @Test
+    void springPluginGetsComponentScanInjectionBeanMethodsAndLifecycle() throws Exception {
+        Files.createDirectories(pluginsDir());
+        TestPlugins.springPlugin("springy", "1.0", "springy", null).build(pluginsDir().resolve("springy.jar"));
+
+        PluginInfo info = manager().plugin("springy").orElseThrow();
+
+        assertThat(info.state()).as(String.valueOf(info.error())).isEqualTo(State.ENABLED);
+        assertThat(info.modules()).containsExactly("springy"); // @Component-Modul ohne registerModule aufgenommen
+        ToolModule module = manager.modules().getFirst();
+        ToolCallback tool = module.createTools(ModuleConfig.of(List.of(), java.util.Map.of())).getFirst();
+        // @Service injiziert (Singleton: Zähler läuft weiter), @Bean aus der Hauptklasse, @Value mit Default ohne App
+        assertThat(tool.call("{}")).contains("Hallo aus @Bean", "app=ohne-app", "bean=keine", "zähler=1");
+        assertThat(tool.call("{}")).contains("zähler=2");
+        assertThat(module.instructions()).isEqualTo("Spring-Hinweis springy 1.0"); // PluginContext injiziert
+        assertThat(lifecycle("springy")).isEqualTo("PostConstruct\nonEnable");
+
+        manager.setEnabled("springy", false);
+        assertThat(lifecycle("springy")).isEqualTo("PostConstruct\nonEnable\nonDisable\nPreDestroy");
+    }
+
+    @Test
+    void failingBeanFailsOnlyThatPluginWithTheSpringMessage() throws Exception {
+        Files.createDirectories(pluginsDir());
+        TestPlugins.jar()
+                .pluginYml("name: badbean\nversion: 1\nmain: badbean.Main\n")
+                .source("badbean.Main", "package badbean; public class Main extends "
+                        + "systems.grebe.devtools.mcp.plugin.DevToolsPlugin {}")
+                .source("badbean.NeedsMissing", """
+                        package badbean;
+                        @org.springframework.stereotype.Component
+                        public class NeedsMissing {
+                            public NeedsMissing(java.util.concurrent.ExecutorService gibtsNicht) { }
+                        }
+                        """).build(pluginsDir().resolve("badbean.jar"));
+        Files.copy(echo("fine", "1", "fine", "", null), pluginsDir().resolve("fine.jar"));
+
+        manager();
+
+        assertThat(manager.plugin("badbean").orElseThrow()).satisfies(p -> {
+            assertThat(p.state()).isEqualTo(State.FAILED);
+            assertThat(p.error()).contains("ExecutorService");
+        });
+        assertThat(manager.plugin("fine").orElseThrow().state()).isEqualTo(State.ENABLED);
+    }
+
+    @Test
     void descriptorValidation() {
         assertThat(parse("name: ok\nversion: 1\nmain: a.B\nauthor: x\nauthors: [y]\nlibraries: [g:a:1]")).satisfies(d -> {
             assertThat(d.authors()).containsExactly("x", "y");

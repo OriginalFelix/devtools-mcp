@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
+import org.springframework.ai.mcp.server.webflux.transport.WebFluxStreamableServerTransportProvider;
 import systems.grebe.devtools.mcp.plugin.PluginManager;
 
 /**
@@ -22,9 +24,10 @@ import systems.grebe.devtools.mcp.plugin.PluginManager;
  * dem ersten Tool-Aufruf, dass es z.B. {@code git_status} statt {@code git status} im Terminal verwenden soll –
  * Tool-Beschreibungen allein reichen dafür nicht, weil sie mit den eingebauten Werkzeugen des Clients konkurrieren.
  *
- * <p>Die Instructions stehen nach dem Serverstart fest (das MCP-SDK kennt keine Änderungsbenachrichtigung dafür).
- * Deshalb werden alle Module aufgenommen, auch deaktivierte; die Texte sind bedingt formuliert („wenn angeboten“)
- * und die tatsächlich verfügbaren Tools liefert weiterhin {@code tools/list}.
+ * <p>Der Text wird bei jedem {@code initialize} neu gebaut ({@link LiveInstructionsTransport}) – neue Client-Sessions
+ * sehen Plugin-Änderungen sofort, bestehende behalten ihren Stand (MCP kennt keine Änderungsbenachrichtigung für
+ * Instructions). Aufgenommen werden alle Module, auch deaktivierte; die Texte sind bedingt formuliert („wenn
+ * angeboten“) und die tatsächlich verfügbaren Tools liefert weiterhin {@code tools/list}.
  */
 @Configuration(proxyBeanMethods = false)
 public class ServerInstructions {
@@ -67,7 +70,8 @@ public class ServerInstructions {
                               @Value("${spring.ai.mcp.server.instructions:}") String base) {
         this(modules, () -> {
             PluginManager pm = plugins.getIfAvailable();
-            return pm == null ? List.of() : pm.modules();
+            // lädt nichts nach: beim Serveraufbau sind noch keine Plugins aktiv, danach die jeweils aktiven
+            return pm == null ? List.of() : pm.activeModules();
         }, base);
     }
 
@@ -85,6 +89,18 @@ public class ServerInstructions {
     @Bean
     McpSyncServerCustomizer instructionsCustomizer() {
         return builder -> builder.instructions(build());
+    }
+
+    /**
+     * Baut die Instructions bei jedem {@code initialize} neu (siehe {@link LiveInstructionsTransport}): Plugins,
+     * die zur Laufzeit installiert, aktiviert oder entfernt werden, sind so für jede neue Client-Session sofort
+     * berücksichtigt. {@code @Primary}, damit der MCP-Server diese Hülle bekommt; die Router-Funktion hängt weiter am
+     * eigentlichen WebFlux-Transport.
+     */
+    @Bean
+    @Primary
+    LiveInstructionsTransport liveInstructionsTransport(WebFluxStreamableServerTransportProvider transport) {
+        return new LiveInstructionsTransport(transport, this::build);
     }
 
     /** Liefert den vollständigen Instructions-Text. */

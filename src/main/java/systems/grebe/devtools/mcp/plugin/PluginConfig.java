@@ -4,6 +4,8 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.event.EventListener;
@@ -14,9 +16,8 @@ import systems.grebe.devtools.mcp.plugin.store.MavenPluginResolver;
 import systems.grebe.devtools.mcp.plugin.store.PluginStore;
 
 /**
- * Verdrahtung des Plugin-Systems. Plugins werden beim ersten Bedarf geladen – spätestens wenn die Server-Instructions
- * gebaut werden, also vor dem Start des MCP-Servers; ihre Module gehen an die {@link ToolRegistry}, sobald die App
- * bereit ist.
+ * Verdrahtung des Plugin-Systems. Plugins werden geladen, sobald die App bereit ist (dann stehen alle App-Beans für
+ * {@code @Autowired} in Plugins fertig), und ihre Module gehen sofort an die {@link ToolRegistry}.
  */
 @Configuration(proxyBeanMethods = false)
 public class PluginConfig {
@@ -33,10 +34,12 @@ public class PluginConfig {
      */
     @Bean(destroyMethod = "close")
     PluginManager pluginManager(SettingsStore store, ObjectProvider<ToolModule> builtinModules,
-                                ObjectProvider<ToolRegistry> registry, MavenPluginResolver resolver) {
+                                ObjectProvider<ToolRegistry> registry, MavenPluginResolver resolver,
+                                ApplicationContext app) {
         return new PluginManager(PluginManager.defaultDirectory(store), store,
                 () -> builtinModules.stream().map(ToolModule::id).collect(Collectors.toUnmodifiableSet()),
-                registry::getObject, resolver);
+                registry::getObject, resolver,
+                app instanceof ConfigurableApplicationContext c ? c : null);
     }
 
     @Bean

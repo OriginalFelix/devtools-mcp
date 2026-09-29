@@ -160,6 +160,104 @@ public final class TestPlugins {
                         """.formatted(pkg, moduleId, name, name, name));
     }
 
+    /**
+     * Plugin ganz im Spring-Stil: Modul und Service als {@code @Component} (Konstruktor-Injektion), eine
+     * {@code @Bean}-Methode in der Hauptklasse, {@code @Value} aus der App-Umgebung, {@code @PostConstruct}/
+     * {@code @PreDestroy} und optional eine App-Bean ({@code appBeanType}, z.B. {@code SettingsStore}) per
+     * {@code @Autowired(required = false)}. Das Tool {@code <moduleId>_info} meldet, was angekommen ist; der
+     * Lebenszyklus steht in {@code plugins/<name>/lifecycle.log}.
+     */
+    public static JarSpec springPlugin(String name, String version, String moduleId, String appBeanType) {
+        String pkg = "spring." + name.replace('-', '_');
+        return jar()
+                .pluginYml("name: " + name + "\nversion: " + version + "\nmain: " + pkg + ".Main\n")
+                .source(pkg + ".Main", """
+                        package %1$s;
+                        import org.springframework.context.annotation.Bean;
+                        import systems.grebe.devtools.mcp.plugin.DevToolsPlugin;
+                        public class Main extends DevToolsPlugin {
+                            @Bean Greeting greeting() { return new Greeting("Hallo aus @Bean"); }
+                            @Override public void onEnable() { Log.write(this, "onEnable"); }
+                            @Override public void onDisable() { Log.write(this, "onDisable"); }
+                        }
+                        """.formatted(pkg))
+                .source(pkg + ".Greeting", "package " + pkg + "; public record Greeting(String text) {}")
+                .source(pkg + ".Log", """
+                        package %1$s;
+                        import java.nio.file.*;
+                        import systems.grebe.devtools.mcp.plugin.*;
+                        public final class Log {
+                            public static void write(DevToolsPlugin p, String s) { write(p.dataFolder(), s); }
+                            public static void write(PluginContext c, String s) { write(c.dataFolder(), s); }
+                            static void write(Path dir, String s) {
+                                try {
+                                    Files.writeString(dir.resolve("lifecycle.log"), s + "\\n",
+                                            StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                                } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+                            }
+                        }
+                        """.formatted(pkg))
+                .source(pkg + ".service.Counter", """
+                        package %1$s.service;
+                        import java.util.concurrent.atomic.AtomicInteger;
+                        import org.springframework.stereotype.Service;
+                        @Service
+                        public class Counter {
+                            private final AtomicInteger n = new AtomicInteger();
+                            public int next() { return n.incrementAndGet(); }
+                        }
+                        """.formatted(pkg))
+                .source(pkg + ".InfoModule", """
+                        package %1$s;
+                        import java.util.List;
+                        import jakarta.annotation.PostConstruct;
+                        import jakarta.annotation.PreDestroy;
+                        import org.springframework.ai.support.ToolCallbacks;
+                        import org.springframework.ai.tool.ToolCallback;
+                        import org.springframework.ai.tool.annotation.Tool;
+                        import org.springframework.beans.factory.ObjectProvider;
+                        import org.springframework.beans.factory.annotation.Value;
+                        import org.springframework.stereotype.Component;
+                        import systems.grebe.devtools.mcp.core.ModuleConfig;
+                        import systems.grebe.devtools.mcp.core.ToolModule;
+                        import systems.grebe.devtools.mcp.plugin.PluginContext;
+                        import %1$s.service.Counter;
+                        @Component
+                        public class InfoModule implements ToolModule {
+                            private final Counter counter;
+                            private final Greeting greeting;
+                            private final PluginContext plugin;
+                            private final String appName;
+                            private final String appBean;
+                            public InfoModule(Counter counter, Greeting greeting, PluginContext plugin,
+                                              @Value("${spring.application.name:ohne-app}") String appName,
+                                              ObjectProvider<%2$s> appBean) {
+                                this.counter = counter;
+                                this.greeting = greeting;
+                                this.plugin = plugin;
+                                this.appName = appName;
+                                Object b = appBean.getIfAvailable();
+                                this.appBean = b == null ? "keine" : b.getClass().getSimpleName();
+                            }
+                            @PostConstruct void init() { Log.write(plugin, "PostConstruct"); }
+                            @PreDestroy void destroy() { Log.write(plugin, "PreDestroy"); }
+                            public String id() { return "%3$s"; }
+                            public String displayName() { return "Spring %3$s"; }
+                            public String description() { return "Spring-Plugin"; }
+                            public String instructions() { return "Spring-Hinweis %3$s " + plugin.descriptor().version(); }
+                            public boolean enabledByDefault() { return true; }
+                            public List<ToolCallback> createTools(ModuleConfig c) {
+                                return List.of(ToolCallbacks.from(this));
+                            }
+                            @Tool(name = "info", description = "Was per Spring angekommen ist.")
+                            public String info() {
+                                return greeting.text() + " | app=" + appName + " | bean=" + appBean
+                                        + " | zähler=" + counter.next();
+                            }
+                        }
+                        """.formatted(pkg, appBeanType == null ? "java.lang.Runnable" : appBeanType, moduleId));
+    }
+
     // ------------------------------------------------------------------ Maven-Repository
 
     /** Legt ein Artefakt im Maven-2-Layout ab (mit POM, SHA-1 und aktualisierter maven-metadata.xml). */

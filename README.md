@@ -265,10 +265,13 @@ Text aus einem allgemeinen Vorrang-Hinweis, dem optionalen `spring.ai.mcp.server
 `instructions()` aller Module zusammen (Reihenfolge wie die Modulliste). Ein eigenes Modul ergänzt seine Hinweise
 über `ToolModule#instructions()`.
 
-Die Instructions stehen ab dem Serverstart fest (MCP sieht keine Änderungsbenachrichtigung dafür) und enthalten
-deshalb auch abgeschaltete Module. Sie sind bedingt formuliert („wenn angeboten“), die aktuell verfügbaren Tools
-liefert weiterhin `tools/list`. Geänderte Texte kommen beim Client erst nach Neustart der App **und** neuer
-Client-Session an.
+Die Instructions werden bei **jedem `initialize`** neu gebaut: Das MCP-SDK friert den Text beim Serveraufbau ein,
+deshalb liegt um den WebFlux-Transport eine Hülle (`core/LiveInstructionsTransport`), die im Session-Aufbau das
+`InitializeResult` mit dem aktuellen Text ersetzt. Installierte, aktivierte oder entfernte Plugins sind so für jede
+**neue** Client-Session sofort berücksichtigt. Eine bestehende Session behält den Text ihres `initialize` – MCP kennt
+keine Änderungsbenachrichtigung für Instructions; der Client muss neu verbinden. Abgeschaltete eingebaute Module sind
+enthalten, die Texte sind bedingt formuliert („wenn angeboten“), die aktuell verfügbaren Tools liefert weiterhin
+`tools/list`. Codeänderungen an eingebauten Texten brauchen natürlich einen Neustart der App.
 
 Nicht jeder Client übernimmt die Instructions (Hermes z.B. wertet nur die Tool-Beschreibungen aus). Deshalb endet
 zusätzlich **jede** Tool-Beschreibung mit der Grundregel ihres Moduls (`core/ShellHints`) und nennt, wo es einen
@@ -346,21 +349,40 @@ libraries:                        # Maven-Koordinaten, beim Laden samt transitiv
   - com.squareup.okhttp3:okhttp:4.12.0
 ```
 
-Hauptklasse – Module registrieren wie in „Eigenes Modul schreiben“, nur ohne `@Component`:
+Jedes Plugin hat einen **eigenen Spring-Kontext** – Code wie in einer Spring-Anwendung:
 
 ```java
-public class JiraPlugin extends DevToolsPlugin {
-    @Override
-    public void onEnable() {
-        registerModule(new JiraModule(dataFolder()));   // Modul-ID "jira" → Tools jira_*
-    }
+public class JiraPlugin extends DevToolsPlugin {          // ist selbst Bean und @Configuration
+    @Bean
+    JiraClient jiraClient(@Value("${jira.timeout:30}") int timeout) { return new JiraClient(timeout); }
+}
 
-    @Override
-    public void onDisable() {
-        // Threads/Verbindungen schließen; Module entfernt die App selbst
-    }
+@Component                                                  // ToolModule-Beans werden automatisch Module
+class JiraModule implements ToolModule {
+    private final JiraClient client;
+    private final SettingsStore settings;                   // Bean der App
+
+    JiraModule(JiraClient client, SettingsStore settings, PluginContext plugin) { … }
+
+    @PostConstruct void connect() { … }
+    @PreDestroy void close() { … }
+
+    public String id() { return "jira"; }                   // → Tools jira_*
+    public List<ToolCallback> createTools(ModuleConfig c) { return List.of(ToolCallbacks.from(new JiraTools(client))); }
+    …
 }
 ```
+
+* **Scan:** Paket der Hauptklasse samt Unterpaketen, nur im Plugin-Jar (nicht in `libraries` oder der App). Ein
+  `@ComponentScan` auf der Hauptklasse ersetzt das; `@Import`, `@Configuration`, `@Bean` wirken wie gewohnt.
+* **Injizierbar:** alle eigenen Beans, `PluginContext`, `PluginDescriptor` und die Beans der App (`SettingsStore`,
+  `ToolRegistry`, `JavaEnvironmentProvider`, `SkillService` …). `@Value` sieht die Properties der App. Eltern ist die
+  BeanFactory der App, nicht ihr Kontext: Plugin-Beans sind für die App unsichtbar, Ereignisse des Plugin-Kontexts
+  erreichen sie nicht.
+* **Ohne Spring:** geht weiter wie bei Bukkit – `registerModule(new JiraModule(dataFolder()))` in `onEnable()`.
+  Ein Modul, das `@Component` ist *und* per `registerModule` gemeldet wird, zählt einmal.
+* **Fehler** beim Aufbau (fehlende Bean, Exception in `@PostConstruct`) lassen nur dieses Plugin scheitern; die
+  Meldung von Spring steht im Tab **Plugins**.
 
 Build (Gradle) – die App stellt die API bereit, ins Jar gehört nur der eigene Code:
 
@@ -370,7 +392,9 @@ dependencies {
 }
 ```
 
-* **Lebenszyklus:** `onLoad()` → `onEnable()`; `onDisable()` beim Abschalten, Entfernen, Aktualisieren und Beenden.
+* **Lebenszyklus:** Kontext aufbauen (`@PostConstruct`) → `onLoad()` → `ToolModule`-Beans aufnehmen → `onEnable()`;
+  beim Abschalten, Entfernen, Aktualisieren und Beenden `onDisable()` → Module entfernen → Kontext schließen
+  (`@PreDestroy`) → ClassLoader freigeben (Spring-Caches werden geleert; ein Test prüft, dass er per GC verschwindet).
   Eine Exception lässt nur dieses Plugin scheitern (Status „Fehler“ mit Meldung im Tab), der Rest läuft weiter.
   Plugins, die per `depend` auf ein abgeschaltetes Plugin zeigen, werden mit abgeschaltet.
 * **`PluginContext`** (`context()`): `registerModule`, `dataFolder()` (`plugins/<name>/`, bleibt beim Entfernen
@@ -381,8 +405,8 @@ dependencies {
   Thread-Context-ClassLoader der des Plugins – `ServiceLoader` und Jackson finden die Plugin-Klassen.
 * **Modul-IDs** sind app-weit eindeutig (2–32 Kleinbuchstaben/Ziffern); eingebaute IDs sind gesperrt. Einstellungen
   und Schalter eines Plugin-Moduls liegen wie bei eingebauten in `settings.json` und überleben Updates.
-* **Instructions:** `instructions()` der beim Start aktiven Plugin-Module landen in den MCP-Instructions; später
-  installierte Plugins erst nach Neustart (die Tools sofort). Tool-Beschreibungen daher selbst tragfähig formulieren.
+* **Instructions:** `instructions()` aktiver Plugin-Module stehen ab der nächsten Client-Session in den
+  MCP-Instructions – ohne Neustart (siehe „Instructions für das LLM“). Die Tools sind sofort in `tools/list`.
 * **Sicherheit:** Plugins laufen im Prozess der App mit denselben Rechten – kein Sandboxing. Nur Plugins aus
   vertrauenswürdigen Quellen installieren; der Store prüft Prüfsummen, keine Signaturen.
 

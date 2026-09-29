@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.plugin;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.lang.reflect.InvocationTargetException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -28,6 +27,7 @@ import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ConfigurableApplicationContext;
 import systems.grebe.devtools.mcp.config.PluginSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ManagedToolCallback;
@@ -75,26 +75,37 @@ public class PluginManager implements AutoCloseable {
     private final Supplier<Set<String>> builtinModuleIds;
     private final Supplier<ToolRegistry> registrySupplier;
     private final MavenPluginResolver resolver;
+    private final ConfigurableApplicationContext app;
     private final ClassLoader parentLoader = PluginManager.class.getClassLoader();
     /** Schlüssel: Plugin-Name bzw. {@code file:<Dateiname>} für ungültige Jars. Einfügereihenfolge = Ladereihenfolge. */
     private final Map<String, Loaded> plugins = new LinkedHashMap<>();
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private volatile List<PluginInfo> snapshot = List.of();
+    private volatile List<ToolModule> activeSnapshot = List.of();
     private ToolRegistry registry;
     private boolean loaded;
 
-    /**
-     * @param builtinModuleIds IDs der eingebauten Module (dürfen von Plugins nicht belegt werden)
-     * @param registry         liefert die Registry; wird erst bei {@link #attachRegistry()} abgefragt, damit Plugins
-     *                         schon für die Server-Instructions geladen werden können, bevor der MCP-Server steht
-     */
+    /** Ohne App-Kontext (Tests): Plugins bekommen einen eigenen Spring-Kontext, aber keine App-Beans. */
     public PluginManager(Path directory, SettingsStore store, Supplier<Set<String>> builtinModuleIds,
                          Supplier<ToolRegistry> registry, MavenPluginResolver resolver) {
+        this(directory, store, builtinModuleIds, registry, resolver, null);
+    }
+
+    /**
+     * @param builtinModuleIds IDs der eingebauten Module (dürfen von Plugins nicht belegt werden)
+     * @param registry         liefert die Registry; wird erst bei {@link #attachRegistry()} abgefragt
+     * @param app              Spring-Kontext der App: seine Beans sind in Plugins per {@code @Autowired} verfügbar,
+     *                         seine Properties per {@code @Value}; {@code null} = keine
+     */
+    public PluginManager(Path directory, SettingsStore store, Supplier<Set<String>> builtinModuleIds,
+                         Supplier<ToolRegistry> registry, MavenPluginResolver resolver,
+                         ConfigurableApplicationContext app) {
         this.directory = directory;
         this.store = store;
         this.builtinModuleIds = builtinModuleIds;
         this.registrySupplier = registry;
         this.resolver = resolver;
+        this.app = app;
     }
 
     /** {@code <Einstellungsordner>/plugins}. */
@@ -118,11 +129,18 @@ public class PluginManager implements AutoCloseable {
         return plugins().stream().filter(p -> p.name().equals(name)).findFirst();
     }
 
-    /** Module aller aktiven Plugins – z.B. für die Server-Instructions. */
-    public synchronized List<ToolModule> modules() {
+    /** Module aller aktiven Plugins (lädt die Plugins beim ersten Aufruf). */
+    public List<ToolModule> modules() {
         ensureLoaded();
-        return plugins.values().stream().filter(l -> l.state == State.ENABLED)
-                .flatMap(l -> l.modules.stream()).<ToolModule>map(m -> m).toList();
+        return activeModules();
+    }
+
+    /**
+     * Module der gerade aktiven Plugins, ohne etwas zu laden – für die Server-Instructions, die bei jedem
+     * {@code initialize} gebaut werden (auch schon beim Aufbau des MCP-Servers, wenn noch kein Plugin läuft).
+     */
+    public List<ToolModule> activeModules() {
+        return activeSnapshot; // ohne Sperre: ein laufendes Installieren darf den Verbindungsaufbau nicht blockieren
     }
 
     public void addChangeListener(Runnable listener) {
@@ -141,8 +159,13 @@ public class PluginManager implements AutoCloseable {
 
     /** Übergibt die Module aller aktiven Plugins an die Registry; ab jetzt wirken Änderungen sofort dort. */
     public synchronized void attachRegistry() {
-        ensureLoaded();
         if (registry != null) {
+            return;
+        }
+        if (!loaded) {
+            // Normalfall beim Start: Registry zuerst, dann laden – Module gehen direkt an den MCP-Server
+            registry = registrySupplier.get();
+            ensureLoaded();
             return;
         }
         registry = registrySupplier.get();
@@ -178,6 +201,7 @@ public class PluginManager implements AutoCloseable {
         }
         plugins.clear();
         loaded = false;
+        activeSnapshot = List.of();
     }
 
     // ------------------------------------------------------------------ Ändern
@@ -450,12 +474,16 @@ public class PluginManager implements AutoCloseable {
                 throw new PluginDescriptor.InvalidPluginException("Hauptklasse " + d.main() + " erweitert nicht "
                         + DevToolsPlugin.class.getName() + ".");
             }
-            DevToolsPlugin instance = PluginToolModule.withLoader(l.loader, () -> instantiate(main));
-            instance.attach(new Context(l));
-            l.instance = instance;
-            l.starting = true;
+            l.starting = true; // ab hier dürfen Beans (@PostConstruct) und onEnable Module registrieren
+            Context context = new Context(l);
             PluginToolModule.withLoader(l.loader, () -> {
+                l.spring = PluginSpringContext.create(d, l.jar, main, l.loader, context, app);
+                DevToolsPlugin instance = l.spring.getBean(PluginSpringContext.PLUGIN_BEAN, DevToolsPlugin.class);
+                l.instance = instance;
                 instance.onLoad();
+                for (ToolModule module : PluginSpringContext.moduleBeans(l.spring)) {
+                    registerModule(l, module);
+                }
                 instance.onEnable();
                 return null;
             });
@@ -467,21 +495,6 @@ public class PluginManager implements AutoCloseable {
             LOG.error("Plugin {} konnte nicht aktiviert werden", d.name(), e);
             l.starting = false;
             shutdown(l, State.FAILED, describe(e));
-        }
-    }
-
-    private static DevToolsPlugin instantiate(Class<?> main) {
-        try {
-            return (DevToolsPlugin) main.getDeclaredConstructor().newInstance();
-        } catch (NoSuchMethodException e) {
-            throw new PluginDescriptor.InvalidPluginException("Hauptklasse " + main.getName()
-                    + " braucht einen öffentlichen Konstruktor ohne Parameter.");
-        } catch (InvocationTargetException e) {
-            throw new PluginDescriptor.InvalidPluginException("Konstruktor von " + main.getName() + " fehlgeschlagen: "
-                    + ManagedToolCallback.describe(e.getCause()), e.getCause());
-        } catch (ReflectiveOperationException e) {
-            throw new PluginDescriptor.InvalidPluginException("Hauptklasse " + main.getName()
-                    + " nicht instanziierbar: " + e.getMessage(), e);
         }
     }
 
@@ -503,7 +516,19 @@ public class PluginManager implements AutoCloseable {
             }
         }
         l.modules.clear();
+        if (l.spring != null) {
+            try {
+                PluginToolModule.withLoader(l.loader, () -> {
+                    l.spring.close(); // @PreDestroy, DisposableBean, destroyMethod der Plugin-Beans
+                    return null;
+                });
+            } catch (RuntimeException | LinkageError e) {
+                LOG.warn("Spring-Kontext von Plugin {} nicht sauber geschlossen", l.key, e);
+            }
+            l.spring = null;
+        }
         if (l.loader != null) {
+            PluginSpringContext.clearCaches(l.loader);
             try {
                 l.loader.close();
             } catch (IOException e) {
@@ -521,6 +546,9 @@ public class PluginManager implements AutoCloseable {
             if (!(l.starting || l.state == State.ENABLED)) {
                 throw new IllegalStateException("Plugin " + l.key + " ist nicht aktiv – Module nur in onEnable() "
                         + "oder danach registrieren.");
+            }
+            if (l.modules.stream().anyMatch(m -> m.delegate() == module)) {
+                return; // z.B. @Component-Modul, das zusätzlich per registerModule gemeldet wird
             }
             String id = PluginToolModule.withLoader(l.loader, module::id);
             if (builtinModuleIds.get().contains(id) || plugins.values().stream()
@@ -543,6 +571,8 @@ public class PluginManager implements AutoCloseable {
         List<PluginInfo> list = plugins.values().stream().map(l -> l.info(sources.get(l.key)))
                 .sorted(Comparator.comparing(PluginInfo::name)).toList();
         snapshot = list;
+        activeSnapshot = plugins.values().stream().filter(l -> l.state == State.ENABLED)
+                .flatMap(l -> l.modules.stream()).<ToolModule>map(m -> m).toList();
         listeners.forEach(r -> {
             try {
                 r.run();
@@ -607,6 +637,7 @@ public class PluginManager implements AutoCloseable {
         State state = State.DISABLED;
         String error;
         PluginClassLoader loader;
+        org.springframework.context.annotation.AnnotationConfigApplicationContext spring;
         DevToolsPlugin instance;
         boolean starting;
 

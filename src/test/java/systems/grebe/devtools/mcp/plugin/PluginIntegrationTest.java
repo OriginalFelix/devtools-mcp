@@ -22,6 +22,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -71,13 +72,31 @@ class PluginIntegrationTest {
     @Autowired
     ToolRegistry registry;
 
+    @Autowired
+    org.springframework.context.ApplicationContext appContext;
+
     McpSyncClient client;
 
     @BeforeEach
     void connect() {
+        client = newClient();
+    }
+
+    private McpSyncClient newClient() {
         var transport = HttpClientStreamableHttpTransport.builder("http://127.0.0.1:" + port).endpoint("/mcp").build();
-        client = McpClient.sync(transport).requestTimeout(Duration.ofSeconds(30)).build();
-        client.initialize();
+        McpSyncClient c = McpClient.sync(transport).requestTimeout(Duration.ofSeconds(30)).build();
+        c.initialize();
+        return c;
+    }
+
+    /** Instructions, die eine neue Client-Session beim initialize bekommt. */
+    private String freshInstructions() {
+        McpSyncClient c = newClient();
+        try {
+            return c.getServerInstructions();
+        } finally {
+            c.closeGracefully();
+        }
     }
 
     @AfterEach
@@ -133,5 +152,64 @@ class PluginIntegrationTest {
         plugins.uninstall("hot");
         assertThat(toolNames()).doesNotContain("hot_echo");
         assertThat(toolNames()).contains("startup_echo", "git_status"); // übrige Module unberührt
+    }
+
+    @Test
+    void instructionsFollowPluginChangesForNewSessionsWithoutRestart() throws Exception {
+        String before = client.getServerInstructions();
+        assertThat(before).doesNotContain("Echo-Hinweis live");
+
+        plugins.install(TestPlugins.echoPlugin("live", "1.0", "live", "", null).build(work.resolve("live.jar")), null);
+        assertThat(freshInstructions()).contains("## Echo live – Tools `live_*`", "Echo-Hinweis live",
+                "Echo-Hinweis startup"); // Plugin vom Start bleibt drin
+        assertThat(client.getServerInstructions()).isEqualTo(before); // bestehende Session: Stand ihres initialize
+
+        plugins.setEnabled("live", false);
+        assertThat(freshInstructions()).doesNotContain("Echo-Hinweis live");
+        plugins.setEnabled("live", true);
+        assertThat(freshInstructions()).contains("Echo-Hinweis live");
+        plugins.uninstall("live");
+        assertThat(freshInstructions()).doesNotContain("Echo-Hinweis live").contains("## Git – Tools `git_*`");
+    }
+
+    @Test
+    void springPluginAutowiresAppBeansAndAppProperties() throws Exception {
+        Path jar = TestPlugins.springPlugin("wired", "1.0", "wired", "systems.grebe.devtools.mcp.config.SettingsStore")
+                .build(work.resolve("wired.jar"));
+
+        PluginManager.PluginInfo info = plugins.install(jar, null);
+
+        assertThat(info.state()).as(String.valueOf(info.error())).isEqualTo(PluginManager.State.ENABLED);
+        McpSchema.CallToolResult r = client.callTool(McpSchema.CallToolRequest.builder("wired_info").arguments(Map.of()).build());
+        String text = ((McpSchema.TextContent) r.content().getFirst()).text();
+        assertThat(text).contains("Hallo aus @Bean", "app=devtools-mcp", "bean=SettingsStore", "zähler=1");
+        assertThat(freshInstructions()).contains("Spring-Hinweis wired 1.0");
+        // der Plugin-Kontext ist ein Kind: die App sieht die Plugin-Beans nicht
+        assertThat(appContext.getBeanNamesForType(ToolModule.class)).noneMatch(n -> n.toLowerCase().contains("info"));
+        plugins.uninstall("wired");
+        assertThat(toolNames()).doesNotContain("wired_info");
+    }
+
+    @Test
+    void removedSpringPluginReleasesItsClassLoader() throws Exception {
+        // Parent-BeanFactory, Spring- und JSON-Caches dürfen keine Plugin-Klassen festhalten – sonst bleibt bei jedem
+        // Update/Entfernen ein kompletter ClassLoader samt Klassen im Speicher
+        Path jar = TestPlugins.springPlugin("leaky", "1.0", "leaky", "systems.grebe.devtools.mcp.config.SettingsStore")
+                .build(work.resolve("leaky.jar"));
+        plugins.install(jar, null);
+        McpSchema.CallToolResult r = client.callTool(McpSchema.CallToolRequest.builder("leaky_info")
+                .arguments(Map.of()).build());
+        assertThat(r.isError()).isNotEqualTo(Boolean.TRUE);
+        java.lang.ref.WeakReference<ClassLoader> loader = new java.lang.ref.WeakReference<>(registry.modules().stream()
+                .filter(m -> m.id().equals("leaky")).findFirst().map(m -> ((PluginToolModule) m).delegate())
+                .orElseThrow().getClass().getClassLoader());
+        assertThat(loader.get()).isInstanceOf(PluginClassLoader.class);
+
+        plugins.uninstall("leaky");
+        for (int i = 0; i < 20 && loader.get() != null; i++) {
+            System.gc();
+            Thread.sleep(50);
+        }
+        assertThat(loader.get()).as("ClassLoader des entfernten Plugins noch erreichbar").isNull();
     }
 }
