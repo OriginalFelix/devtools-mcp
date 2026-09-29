@@ -183,7 +183,7 @@ class McpServerIntegrationTest {
                 "composeProjects", composeDir.toString()));
         registry.updateConfig("skills", Map.of("allowDelete", "true"));
         registry.updateConfig("ticket", Map.of("allowComment", "true", "allowTransition", "true", "allowAssign", "true",
-                "allowEdit", "true", "allowCreate", "true"));
+                "allowEdit", "true", "allowCreate", "true", "allowDelete", "true"));
         try {
             Map<String, String> hintByPrefix = Map.ofEntries(
                     Map.entry("git_", ShellHints.GIT), Map.entry("build_", ShellHints.BUILD),
@@ -193,7 +193,7 @@ class McpServerIntegrationTest {
                     Map.entry("debug_", ShellHints.DEBUG), Map.entry("skills_", ShellHints.SKILLS),
                     Map.entry("graph_", ShellHints.GRAPH), Map.entry("ticket_", ShellHints.TICKET));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(118); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(120); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -338,7 +338,8 @@ class McpServerIntegrationTest {
         try {
             assertThat(toolNames()).contains("ticket_providers", "ticket_boards", "ticket_board", "ticket_search",
                     "ticket_get", "ticket_status", "ticket_links", "ticket_transitions")
-                    .doesNotContain("ticket_comment", "ticket_transition", "ticket_assign", "ticket_update", "ticket_create");
+                    .doesNotContain("ticket_comment", "ticket_transition", "ticket_assign", "ticket_update", "ticket_create",
+                            "ticket_delete", "ticket_delete_comment");
             // Schalter wirken live auf tools/list
             registry.updateConfig("ticket", Map.of("allowComment", "true"));
             assertThat(toolNames()).contains("ticket_comment").doesNotContain("ticket_transition", "ticket_create");

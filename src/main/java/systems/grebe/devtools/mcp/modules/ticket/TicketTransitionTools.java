@@ -42,7 +42,7 @@ public class TicketTransitionTools {
         StringBuilder out = new StringBuilder(TicketTools.written(e.system().transition(k, p, t)));
         if (withComment) {
             try {
-                out.append("\n").append(TicketTools.written(e.system().comment(k, p, env.commentBody(comment))));
+                out.append("\n").append(TicketTools.written(env.remember(e, e.system().comment(k, p, env.commentBody(comment)), false)));
             } catch (RuntimeException ex) {
                 // der Wechsel ist bereits erfolgt – nicht als Fehlschlag des ganzen Aufrufs melden
                 out.append("\nStatus gewechselt, aber Kommentar fehlgeschlagen: ").append(ex.getMessage());

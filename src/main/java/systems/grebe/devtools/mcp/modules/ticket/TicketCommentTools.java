@@ -25,6 +25,7 @@ public class TicketCommentTools {
             @ToolParam(required = false, description = PROVIDER) String provider) {
         TicketEnvironment.Entry e = env.resolve(provider, key);
         env.checkWrite(e, key, project, "Kommentieren");
-        return TicketTools.written(e.system().comment(key.trim(), e.project(project), env.commentBody(body)));
+        return TicketTools.written(env.remember(e,
+                e.system().comment(key.trim(), e.project(project), env.commentBody(body)), false));
     }
 }

@@ -530,8 +530,8 @@ public class GitLabTicketProvider implements TicketProvider {
             req.put("body", body);
             JsonNode res = http.post(issuePath(ref) + "/notes", req).body();
             String id = text(res.path("id"));
-            return new WriteResult(ref.key(), "Kommentar " + Text.orDash(id) + " hinzugefügt",
-                    webBase + "/" + ref.project() + "/-/issues/" + ref.iid() + (id == null ? "" : "#note_" + id));
+            return new WriteResult(canonicalKey(key, project), "Kommentar " + Text.orDash(id) + " hinzugefügt",
+                    webBase + "/" + ref.project() + "/-/issues/" + ref.iid() + (id == null ? "" : "#note_" + id), id);
         }
 
         @Override
@@ -591,6 +591,45 @@ public class GitLabTicketProvider implements TicketProvider {
         }
 
         @Override
+        public String canonicalKey(String key, String project) {
+            Ref ref = ref(key, project);
+            return ref.project().toLowerCase(Locale.ROOT) + "#" + ref.iid();
+        }
+
+        @Override
+        public String instance() {
+            return webBase;
+        }
+
+        @Override
+        public WriteResult deleteComment(String key, String project, String commentId) {
+            requireToken("Kommentare löschen");
+            Ref ref = ref(key, project);
+            String id = commentId.trim();
+            if (!id.matches("\\d+")) {
+                throw new IllegalArgumentException("GitLab: Kommentar-ID ist eine Zahl (aus ticket_get), nicht '" + id + "'.");
+            }
+            http.delete(issuePath(ref) + "/notes/" + id);
+            return new WriteResult(canonicalKey(key, project), "Kommentar " + id + " gelöscht", null);
+        }
+
+        @Override
+        public WriteResult delete(String key, String project) {
+            requireToken("Tickets löschen");
+            Ref ref = ref(key, project);
+            try {
+                http.delete(issuePath(ref));
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 403) {
+                    throw new IllegalStateException(e.getMessage() + " – Issues löschen dürfen Owner/Planner bzw. (ab GitLab "
+                            + "18.10) der Autor; alternativ schließen (ticket_transition).", e);
+                }
+                throw e;
+            }
+            return new WriteResult(canonicalKey(key, project), "Issue gelöscht", null);
+        }
+
+        @Override
         public WriteResult create(String project, NewTicket t) {
             requireToken("Anlegen");
             if (project == null || project.isBlank()) {
@@ -613,7 +652,7 @@ public class GitLabTicketProvider implements TicketProvider {
                 body.put("issue_type", t.type().trim().toLowerCase(Locale.ROOT));
             }
             JsonNode res = http.post("/projects/" + enc(project.trim()) + "/issues", body).body();
-            String key = HttpJson.first(text(res.path("references").path("full")), project.trim() + "#" + text(res.path("iid")));
+            String key = project.trim().toLowerCase(Locale.ROOT) + "#" + text(res.path("iid"));
             return new WriteResult(key, "angelegt", text(res.path("web_url")));
         }
 
@@ -648,7 +687,7 @@ public class GitLabTicketProvider implements TicketProvider {
                     if (n.path("system").asBoolean(false)) {
                         continue;
                     }
-                    comments.addFirst(new Comment(text(n.path("author").path("username")), text(n.path("created_at")),
+                    comments.addFirst(new Comment(text(n.path("id")), text(n.path("author").path("username")), text(n.path("created_at")),
                             text(n.path("body"))));
                     if (comments.size() >= maxComments) {
                         break;

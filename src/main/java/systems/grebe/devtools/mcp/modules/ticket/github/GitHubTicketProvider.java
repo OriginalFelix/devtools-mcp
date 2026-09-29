@@ -545,7 +545,8 @@ public class GitHubTicketProvider implements TicketProvider {
             ObjectNode req = HttpJson.object();
             req.put("body", body);
             JsonNode res = http.post("/repos/" + ref.repo() + "/issues/" + ref.number() + "/comments", req).body();
-            return new WriteResult(ref.key(), "Kommentar hinzugefügt", text(res.path("html_url")));
+            String id = text(res.path("id"));
+            return new WriteResult(canonicalKey(key, project), "Kommentar " + id + " hinzugefügt", text(res.path("html_url")), id);
         }
 
         @Override
@@ -596,6 +597,54 @@ public class GitHubTicketProvider implements TicketProvider {
         }
 
         @Override
+        public String canonicalKey(String key, String project) {
+            Ref ref = ref(key, project);
+            return ref.repo().toLowerCase(Locale.ROOT) + "#" + ref.number();
+        }
+
+        @Override
+        public String instance() {
+            return http.baseUrl();
+        }
+
+        @Override
+        public WriteResult deleteComment(String key, String project, String commentId) {
+            requireToken("Kommentare löschen");
+            Ref ref = ref(key, project);
+            String id = commentId.trim();
+            if (!id.matches("\\d+")) {
+                throw new IllegalArgumentException("GitHub: Kommentar-ID ist eine Zahl (aus ticket_get), nicht '" + id + "'.");
+            }
+            // Kommentare hängen am Repository; prüfen, dass er zu genau diesem Issue gehört
+            JsonNode c = http.getJson("/repos/" + ref.repo() + "/issues/comments/" + id);
+            String issueUrl = text(c.path("issue_url"));
+            if (issueUrl == null || !issueUrl.endsWith("/issues/" + ref.number())) {
+                throw new IllegalArgumentException("GitHub: Kommentar " + id + " gehört nicht zu " + ref.key() + ".");
+            }
+            http.delete("/repos/" + ref.repo() + "/issues/comments/" + id);
+            return new WriteResult(canonicalKey(key, project), "Kommentar " + id + " gelöscht", null);
+        }
+
+        @Override
+        public WriteResult delete(String key, String project) {
+            requireToken("Tickets löschen");
+            Ref ref = ref(key, project);
+            JsonNode i = http.getJson("/repos/" + ref.repo() + "/issues/" + ref.number());
+            if (i.has("pull_request")) {
+                throw new IllegalArgumentException("GitHub: " + ref.key() + " ist ein Pull Request – die lassen sich nicht löschen.");
+            }
+            ObjectNode vars = HttpJson.object();
+            vars.put("id", text(i.path("node_id")));
+            try {
+                graphql("mutation($id:ID!){ deleteIssue(input:{issueId:$id}){ repository { nameWithOwner } } }", vars);
+            } catch (IllegalStateException e) {
+                throw new IllegalStateException(e.getMessage() + " – Issues löschen dürfen nur Repository-Admins; "
+                        + "alternativ schließen (ticket_transition).", e);
+            }
+            return new WriteResult(canonicalKey(key, project), "Issue gelöscht", null);
+        }
+
+        @Override
         public WriteResult create(String project, NewTicket t) {
             requireToken("Anlegen");
             if (project == null || !project.contains("/")) {
@@ -619,7 +668,8 @@ public class GitHubTicketProvider implements TicketProvider {
                 body.put("type", t.type().trim()); // Issue-Typen der Organisation (z.B. Bug, Feature)
             }
             JsonNode res = http.post("/repos/" + project.trim() + "/issues", body).body();
-            return new WriteResult(project.trim() + "#" + text(res.path("number")), "angelegt", text(res.path("html_url")));
+            return new WriteResult(project.trim().toLowerCase(Locale.ROOT) + "#" + text(res.path("number")), "angelegt",
+                    text(res.path("html_url")));
         }
 
         // ------------------------------------------------------------------ Einzelnes Ticket
@@ -650,7 +700,7 @@ public class GitHubTicketProvider implements TicketProvider {
                 }
                 http.getJson(base + "/comments" + query("per_page", per, "page", last)).forEach(raw::add);
                 for (JsonNode c : raw.subList(Math.max(0, raw.size() - maxComments), raw.size())) {
-                    comments.add(new Comment(text(c.path("user").path("login")), text(c.path("created_at")),
+                    comments.add(new Comment(text(c.path("id")), text(c.path("user").path("login")), text(c.path("created_at")),
                             text(c.path("body"))));
                 }
             }

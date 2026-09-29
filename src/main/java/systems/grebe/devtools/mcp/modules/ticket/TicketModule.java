@@ -5,7 +5,9 @@ import java.util.List;
 
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
@@ -15,8 +17,8 @@ import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 
 /**
- * Ticket-Systeme über austauschbare Provider ({@link TicketProvider}, per ServiceLoader): Boards, Suche, Ticket lesen.
- * Mitgeliefert: Jira, GitHub, GitLab. Nur lesend.
+ * Ticket-Systeme über austauschbare Provider ({@link TicketProvider}, per ServiceLoader): Boards, Suche, Ticket lesen;
+ * schreibende Tools je Schalter. Mitgeliefert: Jira, GitHub, GitLab.
  */
 @Component
 public class TicketModule implements ToolModule {
@@ -37,11 +39,30 @@ public class TicketModule implements ToolModule {
     static final String ALLOW_CREATE = "allowCreate";
     static final String WRITE_PROJECTS = "writeProjects";
     static final String COMMENT_SUFFIX = "commentSuffix";
+    static final String ALLOW_DELETE = "allowDelete";
+    static final String DELETE_ONLY_OWN = "deleteOnlyOwn";
 
     private final TicketProviders providers;
+    /** Über alle Konfigurationsänderungen hinweg dieselbe Instanz – sonst ginge die Zuordnung beim Umschalten verloren. */
+    private final TicketOwnership ownership;
 
+    /** Für Tests: Verzeichnis selbst angelegter Tickets nur im Speicher. */
     public TicketModule(TicketProviders providers) {
+        this(providers, TicketOwnership.inMemory());
+    }
+
+    @Autowired
+    public TicketModule(TicketProviders providers, SettingsStore store) {
+        this(providers, new TicketOwnership(store.file().toAbsolutePath().getParent().resolve("tickets-own.json")));
+    }
+
+    TicketModule(TicketProviders providers, TicketOwnership ownership) {
         this.providers = providers;
+        this.ownership = ownership;
+    }
+
+    TicketEnvironment environment(ModuleConfig config) {
+        return new TicketEnvironment(providers, config, ownership);
     }
 
     public TicketProviders providers() {
@@ -78,7 +99,8 @@ public class TicketModule implements ToolModule {
                 `ticket_status`: Status und Zuständige mehrerer Tickets auf einmal; `ticket_links`: Parent, Unteraufgaben, \
                 verknüpfte Tickets und Pull/Merge Requests; `ticket_transitions`: mögliche Statuswechsel.
                 - Schreiben, nur wenn angeboten (einzeln in der App schaltbar): `ticket_comment`, `ticket_transition` \
-                (Ziel aus `ticket_transitions`), `ticket_assign`, `ticket_update`, `ticket_create`. Nur auf ausdrückliche \
+                (Ziel aus `ticket_transitions`), `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`, \
+                `ticket_delete` (standardmäßig nur selbst angelegte; Schließen ist meist richtiger). Nur auf ausdrückliche \
                 Anweisung des Nutzers schreiben und das Ergebnis mit Link melden. Fehlt ein schreibendes Tool, ist es \
                 abgeschaltet: dem Nutzer den Schalter nennen, nicht per `curl`/`gh`/`glab` ausweichen.
                 Taucht ein Ticket-Schlüssel (ABC-123, owner/repo#12, Issue-URL) in Branch-Namen, Commits oder der Aufgabe auf, \
@@ -137,13 +159,18 @@ public class TicketModule implements ToolModule {
                         .withHelp("Ein Projekt je Zeile, optional mit System: ABC, jira:ABC, github:owner/repo, "
                                 + "gitlab:gruppe/projekt, * am Ende als Präfix (gitlab:gruppe/*). Leer = alle Projekte."),
                 ConfigField.of(COMMENT_SUFFIX, "Kennzeichnung von Kommentaren", FieldType.STRING)
-                        .withHelp("Wird an jeden Kommentar angehängt, z.B. „(via DevTools MCP)“. Leer = keine.")));
+                        .withHelp("Wird an jeden Kommentar angehängt, z.B. „(via DevTools MCP)“. Leer = keine."),
+                ConfigField.of(ALLOW_DELETE, "Tickets und Kommentare löschen erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("ticket_delete, ticket_delete_comment – endgültig, nicht wiederherstellbar."),
+                ConfigField.of(DELETE_ONLY_OWN, "Nur selbst angelegte löschen", FieldType.BOOLEAN).withDefault("true")
+                        .withHelp("Nur Tickets/Kommentare, die über ticket_create bzw. ticket_comment angelegt wurden "
+                                + "(gemerkt in tickets-own.json).")));
         return fields;
     }
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        TicketEnvironment env = new TicketEnvironment(providers, config);
+        TicketEnvironment env = environment(config);
         List<Object> beans = new ArrayList<>(List.of(new TicketTools(env)));
         if (config.getBoolean(ALLOW_COMMENT)) {
             beans.add(new TicketCommentTools(env));
@@ -159,6 +186,9 @@ public class TicketModule implements ToolModule {
         }
         if (config.getBoolean(ALLOW_CREATE)) {
             beans.add(new TicketCreateTools(env));
+        }
+        if (config.getBoolean(ALLOW_DELETE)) {
+            beans.add(new TicketDeleteTools(env, config.getBoolean(DELETE_ONLY_OWN)));
         }
         return List.of(ToolCallbacks.from(beans.toArray()));
     }

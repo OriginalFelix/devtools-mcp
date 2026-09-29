@@ -31,7 +31,14 @@ public final class TicketEnvironment {
     private final List<String> writeProjects;
     private final String commentSuffix;
 
+    private final TicketOwnership ownership;
+
     public TicketEnvironment(TicketProviders providers, ModuleConfig c) {
+        this(providers, c, TicketOwnership.inMemory());
+    }
+
+    public TicketEnvironment(TicketProviders providers, ModuleConfig c, TicketOwnership ownership) {
+        this.ownership = ownership;
         Duration timeout = Duration.ofSeconds(Math.max(5, c.getInt(TicketModule.TIMEOUT, 30)));
         for (TicketProvider p : providers.providers()) {
             if (!c.getBoolean(TicketModule.enabledKey(p.id()))) {
@@ -106,6 +113,32 @@ public final class TicketEnvironment {
             }
         }
         return false;
+    }
+
+    // ------------------------------------------------------------------ Selbst angelegte Tickets und Kommentare
+
+    public TicketOwnership ownership() {
+        return ownership;
+    }
+
+    /** Merkt sich ein über die Tools angelegtes Ticket bzw. einen Kommentar; liefert das Ergebnis unverändert. */
+    public TicketSystem.WriteResult remember(Entry e, TicketSystem.WriteResult r, boolean created) {
+        try {
+            String key = canonical(e, r.key(), null);
+            if (created) {
+                ownership.addTicket(e.provider().id(), e.system().instance(), key);
+            } else {
+                ownership.addComment(e.provider().id(), e.system().instance(), key, r.id());
+            }
+        } catch (RuntimeException ex) {
+            // Merken ist Komfort für späteres Löschen – die Aktion selbst ist gelungen
+        }
+        return r;
+    }
+
+    /** Kanonischer Schlüssel; {@code project} für Kurzformen wie {@code #12}. */
+    public String canonical(Entry e, String key, String project) {
+        return e.system().canonicalKey(key.trim(), e.project(project));
     }
 
     /** Kommentartext mit optionaler Kennzeichnung. */

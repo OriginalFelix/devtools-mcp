@@ -16,7 +16,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **VisualVM** | `visualvm_heap_analyze` (Heap-Engine: Histogramm, Retained Size, Pfad zur GC-Wurzel), `visualvm_sample_cpu` (JMX-Sampler, `.nps`-Snapshot), `visualvm_open`, `visualvm_open_file` (externe VisualVM-GUI) |
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
-| **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, einschränkbar auf Projekte (Modul Standard: aus) |
+| **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -67,6 +67,13 @@ Schreibende Tools erscheinen nur mit ihrem Schalter:
 | `allowAssign` | `ticket_assign` | ein Zuständiger (DC: `name`, Cloud: `accountId`, Suche über zuweisbare Benutzer) | Logins, ignorierte werden gemeldet | Benutzer-IDs, `[0]` = niemand |
 | `allowEdit` | `ticket_update` | Titel, Beschreibung, Labels | dito | dito |
 | `allowCreate` | `ticket_create` | Issue-Typ (Standard Task, bei Fehler Liste der gültigen) | Issue-Typ der Organisation | `issue_type` |
+| `allowDelete` | `ticket_delete_comment`, `ticket_delete` | DELETE, Tickets mit Unteraufgaben werden abgelehnt (`deleteSubtasks=false`) | GraphQL `deleteIssue` (nur Repo-Admins, keine PRs); Kommentar wird vorher dem Issue zugeordnet | DELETE (Owner/Planner, ab 18.10 auch Autor) |
+
+**Nur selbst angelegte löschen** (`deleteOnlyOwn`, Standard an – wie `removeOnlyOwn` beim Container-Modul): gelöscht werden
+nur Tickets und Kommentare, die über `ticket_create` bzw. `ticket_comment` (auch der Kommentar von `ticket_transition`)
+angelegt wurden. Das Modul merkt sie sich je System **und Instanz** (Server-URL) mit kanonischem Schlüssel in
+`~/.devtools-mcp/tickets-own.json`, damit die Zuordnung einen Neustart übersteht; nach dem Löschen wird ausgetragen.
+Fremdes wird abgelehnt, bevor ein Request rausgeht. `ticket_get` zeigt die Kommentar-IDs.
 
 `writeProjects` („Schreiben nur in diesen Projekten“) schränkt alle schreibenden Tools ein: ein Eintrag je Zeile,
 optional mit System (`jira:ABC`, `github:octo/*`); leer = alle. Geprüft wird das Projekt **aus dem Ticket-Schlüssel**,

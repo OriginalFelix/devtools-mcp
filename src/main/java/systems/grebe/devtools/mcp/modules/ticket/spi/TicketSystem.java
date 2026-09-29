@@ -104,6 +104,32 @@ public interface TicketSystem {
         throw unsupported("Anlegen");
     }
 
+    /** Löscht einen Kommentar eines Tickets. */
+    default WriteResult deleteComment(String key, String project, String commentId) {
+        throw unsupported("Kommentare löschen");
+    }
+
+    /** Löscht ein Ticket endgültig (Unteraufgaben werden nicht mitgelöscht). */
+    default WriteResult delete(String key, String project) {
+        throw unsupported("Tickets löschen");
+    }
+
+    /**
+     * Eindeutige Schreibweise eines Schlüssels ({@code ABC-123}, {@code owner/repo#12}) – ohne Netzwerkzugriff.
+     * Das Modul vergleicht damit angelegte und zu löschende Tickets; {@link WriteResult#key()} muss dieselbe Form haben.
+     */
+    default String canonicalKey(String key, String project) {
+        return key.trim();
+    }
+
+    /**
+     * Welche Instanz des Systems das ist (z.B. die Server-URL). Das Verzeichnis selbst angelegter Tickets und Kommentare
+     * ist je Instanz getrennt – {@code ABC-1} auf einem anderen Jira gilt nicht als „selbst angelegt“.
+     */
+    default String instance() {
+        return id();
+    }
+
     /** Format von Beschreibungen und Kommentaren, z.B. „Markdown“. */
     default String markup() {
         return "Markdown";
@@ -255,7 +281,12 @@ public interface TicketSystem {
         }
     }
 
-    record Comment(String author, String created, String body) { }
+    /** @param id Kommentar-ID im System ({@code null}, wenn unbekannt) – Ziel für {@code ticket_delete_comment} */
+    record Comment(String id, String author, String created, String body) {
+        public Comment(String author, String created, String body) {
+            this(null, author, created, body);
+        }
+    }
 
     /**
      * @param fields weitere Felder in Anzeigereihenfolge (Parent, Sprint, Milestone …), leere Werte weglassen
@@ -318,11 +349,18 @@ public interface TicketSystem {
     /**
      * Ergebnis einer schreibenden Aktion.
      *
-     * @param key betroffenes Ticket (beim Anlegen der neue Schlüssel)
+     * @param key betroffenes Ticket in kanonischer Form ({@link #canonicalKey}); beim Anlegen der neue Schlüssel
      * @param message was passiert ist, eine Zeile
      * @param url Link zum Ergebnis (Ticket oder Kommentar) oder {@code null}
+     * @param id ID des neu angelegten Kommentars ({@link #comment}), sonst {@code null} – das Modul merkt sie sich für
+     *           „nur selbst angelegte löschen“
      */
-    record WriteResult(String key, String message, String url) { }
+    record WriteResult(String key, String message, String url, String id) {
+        /** Ohne eigene ID (Statuswechsel, Zuweisung …). */
+        public WriteResult(String key, String message, String url) {
+            this(key, message, url, null);
+        }
+    }
 
     /** Änderung eines Tickets; {@code null} = Feld bleibt unverändert, leere Label-Liste = alle Labels entfernen. */
     record TicketUpdate(String title, String description, List<String> labels) {

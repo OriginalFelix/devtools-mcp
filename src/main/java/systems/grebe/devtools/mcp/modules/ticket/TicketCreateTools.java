@@ -36,7 +36,7 @@ public class TicketCreateTools {
         }
         TicketEnvironment.Entry e = env.resolve(provider, null);
         String target = env.checkWrite(e, null, project, "Anlegen");
-        return TicketTools.written(e.system().create(target,
-                new TicketSystem.NewTicket(title.trim(), description, type, labels, assignees)));
+        return TicketTools.written(env.remember(e, e.system().create(target,
+                new TicketSystem.NewTicket(title.trim(), description, type, labels, assignees)), true));
     }
 }

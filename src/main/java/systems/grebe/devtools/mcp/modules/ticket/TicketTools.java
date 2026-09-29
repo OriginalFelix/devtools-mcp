@@ -204,7 +204,8 @@ public class TicketTools {
             sb.append("\n## Kommentare (").append(d.comments().size()).append(" von ").append(d.totalComments())
                     .append(d.comments().size() < d.totalComments() ? ", neueste" : "").append(")\n");
             for (Comment c : d.comments()) {
-                sb.append("\n### ").append(Text.orDash(c.author())).append(", ").append(Text.orDash(c.created())).append('\n')
+                sb.append("\n### ").append(Text.orDash(c.author())).append(", ").append(Text.orDash(c.created()))
+                        .append(c.id() == null ? "" : "  (Kommentar " + c.id() + ")").append('\n')
                         .append(limit(c.body() == null ? "" : c.body().strip(), 2000)).append('\n');
             }
         }

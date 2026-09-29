@@ -134,6 +134,10 @@ public final class HttpJson {
         return withBody("PATCH", pathOrUrl, body);
     }
 
+    public Response delete(String pathOrUrl) {
+        return send(HttpRequest.newBuilder(uri(pathOrUrl)).DELETE(), pathOrUrl);
+    }
+
     private Response withBody(String method, String pathOrUrl, JsonNode body) {
         return send(HttpRequest.newBuilder(uri(pathOrUrl))
                 .header("Content-Type", "application/json")

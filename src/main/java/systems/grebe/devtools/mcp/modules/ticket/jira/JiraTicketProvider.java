@@ -443,7 +443,7 @@ public class JiraTicketProvider implements TicketProvider {
             JsonNode res = http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/comment", req).body();
             String id = text(res.path("id"));
             return new WriteResult(k, "Kommentar " + Text.orDash(id) + " hinzugefügt",
-                    http.baseUrl() + "/browse/" + k + (id == null ? "" : "?focusedCommentId=" + id));
+                    http.baseUrl() + "/browse/" + k + (id == null ? "" : "?focusedCommentId=" + id), id);
         }
 
         @Override
@@ -556,6 +556,39 @@ public class JiraTicketProvider implements TicketProvider {
             return new WriteResult(newKey, msg, http.baseUrl() + "/browse/" + newKey);
         }
 
+        @Override
+        public String canonicalKey(String key, String project) {
+            return issueKey(key);
+        }
+
+        @Override
+        public String instance() {
+            return http == null ? id() : http.baseUrl();
+        }
+
+        @Override
+        public WriteResult deleteComment(String key, String project, String commentId) {
+            String k = issueKey(key);
+            http().delete("/rest/api/2/issue/" + HttpJson.enc(k) + "/comment/" + HttpJson.enc(commentId.trim()));
+            return new WriteResult(k, "Kommentar " + commentId.trim() + " gelöscht", http.baseUrl() + "/browse/" + k);
+        }
+
+        @Override
+        public WriteResult delete(String key, String project) {
+            String k = issueKey(key);
+            try {
+                // deleteSubtasks=false: Jira lehnt dann Tickets mit Unteraufgaben ab, statt sie mitzulöschen
+                http().delete("/rest/api/2/issue/" + HttpJson.enc(k) + query("deleteSubtasks", "false"));
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 400) {
+                    throw new IllegalArgumentException(e.getMessage() + " – Tickets mit Unteraufgaben werden nicht gelöscht; "
+                            + "Unteraufgaben zuerst einzeln löschen oder das Ticket schließen (ticket_transition).", e);
+                }
+                throw e;
+            }
+            return new WriteResult(k, "Ticket gelöscht", null);
+        }
+
         private String issueTypes(String project) {
             try {
                 return String.join(", ", texts(http.getJson("/rest/api/2/project/" + HttpJson.enc(project.trim()))
@@ -592,7 +625,7 @@ public class JiraTicketProvider implements TicketProvider {
                 int from = Math.max(0, all.size() - maxComments);
                 for (int n = from; n < all.size(); n++) {
                     JsonNode c = all.get(n);
-                    comments.add(new Comment(user(c.path("author")), text(c.path("created")), text(c.path("body"))));
+                    comments.add(new Comment(text(c.path("id")), user(c.path("author")), text(c.path("created")), text(c.path("body"))));
                 }
             }
             return new TicketDetails(ticket(i), user(f.path("reporter")), text(f.path("created")),
