@@ -98,6 +98,11 @@ final class SshEnvironment {
         return sessions.isOpen(c.name());
     }
 
+    /** Trennt die wiederverwendete Sitzung der Verbindung; {@code true}, wenn eine offen war. Shells bleiben offen. */
+    boolean disconnect(SshConnection c) {
+        return sessions.evict(c.name());
+    }
+
     /** Verbindung nach Name (ohne Groß-/Kleinschreibung); ohne Name die einzige konfigurierte. */
     SshConnection resolve(String name) {
         if (connections.isEmpty()) {

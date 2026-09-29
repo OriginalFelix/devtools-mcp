@@ -90,6 +90,7 @@ public class SshModule implements ToolModule {
                 - Mehrere Befehle nacheinander, lang laufende Befehle mitlesen, Rückfragen beantworten: `ssh_shell_open` → \
                 `ssh_shell_exec` (Befehl, wartet auf Exit-Code oder liefert Teilausgabe) → `ssh_shell_read` (neue Ausgabe \
                 seit dem letzten Lesen) / `ssh_shell_send` (Eingabe, ctrl=c) → nächster `ssh_shell_exec` → `ssh_shell_close`.
+                - `ssh_disconnect`: offene Sitzung einer Verbindung trennen, wenn die Arbeit dort erledigt ist.
                 - `ssh_list_dir`, `ssh_read_file`: Verzeichnisse und Textdateien per SFTP lesen.
                 - `ssh_write_file` (nur wenn angeboten): Textdatei schreiben – nur auf ausdrückliche Anweisung des Nutzers.
                 - `ssh_upload`, `ssh_download` (nur wenn angeboten): Dateien zwischen diesem Rechner und dem Server, auch \

@@ -59,6 +59,25 @@ public class SshTools {
         return sb.toString().strip();
     }
 
+    @Tool(name = "disconnect", description = "Trennt die offene SSH-Sitzung einer Verbindung, die ssh_exec, SFTP und "
+            + "die übrigen Tools zwischen Aufrufen wiederverwenden (sonst erst nach 10 Minuten ohne Nutzung). Der nächste "
+            + "Aufruf verbindet neu. Interaktive Shells haben eigene Sitzungen und werden mit ssh_shell_close geschlossen."
+            + ShellHints.SSH)
+    @ToolHints(destructive = false, idempotent = true)
+    public String disconnect(@ToolParam(required = false, description = CONNECTION) String connection) {
+        SshConnection c = env.resolve(connection);
+        StringBuilder sb = new StringBuilder(env.disconnect(c)
+                ? "Verbindung " + c.name() + " (" + c.target() + ") getrennt."
+                : "Verbindung " + c.name() + " war nicht offen.");
+        List<String> shells = env.shells().list().stream()
+                .filter(s -> s.connection.name().equals(c.name())).map(s -> s.id).toList();
+        if (!shells.isEmpty()) {
+            sb.append(" Noch offene Shells auf ").append(c.name()).append(": ").append(shells)
+                    .append(" – mit ssh_shell_close schließen.");
+        }
+        return sb.toString();
+    }
+
     @Tool(name = "list_dir", description = "Listet ein Verzeichnis auf dem Server per SFTP (Typ, Rechte, Größe, "
             + "Änderungszeit, Name; Verzeichnisse zuerst)." + ShellHints.SSH)
     public String listDir(

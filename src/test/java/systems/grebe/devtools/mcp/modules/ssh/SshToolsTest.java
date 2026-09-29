@@ -111,6 +111,21 @@ class SshToolsTest {
     }
 
     @Test
+    void disconnectClosesPooledSessionButNotShells() {
+        SshEnvironment env = module.environment(config("geheim", Map.of()));
+        SshTools tools = new SshTools(env);
+        assertThat(tools.disconnect("prod")).isEqualTo("Verbindung prod war nicht offen.");
+        new SshExecTools(env).exec("prod", "whoami", null, null, null);
+        new SshShellTools(env).open("prod", false);
+        assertThat(tools.disconnect(null)).startsWith("Verbindung prod (alice@127.0.0.1:")
+                .contains("getrennt.", "Noch offene Shells auf prod: [sh1]");
+        assertThat(env.isOpen(env.resolve("prod"))).isFalse();
+        assertThat(tools.connections()).doesNotContain("verbunden").contains("Offene Shell sh1");
+        // nächster Aufruf verbindet neu
+        assertThat(new SshExecTools(env).exec("prod", "whoami", null, null, null)).contains("cmd=whoami");
+    }
+
+    @Test
     void execTimesOut() {
         SshEnvironment env = module.environment(config("geheim", Map.of()));
         String out = new SshExecTools(env).exec("prod", "sleep", null, null, 1);
@@ -232,6 +247,9 @@ class SshToolsTest {
         assertThat(hints.get("read_file").readOnlyHint()).isTrue();
         assertThat(hints.get("shell_read").readOnlyHint()).isTrue();
         assertThat(hints.get("shell_open").destructiveHint()).isFalse();
+        assertThat(hints.get("disconnect").readOnlyHint()).isFalse();
+        assertThat(hints.get("disconnect").destructiveHint()).isFalse();
+        assertThat(hints.get("disconnect").idempotentHint()).isTrue();
         assertThat(hints.get("exec").readOnlyHint()).isFalse();
         assertThat(hints.get("exec").destructiveHint()).isTrue();
         assertThat(hints.get("sudo").destructiveHint()).isTrue();

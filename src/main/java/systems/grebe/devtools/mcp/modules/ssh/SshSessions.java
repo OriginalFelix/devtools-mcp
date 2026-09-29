@@ -44,12 +44,19 @@ final class SshSessions {
         return s;
     }
 
-    /** Verwirft die Sitzung einer Verbindung (z.B. nach einem Verbindungsabbruch). */
-    synchronized void evict(String name) {
+    /**
+     * Verwirft die Sitzung einer Verbindung (nach einem Verbindungsabbruch oder auf Wunsch).
+     *
+     * @return {@code true}, wenn dabei eine verbundene Sitzung getrennt wurde
+     */
+    synchronized boolean evict(String name) {
         Pooled p = pool.remove(name);
-        if (p != null) {
-            p.session().disconnect();
+        if (p == null) {
+            return false;
         }
+        boolean connected = p.session().isConnected();
+        p.session().disconnect();
+        return connected;
     }
 
     synchronized boolean isOpen(String name) {
