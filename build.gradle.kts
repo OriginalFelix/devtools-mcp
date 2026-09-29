@@ -45,10 +45,23 @@ dependencies {
     implementation("org.graalvm.visualvm.modules:org-graalvm-visualvm-lib-jfluid-heap:2.2")
     implementation("org.graalvm.visualvm.modules:org-graalvm-visualvm-lib-jfluid:2.2")
 
+    // Code-Graph: tree-sitter über die offiziellen FFM-Bindings (jtreesitter). Die bonede-Artefakte liefern nur die
+    // vorkompilierten nativen Bibliotheken (macOS/Linux/Windows) als Ressourcen – ihre JNI-Klassen werden nicht
+    // verwendet, weil sie bei vollem Heap die JVM mit SIGSEGV beenden (siehe TreeSitterNatives).
+    implementation("io.github.tree-sitter:jtreesitter:0.26.1")
+    runtimeOnly("io.github.bonede:tree-sitter:0.26.6")
+    runtimeOnly("io.github.bonede:tree-sitter-java:0.23.5")
+
     // Skills: Spring Data JPA (Hibernate ORM + HikariCP), Standard-Datenbank H2 als lokale Datei.
     // Die DataSource baut SkillsPersistenceConfig aus den Modul-Einstellungen. Versionen aus der Boot-BOM.
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     runtimeOnly("com.h2database:h2")
+
+    // Code-Graph-Ablage: Spring Data Neo4j (Entities für Projekt/Branch, Bulk-Cypher über Neo4jClient für Knoten/Kanten)
+    // Bewusst ohne Boot-Starter: die Verbindung kommt aus den Modul-Einstellungen und wird zur Laufzeit gebaut
+    // (Änderungen gelten sofort), eine Neo4j-Auto-Konfiguration neben JPA wäre nur im Weg.
+    implementation("org.springframework.data:spring-data-neo4j")
+    implementation("org.neo4j.driver:neo4j-java-driver")
 
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")

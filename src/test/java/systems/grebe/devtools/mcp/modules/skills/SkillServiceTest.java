@@ -97,7 +97,7 @@ class SkillServiceTest {
     void defaultIsH2FileInSettingsFolder() {
         SkillsPersistenceConfig.Status status = context.getBean(SkillsPersistenceConfig.Status.class);
         assertThat(status.available()).isTrue();
-        assertThat(status.effective().jdbcUrl()).isEqualTo("jdbc:h2:file:" + home.toAbsolutePath().resolve("skills"));
+        assertThat(status.effective().jdbcUrl()).isEqualTo("jdbc:h2:file:" + home.toAbsolutePath().resolve("skills").toString().replace('\\', '/'));
         createHeapSkill();
         assertThat(home.resolve("skills.mv.db")).exists();
     }

@@ -72,6 +72,6 @@ class SkillsModuleTest {
         SkillsPersistenceConfig.Connection c = h2(home.resolve("skills"));
         SkillsModule m = module(new SkillsPersistenceConfig.Status(c, c, null));
         assertThat(config(m, Map.of()).get(SkillsModule.JDBC_URL))
-                .contains("jdbc:h2:file:" + home.toAbsolutePath().resolve("skills"));
+                .contains("jdbc:h2:file:" + home.toAbsolutePath().resolve("skills").toString().replace('\\', '/'));
     }
 }

@@ -21,6 +21,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
+import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 
@@ -35,6 +36,7 @@ public class ModuleDetailPane extends ScrollPane {
     private final Button save = new Button("Speichern");
     private final Button revert = new Button("Verwerfen");
     private final ToggleButton enabled = new ToggleButton();
+    private final List<ModuleActionPanel> actionPanels = new java.util.ArrayList<>();
     private ConfigForm form;
     private Map<String, String> savedValues;
 
@@ -85,6 +87,19 @@ public class ModuleDetailPane extends ScrollPane {
 
         VBox formHolder = new VBox();
         content.getChildren().addAll(header, description, new Separator(), configTitle, formHolder, actions, status);
+        if (!module.actions().isEmpty()) {
+            Label actionsTitle = new Label("Aktionen");
+            actionsTitle.getStyleClass().add("section-title");
+            Label actionsHint = new Label("Laufen mit der gespeicherten Konfiguration, auch wenn das Modul inaktiv ist.");
+            actionsHint.getStyleClass().add("form-help");
+            actionsHint.setWrapText(true);
+            content.getChildren().addAll(new Separator(), actionsTitle, actionsHint);
+            for (ModuleAction a : module.actions()) {
+                ModuleActionPanel panel = new ModuleActionPanel(registry, module.id(), a);
+                actionPanels.add(panel);
+                content.getChildren().add(panel);
+            }
+        }
         if (module.hasTools()) {
             content.getChildren().addAll(new Separator(), toolsTitle, toolsHint, toolBox);
         } else {
@@ -116,6 +131,7 @@ public class ModuleDetailPane extends ScrollPane {
         enabled.setSelected(registry.settings(module.id()).enabled());
         updateEnabledText();
         rebuildToolList();
+        actionPanels.forEach(ModuleActionPanel::refreshTargets); // z.B. nach Speichern neuer Projekte
     }
 
     private void updateEnabledText() {
