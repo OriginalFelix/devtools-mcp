@@ -12,6 +12,7 @@ import java.util.regex.Pattern;
 
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
+import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
 import systems.grebe.devtools.mcp.modules.ticket.spi.ProviderSettings;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
@@ -358,6 +359,209 @@ public class JiraTicketProvider implements TicketProvider {
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException("Jira: ungültiger cursor '" + cursor + "' – den Wert aus der vorigen "
                         + "ticket_search-Ausgabe verwenden.");
+            }
+        }
+
+        // ------------------------------------------------------------------ Verknüpfungen, Statuswechsel, Schreiben
+
+        @Override
+        public String projectOf(String key, String project) {
+            String k = issueKey(key);
+            return k.substring(0, k.lastIndexOf('-'));
+        }
+
+        @Override
+        public String markup() {
+            return "Jira-Wiki-Markup (h2., *fett*, {code}…{code})";
+        }
+
+        @Override
+        public List<Link> links(String key, String project) {
+            String k = issueKey(key);
+            JsonNode f = http().getJson("/rest/api/2/issue/" + HttpJson.enc(k)
+                    + query("fields", "parent,subtasks,issuelinks")).path("fields");
+            List<Link> out = new ArrayList<>();
+            if (f.path("parent").isObject()) {
+                out.add(link("Parent", f.path("parent")));
+            }
+            f.path("subtasks").forEach(s -> out.add(link("Unteraufgabe", s)));
+            for (JsonNode l : f.path("issuelinks")) {
+                if (l.path("outwardIssue").isObject()) {
+                    out.add(link(text(l.path("type").path("outward")), l.path("outwardIssue")));
+                } else if (l.path("inwardIssue").isObject()) {
+                    out.add(link(text(l.path("type").path("inward")), l.path("inwardIssue")));
+                }
+            }
+            // Unteraufgaben eines Epics (Cloud: parent = EPIC, Data Center: "Epic Link")
+            String children = cloud ? "parent = " + k : "\"Epic Link\" = " + k;
+            try {
+                JsonNode res = http.getJson((cloud ? "/rest/api/2/search/jql" : "/rest/api/2/search")
+                        + query("jql", children + " ORDER BY rank", "fields", "summary,status", "maxResults", 50));
+                res.path("issues").forEach(i -> {
+                    if (out.stream().noneMatch(o -> o.key().equals(text(i.path("key"))))) {
+                        out.add(link("Kind (Epic)", i));
+                    }
+                });
+            } catch (RuntimeException ignored) {
+                // kein Epic bzw. Feld "Epic Link" unbekannt – dann gibt es keine Kinder
+            }
+            return out;
+        }
+
+        private Link link(String relation, JsonNode issue) {
+            String key = text(issue.path("key"));
+            return new Link(relation, key, text(issue.path("fields").path("summary")),
+                    text(issue.path("fields").path("status").path("name")), http.baseUrl() + "/browse/" + key);
+        }
+
+        @Override
+        public List<Transition> transitions(String key, String project) {
+            String k = issueKey(key);
+            List<Transition> out = new ArrayList<>();
+            for (JsonNode t : http().getJson("/rest/api/2/issue/" + HttpJson.enc(k) + "/transitions").path("transitions")) {
+                out.add(new Transition(text(t.path("id")), text(t.path("name")), text(t.path("to").path("name")),
+                        category(text(t.path("to").path("statusCategory").path("key"))), "Workflow"));
+            }
+            return out;
+        }
+
+        @Override
+        public WriteResult transition(String key, String project, Transition transition) {
+            String k = issueKey(key);
+            var body = HttpJson.object();
+            body.putObject("transition").put("id", transition.id());
+            http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/transitions", body);
+            return new WriteResult(k, "Status → " + transition.to() + " ('" + transition.name() + "')",
+                    http.baseUrl() + "/browse/" + k);
+        }
+
+        @Override
+        public WriteResult comment(String key, String project, String body) {
+            String k = issueKey(key);
+            var req = HttpJson.object();
+            req.put("body", body);
+            JsonNode res = http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/comment", req).body();
+            String id = text(res.path("id"));
+            return new WriteResult(k, "Kommentar " + Text.orDash(id) + " hinzugefügt",
+                    http.baseUrl() + "/browse/" + k + (id == null ? "" : "?focusedCommentId=" + id));
+        }
+
+        @Override
+        public WriteResult assign(String key, String project, List<String> assignees) {
+            String k = issueKey(key);
+            if (assignees.size() > 1) {
+                throw new IllegalArgumentException("Jira: ein Ticket hat genau einen Zuständigen – nur einen Benutzer angeben.");
+            }
+            var body = HttpJson.object();
+            String who;
+            if (assignees.isEmpty() || TicketSystem.isNone(assignees.getFirst())) {
+                body.putNull(cloud ? "accountId" : "name");
+                who = "niemand";
+            } else {
+                JsonNode user = TicketSystem.isMe(assignees.getFirst()) ? http().getJson("/rest/api/2/myself")
+                        : assignableUser(k, assignees.getFirst());
+                if (cloud) {
+                    body.put("accountId", text(user.path("accountId")));
+                } else {
+                    body.put("name", text(user.path("name")));
+                }
+                who = user(user);
+            }
+            http().put("/rest/api/2/issue/" + HttpJson.enc(k) + "/assignee", body);
+            return new WriteResult(k, "zugewiesen an " + who, http.baseUrl() + "/browse/" + k);
+        }
+
+        /** Sucht unter den für das Ticket zuweisbaren Benutzern – braucht nur Projektrechte, nicht „Browse Users“. */
+        private JsonNode assignableUser(String issueKey, String who) {
+            String q = who.trim().replaceFirst("^@", "");
+            JsonNode users = http.getJson("/rest/api/2/user/assignable/search"
+                    + query("issueKey", issueKey, cloud ? "query" : "username", q, "maxResults", 20));
+            List<JsonNode> list = new ArrayList<>();
+            users.forEach(list::add);
+            // Stream.of statt List.of: je nach Variante fehlen Felder (DC: keine accountId, Cloud: kein name)
+            List<JsonNode> exact = list.stream().filter(u -> java.util.stream.Stream.of(text(u.path("name")),
+                    text(u.path("emailAddress")), text(u.path("displayName")), text(u.path("accountId")))
+                    .anyMatch(v -> v != null && v.equalsIgnoreCase(q))).toList();
+            if (exact.size() == 1) {
+                return exact.getFirst();
+            }
+            if (list.size() == 1) {
+                return list.getFirst();
+            }
+            if (list.isEmpty()) {
+                throw new IllegalArgumentException("Jira: kein zuweisbarer Benutzer '" + q + "' für " + issueKey
+                        + " (Benutzername, E-Mail oder Anzeigename).");
+            }
+            throw new IllegalArgumentException("Jira: '" + q + "' ist mehrdeutig: " + String.join(", ",
+                    list.stream().limit(10).map(u -> user(u) + " (" + HttpJson.first(text(u.path("name")),
+                            text(u.path("accountId"))) + ")").toList()) + " – genauer angeben.");
+        }
+
+        @Override
+        public WriteResult update(String key, String project, TicketUpdate update) {
+            String k = issueKey(key);
+            var fields = HttpJson.object();
+            if (update.title() != null) {
+                fields.put("summary", update.title());
+            }
+            if (update.description() != null) {
+                fields.put("description", update.description());
+            }
+            if (update.labels() != null) {
+                var arr = fields.putArray("labels");
+                update.labels().forEach(l -> arr.add(l.replace(' ', '_'))); // Jira-Labels ohne Leerzeichen
+            }
+            var body = HttpJson.object();
+            body.set("fields", fields);
+            http().put("/rest/api/2/issue/" + HttpJson.enc(k), body);
+            return new WriteResult(k, "geändert: " + update.summary(), http.baseUrl() + "/browse/" + k);
+        }
+
+        @Override
+        public WriteResult create(String project, NewTicket t) {
+            if (project == null || project.isBlank()) {
+                throw new IllegalArgumentException("Jira: 'project' (Projektschlüssel) angeben oder Standardprojekt setzen.");
+            }
+            var fields = HttpJson.object();
+            fields.putObject("project").put("key", project.trim().toUpperCase(Locale.ROOT));
+            fields.put("summary", t.title());
+            if (t.description() != null) {
+                fields.put("description", t.description());
+            }
+            fields.putObject("issuetype").put("name", HttpJson.first(t.type(), "Task"));
+            if (!t.labels().isEmpty()) {
+                var arr = fields.putArray("labels");
+                t.labels().forEach(l -> arr.add(l.replace(' ', '_')));
+            }
+            var body = HttpJson.object();
+            body.set("fields", fields);
+            String newKey;
+            try {
+                newKey = text(http().post("/rest/api/2/issue", body).body().path("key"));
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 400 && e.getMessage().toLowerCase(Locale.ROOT).contains("issuetype")) {
+                    throw new IllegalArgumentException(e.getMessage() + " – gültige Typen: " + issueTypes(project), e);
+                }
+                throw e;
+            }
+            String msg = "angelegt (" + HttpJson.first(t.type(), "Task") + ")";
+            if (!t.assignees().isEmpty()) {
+                // Zuweisung getrennt: das Feld 'assignee' steht nicht auf jedem Create-Screen
+                try {
+                    msg += ", " + assign(newKey, project, t.assignees()).message();
+                } catch (RuntimeException e) {
+                    msg += ", Zuweisung fehlgeschlagen: " + e.getMessage();
+                }
+            }
+            return new WriteResult(newKey, msg, http.baseUrl() + "/browse/" + newKey);
+        }
+
+        private String issueTypes(String project) {
+            try {
+                return String.join(", ", texts(http.getJson("/rest/api/2/project/" + HttpJson.enc(project.trim()))
+                        .path("issueTypes"), "name"));
+            } catch (RuntimeException e) {
+                return "(nicht abrufbar)";
             }
         }
 

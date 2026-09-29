@@ -16,7 +16,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **VisualVM** | `visualvm_heap_analyze` (Heap-Engine: Histogramm, Retained Size, Pfad zur GC-Wurzel), `visualvm_sample_cpu` (JMX-Sampler, `.nps`-Snapshot), `visualvm_open`, `visualvm_open_file` (externe VisualVM-GUI) |
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
-| **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets) – nur lesend (Standard: aus) |
+| **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, einschränkbar auf Projekte (Modul Standard: aus) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -57,6 +57,26 @@ erzeugt ein `TicketSystem` mit `boards`, `board`, `search`, `ticket` und optiona
 | `jira` | REST v2 + Agile 1.0; Cloud (`/search/jql`, Token-Paging, Basic mit E-Mail+API-Token) oder Data Center (`/search`, PAT als Bearer) | Scrum: aktiver Sprint, Kanban: offen + 14 Tage erledigt; Spalten aus der Board-Konfiguration | `ABC` | `ABC-123`, Browse-URL |
 | `github` | REST (Issues, Suche) + GraphQL (Projects v2) | Project, Spalten = Single-Select-Feld `Status` (einstellbar) | `owner/repo` bzw. `owner` | `owner/repo#12`, `#12`, URL |
 | `gitlab` | REST v4, Projekt oder Gruppe (automatisch erkannt) | Issue-Board: Open, Label-/Assignee-/Milestone-Listen, Closed | `gruppe/projekt` bzw. `gruppe` | `gruppe/projekt#12`, `#12`, URL |
+
+Schreibende Tools erscheinen nur mit ihrem Schalter:
+
+| Schalter | Tool | Jira | GitHub | GitLab |
+|---|---|---|---|---|
+| `allowComment` | `ticket_comment` | Kommentar (Wiki-Markup) | Issue-Kommentar | Note |
+| `allowTransition` | `ticket_transition` | Workflow-Übergang | Schließen mit Grund/Wiedereröffnen, Spalte in jedem Project des Issues | Schließen/Wiedereröffnen, Board-Liste (Listen-Label tauschen) |
+| `allowAssign` | `ticket_assign` | ein Zuständiger (DC: `name`, Cloud: `accountId`, Suche über zuweisbare Benutzer) | Logins, ignorierte werden gemeldet | Benutzer-IDs, `[0]` = niemand |
+| `allowEdit` | `ticket_update` | Titel, Beschreibung, Labels | dito | dito |
+| `allowCreate` | `ticket_create` | Issue-Typ (Standard Task, bei Fehler Liste der gültigen) | Issue-Typ der Organisation | `issue_type` |
+
+`writeProjects` („Schreiben nur in diesen Projekten“) schränkt alle schreibenden Tools ein: ein Eintrag je Zeile,
+optional mit System (`jira:ABC`, `github:octo/*`); leer = alle. Geprüft wird das Projekt **aus dem Ticket-Schlüssel**,
+nicht der Parameter `project` – `DEF-9` mit `project=ABC` wird abgelehnt, bevor ein Request rausgeht. Ein Kommentar beim
+Statuswechsel (`ticket_transition … comment=`) braucht zusätzlich `allowComment`; `commentSuffix` hängt eine Kennzeichnung
+an jeden Kommentar. `ticket_links` und `ticket_transitions` sind lesend und immer da.
+
+Provider implementieren Schreiben über `default`-Methoden von `TicketSystem` (`comment`, `transition`, `assign`, `update`,
+`create`, `links`, `transitions`) – was ein Provider nicht kann, meldet das Tool als „nicht unterstützt“; bestehende
+Plugin-Provider kompilieren unverändert.
 
 Jedes System hat in der UI „aktiv“, seine Felder und ein Standardprojekt. Ohne `provider` wählt das Modul das System, das
 den Schlüssel als seinen erkennt (Jira-Schlüssel, URL seines Hosts), sonst das Standard-System bzw. das einzige aktive.

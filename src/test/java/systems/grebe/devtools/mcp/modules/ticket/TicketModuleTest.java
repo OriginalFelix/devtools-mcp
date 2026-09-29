@@ -41,7 +41,7 @@ class TicketModuleTest {
     void offersAllReadToolsWithModulePrefixAndShellHint() {
         List<ToolCallback> tools = module.createTools(ModuleConfig.of(module.configSchema(), Map.of()));
         assertThat(tools).extracting(t -> t.getToolDefinition().name())
-                .containsExactlyInAnyOrder("providers", "boards", "board", "search", "get", "status");
+                .containsExactlyInAnyOrder("providers", "boards", "board", "search", "get", "status", "links", "transitions");
         assertThat(module.instructions()).contains("`ticket_get`", "`ticket_board`", "gh issue");
     }
 

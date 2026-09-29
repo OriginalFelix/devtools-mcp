@@ -30,6 +30,13 @@ public class TicketModule implements ToolModule {
     static final String MAX_DESCRIPTION = "maxDescriptionChars";
     static final String MAX_PER_COLUMN = "maxPerColumn";
     static final String MAX_LINES = "maxOutputLines";
+    static final String ALLOW_COMMENT = "allowComment";
+    static final String ALLOW_TRANSITION = "allowTransition";
+    static final String ALLOW_ASSIGN = "allowAssign";
+    static final String ALLOW_EDIT = "allowEdit";
+    static final String ALLOW_CREATE = "allowCreate";
+    static final String WRITE_PROJECTS = "writeProjects";
+    static final String COMMENT_SUFFIX = "commentSuffix";
 
     private final TicketProviders providers;
 
@@ -54,7 +61,8 @@ public class TicketModule implements ToolModule {
     @Override
     public String description() {
         return "Jira, GitHub, GitLab und weitere Systeme (erweiterbar per ServiceLoader): Boards mit ihren Spalten, "
-                + "Tickets suchen, Status, Zuständige, Beschreibung und Kommentare lesen. Nur lesend.";
+                + "Tickets suchen, Status, Zuständige, Beschreibung, Kommentare und Verknüpfungen lesen; optional "
+                + "kommentieren, Status wechseln, zuweisen, bearbeiten und anlegen (einzeln schaltbar, je Projekt freigebbar).";
     }
 
     @Override
@@ -67,7 +75,12 @@ public class TicketModule implements ToolModule {
                 GitLab-Issue-Board), optional nur eigene Tickets (`assignee=me`).
                 - `ticket_search`: Tickets filtern (Status, Zuständige, Labels, Text, systemeigene Abfrage wie JQL).
                 - `ticket_get`: ein Ticket vollständig (Titel, Status, Zuständige, Beschreibung, Kommentare); \
-                `ticket_status`: Status und Zuständige mehrerer Tickets auf einmal.
+                `ticket_status`: Status und Zuständige mehrerer Tickets auf einmal; `ticket_links`: Parent, Unteraufgaben, \
+                verknüpfte Tickets und Pull/Merge Requests; `ticket_transitions`: mögliche Statuswechsel.
+                - Schreiben, nur wenn angeboten (einzeln in der App schaltbar): `ticket_comment`, `ticket_transition` \
+                (Ziel aus `ticket_transitions`), `ticket_assign`, `ticket_update`, `ticket_create`. Nur auf ausdrückliche \
+                Anweisung des Nutzers schreiben und das Ergebnis mit Link melden. Fehlt ein schreibendes Tool, ist es \
+                abgeschaltet: dem Nutzer den Schalter nennen, nicht per `curl`/`gh`/`glab` ausweichen.
                 Taucht ein Ticket-Schlüssel (ABC-123, owner/repo#12, Issue-URL) in Branch-Namen, Commits oder der Aufgabe auf, \
                 das Ticket mit `ticket_get` lesen, bevor du es interpretierst.""";
     }
@@ -109,14 +122,45 @@ public class TicketModule implements ToolModule {
                 ConfigField.of(MAX_DESCRIPTION, "Max. Zeichen der Beschreibung", FieldType.INT).withDefault("8000"),
                 ConfigField.of(MAX_PER_COLUMN, "Tickets je Board-Spalte", FieldType.INT).withDefault("15"),
                 ConfigField.of(TIMEOUT, "Timeout (Sekunden)", FieldType.INT).withDefault("30"),
-                ConfigField.of(MAX_LINES, "Max. Ausgabezeilen", FieldType.INT).withDefault("400")));
+                ConfigField.of(MAX_LINES, "Max. Ausgabezeilen", FieldType.INT).withDefault("400"),
+                ConfigField.of(ALLOW_COMMENT, "Kommentieren erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("ticket_comment; auch nötig für einen Kommentar beim Statuswechsel."),
+                ConfigField.of(ALLOW_TRANSITION, "Status wechseln erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("ticket_transition: Workflow-Übergang, Schließen/Öffnen, Board-Spalte."),
+                ConfigField.of(ALLOW_ASSIGN, "Zuweisen erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("ticket_assign"),
+                ConfigField.of(ALLOW_EDIT, "Titel/Beschreibung/Labels ändern erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("ticket_update"),
+                ConfigField.of(ALLOW_CREATE, "Tickets anlegen erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("ticket_create"),
+                ConfigField.of(WRITE_PROJECTS, "Schreiben nur in diesen Projekten", FieldType.STRING_LIST)
+                        .withHelp("Ein Projekt je Zeile, optional mit System: ABC, jira:ABC, github:owner/repo, "
+                                + "gitlab:gruppe/projekt, * am Ende als Präfix (gitlab:gruppe/*). Leer = alle Projekte."),
+                ConfigField.of(COMMENT_SUFFIX, "Kennzeichnung von Kommentaren", FieldType.STRING)
+                        .withHelp("Wird an jeden Kommentar angehängt, z.B. „(via DevTools MCP)“. Leer = keine.")));
         return fields;
     }
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
         TicketEnvironment env = new TicketEnvironment(providers, config);
-        return List.of(ToolCallbacks.from(new TicketTools(env)));
+        List<Object> beans = new ArrayList<>(List.of(new TicketTools(env)));
+        if (config.getBoolean(ALLOW_COMMENT)) {
+            beans.add(new TicketCommentTools(env));
+        }
+        if (config.getBoolean(ALLOW_TRANSITION)) {
+            beans.add(new TicketTransitionTools(env, config.getBoolean(ALLOW_COMMENT)));
+        }
+        if (config.getBoolean(ALLOW_ASSIGN)) {
+            beans.add(new TicketAssignTools(env));
+        }
+        if (config.getBoolean(ALLOW_EDIT)) {
+            beans.add(new TicketEditTools(env));
+        }
+        if (config.getBoolean(ALLOW_CREATE)) {
+            beans.add(new TicketCreateTools(env));
+        }
+        return List.of(ToolCallbacks.from(beans.toArray()));
     }
 
     @Override

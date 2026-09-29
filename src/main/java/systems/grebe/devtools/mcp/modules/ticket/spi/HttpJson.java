@@ -123,9 +123,22 @@ public final class HttpJson {
     }
 
     public Response post(String pathOrUrl, JsonNode body) {
+        return withBody("POST", pathOrUrl, body);
+    }
+
+    public Response put(String pathOrUrl, JsonNode body) {
+        return withBody("PUT", pathOrUrl, body);
+    }
+
+    public Response patch(String pathOrUrl, JsonNode body) {
+        return withBody("PATCH", pathOrUrl, body);
+    }
+
+    private Response withBody(String method, String pathOrUrl, JsonNode body) {
         return send(HttpRequest.newBuilder(uri(pathOrUrl))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body), StandardCharsets.UTF_8)), pathOrUrl);
+                .method(method, HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body), StandardCharsets.UTF_8)),
+                pathOrUrl);
     }
 
     private URI uri(String pathOrUrl) {

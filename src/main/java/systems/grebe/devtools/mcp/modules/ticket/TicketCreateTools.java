@@ -1,0 +1,42 @@
+package systems.grebe.devtools.mcp.modules.ticket;
+
+import java.util.List;
+
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
+
+import static systems.grebe.devtools.mcp.modules.ticket.TicketTools.PROJECT;
+import static systems.grebe.devtools.mcp.modules.ticket.TicketTools.PROVIDER;
+
+/** Tickets anlegen (Schalter {@code allowCreate}). */
+public class TicketCreateTools {
+
+    private final TicketEnvironment env;
+
+    TicketCreateTools(TicketEnvironment env) {
+        this.env = env;
+    }
+
+    @Tool(name = "create", description = "Legt ein neues Ticket an (Titel, Beschreibung, Typ, Labels, Zuständige) und "
+            + "liefert Schlüssel und Link. Vorher mit ticket_search nach Duplikaten suchen. Nur auf ausdrückliche "
+            + "Anweisung des Nutzers." + ShellHints.TICKET)
+    public String create(
+            @ToolParam(description = "Titel") String title,
+            @ToolParam(required = false, description = "Beschreibung (Jira: Wiki-Markup, GitHub/GitLab: Markdown)") String description,
+            @ToolParam(required = false, description = PROJECT) String project,
+            @ToolParam(required = false, description = "Typ: Jira-Issue-Typ (Standard Task), GitHub-Issue-Typ der "
+                    + "Organisation, GitLab issue/incident/task") String type,
+            @ToolParam(required = false, description = "Labels") List<String> labels,
+            @ToolParam(required = false, description = "Zuständige (me, Benutzernamen)") List<String> assignees,
+            @ToolParam(required = false, description = PROVIDER) String provider) {
+        if (title == null || title.isBlank()) {
+            throw new IllegalArgumentException("Titel fehlt ('title').");
+        }
+        TicketEnvironment.Entry e = env.resolve(provider, null);
+        String target = env.checkWrite(e, null, project, "Anlegen");
+        return TicketTools.written(e.system().create(target,
+                new TicketSystem.NewTicket(title.trim(), description, type, labels, assignees)));
+    }
+}

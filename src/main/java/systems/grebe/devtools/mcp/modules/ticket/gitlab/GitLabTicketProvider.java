@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
 
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
+import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
 import systems.grebe.devtools.mcp.modules.ticket.spi.ProviderSettings;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
@@ -416,6 +417,204 @@ public class GitLabTicketProvider implements TicketProvider {
                 out.put(k, s.substring(eq + 1).trim());
             }
             return out;
+        }
+
+        // ------------------------------------------------------------------ Verknüpfungen, Statuswechsel, Schreiben
+
+        @Override
+        public String projectOf(String key, String project) {
+            return ref(key, project).project();
+        }
+
+        private String issuePath(Ref ref) {
+            return "/projects/" + enc(ref.project()) + "/issues/" + ref.iid();
+        }
+
+        private void requireToken(String what) {
+            if (!authenticated) {
+                throw new IllegalStateException("GitLab: " + what + " braucht ein Token (Scope api) – in der DevTools-App "
+                        + "unter Module → Tickets eintragen.");
+            }
+        }
+
+        @Override
+        public List<Link> links(String key, String project) {
+            Ref ref = ref(key, project);
+            List<Link> out = new ArrayList<>();
+            for (JsonNode l : http.getJson(issuePath(ref) + "/links")) {
+                String relation = switch (HttpJson.first(text(l.path("link_type")), "relates_to")) {
+                    case "blocks" -> "blocks";
+                    case "is_blocked_by" -> "is blocked by";
+                    default -> "relates to";
+                };
+                out.add(new Link(relation, HttpJson.first(text(l.path("references").path("full")),
+                        projectFromUrl(text(l.path("web_url"))) + "#" + text(l.path("iid"))), text(l.path("title")),
+                        text(l.path("state")), text(l.path("web_url"))));
+            }
+            for (JsonNode mr : http.getJson(issuePath(ref) + "/related_merge_requests")) {
+                out.add(new Link("Merge Request", HttpJson.first(text(mr.path("references").path("full")),
+                        "!" + text(mr.path("iid"))), text(mr.path("title")), text(mr.path("state")), text(mr.path("web_url"))));
+            }
+            return out;
+        }
+
+        /**
+         * Schließen/Wiedereröffnen und das Verschieben in eine andere Liste der Projekt-Boards (= Listen-Label tauschen).
+         * IDs: {@code close}, {@code reopen}, {@code label:<boardId>:<Label>}.
+         */
+        @Override
+        public List<Transition> transitions(String key, String project) {
+            Ref ref = ref(key, project);
+            JsonNode i = http.getJson(issuePath(ref));
+            List<String> labels = texts(i.path("labels"), null);
+            List<Transition> out = new ArrayList<>();
+            if ("opened".equals(text(i.path("state")))) {
+                out.add(new Transition("close", "Schließen", "closed", StatusCategory.DONE, "Status"));
+                for (JsonNode b : http.getJson("/projects/" + enc(ref.project()) + "/boards" + query("per_page", 100))) {
+                    String board = HttpJson.first(text(b.path("name")), "Development");
+                    for (JsonNode l : b.path("lists")) {
+                        String label = text(l.path("label").path("name"));
+                        if (label != null && !labels.contains(label)) {
+                            out.add(new Transition("label:" + text(b.path("id")) + ":" + label,
+                                    "Board " + board + ": nach '" + label + "' verschieben", label,
+                                    StatusCategory.IN_PROGRESS, "Board-Liste " + board));
+                        }
+                    }
+                }
+            } else {
+                out.add(new Transition("reopen", "Wieder öffnen", "opened", StatusCategory.TODO, "Status"));
+            }
+            return out;
+        }
+
+        @Override
+        public WriteResult transition(String key, String project, Transition t) {
+            requireToken("Statuswechsel");
+            Ref ref = ref(key, project);
+            var body = HttpJson.object();
+            String id = t.id();
+            if (id.equals("close") || id.equals("reopen")) {
+                body.put("state_event", id);
+            } else if (id.startsWith("label:")) {
+                String[] parts = id.split(":", 3);
+                String target = parts[2];
+                // die übrigen Listen-Labels desselben Boards entfernen – sonst steht das Issue in zwei Spalten
+                List<String> others = new ArrayList<>();
+                for (JsonNode b : http.getJson("/projects/" + enc(ref.project()) + "/boards" + query("per_page", 100))) {
+                    if (parts[1].equals(text(b.path("id")))) {
+                        b.path("lists").forEach(l -> {
+                            String name = text(l.path("label").path("name"));
+                            if (name != null && !name.equals(target)) {
+                                others.add(name);
+                            }
+                        });
+                    }
+                }
+                body.put("add_labels", target);
+                if (!others.isEmpty()) {
+                    body.put("remove_labels", String.join(",", others));
+                }
+            } else {
+                throw new IllegalArgumentException("GitLab: unbekannter Statuswechsel '" + id + "' – ticket_transitions liefert die möglichen.");
+            }
+            JsonNode res = http.put(issuePath(ref), body).body();
+            return new WriteResult(ref.key(), t.name() + " → Status " + text(res.path("state")) + ", Labels "
+                    + texts(res.path("labels"), null), text(res.path("web_url")));
+        }
+
+        @Override
+        public WriteResult comment(String key, String project, String body) {
+            requireToken("Kommentieren");
+            Ref ref = ref(key, project);
+            var req = HttpJson.object();
+            req.put("body", body);
+            JsonNode res = http.post(issuePath(ref) + "/notes", req).body();
+            String id = text(res.path("id"));
+            return new WriteResult(ref.key(), "Kommentar " + Text.orDash(id) + " hinzugefügt",
+                    webBase + "/" + ref.project() + "/-/issues/" + ref.iid() + (id == null ? "" : "#note_" + id));
+        }
+
+        @Override
+        public WriteResult assign(String key, String project, List<String> assignees) {
+            requireToken("Zuweisen");
+            Ref ref = ref(key, project);
+            var body = HttpJson.object();
+            var arr = body.putArray("assignee_ids");
+            List<Long> ids = userIds(assignees);
+            if (ids.isEmpty()) {
+                arr.add(0); // 0 = alle Zuständigen entfernen
+            } else {
+                ids.forEach(arr::add);
+            }
+            JsonNode res = http.put(issuePath(ref), body).body();
+            List<String> now = texts(res.path("assignees"), "username");
+            return new WriteResult(ref.key(), "zugewiesen an " + (now.isEmpty() ? "niemand" : String.join(", ", now)),
+                    text(res.path("web_url")));
+        }
+
+        private List<Long> userIds(List<String> assignees) {
+            List<Long> out = new ArrayList<>();
+            for (String a : assignees) {
+                if (TicketSystem.isNone(a)) {
+                    continue;
+                }
+                if (TicketSystem.isMe(a)) {
+                    out.add(http.getJson("/user").path("id").asLong());
+                    continue;
+                }
+                String name = a.trim().replaceFirst("^@", "");
+                JsonNode users = http.getJson("/users" + query("username", name));
+                if (!users.isArray() || users.isEmpty()) {
+                    throw new IllegalArgumentException("GitLab: Benutzer '" + name + "' nicht gefunden (Benutzername wie @name).");
+                }
+                out.add(users.get(0).path("id").asLong());
+            }
+            return out;
+        }
+
+        @Override
+        public WriteResult update(String key, String project, TicketUpdate u) {
+            requireToken("Bearbeiten");
+            Ref ref = ref(key, project);
+            var body = HttpJson.object();
+            if (u.title() != null) {
+                body.put("title", u.title());
+            }
+            if (u.description() != null) {
+                body.put("description", u.description());
+            }
+            if (u.labels() != null) {
+                body.put("labels", String.join(",", u.labels())); // leer = alle entfernen
+            }
+            JsonNode res = http.put(issuePath(ref), body).body();
+            return new WriteResult(ref.key(), "geändert: " + u.summary(), text(res.path("web_url")));
+        }
+
+        @Override
+        public WriteResult create(String project, NewTicket t) {
+            requireToken("Anlegen");
+            if (project == null || project.isBlank()) {
+                throw new IllegalArgumentException("GitLab: 'project' (gruppe/projekt) angeben oder Standardprojekt setzen.");
+            }
+            var body = HttpJson.object();
+            body.put("title", t.title());
+            if (t.description() != null) {
+                body.put("description", t.description());
+            }
+            if (!t.labels().isEmpty()) {
+                body.put("labels", String.join(",", t.labels()));
+            }
+            List<Long> ids = userIds(t.assignees());
+            if (!ids.isEmpty()) {
+                var arr = body.putArray("assignee_ids");
+                ids.forEach(arr::add);
+            }
+            if (t.type() != null && !t.type().isBlank()) {
+                body.put("issue_type", t.type().trim().toLowerCase(Locale.ROOT));
+            }
+            JsonNode res = http.post("/projects/" + enc(project.trim()) + "/issues", body).body();
+            String key = HttpJson.first(text(res.path("references").path("full")), project.trim() + "#" + text(res.path("iid")));
+            return new WriteResult(key, "angelegt", text(res.path("web_url")));
         }
 
         // ------------------------------------------------------------------ Einzelnes Ticket

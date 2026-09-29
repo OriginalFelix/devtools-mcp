@@ -234,7 +234,63 @@ public class TicketTools {
         return String.join("\n", lines);
     }
 
+    // ------------------------------------------------------------------ Verknüpfungen und Statuswechsel (lesend)
+
+    @Tool(name = "links", description = "Verknüpfte Tickets eines Tickets: Parent, Unteraufgaben/Sub-Issues, Links wie "
+            + "blocks/is blocked by sowie zugehörige Pull bzw. Merge Requests." + ShellHints.TICKET)
+    public String links(
+            @ToolParam(description = "Ticket-Schlüssel oder URL") String key,
+            @ToolParam(required = false, description = PROJECT) String project,
+            @ToolParam(required = false, description = PROVIDER) String provider) {
+        TicketEnvironment.Entry e = env.resolve(provider, key);
+        List<TicketSystem.Link> links = e.system().links(key.trim(), e.project(project));
+        if (links.isEmpty()) {
+            return "Keine Verknüpfungen für " + key.trim() + ".";
+        }
+        StringBuilder sb = new StringBuilder(links.size() + " Verknüpfung(en) von " + key.trim() + ":\n");
+        for (TicketSystem.Link l : links) {
+            sb.append("- ").append(l.relation()).append(": ").append(l.key())
+                    .append("  [").append(Text.orDash(l.status())).append("]  ").append(Text.orDash(l.title()));
+            if (l.url() != null) {
+                sb.append("  ").append(l.url());
+            }
+            sb.append('\n');
+        }
+        return Text.limitLines(sb.toString().strip(), env.maxLines());
+    }
+
+    @Tool(name = "transitions", description = "Mögliche Statuswechsel eines Tickets mit ID, Name und Zielstatus: "
+            + "Jira-Workflow-Übergänge, Schließen/Wiedereröffnen, GitHub-Project-Spalten, GitLab-Board-Listen. "
+            + "Die ID ist das Ziel für ticket_transition." + ShellHints.TICKET)
+    public String transitions(
+            @ToolParam(description = "Ticket-Schlüssel oder URL") String key,
+            @ToolParam(required = false, description = PROJECT) String project,
+            @ToolParam(required = false, description = PROVIDER) String provider) {
+        TicketEnvironment.Entry e = env.resolve(provider, key);
+        List<TicketSystem.Transition> list = e.system().transitions(key.trim(), e.project(project));
+        if (list.isEmpty()) {
+            return "Für " + key.trim() + " ist derzeit kein Statuswechsel möglich.";
+        }
+        StringBuilder sb = new StringBuilder("Mögliche Statuswechsel für " + key.trim() + ":\n");
+        for (TicketSystem.Transition t : list) {
+            sb.append("- [").append(t.id()).append("]  ").append(t.name()).append("  → ").append(t.to());
+            if (t.category() != TicketSystem.StatusCategory.UNKNOWN) {
+                sb.append(" (").append(t.category()).append(')');
+            }
+            if (t.kind() != null) {
+                sb.append("  – ").append(t.kind());
+            }
+            sb.append('\n');
+        }
+        return Text.limitLines(sb.toString().strip(), env.maxLines());
+    }
+
     // ------------------------------------------------------------------ Formatierung
+
+    /** Ergebniszeile einer schreibenden Aktion. */
+    static String written(TicketSystem.WriteResult r) {
+        return r.key() + ": " + r.message() + (r.url() == null ? "" : "\n" + r.url());
+    }
 
     /** {@code KEY  [Status]  @a,@b  Titel  (Typ, Priorität, Labels)}. */
     static String line(Ticket t, boolean withLabels) {

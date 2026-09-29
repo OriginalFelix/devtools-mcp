@@ -182,6 +182,8 @@ class McpServerIntegrationTest {
                 "allowCreate", "true", "allowRemove", "true", "allowCompose", "true",
                 "composeProjects", composeDir.toString()));
         registry.updateConfig("skills", Map.of("allowDelete", "true"));
+        registry.updateConfig("ticket", Map.of("allowComment", "true", "allowTransition", "true", "allowAssign", "true",
+                "allowEdit", "true", "allowCreate", "true"));
         try {
             Map<String, String> hintByPrefix = Map.ofEntries(
                     Map.entry("git_", ShellHints.GIT), Map.entry("build_", ShellHints.BUILD),
@@ -191,7 +193,7 @@ class McpServerIntegrationTest {
                     Map.entry("debug_", ShellHints.DEBUG), Map.entry("skills_", ShellHints.SKILLS),
                     Map.entry("graph_", ShellHints.GRAPH), Map.entry("ticket_", ShellHints.TICKET));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(111); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(118); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -206,6 +208,7 @@ class McpServerIntegrationTest {
             List.of("sonar", "debug", "asprof", "build", "graph", "ticket").forEach(id -> registry.setModuleEnabled(id, false));
             registry.updateConfig("container", Map.of());
             registry.updateConfig("skills", Map.of());
+            registry.updateConfig("ticket", Map.of());
         }
     }
 
@@ -334,13 +337,18 @@ class McpServerIntegrationTest {
         registry.setModuleEnabled("ticket", true);
         try {
             assertThat(toolNames()).contains("ticket_providers", "ticket_boards", "ticket_board", "ticket_search",
-                    "ticket_get", "ticket_status");
+                    "ticket_get", "ticket_status", "ticket_links", "ticket_transitions")
+                    .doesNotContain("ticket_comment", "ticket_transition", "ticket_assign", "ticket_update", "ticket_create");
+            // Schalter wirken live auf tools/list
+            registry.updateConfig("ticket", Map.of("allowComment", "true"));
+            assertThat(toolNames()).contains("ticket_comment").doesNotContain("ticket_transition", "ticket_create");
             // kein System aktiv: fachlicher Fehler mit nächstem Schritt, als isError beim LLM
             McpSchema.CallToolResult result = client.callTool(callRequest("ticket_get", Map.of("key", "ABC-1")));
             assertThat(result.isError()).isTrue();
             assertThat(text(result)).contains("Kein Ticket-System aktiviert", "Module → Tickets");
         } finally {
             registry.setModuleEnabled("ticket", false);
+            registry.updateConfig("ticket", Map.of());
         }
     }
 

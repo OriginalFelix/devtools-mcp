@@ -393,6 +393,235 @@ public class GitHubTicketProvider implements TicketProvider {
             return new TicketPage(tickets, total, more ? String.valueOf(page + 1) : null, expr);
         }
 
+        // ------------------------------------------------------------------ Verknüpfungen, Statuswechsel, Schreiben
+
+        @Override
+        public String projectOf(String key, String project) {
+            return ref(key, project).repo();
+        }
+
+        private void requireToken(String what) {
+            if (!authenticated) {
+                throw new IllegalStateException("GitHub: " + what + " braucht ein Token – in der DevTools-App unter "
+                        + "Module → Tickets eintragen.");
+            }
+        }
+
+        private static final String LINKS_QUERY = """
+                query($owner:String!,$name:String!,$number:Int!){ repository(owner:$owner,name:$name){
+                  issueOrPullRequest(number:$number){ __typename
+                    ... on Issue {
+                      parent { number title state url repository { nameWithOwner } }
+                      subIssues(first:50){ nodes { number title state url repository { nameWithOwner } } }
+                      closedByPullRequestsReferences(first:20, includeClosedPrs:true){
+                        nodes { number title state url repository { nameWithOwner } } } }
+                    ... on PullRequest {
+                      closingIssuesReferences(first:20){ nodes { number title state url repository { nameWithOwner } } } } } } }""";
+
+        @Override
+        public List<Link> links(String key, String project) {
+            requireToken("Verknüpfungen (GraphQL)");
+            Ref ref = ref(key, project);
+            ObjectNode vars = HttpJson.object();
+            String[] parts = ref.repo().split("/", 2);
+            vars.put("owner", parts[0]);
+            vars.put("name", parts[1]);
+            vars.put("number", ref.number());
+            JsonNode n = graphql(LINKS_QUERY, vars).path("repository").path("issueOrPullRequest");
+            if (n.isMissingNode() || n.isNull()) {
+                throw new IllegalArgumentException("GitHub: " + ref.key() + " nicht gefunden.");
+            }
+            List<Link> out = new ArrayList<>();
+            if (n.path("parent").isObject()) {
+                out.add(link("Parent", n.path("parent")));
+            }
+            n.path("subIssues").path("nodes").forEach(s -> out.add(link("Sub-Issue", s)));
+            n.path("closedByPullRequestsReferences").path("nodes").forEach(s -> out.add(link("Pull Request (schließt)", s)));
+            n.path("closingIssuesReferences").path("nodes").forEach(s -> out.add(link("schließt Issue", s)));
+            return out;
+        }
+
+        private static Link link(String relation, JsonNode n) {
+            return new Link(relation, text(n.path("repository").path("nameWithOwner")) + "#" + text(n.path("number")),
+                    text(n.path("title")), text(n.path("state")) == null ? null : text(n.path("state")).toLowerCase(Locale.ROOT),
+                    text(n.path("url")));
+        }
+
+        private static final String PROJECT_ITEMS_QUERY = """
+                query($owner:String!,$name:String!,$number:Int!,$field:String!){ repository(owner:$owner,name:$name){
+                  issueOrPullRequest(number:$number){ ... on Issue { projectItems(first:10){ nodes { id
+                      project { id title number field(name:$field){ ... on ProjectV2SingleSelectField { id options { id name } } } }
+                      fieldValueByName(name:$field){ ... on ProjectV2ItemFieldSingleSelectValue { name } } } } }
+                    ... on PullRequest { projectItems(first:10){ nodes { id
+                      project { id title number field(name:$field){ ... on ProjectV2SingleSelectField { id options { id name } } } }
+                      fieldValueByName(name:$field){ ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } } }""";
+
+        /**
+         * Schließen/Wiedereröffnen und – mit Token – die Spalten aller Projects, in denen das Issue liegt.
+         * IDs: {@code close:<reason>}, {@code reopen}, {@code project:<projectId>:<itemId>:<fieldId>:<optionId>}.
+         */
+        @Override
+        public List<Transition> transitions(String key, String project) {
+            Ref ref = ref(key, project);
+            JsonNode i = http.getJson("/repos/" + ref.repo() + "/issues/" + ref.number());
+            boolean pr = i.has("pull_request");
+            List<Transition> out = new ArrayList<>();
+            if ("open".equals(text(i.path("state")))) {
+                if (pr) {
+                    out.add(new Transition("close", "Schließen (ohne Merge)", "closed", StatusCategory.DONE, "Status"));
+                } else {
+                    out.add(new Transition("close:completed", "Schließen (erledigt)", "closed (completed)", StatusCategory.DONE, "Status"));
+                    out.add(new Transition("close:not_planned", "Schließen (nicht geplant)", "closed (not_planned)", StatusCategory.DONE, "Status"));
+                    out.add(new Transition("close:duplicate", "Schließen (Duplikat)", "closed (duplicate)", StatusCategory.DONE, "Status"));
+                }
+            } else if (i.path("pull_request").path("merged_at").isNull() || !pr) {
+                out.add(new Transition("reopen", "Wieder öffnen", "open", StatusCategory.TODO, "Status"));
+            }
+            if (authenticated) {
+                String[] parts = ref.repo().split("/", 2);
+                ObjectNode vars = HttpJson.object();
+                vars.put("owner", parts[0]);
+                vars.put("name", parts[1]);
+                vars.put("number", ref.number());
+                vars.put("field", statusField);
+                JsonNode items = graphql(PROJECT_ITEMS_QUERY, vars).path("repository").path("issueOrPullRequest")
+                        .path("projectItems").path("nodes");
+                for (JsonNode item : items) {
+                    JsonNode p = item.path("project");
+                    JsonNode field = p.path("field");
+                    String current = text(item.path("fieldValueByName").path("name"));
+                    for (JsonNode o : field.path("options")) {
+                        String name = text(o.path("name"));
+                        if (name == null || name.equals(current) || text(field.path("id")) == null) {
+                            continue;
+                        }
+                        out.add(new Transition(String.join(":", "project", text(p.path("id")), text(item.path("id")),
+                                text(field.path("id")), text(o.path("id"))),
+                                "Project " + text(p.path("title")) + ": " + statusField + " → " + name, name,
+                                StatusCategory.UNKNOWN, "Project " + text(p.path("title"))));
+                    }
+                }
+            }
+            return out;
+        }
+
+        @Override
+        public WriteResult transition(String key, String project, Transition t) {
+            requireToken("Statuswechsel");
+            Ref ref = ref(key, project);
+            String id = t.id();
+            if (id.startsWith("project:")) {
+                String[] p = id.split(":", 5);
+                ObjectNode vars = HttpJson.object();
+                vars.put("project", p[1]);
+                vars.put("item", p[2]);
+                vars.put("field", p[3]);
+                vars.put("option", p[4]);
+                graphql("mutation($project:ID!,$item:ID!,$field:ID!,$option:String!){ updateProjectV2ItemFieldValue("
+                        + "input:{projectId:$project,itemId:$item,fieldId:$field,value:{singleSelectOptionId:$option}}){"
+                        + " projectV2Item { id } } }", vars);
+                return new WriteResult(ref.key(), t.name(), null);
+            }
+            ObjectNode body = HttpJson.object();
+            if (id.equals("reopen")) {
+                body.put("state", "open");
+            } else if (id.startsWith("close")) {
+                body.put("state", "closed");
+                if (id.contains(":")) {
+                    body.put("state_reason", id.substring(id.indexOf(':') + 1));
+                }
+            } else {
+                throw new IllegalArgumentException("GitHub: unbekannter Statuswechsel '" + id + "' – ticket_transitions liefert die möglichen.");
+            }
+            JsonNode res = http.patch("/repos/" + ref.repo() + "/issues/" + ref.number(), body).body();
+            return new WriteResult(ref.key(), "Status → " + stateText(text(res.path("state")), text(res.path("state_reason"))),
+                    text(res.path("html_url")));
+        }
+
+        @Override
+        public WriteResult comment(String key, String project, String body) {
+            requireToken("Kommentieren");
+            Ref ref = ref(key, project);
+            ObjectNode req = HttpJson.object();
+            req.put("body", body);
+            JsonNode res = http.post("/repos/" + ref.repo() + "/issues/" + ref.number() + "/comments", req).body();
+            return new WriteResult(ref.key(), "Kommentar hinzugefügt", text(res.path("html_url")));
+        }
+
+        @Override
+        public WriteResult assign(String key, String project, List<String> assignees) {
+            requireToken("Zuweisen");
+            Ref ref = ref(key, project);
+            ObjectNode body = HttpJson.object();
+            var arr = body.putArray("assignees");
+            logins(assignees).forEach(arr::add);
+            JsonNode res = http.patch("/repos/" + ref.repo() + "/issues/" + ref.number(), body).body();
+            List<String> now = texts(res.path("assignees"), "login");
+            List<String> wanted = logins(assignees);
+            // GitHub ignoriert Benutzer ohne Zugriff auf das Repository stillschweigend – das melden
+            List<String> ignored = wanted.stream().filter(w -> now.stream().noneMatch(n -> n.equalsIgnoreCase(w))).toList();
+            return new WriteResult(ref.key(), "zugewiesen an " + (now.isEmpty() ? "niemand" : String.join(", ", now))
+                    + (ignored.isEmpty() ? "" : " – ignoriert (kein Zugriff aufs Repository?): " + String.join(", ", ignored)),
+                    text(res.path("html_url")));
+        }
+
+        private List<String> logins(List<String> assignees) {
+            List<String> out = new ArrayList<>();
+            for (String a : assignees) {
+                if (TicketSystem.isNone(a)) {
+                    continue;
+                }
+                out.add(TicketSystem.isMe(a) ? text(http.getJson("/user").path("login")) : a.trim().replaceFirst("^@", ""));
+            }
+            return out;
+        }
+
+        @Override
+        public WriteResult update(String key, String project, TicketUpdate u) {
+            requireToken("Bearbeiten");
+            Ref ref = ref(key, project);
+            ObjectNode body = HttpJson.object();
+            if (u.title() != null) {
+                body.put("title", u.title());
+            }
+            if (u.description() != null) {
+                body.put("body", u.description());
+            }
+            if (u.labels() != null) {
+                var arr = body.putArray("labels");
+                u.labels().forEach(arr::add);
+            }
+            JsonNode res = http.patch("/repos/" + ref.repo() + "/issues/" + ref.number(), body).body();
+            return new WriteResult(ref.key(), "geändert: " + u.summary(), text(res.path("html_url")));
+        }
+
+        @Override
+        public WriteResult create(String project, NewTicket t) {
+            requireToken("Anlegen");
+            if (project == null || !project.contains("/")) {
+                throw new IllegalArgumentException("GitHub: 'project' als owner/repo angeben (oder Standardprojekt setzen).");
+            }
+            ObjectNode body = HttpJson.object();
+            body.put("title", t.title());
+            if (t.description() != null) {
+                body.put("body", t.description());
+            }
+            if (!t.labels().isEmpty()) {
+                var arr = body.putArray("labels");
+                t.labels().forEach(arr::add);
+            }
+            List<String> logins = logins(t.assignees());
+            if (!logins.isEmpty()) {
+                var arr = body.putArray("assignees");
+                logins.forEach(arr::add);
+            }
+            if (t.type() != null && !t.type().isBlank()) {
+                body.put("type", t.type().trim()); // Issue-Typen der Organisation (z.B. Bug, Feature)
+            }
+            JsonNode res = http.post("/repos/" + project.trim() + "/issues", body).body();
+            return new WriteResult(project.trim() + "#" + text(res.path("number")), "angelegt", text(res.path("html_url")));
+        }
+
         // ------------------------------------------------------------------ Einzelnes Ticket
 
         @Override
