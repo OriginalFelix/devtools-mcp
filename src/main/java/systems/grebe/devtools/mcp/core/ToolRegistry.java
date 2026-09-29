@@ -11,7 +11,9 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
+import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.McpToolUtils;
@@ -273,7 +275,7 @@ public class ToolRegistry {
 
     private static Set<String> secretKeys(ToolModule m) {
         return m.configSchema().stream()
-                .filter(f -> f.type() == FieldType.SECRET)
+                .filter(ConfigField::secret)
                 .map(ConfigField::key)
                 .collect(Collectors.toSet());
     }
@@ -314,7 +316,8 @@ public class ToolRegistry {
                         continue;
                     }
                     try {
-                        server.addTool(McpToolUtils.toSyncToolSpecification(cb));
+                        server.addTool(ToolProgress.wrap(withAnnotations(McpToolUtils.toSyncToolSpecification(cb),
+                                ToolBeans.annotations(cb))));
                         s.registered.add(name);
                     } catch (RuntimeException e) {
                         LOG.error("Tool {} konnte nicht registriert werden", name, e);
@@ -325,6 +328,18 @@ public class ToolRegistry {
         // Kein explizites notifyToolsListChanged(): addTool/removeTool benachrichtigen die Clients bereits selbst
         // (spring.ai.mcp.server.tool-change-notification=true).
         changeListeners.forEach(Runnable::run);
+    }
+
+    /** Übernimmt die {@link ToolHints} eines Tools in seine MCP-Definition (Spring AI kennt sie nicht). */
+    static McpServerFeatures.SyncToolSpecification withAnnotations(McpServerFeatures.SyncToolSpecification spec,
+                                                                   McpSchema.ToolAnnotations annotations) {
+        if (annotations == null) {
+            return spec;
+        }
+        McpSchema.Tool t = spec.tool();
+        McpSchema.Tool tool = new McpSchema.Tool(t.name(), t.title(), t.description(), t.inputSchema(),
+                t.outputSchema(), annotations, t.meta(), t.icons());
+        return new McpServerFeatures.SyncToolSpecification(tool, spec.callHandler());
     }
 
     private List<ToolCallListener> callListeners() {

@@ -6,17 +6,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.beans.value.ChangeListener;
 import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.geometry.VPos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
@@ -148,6 +154,7 @@ public class ConfigForm {
                 yield new HBox(6, tf, browse);
             }
             case DIRECTORY_LIST -> directoryList(f, value, changed);
+            case RECORD_LIST -> recordList(f, value);
             case STRING_LIST -> {
                 TextArea ta = new TextArea(value);
                 ta.setPrefRowCount(Math.min(8, Math.max(3, (int) value.lines().count())));
@@ -197,6 +204,87 @@ public class ConfigForm {
         });
         getters.put(f.key(), () -> String.join("\n", list.getItems()));
         return new VBox(6, list, new HBox(6, add, remove, manual));
+    }
+
+    /**
+     * Tabelle der Datensätze (geheime Spalten ausgeblendet) mit Hinzufügen/Bearbeiten/Entfernen. Bearbeitet wird in
+     * einem Dialog, dessen Formular wieder ein {@link ConfigForm} aus den Spalten ist.
+     */
+    private Node recordList(ConfigField f, String value) {
+        TableView<Map<String, String>> table = new TableView<>();
+        List<Map<String, String>> initial;
+        try {
+            initial = ModuleConfig.parseRecords(value, f.columns());
+        } catch (IllegalArgumentException e) {
+            initial = List.of();
+        }
+        table.getItems().addAll(initial);
+        for (ConfigField c : f.columns()) {
+            if (c.secret()) {
+                continue;
+            }
+            TableColumn<Map<String, String>, String> col = new TableColumn<>(c.label());
+            col.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().getOrDefault(c.key(), "")));
+            table.getColumns().add(col);
+        }
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPrefHeight(160);
+        table.setPlaceholder(new Label("Noch keine Einträge – über „Hinzufügen…“ anlegen"));
+        table.getItems().addListener((javafx.collections.ListChangeListener<Map<String, String>>) c -> onChange.run());
+
+        Button add = new Button("Hinzufügen…");
+        add.setOnAction(e -> editRecord(table, f, Map.of()).ifPresent(r -> table.getItems().add(r)));
+        Button edit = new Button("Bearbeiten…");
+        edit.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull());
+        Runnable editSelected = () -> {
+            int i = table.getSelectionModel().getSelectedIndex();
+            if (i >= 0) {
+                editRecord(table, f, table.getItems().get(i)).ifPresent(r -> table.getItems().set(i, r));
+            }
+        };
+        edit.setOnAction(e -> editSelected.run());
+        table.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                editSelected.run();
+            }
+        });
+        Button remove = new Button("Entfernen");
+        remove.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull());
+        remove.setOnAction(e -> table.getItems().remove(table.getSelectionModel().getSelectedIndex()));
+        getters.put(f.key(), () -> ModuleConfig.formatRecords(table.getItems()));
+        return new VBox(6, table, new HBox(6, add, edit, remove));
+    }
+
+    private static java.util.Optional<Map<String, String>> editRecord(Node owner, ConfigField f, Map<String, String> values) {
+        ConfigForm form = new ConfigForm(f.columns(), values);
+        Dialog<Map<String, String>> dialog = new Dialog<>();
+        dialog.initOwner(owner.getScene().getWindow());
+        dialog.setTitle(f.label() + (values.isEmpty() ? " – neuer Eintrag" : " – bearbeiten"));
+        dialog.setResizable(true);
+        dialog.getDialogPane().getStylesheets().addAll(owner.getScene().getStylesheets());
+        ScrollPane scroll = new ScrollPane(form.node());
+        scroll.setFitToWidth(true);
+        scroll.setPrefSize(620, Math.min(520, 60 + 52 * f.columns().size()));
+        dialog.getDialogPane().setContent(scroll);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        Label errors = new Label();
+        errors.setStyle("-fx-text-fill: #c53030; -fx-padding: 8 12 0 12;");
+        errors.setWrapText(true);
+        dialog.getDialogPane().setHeader(errors);
+        errors.setVisible(false);
+        errors.setManaged(false);
+        // OK nur mit gültigen Werten: Fehler anzeigen statt schließen
+        dialog.getDialogPane().lookupButton(ButtonType.OK).addEventFilter(javafx.event.ActionEvent.ACTION, e -> {
+            List<String> problems = form.validate();
+            if (!problems.isEmpty()) {
+                errors.setText(String.join("\n", problems));
+                errors.setVisible(true);
+                errors.setManaged(true);
+                e.consume();
+            }
+        });
+        dialog.setResultConverter(b -> b == ButtonType.OK ? Map.copyOf(form.values()) : null);
+        return dialog.showAndWait();
     }
 
     private static java.util.Optional<File> chooseDirectory(Window owner, String initial) {

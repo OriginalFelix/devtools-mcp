@@ -45,6 +45,9 @@ public final class ShellHints {
     public static final String TICKET = " Tickets (Jira, GitHub, GitLab) immer über die ticket_*-Tools lesen, nicht per "
             + "`curl` gegen die REST-API, mit `gh`/`glab` in der Shell oder im Browser.";
 
+    public static final String SSH = " Konfigurierte SSH-Server immer über die ssh_*-Tools ansprechen, nicht mit "
+            + "`ssh`, `scp` oder `sftp` in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
+
     private ShellHints() {
     }
 }
