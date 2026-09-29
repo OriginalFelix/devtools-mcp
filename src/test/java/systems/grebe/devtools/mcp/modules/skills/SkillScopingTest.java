@@ -212,10 +212,10 @@ class SkillScopingTest {
     void userFromSettingsOverridesGitAndMissingUserIsReported() {
         Path dir = home.resolve("u");
         ConfigurableApplicationContext ctx = SkillServiceTest.start(dir,
-                Map.of(SkillsModule.USER_EMAIL, " Felix.Grebe@CSS.de "), "git@example.com");
+                Map.of(SkillsModule.USER_EMAIL, " Felix.Grebe@test.de "), "git@example.com");
         contexts.add(ctx);
         SkillUser users = ctx.getBean(SkillUser.class);
-        assertThat(users.email()).isEqualTo("felix.grebe@css.de");
+        assertThat(users.email()).isEqualTo("felix.grebe@test.de");
         assertThat(users.source()).isEqualTo("Modul-Einstellung");
 
         ConfigurableApplicationContext noUser = SkillServiceTest.start(home.resolve("n"), Map.of(), null);
