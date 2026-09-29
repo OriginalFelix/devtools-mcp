@@ -234,6 +234,19 @@ class Neo4jGraphStorageTest {
         assertThat(action.describe(cfg, target)).contains("Branch main", "Graph vom", "4 Dateien");
 
         assertThat(new GraphModule().testConnection(cfg).message()).contains("Verbunden: Neo4j Kernel", "[Graph: main]");
+        // Anmeldung: fehlendes bzw. falsches Passwort -> verständliche Meldung, und zwar vor dem Parsen
+        Map<String, String> noPassword = values(GraphModule.STORAGE_NEO4J);
+        noPassword.remove(GraphModule.NEO4J_PASSWORD);
+        ModuleConfig noPwCfg = ModuleConfig.of(new GraphModule().configSchema(), noPassword);
+        assertThat(new GraphModule().testConnection(noPwCfg).message()).contains("Anmeldung abgelehnt",
+                "kein Neo4j-Passwort eingetragen");
+        assertThatThrownBy(() -> action.run(noPwCfg, target, Set.of(GraphIndexAction.FORCE), ModuleAction.Progress.NONE))
+                .hasMessageContaining("kein Neo4j-Passwort eingetragen");
+        Map<String, String> badPassword = values(GraphModule.STORAGE_NEO4J);
+        badPassword.put(GraphModule.NEO4J_PASSWORD, "falsch");
+        assertThat(new GraphModule().testConnection(ModuleConfig.of(new GraphModule().configSchema(), badPassword))
+                .message()).contains("Anmeldung abgelehnt", "Benutzer 'neo4j' oder Passwort ist falsch");
+
         Map<String, String> wrong = values(GraphModule.STORAGE_NEO4J);
         wrong.put(GraphModule.NEO4J_URI, "bolt://localhost:1");
         assertThat(new GraphModule().testConnection(ModuleConfig.of(new GraphModule().configSchema(), wrong)).success())

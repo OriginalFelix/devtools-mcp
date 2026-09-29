@@ -123,6 +123,9 @@ final class GraphService {
         }
         Key key = new Key(name(root), root, current);
         GraphStorage store = storage();
+        if (store instanceof Neo4jGraphStorage neo) {
+            neo.connection().ensureSchema(); // Verbindung/Anmeldung prüfen, bevor minutenlang geparst wird
+        }
         ReentrantLock lock = LOCKS.computeIfAbsent(root + "@" + current, k -> new ReentrantLock());
         if (lock.isLocked()) {
             progress.update("Warte auf laufenden Aufbau …", -1);

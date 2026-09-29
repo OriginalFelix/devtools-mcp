@@ -108,7 +108,10 @@ final class Neo4jConnection implements AutoCloseable {
         return settings.database() == null ? SessionConfig.defaultConfig() : SessionConfig.forDatabase(settings.database());
     }
 
-    /** Legt Constraints und Indizes an (einmal je Verbindung) und wartet, bis sie bereit sind. */
+    /**
+     * Prüft Verbindung und Anmeldung, legt Constraints und Indizes an (einmal je Verbindung) und wartet, bis sie bereit
+     * sind. Fehler kommen als {@link IllegalStateException} mit einem Hinweis, was in den Einstellungen zu tun ist.
+     */
     void ensureSchema() {
         if (schemaReady) {
             return;
@@ -117,6 +120,37 @@ final class Neo4jConnection implements AutoCloseable {
             if (schemaReady) {
                 return;
             }
+            try {
+                createSchema();
+            } catch (RuntimeException e) {
+                throw explain(e);
+            }
+            schemaReady = true;
+        }
+    }
+
+    /** Übersetzt Treiberfehler in eine Meldung mit Handlungshinweis; andere Fehler bleiben unverändert. */
+    RuntimeException explain(RuntimeException e) {
+        for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof org.neo4j.driver.exceptions.AuthenticationException) {
+                String hint = settings.password().isEmpty()
+                        ? "In den Einstellungen des Moduls „Code-Graph“ ist kein Neo4j-Passwort eingetragen, der Server "
+                        + "verlangt aber eine Anmeldung. Benutzer und Passwort eintragen und speichern."
+                        : "Benutzer '" + settings.user() + "' oder Passwort ist falsch (Modul „Code-Graph“ → Neo4j-Benutzer/"
+                        + "-Passwort).";
+                return new IllegalStateException("Neo4j " + settings + ": Anmeldung abgelehnt. " + hint, e);
+            }
+            if (t instanceof org.neo4j.driver.exceptions.ServiceUnavailableException) {
+                return new IllegalStateException("Neo4j " + settings + " ist nicht erreichbar (" + t.getMessage()
+                        + "). Läuft der Server? Sonst in den Einstellungen des Moduls „Code-Graph“ die Neo4j-URI prüfen "
+                        + "oder als Ablage 'file' wählen.", e);
+            }
+        }
+        return e;
+    }
+
+    private void createSchema() {
+        {
             for (String stmt : new String[] {
                     "CREATE CONSTRAINT graph_project_root IF NOT EXISTS FOR (p:GraphProject) REQUIRE p.root IS UNIQUE",
                     "CREATE CONSTRAINT graph_branch_key IF NOT EXISTS FOR (b:GraphBranch) REQUIRE b.key IS UNIQUE",
@@ -133,7 +167,6 @@ final class Neo4jConnection implements AutoCloseable {
                 client.query(stmt).run();
             }
             client.query("CALL db.awaitIndexes(300)").run();
-            schemaReady = true;
         }
     }
 
