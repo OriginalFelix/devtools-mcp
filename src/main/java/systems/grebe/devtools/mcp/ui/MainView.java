@@ -29,6 +29,7 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.plugin.PluginToolModule;
 
 /** Hauptfenster: Kopfzeile mit Serverstatus, Tabs „Module“ und „Aufrufe“. */
 public class MainView extends BorderPane {
@@ -115,15 +116,40 @@ public class MainView extends BorderPane {
             detailHolder.getChildren().clear();
             return;
         }
-        ModuleDetailPane pane = details.computeIfAbsent(m.id(), id -> new ModuleDetailPane(registry, m));
+        ModuleDetailPane pane = details.get(m.id());
+        if (pane == null || pane.module() != m) { // gleiche ID, neues Modul: Plugin wurde neu geladen
+            pane = new ModuleDetailPane(registry, m);
+            details.put(m.id(), pane);
+        }
         detailHolder.getChildren().setAll(pane);
     }
 
     private void refresh() {
         toolCount.setText(registry.activeToolCount() + " Tools aktiv");
         authBadge.setText(store.server().authEnabled() ? "Token-geschützt" : "ohne Token");
+        syncModules();
         moduleList.refresh();
         details.values().forEach(ModuleDetailPane::refreshState);
+    }
+
+    /**
+     * Plugins fügen Module zur Laufzeit hinzu oder entfernen sie: Liste abgleichen, Auswahl über die ID halten und
+     * Detailansichten entfernter Module verwerfen (sie halten das Modul und damit den ClassLoader des Plugins fest).
+     */
+    private void syncModules() {
+        java.util.List<ToolModule> current = registry.modules();
+        if (current.equals(moduleList.getItems())) {
+            return;
+        }
+        ToolModule selected = moduleList.getSelectionModel().getSelectedItem();
+        String selectedId = selected == null ? null : selected.id();
+        java.util.Set<ToolModule> alive = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        alive.addAll(current);
+        details.values().removeIf(pane -> !alive.contains(pane.module()));
+        moduleList.getItems().setAll(current);
+        current.stream().filter(m -> m.id().equals(selectedId)).findFirst()
+                .ifPresentOrElse(m -> moduleList.getSelectionModel().select(m),
+                        () -> moduleList.getSelectionModel().selectFirst());
     }
 
     private void openSettings() {
@@ -139,7 +165,7 @@ public class MainView extends BorderPane {
         @Override
         protected void updateItem(ToolModule m, boolean empty) {
             super.updateItem(m, empty);
-            if (empty || m == null) {
+            if (empty || m == null || !registry.hasModule(m.id())) { // Plugin-Modul evtl. gerade entfernt
                 setGraphic(null);
                 setText(null);
                 return;
@@ -153,8 +179,9 @@ public class MainView extends BorderPane {
             dot.getStyleClass().addAll("module-dot", !m.hasTools() ? "settings" : error ? "error" : enabled ? "on" : "off");
             Label name = new Label(m.displayName());
             name.getStyleClass().add("module-name");
-            Label sub = new Label(!m.hasTools() ? "Einstellungen" : error ? "Fehler"
-                    : enabled ? active + " von " + total + " Tools aktiv" : "deaktiviert");
+            String state = !m.hasTools() ? "Einstellungen" : error ? "Fehler"
+                    : enabled ? active + " von " + total + " Tools aktiv" : "deaktiviert";
+            Label sub = new Label(PluginToolModule.pluginOf(m).map(p -> state + " · Plugin " + p).orElse(state));
             sub.getStyleClass().add("module-sub");
             HBox row = new HBox(10, dot, new VBox(1, name, sub));
             row.setAlignment(Pos.CENTER_LEFT);

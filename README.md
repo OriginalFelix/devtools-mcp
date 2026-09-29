@@ -320,6 +320,100 @@ public class JiraModule implements ToolModule {
 Feldtypen: `STRING`, `SECRET`, `INT`, `BOOLEAN`, `URL`, `DIRECTORY`, `DIRECTORY_LIST`, `ENUM`, `STRING_LIST`.
 Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
 
+## Plugins
+
+Neue Module lassen sich auch **ohne Änderung an der App** ergänzen – als Plugin-Jar, angelehnt an Bukkit. Plugins liegen
+in `~/.devtools-mcp/plugins/` (Tab **Plugins** → *Ordner öffnen*), werden beim Start geladen und lassen sich zur
+Laufzeit installieren, aktualisieren, an-/abschalten und entfernen; verbundene Clients erhalten sofort
+`tools/list_changed`. Die Module eines Plugins erscheinen in der Modulliste wie eingebaute (mit „· Plugin *name*“),
+inkl. Formular, Schaltern, Aktionen und Protokoll.
+
+### Plugin schreiben
+
+`src/main/resources/plugin.yml`:
+
+```yaml
+name: jira                        # Pflicht, [a-z][a-z0-9-]*, eindeutig
+version: 1.2.0                    # Pflicht
+main: com.acme.jira.JiraPlugin    # Pflicht, erweitert DevToolsPlugin
+api-version: 1                    # optional; höher als die App → Plugin wird abgewiesen
+description: Tickets lesen und kommentieren
+author: Team Tools                # oder authors: [a, b]
+website: https://git.acme.de/jira-plugin
+depend: [http-commons]            # Pflicht-Abhängigkeiten: werden vorher geladen, ihre Klassen sind sichtbar
+softdepend: [sonar-extras]        # optional: vorher geladen, falls vorhanden
+libraries:                        # Maven-Koordinaten, beim Laden samt transitiver Abhängigkeiten aufgelöst
+  - com.squareup.okhttp3:okhttp:4.12.0
+```
+
+Hauptklasse – Module registrieren wie in „Eigenes Modul schreiben“, nur ohne `@Component`:
+
+```java
+public class JiraPlugin extends DevToolsPlugin {
+    @Override
+    public void onEnable() {
+        registerModule(new JiraModule(dataFolder()));   // Modul-ID "jira" → Tools jira_*
+    }
+
+    @Override
+    public void onDisable() {
+        // Threads/Verbindungen schließen; Module entfernt die App selbst
+    }
+}
+```
+
+Build (Gradle) – die App stellt die API bereit, ins Jar gehört nur der eigene Code:
+
+```kotlin
+dependencies {
+    compileOnly("systems.grebe:devtools-mcp:0.1.0-SNAPSHOT") // ./gradlew publishToMavenLocal in diesem Repo
+}
+```
+
+* **Lebenszyklus:** `onLoad()` → `onEnable()`; `onDisable()` beim Abschalten, Entfernen, Aktualisieren und Beenden.
+  Eine Exception lässt nur dieses Plugin scheitern (Status „Fehler“ mit Meldung im Tab), der Rest läuft weiter.
+  Plugins, die per `depend` auf ein abgeschaltetes Plugin zeigen, werden mit abgeschaltet.
+* **`PluginContext`** (`context()`): `registerModule`, `dataFolder()` (`plugins/<name>/`, bleibt beim Entfernen
+  erhalten), `logger()` (`plugin.<name>`), `plugin(name)` (andere aktive Plugins), `apiVersion()`.
+* **ClassLoader:** je Plugin ein eigener; Reihenfolge *App → Plugin → depend/softdepend*. App-Bibliotheken (Spring AI,
+  Jackson, SLF4J …) gibt es damit genau einmal in der Version der App, eigene `libraries` nur für Klassen, die die App
+  nicht mitbringt. Bei jedem Aufruf in Plugin-Code (Tools, Formular, Aktionen, Verbindungstest) ist der
+  Thread-Context-ClassLoader der des Plugins – `ServiceLoader` und Jackson finden die Plugin-Klassen.
+* **Modul-IDs** sind app-weit eindeutig (2–32 Kleinbuchstaben/Ziffern); eingebaute IDs sind gesperrt. Einstellungen
+  und Schalter eines Plugin-Moduls liegen wie bei eingebauten in `settings.json` und überleben Updates.
+* **Instructions:** `instructions()` der beim Start aktiven Plugin-Module landen in den MCP-Instructions; später
+  installierte Plugins erst nach Neustart (die Tools sofort). Tool-Beschreibungen daher selbst tragfähig formulieren.
+* **Sicherheit:** Plugins laufen im Prozess der App mit denselben Rechten – kein Sandboxing. Nur Plugins aus
+  vertrauenswürdigen Quellen installieren; der Store prüft Prüfsummen, keine Signaturen.
+
+### Plugin-Store (Maven)
+
+Der Store lädt Plugins als gewöhnliche Jar-Artefakte aus Maven-Repositories – per Maven Resolver, derselben Bibliothek
+wie in Maven selbst: Versionen aus `maven-metadata.xml`, Prüfsummen (Abbruch bei Abweichung), Basic-Auth, Proxy aus den
+JVM-Einstellungen, `file:`-Repositories. Heruntergeladenes landet in `plugins/.repository`, nicht in `~/.m2`.
+
+* **Repositories** (Tab *Repositories*): voreingestellt Maven Central; eigene (Nexus, Artifactory, Bitbucket/GitLab
+  Packages, `file:`-Ordner) mit ID, URL, optional Benutzer und Passwort/Token (AES-GCM verschlüsselt in
+  `settings.json`, Feld leer lassen = unverändert), SNAPSHOT-Freigabe und Katalog. Reihenfolge = Suchreihenfolge,
+  *Testen* prüft Erreichbarkeit und Katalog.
+* **Katalog** (optional, je Repository): ein YAML-Artefakt mit Extension `yml`, deployt wie jedes andere, z.B.
+  `mvn deploy:deploy-file -DgroupId=com.acme -DartifactId=devtools-plugins -Dversion=3 -Dpackaging=yml -Dfile=catalog.yml …`.
+  Der Store liest immer die neueste Version.
+
+  ```yaml
+  plugins:
+    - coordinates: com.acme.devtools:jira-plugin   # groupId:artifactId
+      name: Jira
+      description: Tickets lesen und kommentieren
+      author: Team Tools
+      tags: [ticket, atlassian]
+  ```
+* **Store** (Tab *Store*): *Katalog laden* → suchen → Version wählen → *Installieren*. Ohne Katalog direkt über
+  `groupId:artifactId[:version]` (ohne Version: neueste). *Nach Updates suchen* vergleicht über den Store installierte
+  Plugins mit der neuesten Version (Maven-Versionsvergleich, `1.10.0` > `1.9.0`); *Aktualisieren* tauscht sie ohne
+  Neustart. Plugins aus Dateien (*Jar installieren…* oder in den Ordner kopiert und *Neu laden*) haben keine Quelle
+  und werden nicht auf Updates geprüft.
+
 ## Architektur
 
 ```
@@ -331,7 +425,9 @@ core/ManagedToolCallback── Präfix, Protokollierung, Klartext-Ergebnisse
 config/SettingsStore    ── JSON-Persistenz, SecretCipher (AES-GCM)
 server/BearerTokenFilter── optionaler Token-Schutz
 modules/{git,sonar,build,graph,…}
-ui/                     ── MainView, ModuleDetailPane, ConfigForm (schema-getrieben), InvocationLogView, Dialoge
+plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
+plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
+ui/                     ── MainView, ModuleDetailPane, ConfigForm (schema-getrieben), InvocationLogView, PluginsView, Dialoge
 ```
 
 MCP-Server: Spring AI `spring-ai-starter-mcp-server-webflux` 2.0.1 (MCP Java SDK 2.0.0), Protokoll `STREAMABLE`.

@@ -49,23 +49,34 @@ public class ToolRegistry {
         this.invocationLog = invocationLog;
         // Lazy: Listener dürfen ihrerseits die Registry brauchen (ObjectProvider), ohne Zirkelbezug beim Start.
         this.callListenerProvider = callListeners;
-        modules.stream()
-                .sorted(Comparator.comparingInt(ToolModule::order)
-                        .thenComparing(ToolModule::displayName, String.CASE_INSENSITIVE_ORDER))
-                .forEach(m -> {
-                    if (states.containsKey(m.id())) {
-                        throw new IllegalStateException("Doppelte Modul-ID: " + m.id());
-                    }
-                    ModuleSettings settings = store.module(m.id())
-                            .orElseGet(() -> new ModuleSettings(m.enabledByDefault(), Set.of(),
-                                    m.initialValues(other -> store.module(other).map(ModuleSettings::values).orElse(Map.of()))));
-                    states.put(m.id(), new ModuleState(m, settings));
-                });
+        modules.stream().sorted(MODULE_ORDER).forEach(m -> {
+            if (states.containsKey(m.id())) {
+                throw new IllegalStateException("Doppelte Modul-ID: " + m.id());
+            }
+            states.put(m.id(), new ModuleState(m, initialSettings(m)));
+        });
+    }
+
+    /** Reihenfolge der Modulliste: {@link ToolModule#order()}, dann Anzeigename. */
+    public static final Comparator<ToolModule> MODULE_ORDER = Comparator.comparingInt(ToolModule::order)
+            .thenComparing(ToolModule::displayName, String.CASE_INSENSITIVE_ORDER)
+            .thenComparing(ToolModule::id);
+
+    private static final java.util.regex.Pattern MODULE_ID = java.util.regex.Pattern.compile("[a-z][a-z0-9]{1,31}");
+
+    private ModuleSettings initialSettings(ToolModule m) {
+        return store.module(m.id())
+                .orElseGet(() -> new ModuleSettings(m.enabledByDefault(), Set.of(),
+                        m.initialValues(other -> store.module(other).map(ModuleSettings::values).orElse(Map.of()))));
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void registerAll() {
-        states.keySet().forEach(this::rebuild);
+        List<String> ids;
+        synchronized (states) {
+            ids = List.copyOf(states.keySet());
+        }
+        ids.forEach(this::rebuild);
         LOG.info("MCP-Tools registriert: {} aktiv", activeToolCount());
     }
 
@@ -73,8 +84,59 @@ public class ToolRegistry {
 
     public List<ToolModule> modules() {
         synchronized (states) {
-            return states.values().stream().map(s -> s.module).toList();
+            return states.values().stream().map(s -> s.module).sorted(MODULE_ORDER).toList();
         }
+    }
+
+    public boolean hasModule(String moduleId) {
+        synchronized (states) {
+            return states.containsKey(moduleId);
+        }
+    }
+
+    // ------------------------------------------------------------------ Module zur Laufzeit (Plugins)
+
+    /**
+     * Nimmt ein Modul zur Laufzeit auf (z.B. aus einem Plugin) und registriert seine Tools sofort. Gespeicherte
+     * Einstellungen unter derselben ID werden übernommen – Schalter und Konfiguration überleben so Updates und
+     * Neuinstallationen.
+     *
+     * @throws IllegalArgumentException bei ungültiger oder bereits vergebener ID
+     */
+    public void register(ToolModule module) {
+        String id = module.id();
+        if (id == null || !MODULE_ID.matcher(id).matches()) {
+            throw new IllegalArgumentException("Modul-ID '" + id + "' ungültig: 2–32 Kleinbuchstaben/Ziffern, "
+                    + "beginnend mit einem Buchstaben (sie wird Tool-Präfix, z.B. " + "jira_issue).");
+        }
+        synchronized (states) {
+            if (states.containsKey(id)) {
+                throw new IllegalArgumentException("Modul-ID '" + id + "' ist bereits vergeben.");
+            }
+            states.put(id, new ModuleState(module, initialSettings(module)));
+        }
+        rebuild(id);
+        LOG.info("Modul {} aufgenommen", id);
+    }
+
+    /** Entfernt ein zur Laufzeit aufgenommenes Modul samt seiner Tools. Gespeicherte Einstellungen bleiben erhalten. */
+    public void unregister(String moduleId) {
+        synchronized (states) {
+            ModuleState s = states.remove(moduleId);
+            if (s == null) {
+                return;
+            }
+            for (String name : s.registered) {
+                try {
+                    server.removeTool(name);
+                } catch (RuntimeException e) {
+                    LOG.debug("Tool {} war nicht registriert", name);
+                }
+            }
+            s.registered = new LinkedHashSet<>();
+        }
+        LOG.info("Modul {} entfernt", moduleId);
+        changeListeners.forEach(Runnable::run);
     }
 
     public ModuleSettings settings(String moduleId) {
@@ -220,6 +282,9 @@ public class ToolRegistry {
     private void rebuild(String moduleId) {
         ModuleState s = state(moduleId);
         synchronized (states) {
+            if (states.get(moduleId) != s) {
+                return; // inzwischen entfernt (Plugin deaktiviert) – keine Tools eines alten Moduls registrieren
+            }
             List<ManagedToolCallback> tools = new ArrayList<>();
             String error = null;
             try {

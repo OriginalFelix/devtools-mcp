@@ -1,14 +1,18 @@
 package systems.grebe.devtools.mcp.core;
 
-import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.customizer.McpSyncServerCustomizer;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import systems.grebe.devtools.mcp.plugin.PluginManager;
 
 /**
  * Baut die MCP-{@code instructions}, die der Server beim {@code initialize} an jeden Client schickt: ein allgemeiner
@@ -47,11 +51,29 @@ public class ServerInstructions {
             """;
 
     private final List<ToolModule> modules;
+    private final Supplier<List<ToolModule>> pluginModules;
     private final String base;
 
-    public ServerInstructions(List<ToolModule> modules,
+    public ServerInstructions(List<ToolModule> modules, String base) {
+        this(modules, List::of, base);
+    }
+
+    /**
+     * @param pluginModules Module der beim Start aktiven Plugins (siehe {@code PluginManager}); später installierte
+     *                      Plugins erscheinen erst nach einem Neustart in den Instructions, ihre Tools sofort
+     */
+    @Autowired
+    public ServerInstructions(List<ToolModule> modules, ObjectProvider<PluginManager> plugins,
                               @Value("${spring.ai.mcp.server.instructions:}") String base) {
+        this(modules, () -> {
+            PluginManager pm = plugins.getIfAvailable();
+            return pm == null ? List.of() : pm.modules();
+        }, base);
+    }
+
+    ServerInstructions(List<ToolModule> modules, Supplier<List<ToolModule>> pluginModules, String base) {
         this.modules = modules;
+        this.pluginModules = pluginModules;
         this.base = base;
     }
 
@@ -71,10 +93,15 @@ public class ServerInstructions {
         if (base != null && !base.isBlank()) {
             sb.append("\n\n").append(base.strip());
         }
-        modules.stream()
+        List<ToolModule> all = new ArrayList<>(modules);
+        try {
+            all.addAll(pluginModules.get());
+        } catch (RuntimeException e) {
+            LOG.warn("Plugin-Module für die Instructions nicht ermittelbar", e);
+        }
+        all.stream()
                 // gleiche Reihenfolge wie Modulliste und Tool-Registrierung (ToolRegistry)
-                .sorted(Comparator.comparingInt(ToolModule::order)
-                        .thenComparing(ToolModule::displayName, String.CASE_INSENSITIVE_ORDER))
+                .sorted(ToolRegistry.MODULE_ORDER)
                 .forEach(m -> {
                     String text;
                     try {
