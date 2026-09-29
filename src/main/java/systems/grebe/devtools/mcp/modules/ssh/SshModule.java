@@ -8,7 +8,6 @@ import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
 import jakarta.annotation.PreDestroy;
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -17,6 +16,7 @@ import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 import systems.grebe.devtools.mcp.core.ToolModule;
 
 /**
@@ -40,6 +40,9 @@ public class SshModule implements ToolModule {
     static final String SHELL_IDLE_MINUTES = "shellIdleMinutes";
     static final String ALLOW_EXEC = "allowExec";
     static final String ALLOW_WRITE = "allowWrite";
+    static final String ALLOW_TRANSFER = "allowTransfer";
+    static final String LOCAL_DIRS = "localDirectories";
+    static final String ALLOW_SUDO = "allowSudo";
 
     /** Über alle Konfigurationsänderungen hinweg dieselbe Instanz, damit alte Sitzungen geschlossen werden können. */
     private final SshSessions sessions = new SshSessions();
@@ -88,7 +91,11 @@ public class SshModule implements ToolModule {
                 `ssh_shell_exec` (Befehl, wartet auf Exit-Code oder liefert Teilausgabe) → `ssh_shell_read` (neue Ausgabe \
                 seit dem letzten Lesen) / `ssh_shell_send` (Eingabe, ctrl=c) → nächster `ssh_shell_exec` → `ssh_shell_close`.
                 - `ssh_list_dir`, `ssh_read_file`: Verzeichnisse und Textdateien per SFTP lesen.
-                - `ssh_write_file` (nur wenn angeboten): Datei schreiben – nur auf ausdrückliche Anweisung des Nutzers.
+                - `ssh_write_file` (nur wenn angeboten): Textdatei schreiben – nur auf ausdrückliche Anweisung des Nutzers.
+                - `ssh_upload`, `ssh_download` (nur wenn angeboten): Dateien zwischen diesem Rechner und dem Server, auch \
+                binär und groß – statt `scp` und statt Inhalte über read_file/write_file zu kopieren.
+                - `ssh_sudo` (nur wenn angeboten): Befehl mit Root-Rechten; das Passwort hat die App – nie danach fragen, \
+                kein `sudo` in `ssh_exec`.
                 Verändernde Befehle (Neustarts, Löschen, Paketinstallation, Konfigurationsänderungen) nur auf ausdrückliche \
                 Anweisung des Nutzers ausführen. Ist eine gewünschte Verbindung nicht konfiguriert, den Nutzer bitten, sie \
                 in der App anzulegen – nicht nach Passwörtern fragen.""";
@@ -115,6 +122,8 @@ public class SshModule implements ToolModule {
                                         .withHelp("Optional: Pfad zu einem privaten Schlüssel (OpenSSH/PEM/PuTTY), z.B. ~/.ssh/id_ed25519"),
                                 ConfigField.of(SshConnection.PASSPHRASE, "Passphrase", FieldType.SECRET)
                                         .withHelp("Nur für verschlüsselte Schlüsseldateien."),
+                                ConfigField.of(SshConnection.SUDO_PASSWORD, "sudo-Passwort", FieldType.SECRET)
+                                        .withHelp("Für ssh_sudo. Leer = Login-Passwort."),
                                 ConfigField.of(SshConnection.DESCRIPTION, "Beschreibung", FieldType.STRING)
                                         .withHelp("Hinweis für das LLM, z.B. „Produktiv-Webserver, nginx + Spring Boot“."))
                         .withHelp("Name, Host, Port, Benutzer und Passwort bzw. Schlüssel je Server. Das LLM sieht nur Name, "
@@ -139,7 +148,14 @@ public class SshModule implements ToolModule {
                         .withHelp("ssh_exec und die interaktiven ssh_shell_*-Tools – beliebige Befehle mit den Rechten "
                                 + "des hinterlegten Benutzers."),
                 ConfigField.of(ALLOW_WRITE, "Dateien schreiben erlauben", FieldType.BOOLEAN).withDefault("false")
-                        .withHelp("ssh_write_file (SFTP)."));
+                        .withHelp("ssh_write_file (SFTP)."),
+                ConfigField.of(ALLOW_TRANSFER, "Dateien übertragen erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("ssh_upload, ssh_download: Dateien zwischen diesem Rechner und dem Server (SFTP), "
+                                + "lokal nur in den folgenden Verzeichnissen."),
+                ConfigField.of(LOCAL_DIRS, "Lokale Verzeichnisse für Übertragungen", FieldType.DIRECTORY_LIST)
+                        .withHelp("Nur hieraus wird hochgeladen und nur hierhin heruntergeladen (inkl. Unterverzeichnissen)."),
+                ConfigField.of(ALLOW_SUDO, "sudo erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("ssh_sudo: Befehle mit Root-Rechten; das Passwort geht per stdin an sudo, nie zum LLM."));
     }
 
     @Override
@@ -161,7 +177,13 @@ public class SshModule implements ToolModule {
         if (config.getBoolean(ALLOW_WRITE)) {
             beans.add(new SshWriteTools(env));
         }
-        return List.of(ToolCallbacks.from(beans.toArray()));
+        if (config.getBoolean(ALLOW_TRANSFER)) {
+            beans.add(new SshTransferTools(env));
+        }
+        if (config.getBoolean(ALLOW_SUDO)) {
+            beans.add(new SshSudoTools(env));
+        }
+        return ToolBeans.callbacks(beans.toArray());
     }
 
     @Override

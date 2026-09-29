@@ -29,7 +29,9 @@ import systems.grebe.devtools.mcp.core.ToolProgress;
 final class SshEnvironment {
 
     /** Ergebnis eines entfernten Befehls; Ausgaben sind auf {@code maxBytes} begrenzt. */
-    record ExecResult(int exitCode, String stdout, String stderr, boolean timedOut, boolean truncated, long millis) {
+    /** @param stopped nach einer Zeitüberschreitung: ob der Prozess nachweislich beendet wurde */
+    record ExecResult(int exitCode, String stdout, String stderr, boolean timedOut, boolean stopped, boolean truncated,
+                      long millis) {
     }
 
     @FunctionalInterface
@@ -49,6 +51,7 @@ final class SshEnvironment {
     private final int maxBytes;
     private final int maxShells;
     private final long shellIdleMillis;
+    private final List<Path> localRoots = new ArrayList<>();
     private TofuHostKeys hostKeys;
 
     SshEnvironment(ModuleConfig c, SshSessions sessions, SshShells shells, Path defaultKnownHosts) {
@@ -56,6 +59,16 @@ final class SshEnvironment {
         this.shells = shells;
         this.maxShells = Math.max(1, c.getInt(SshModule.MAX_SHELLS, 5));
         this.shellIdleMillis = Math.max(1, c.getInt(SshModule.SHELL_IDLE_MINUTES, 30)) * 60_000L;
+        for (String dir : c.getList(SshModule.LOCAL_DIRS)) {
+            try {
+                Path root = Path.of(expandHome(dir)).toAbsolutePath().normalize();
+                if (Files.isDirectory(root)) {
+                    localRoots.add(root);
+                }
+            } catch (java.nio.file.InvalidPathException ignored) {
+                // ungültig -> ignorieren, validate() meldet es in der App
+            }
+        }
         for (Map<String, String> r : c.getRecords(SshModule.CONNECTIONS)) {
             SshConnection conn = SshConnection.of(r);
             if (conn.name().isEmpty()) {
@@ -141,6 +154,52 @@ final class SshEnvironment {
 
     SshShells shells() {
         return shells;
+    }
+
+    /**
+     * Lokaler Pfad innerhalb der freigegebenen Verzeichnisse. Relativ nur, wenn genau eines freigegeben ist. Geprüft wird
+     * auch der echte Pfad des nächsten vorhandenen Vorfahren, damit ein Symlink nicht aus der Freigabe herausführt.
+     */
+    Path localPath(String path) {
+        if (localRoots.isEmpty()) {
+            throw new IllegalStateException("Kein lokales Verzeichnis für Übertragungen freigegeben – der Nutzer kann es in "
+                    + "der DevTools-App unter Module → SSH → 'Lokale Verzeichnisse für Übertragungen' eintragen.");
+        }
+        if (path == null || path.isBlank()) {
+            throw new IllegalArgumentException("Lokaler Pfad fehlt. Freigegeben: " + localRoots);
+        }
+        Path p;
+        try {
+            p = Path.of(expandHome(path));
+        } catch (java.nio.file.InvalidPathException e) {
+            throw new IllegalArgumentException("Ungültiger lokaler Pfad: " + path);
+        }
+        if (!p.isAbsolute()) {
+            if (localRoots.size() != 1) {
+                throw new IllegalArgumentException("Mehrere lokale Verzeichnisse freigegeben – absoluten Pfad angeben: "
+                        + localRoots);
+            }
+            p = localRoots.getFirst().resolve(p);
+        }
+        Path target = p.toAbsolutePath().normalize();
+        for (Path root : localRoots) {
+            if (target.startsWith(root) && realPathInside(target, root)) {
+                return target;
+            }
+        }
+        throw new IllegalArgumentException("Lokaler Pfad " + target + " ist nicht freigegeben. Freigegeben: " + localRoots);
+    }
+
+    private static boolean realPathInside(Path target, Path root) {
+        try {
+            Path existing = target;
+            while (existing != null && !Files.exists(existing)) {
+                existing = existing.getParent();
+            }
+            return existing != null && existing.toRealPath().startsWith(root.toRealPath());
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     int maxShells() {
@@ -243,6 +302,7 @@ final class SshEnvironment {
             Capture err = new Capture(maxBytes);
             long start = System.nanoTime();
             boolean timedOut = false;
+            boolean stopped = true;
             try {
                 ch.setCommand(command.getBytes(StandardCharsets.UTF_8));
                 // Immer ein Eingabestrom, damit der Befehl EOF sieht und nicht auf stdin wartet
@@ -254,11 +314,7 @@ final class SshEnvironment {
                 while (!ch.isClosed()) {
                     if (System.nanoTime() > deadline) {
                         timedOut = true;
-                        try {
-                            ch.sendSignal("KILL"); // nicht jeder Server unterstützt Signale – danach wird ohnehin getrennt
-                        } catch (Exception ignored) {
-                            // best effort
-                        }
+                        stopped = stop(ch);
                         break;
                     }
                     if (ToolProgress.due()) {
@@ -276,9 +332,42 @@ final class SshEnvironment {
                 ch.disconnect();
             }
             long millis = (System.nanoTime() - start) / 1_000_000;
-            return new ExecResult(timedOut ? -1 : ch.getExitStatus(), out.text(), err.text(), timedOut,
+            return new ExecResult(timedOut ? -1 : ch.getExitStatus(), out.text(), err.text(), timedOut, stopped,
                     out.truncated() || err.truncated(), millis);
         });
+    }
+
+    /**
+     * Beendet den Prozess eines Kanals stufenweise: INT, TERM, KILL, nach jeder Stufe kurz warten, ob sich der Kanal
+     * schließt. Nicht jeder Server nimmt Signale an (OpenSSH erst ab 7.9 zuverlässig, Dropbear gar nicht, Forced
+     * Commands nie) – deshalb wird das Ergebnis geprüft und nicht angenommen.
+     *
+     * @return {@code true}, wenn der Kanal danach geschlossen ist, der Prozess also beendet
+     */
+    static boolean stop(com.jcraft.jsch.Channel ch) throws InterruptedException {
+        for (String signal : List.of("INT", "TERM", "KILL")) {
+            if (ch.isClosed()) {
+                return true;
+            }
+            try {
+                ch.sendSignal(signal);
+            } catch (Exception e) {
+                return ch.isClosed(); // Signal nicht zustellbar – weitere Stufen ebenso wenig
+            }
+            if (awaitClosed(ch, 700)) {
+                return true;
+            }
+        }
+        return ch.isClosed();
+    }
+
+    /** Wartet bis zu {@code millis}, dass sich der Kanal schließt. */
+    static boolean awaitClosed(com.jcraft.jsch.Channel ch, long millis) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + millis;
+        while (!ch.isClosed() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        return ch.isClosed();
     }
 
     // ------------------------------------------------------------------ SFTP

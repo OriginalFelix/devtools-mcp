@@ -4,8 +4,10 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.Text;
+import systems.grebe.devtools.mcp.core.ToolHints;
 
 /** Befehle auf dem Server ausführen (nur wenn im Modul erlaubt). */
+@ToolHints(destructive = true)
 public class SshExecTools {
 
     private final SshEnvironment env;
@@ -29,15 +31,35 @@ public class SshExecTools {
             throw new IllegalArgumentException("'command' fehlt.");
         }
         SshConnection c = env.resolve(connection);
-        String line = workDir == null || workDir.isBlank() ? command : "cd " + quote(workDir.trim()) + " && " + command;
-        int t = timeoutSeconds == null || timeoutSeconds <= 0 ? env.maxExecSeconds()
+        String line = inDir(workDir, command);
+        int t = timeout(env, timeoutSeconds);
+        return format(env, c, env.exec(c, line, stdin, t), t, null);
+    }
+
+    /** Timeout aus dem Aufruf, begrenzt auf die Einstellung. */
+    static int timeout(SshEnvironment env, Integer timeoutSeconds) {
+        return timeoutSeconds == null || timeoutSeconds <= 0 ? env.maxExecSeconds()
                 : Math.min(timeoutSeconds, env.maxExecSeconds());
-        SshEnvironment.ExecResult r = env.exec(c, line, stdin, t);
+    }
+
+    /** Befehlszeile mit vorangestelltem {@code cd}, falls ein Arbeitsverzeichnis angegeben ist. */
+    static String inDir(String workDir, String command) {
+        return workDir == null || workDir.isBlank() ? command : "cd " + quote(workDir.trim()) + " && " + command;
+    }
+
+    /**
+     * Ergebnis für das LLM: Kopfzeile mit Exit-Code, stdout und stderr getrennt und begrenzt.
+     *
+     * @param secret wird in der Ausgabe maskiert (z.B. ein sudo-Passwort), oder {@code null}
+     */
+    static String format(SshEnvironment env, SshConnection c, SshEnvironment.ExecResult r, int t, String secret) {
         StringBuilder sb = new StringBuilder();
-        sb.append(r.timedOut() ? "Zeitüberschreitung nach " + t + " s (Befehl abgebrochen)" : "Exit-Code " + r.exitCode())
+        sb.append(!r.timedOut() ? "Exit-Code " + r.exitCode()
+                        : "Zeitüberschreitung nach " + t + " s " + (r.stopped() ? "(Befehl abgebrochen)"
+                        : "(Abbruch nicht bestätigt – der Server nimmt keine Signale an, der Befehl läuft womöglich weiter)"))
                 .append(" (").append(c.name()).append(", ").append(r.millis()).append(" ms)");
-        String out = r.stdout().strip();
-        String err = r.stderr().strip();
+        String out = mask(r.stdout(), secret).strip();
+        String err = mask(r.stderr(), secret).strip();
         if (out.isEmpty() && err.isEmpty()) {
             sb.append("\n(keine Ausgabe)");
         }
@@ -52,6 +74,10 @@ public class SshExecTools {
                     + "z.B. mit | head, | tail oder grep]");
         }
         return sb.toString();
+    }
+
+    private static String mask(String text, String secret) {
+        return secret == null || secret.isEmpty() ? text : text.replace(secret, "********");
     }
 
     /** POSIX-Quoting in einfachen Anführungszeichen. */

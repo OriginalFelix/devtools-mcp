@@ -51,6 +51,11 @@ public final class ManagedToolCallback implements ToolCallback {
         return name.startsWith(prefix) ? name : prefix + name;
     }
 
+    /** Das eingehüllte Modul-Tool. */
+    public ToolCallback delegate() {
+        return delegate;
+    }
+
     @Override
     public ToolDefinition getToolDefinition() {
         return definition;

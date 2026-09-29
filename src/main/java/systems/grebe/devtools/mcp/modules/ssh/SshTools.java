@@ -16,8 +16,10 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.Text;
+import systems.grebe.devtools.mcp.core.ToolHints;
 
 /** Lesende SSH-Tools: Verbindungen, Verzeichnisse und Dateien (SFTP). */
+@ToolHints(readOnly = true)
 public class SshTools {
 
     static final String CONNECTION = "Name der Verbindung (siehe ssh_connections); leer = die einzige konfigurierte";

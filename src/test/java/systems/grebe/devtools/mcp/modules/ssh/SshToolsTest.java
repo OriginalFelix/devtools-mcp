@@ -184,7 +184,7 @@ class SshToolsTest {
         assertThat(shell.exec(null, "cd /srv/app", null)).startsWith("Exit-Code 0 (sh1, /srv/app,");
         assertThat(shell.exec("sh1", "pwd", null)).contains("/srv/app").doesNotContain("DTMCP");
         assertThat(shell.exec("sh1", "fail", null)).startsWith("Exit-Code 2").contains("kaputt");
-        assertThat(shell.close("sh1")).startsWith("Shell sh1 geschlossen");
+        assertThat(shell.close("sh1")).startsWith("Shell sh1 beendet und geschlossen");
         assertThatThrownBy(() -> shell.read("sh1", 0, null)).hasMessageContaining("nicht (mehr) offen");
     }
 
@@ -209,6 +209,70 @@ class SshToolsTest {
         assertThat(shell.send(null, "y", null, null, 5, null)).contains("Antwort: y", "Befehl beendet: Exit-Code 0");
         assertThat(shell.send(null, "exit", null, null, 5, null)).contains("[Shell sh1 beendet");
         assertThat(new SshTools(module.environment(config("geheim", Map.of()))).connections()).doesNotContain("Offene Shell");
+    }
+
+    @Test
+    void closeStopsRunningCommandOrSaysItCannot() {
+        SshShellTools shell = new SshShellTools(module.environment(config("geheim", Map.of())));
+        shell.open("prod", false);
+        shell.exec(null, "slow", 1);
+        assertThat(shell.close(null)).startsWith("Shell sh1 beendet und geschlossen");
+
+        shell.open("prod", false);
+        shell.exec(null, "hang", 1);
+        assertThat(shell.close(null)).contains("Ende aber nicht bestätigt");
+    }
+
+    @Test
+    void toolsCarryMcpAnnotations() {
+        Map<String, io.modelcontextprotocol.spec.McpSchema.ToolAnnotations> hints = new java.util.HashMap<>();
+        module.createTools(config("geheim", Map.of(SshModule.ALLOW_WRITE, "true", SshModule.ALLOW_SUDO, "true")))
+                .forEach(t -> hints.put(t.getToolDefinition().name(), systems.grebe.devtools.mcp.core.ToolBeans.annotations(t)));
+        assertThat(hints.get("connections").readOnlyHint()).isTrue();
+        assertThat(hints.get("read_file").readOnlyHint()).isTrue();
+        assertThat(hints.get("shell_read").readOnlyHint()).isTrue();
+        assertThat(hints.get("shell_open").destructiveHint()).isFalse();
+        assertThat(hints.get("exec").readOnlyHint()).isFalse();
+        assertThat(hints.get("exec").destructiveHint()).isTrue();
+        assertThat(hints.get("sudo").destructiveHint()).isTrue();
+        assertThat(hints.get("write_file").destructiveHint()).isTrue();
+    }
+
+    @Test
+    void sudoSendsPasswordViaStdinAndMasksIt() {
+        String connections = ModuleConfig.formatRecords(List.of(Map.of(
+                "name", "prod", "host", "127.0.0.1", "port", String.valueOf(server.getPort()),
+                "username", "alice", "password", "geheim", "sudoPassword", "rootpw")));
+        SshEnvironment env = module.environment(ModuleConfig.of(module.configSchema(),
+                Map.of(SshModule.CONNECTIONS, connections, SshModule.ALLOW_SUDO, "true")));
+        String out = new SshSudoTools(env).sudo(null, "systemctl restart nginx", "/srv", null, "daten", null);
+        // EchoCommand gibt Befehl und stdin aus: Passwort steht nur maskiert drin, nie in der Befehlszeile
+        assertThat(out).contains("cmd=sudo -S -p '' -- sh -c 'cd '\\''/srv'\\'' && systemctl restart nginx'")
+                .contains("stdin=********\ndaten").doesNotContain("rootpw");
+    }
+
+    @Test
+    void transfersFilesOnlyWithinSharedLocalDirectories() throws IOException {
+        Path local = Files.createDirectories(tmp.resolve("local"));
+        byte[] binary = {0, 1, 2, (byte) 0xff, 0, 42};
+        Files.write(local.resolve("a.bin"), binary);
+        SshEnvironment env = module.environment(config("geheim",
+                Map.of(SshModule.ALLOW_TRANSFER, "true", SshModule.LOCAL_DIRS, local.toString())));
+        SshTransferTools transfer = new SshTransferTools(env);
+
+        assertThat(transfer.upload("prod", "a.bin", "/logs", null)).contains("6 B hochgeladen");
+        assertThat(tmp.resolve("root/logs/a.bin")).hasBinaryContent(binary);
+        assertThatThrownBy(() -> transfer.upload("prod", "a.bin", "/logs", null)).hasMessageContaining("existiert bereits");
+        assertThat(transfer.upload("prod", "a.bin", "/logs/a.bin", true)).contains("hochgeladen");
+
+        assertThat(transfer.download("prod", "/logs/app.log", "neu/app.log", null)).contains("heruntergeladen");
+        assertThat(local.resolve("neu/app.log")).hasContent("eins\nzwei\ndrei\n");
+        assertThat(transfer.download("prod", "/logs/app.log", "neu", true)).contains(local.resolve("neu/app.log").toString());
+
+        assertThatThrownBy(() -> transfer.download("prod", "/logs/app.log", "../raus.log", null))
+                .hasMessageContaining("nicht freigegeben");
+        assertThatThrownBy(() -> transfer.upload("prod", tmp.resolve("hostkey1.ser").toString(), "/x", null))
+                .hasMessageContaining("nicht freigegeben");
     }
 
     @Test
@@ -277,6 +341,7 @@ class SshToolsTest {
                                 Thread.sleep(1500);
                                 print(out, "ende\n");
                             }
+                            case "hang" -> Thread.sleep(60_000); // ignoriert exit und Signale
                             case "ask" -> {
                                 print(out, "Weiter? [y/n] ");
                                 print(out, "Antwort: " + r.readLine() + "\n");

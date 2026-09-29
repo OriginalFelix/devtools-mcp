@@ -12,12 +12,14 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.Text;
+import systems.grebe.devtools.mcp.core.ToolHints;
 
 /**
  * Interaktive Shells: Befehl ausführen → Ausgabe stückweise lesen, solange er läuft → Eingaben schicken → nächster
  * Befehl in derselben Shell. Das Ende eines Befehls erkennt {@code ssh_shell_exec} an einer Markierung mit dem Exit-Code,
  * die nach dem Befehl ausgegeben wird (POSIX-Shell auf dem Server).
  */
+@ToolHints(destructive = true)
 public class SshShellTools {
 
     private static final String SHELL = "Shell-ID aus ssh_shell_open (z.B. sh1); leer = die einzige offene Shell";
@@ -44,6 +46,7 @@ public class SshShellTools {
             + "Befehlen erhalten, und lang laufende Befehle lassen sich mit ssh_shell_read schrittweise mitlesen. Danach: "
             + "ssh_shell_exec für Befehle, ssh_shell_send für Eingaben an laufende Programme, am Ende ssh_shell_close."
             + ShellHints.SSH)
+    @ToolHints(destructive = false)
     public String open(
             @ToolParam(required = false, description = SshTools.CONNECTION) String connection,
             @ToolParam(required = false, description = "Mit Terminal (PTY): nötig für Programme, die ein Terminal "
@@ -107,6 +110,7 @@ public class SshShellTools {
             + "lang laufender Befehle (Build, Deployment, tail -f). Wartet bis 'waitSeconds', kehrt aber früher zurück, "
             + "sobald neue Ausgabe kurz ruht oder 'waitFor' vorkommt. Meldet, wenn ein Befehl aus ssh_shell_exec fertig ist."
             + ShellHints.SSH)
+    @ToolHints(readOnly = true)
     public String read(
             @ToolParam(required = false, description = SHELL) String shell,
             @ToolParam(required = false, description = "Höchstens so viele Sekunden auf Ausgabe warten (Standard 10)") Integer waitSeconds,
@@ -158,13 +162,23 @@ public class SshShellTools {
         return finish(s, null, collect(s, w * 1000L, pattern(waitFor)));
     }
 
-    @Tool(name = "shell_close", description = "Schließt eine Shell (beendet laufende Programme darin) und liefert ihre "
-            + "letzte, noch nicht gelesene Ausgabe." + ShellHints.SSH)
+    @Tool(name = "shell_close", description = "Schließt eine Shell und liefert ihre letzte, noch nicht gelesene Ausgabe. "
+            + "Ein laufender Befehl wird abgebrochen (^C, exit, dann Signale INT → TERM → KILL); das Ergebnis sagt, ob das "
+            + "Ende bestätigt ist." + ShellHints.SSH)
     public String close(@ToolParam(required = false, description = SHELL) String shell) {
         SshShells.Shell s = shell(shell);
         String rest = render(s, SshShells.clean(collect(s, 0, null).text()));
-        env.shells().close(s.id);
-        return "Shell " + s.id + " geschlossen." + (rest.isBlank() ? "" : "\nLetzte Ausgabe:\n" + rest);
+        boolean stopped;
+        try {
+            stopped = env.shells().terminate(s.id);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Abgebrochen.", e);
+        }
+        return "Shell " + s.id + (stopped ? " beendet und geschlossen."
+                : " geschlossen, Ende aber nicht bestätigt: ein darin gestarteter Prozess läuft womöglich weiter (der "
+                + "Server nimmt keine Signale an oder der Prozess ignoriert sie). Mit ssh_exec prüfen, z.B. ps -u $USER.")
+                + (rest.isBlank() ? "" : "\nLetzte Ausgabe:\n" + rest);
     }
 
     // ------------------------------------------------------------------ intern

@@ -7,8 +7,10 @@ import com.jcraft.jsch.ChannelSftp;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.ToolHints;
 
 /** Dateien auf dem Server schreiben (nur wenn im Modul erlaubt). */
+@ToolHints(destructive = true)
 public class SshWriteTools {
 
     private final SshEnvironment env;

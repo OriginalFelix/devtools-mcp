@@ -9,7 +9,7 @@ import java.util.Map;
  * @param privateKey Pfad zu einer privaten Schlüsseldatei (OpenSSH/PEM/PuTTY) oder leer
  */
 public record SshConnection(String name, String host, int port, String username, String password,
-                            String privateKey, String passphrase, String description) {
+                            String privateKey, String passphrase, String sudoPassword, String description) {
 
     static final String NAME = "name";
     static final String HOST = "host";
@@ -18,6 +18,7 @@ public record SshConnection(String name, String host, int port, String username,
     static final String PASSWORD = "password";
     static final String PRIVATE_KEY = "privateKey";
     static final String PASSPHRASE = "passphrase";
+    static final String SUDO_PASSWORD = "sudoPassword";
     static final String DESCRIPTION = "description";
 
     static SshConnection of(Map<String, String> r) {
@@ -29,12 +30,17 @@ public record SshConnection(String name, String host, int port, String username,
         }
         return new SshConnection(r.getOrDefault(NAME, "").trim(), r.getOrDefault(HOST, "").trim(), port,
                 r.getOrDefault(USERNAME, "").trim(), blankToNull(r.get(PASSWORD)), blankToNull(r.get(PRIVATE_KEY)),
-                blankToNull(r.get(PASSPHRASE)), r.getOrDefault(DESCRIPTION, "").trim());
+                blankToNull(r.get(PASSPHRASE)), blankToNull(r.get(SUDO_PASSWORD)), r.getOrDefault(DESCRIPTION, "").trim());
     }
 
     /** {@code user@host:port} für Ausgaben. */
     public String target() {
         return username + "@" + host + ":" + port;
+    }
+
+    /** Passwort für sudo: eigenes oder das Login-Passwort; {@code null}, wenn keines hinterlegt ist. */
+    public String sudoSecret() {
+        return sudoPassword != null ? sudoPassword : password;
     }
 
     /** Anmeldeverfahren für Ausgaben, ohne Geheimnisse. */

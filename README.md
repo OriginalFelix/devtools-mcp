@@ -17,7 +17,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
 | **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
-| **SSH** (JSch) | `ssh_connections`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
+| **SSH** (JSch) | `ssh_connections`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -118,6 +118,16 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
   `notifications/progress`, sofern der Client ein `progressToken` mitschickt (`core/ToolProgress`, für alle Module nutzbar).
   Das sieht nur der Nutzer im Client – das LLM bekommt Ausgabe ausschließlich über die Tool-Ergebnisse. Jede Shell hat eine eigene SSH-Sitzung; höchstens „Max. offene Shells“, geschlossen nach
   „Shells schließen nach“ Minuten ohne Nutzung, bei geänderter Konfiguration und beim Beenden.
+* Abbrechen ist ehrlich: bei Zeitüberschreitung von `ssh_exec` und bei `ssh_shell_close` (^C, `exit`) folgt die
+  Signal-Leiter INT → TERM → KILL; das Ergebnis sagt, ob der Kanal danach zu ist oder der Prozess womöglich weiterläuft
+  (Server ohne Signal-Unterstützung, Prozess ignoriert Signale).
+* `ssh_sudo` (Schalter, Standard aus) führt `sudo -S -p '' -- sh -c '…'` aus; das Passwort (eigenes Feld je Verbindung,
+  leer = Login-Passwort) geht per stdin an sudo, nie in die Befehlszeile oder zum LLM, und wird in der Ausgabe maskiert.
+  Vorher prüft `sudo -n true`, ob überhaupt ein Passwort verlangt wird – sonst landete es auf dem stdin des Befehls.
+* `ssh_upload`/`ssh_download` (Schalter, Standard aus) übertragen Dateien per SFTP zwischen diesem Rechner und dem
+  Server, auch binär und groß, ohne den Inhalt durch den Kontext des LLM zu schicken. Lokal nur innerhalb von
+  „Lokale Verzeichnisse für Übertragungen“ (auch Symlinks werden aufgelöst geprüft); vorhandene Ziele nur mit
+  `overwrite=true`. Fortschritt in Prozent als `notifications/progress`.
 * `ssh_list_dir`, `ssh_read_file` (Zeilenbereich, Binärdateien werden abgelehnt) und `ssh_write_file` laufen über SFTP.
 * Host-Keys: `accept-new` (Standard) merkt sich den Schlüssel beim ersten Verbinden in `~/.devtools-mcp/ssh_known_hosts`
   und lehnt einen geänderten ab; `strict` akzeptiert nur Hosts, die schon in der Datei stehen. *Verbindung testen*
@@ -404,7 +414,13 @@ Feldtypen: `STRING`, `SECRET`, `INT`, `BOOLEAN`, `URL`, `DIRECTORY`, `DIRECTORY_
 `RECORD_LIST`. Letzterer ist eine Liste gleichartiger Datensätze (z.B. Verbindungen):
 `ConfigField.records("connections", "Verbindungen", ConfigField.of("name", …), …)` – die UI zeigt eine Tabelle mit
 Hinzufügen/Bearbeiten/Entfernen (Dialog aus denselben Feldern), gelesen wird mit `config.getRecords("connections")`.
-Gespeichert wird ein JSON-Array; enthält ein Feld ein `SECRET`, wird der ganze Wert verschlüsselt. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
+Gespeichert wird ein JSON-Array; enthält ein Feld ein `SECRET`, wird der ganze Wert verschlüsselt.
+
+MCP-Tool-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) setzt `@ToolHints` an der
+Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die Callbacks mit
+`ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
+ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
+zerstörerisch. Bisher annotiert: SSH. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
 
 ## Plugins
 

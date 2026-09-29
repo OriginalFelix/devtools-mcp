@@ -162,6 +162,33 @@ final class SshShells {
             channel.disconnect();
             session.disconnect();
         }
+
+        /**
+         * Beendet die Shell geordnet: laufenden Befehl mit ^C abbrechen (wirkt mit PTY), {@code exit} schicken; schließt
+         * sich der Kanal nicht, folgt die Signal-Leiter INT → TERM → KILL. Danach wird in jedem Fall getrennt.
+         *
+         * @return {@code true}, wenn die Shell nachweislich beendet ist; {@code false}, wenn ein Prozess womöglich weiterläuft
+         */
+        boolean terminate() throws InterruptedException {
+            try {
+                if (!channel.isClosed()) {
+                    try {
+                        if (running != null && pty) {
+                            write("\u0003");
+                        }
+                        write("exit\n");
+                    } catch (UncheckedIOException ignored) {
+                        // nimmt keine Eingabe mehr an – dann entscheiden die Signale
+                    }
+                    if (!SshEnvironment.awaitClosed(channel, 1000)) {
+                        SshEnvironment.stop(channel);
+                    }
+                }
+                return channel.isClosed();
+            } finally {
+                close();
+            }
+        }
     }
 
     record Chunk(String text, long dropped, boolean matched) {
@@ -237,6 +264,15 @@ final class SshShells {
         if (s != null) {
             s.close();
         }
+    }
+
+    /** Beendet eine Shell geordnet (siehe {@link Shell#terminate()}); {@code true} = nachweislich beendet. */
+    boolean terminate(String id) throws InterruptedException {
+        Shell s;
+        synchronized (this) {
+            s = shells.remove(id);
+        }
+        return s == null || s.terminate();
     }
 
     /**
