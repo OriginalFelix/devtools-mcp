@@ -394,7 +394,9 @@ class GraphToolsTest {
     void resolvesNativeLibraryPerPlatform() {
         assertThat(TreeSitterNatives.resource("tree-sitter", "Mac OS X", "aarch64")).isEqualTo("lib/aarch64-macos-tree-sitter.dylib");
         assertThat(TreeSitterNatives.resource("tree-sitter-java", "Linux", "amd64")).isEqualTo("lib/x86_64-linux-gnu-tree-sitter-java.so");
-        assertThat(TreeSitterNatives.resource("tree-sitter", "Windows 11", "amd64")).isEqualTo("lib/x86_64-windows-tree-sitter.dll");
+        // Windows: eigene Kernbibliothek (bonede exportiert dort nur JNI), Grammatik weiter von bonede
+        assertThat(TreeSitterNatives.resource("tree-sitter", "Windows 11", "amd64")).isEqualTo("natives/x86_64-windows-tree-sitter.dll");
+        assertThat(TreeSitterNatives.resource("tree-sitter-java", "Windows 11", "amd64")).isEqualTo("lib/x86_64-windows-tree-sitter-java.dll");
         assertThatThrownBy(() -> TreeSitterNatives.resource("tree-sitter", "Windows 11", "aarch64"))
                 .hasMessageContaining("nicht verfügbar");
         for (String os : List.of("Mac OS X|aarch64", "Mac OS X|x86_64", "Linux|aarch64", "Linux|amd64", "Windows 11|amd64")) {

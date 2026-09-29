@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Locale;
+import java.util.Set;
 
 import io.github.treesitter.jtreesitter.NativeLibraryLookup;
 
@@ -48,7 +49,15 @@ public final class TreeSitterNatives implements NativeLibraryLookup {
         if (c == null) {
             synchronized (LOCK) {
                 if (core == null) {
-                    core = SymbolLookup.libraryLookup(extract("tree-sitter"), Arena.global());
+                    SymbolLookup lib = SymbolLookup.libraryLookup(extract("tree-sitter"), Arena.global());
+                    // jtreesitter sucht malloc/calloc/realloc/free in derselben Bibliothek. Unter Linux/macOS liefert
+                    // der dynamische Linker sie mit, eine Windows-DLL exportiert sie nicht. Dann die C-Laufzeit, mit
+                    // der die DLL gebaut ist (msvcrt, siehe natives/build-windows-tree-sitter.sh) – derselbe Heap,
+                    // in dem tree-sitter selbst allokiert.
+                    if (System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win")) {
+                        lib = lib.or(SymbolLookup.libraryLookup("msvcrt.dll", Arena.global()));
+                    }
+                    core = lib;
                 }
                 c = core;
             }
@@ -107,15 +116,24 @@ public final class TreeSitterNatives implements NativeLibraryLookup {
             throw new IllegalStateException("tree-sitter ist für diese Plattform nicht verfügbar (" + osName + "/"
                     + osArch + "). Unterstützt: macOS und Linux (x86_64, aarch64), Windows (x86_64).");
         }
-        return "lib/" + platform + "-" + name + "." + ext;
+        String bundled = "lib/" + platform + "-" + name + "." + ext;
+        return OWN_BUILDS.contains(bundled) ? "natives/" + platform + "-" + name + "." + ext : bundled;
     }
+
+    /**
+     * Bibliotheken, die dieses Projekt selbst mitbringt statt der aus {@code io.github.bonede}: Die Windows-DLL der
+     * Kernbibliothek dort exportiert nur JNI-Funktionen ({@code Java_org_treesitter_*}), nicht die C-API
+     * ({@code ts_parser_new} …) – jtreesitter findet darin nichts und scheitert mit {@code NoClassDefFoundError: Could
+     * not initialize class …TreeSitter}. Neu bauen: {@code natives/build-windows-tree-sitter.sh}.
+     */
+    private static final Set<String> OWN_BUILDS = Set.of("lib/x86_64-windows-tree-sitter.dll");
 
     private static Path extract(String name) {
         String res = resource(name, System.getProperty("os.name"), System.getProperty("os.arch"));
         try (InputStream in = TreeSitterNatives.class.getClassLoader().getResourceAsStream(res)) {
             if (in == null) {
                 throw new IllegalStateException("Native Bibliothek " + res + " fehlt auf dem Classpath "
-                        + "(Abhängigkeiten io.github.bonede:tree-sitter / tree-sitter-java).");
+                        + "(Abhängigkeiten io.github.bonede:tree-sitter / tree-sitter-java bzw. src/main/resources/natives).");
             }
             Path dir = Files.createTempDirectory("devtools-mcp-tree-sitter");
             Path file = dir.resolve(res.substring(res.lastIndexOf('/') + 1));
