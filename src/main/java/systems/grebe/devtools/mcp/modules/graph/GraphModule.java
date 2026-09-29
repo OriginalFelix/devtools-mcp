@@ -121,7 +121,6 @@ public class GraphModule implements ToolModule {
         try {
             storage = service.storage();
             if (storage instanceof Neo4jGraphStorage neo) {
-                neo.connection().driver.verifyConnectivity();
                 neo.connection().ensureSchema();
                 String version = neo.connection().client.query("CALL dbms.components() YIELD name, versions, edition "
                                 + "RETURN name + ' ' + versions[0] + ' ' + edition AS v").fetchAs(String.class)
@@ -130,6 +129,8 @@ public class GraphModule implements ToolModule {
             } else {
                 sb.append("Ablage: ").append(storage.describe()).append('\n');
             }
+        } catch (IllegalStateException e) {
+            return ConnectionTestResult.failed(e.getMessage());
         } catch (RuntimeException e) {
             return ConnectionTestResult.failed("Neo4j " + Neo4jConnection.Settings.from(config) + " nicht erreichbar: "
                     + rootMessage(e));
