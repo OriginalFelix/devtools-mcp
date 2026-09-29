@@ -63,6 +63,11 @@ dependencies {
     implementation("org.springframework.data:spring-data-neo4j")
     implementation("org.neo4j.driver:neo4j-java-driver")
 
+    // Plugins: plugin.yml (SnakeYAML, Version aus der Boot-BOM) und Plugin-Store über Maven-Repositories
+    // (Maven Resolver: Auflösung, Versionen aus maven-metadata.xml, Prüfsummen, Zugangsdaten, file://-Repositories).
+    implementation("org.yaml:snakeyaml")
+    implementation("org.apache.maven.resolver:maven-resolver-supplier-mvn3:2.0.23")
+
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
     }

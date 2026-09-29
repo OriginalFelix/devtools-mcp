@@ -7,7 +7,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -16,6 +18,7 @@ import java.util.TreeSet;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import systems.grebe.devtools.mcp.plugin.store.PluginRepository;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
@@ -34,6 +37,7 @@ public class SettingsStore {
     private final JsonMapper json = JsonMapper.builder().enable(SerializationFeature.INDENT_OUTPUT).build();
 
     private ServerSettings server = ServerSettings.defaults();
+    private PluginSettings plugins = PluginSettings.defaults();
     private final Map<String, ModuleSettings> modules = new LinkedHashMap<>();
     private final Map<String, Set<String>> secretKeys = new LinkedHashMap<>();
 
@@ -61,6 +65,16 @@ public class SettingsStore {
 
     public synchronized void saveServer(ServerSettings value) {
         this.server = value;
+        persist();
+    }
+
+    public synchronized PluginSettings plugins() {
+        return plugins;
+    }
+
+    /** Speichert den Zustand des Plugin-Systems; Repository-Passwörter werden verschlüsselt abgelegt. */
+    public synchronized void savePlugins(PluginSettings value) {
+        this.plugins = value;
         persist();
     }
 
@@ -95,6 +109,10 @@ public class SettingsStore {
                         s.path("closeToTray").asBoolean(true),
                         s.path("startMinimized").asBoolean(false));
             }
+            JsonNode p = root.path("plugins");
+            if (p.isObject()) {
+                plugins = readPlugins(p);
+            }
             JsonNode mods = root.path("modules");
             for (var entry : mods.properties()) {
                 JsonNode m = entry.getValue();
@@ -123,6 +141,8 @@ public class SettingsStore {
         s.put("authToken", cipher.encrypt(server.authToken()));
         s.put("closeToTray", server.closeToTray());
         s.put("startMinimized", server.startMinimized());
+
+        writePlugins(root.putObject("plugins"));
 
         ObjectNode mods = root.putObject("modules");
         modules.forEach((id, m) -> {
@@ -153,6 +173,41 @@ public class SettingsStore {
         } catch (IOException e) {
             throw new UncheckedIOException("Einstellungen konnten nicht gespeichert werden: " + file, e);
         }
+    }
+
+    private PluginSettings readPlugins(JsonNode p) {
+        Set<String> disabled = new LinkedHashSet<>();
+        p.path("disabled").forEach(n -> disabled.add(n.asString()));
+        List<PluginRepository> repos = new ArrayList<>();
+        p.path("repositories").forEach(r -> repos.add(new PluginRepository(
+                r.path("id").asString(""), r.path("name").asString(""), r.path("url").asString(""),
+                r.path("username").asString(""), cipher.decrypt(r.path("password").asString("")),
+                r.path("snapshots").asBoolean(false), r.path("catalog").asString(""),
+                r.path("enabled").asBoolean(true))));
+        Map<String, String> sources = new LinkedHashMap<>();
+        p.path("sources").properties().forEach(e -> sources.put(e.getKey(), e.getValue().asString()));
+        // "repositories" fehlt nur vor dem ersten Speichern – eine bewusst geleerte Liste bleibt leer
+        return new PluginSettings(disabled, p.has("repositories") ? repos : PluginSettings.defaults().repositories(),
+                sources);
+    }
+
+    private void writePlugins(ObjectNode p) {
+        var disabled = p.putArray("disabled");
+        new TreeSet<>(plugins.disabled()).forEach(disabled::add);
+        var repos = p.putArray("repositories");
+        for (PluginRepository r : plugins.repositories()) {
+            ObjectNode n = repos.addObject();
+            n.put("id", r.id());
+            n.put("name", r.name());
+            n.put("url", r.url());
+            n.put("username", r.username());
+            n.put("password", cipher.encrypt(r.password()));
+            n.put("snapshots", r.snapshots());
+            n.put("catalog", r.catalog());
+            n.put("enabled", r.enabled());
+        }
+        ObjectNode sources = p.putObject("sources");
+        new TreeMap<>(plugins.sources()).forEach(sources::put);
     }
 
     private void backupBroken() {

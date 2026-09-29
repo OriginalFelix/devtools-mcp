@@ -22,9 +22,12 @@ import systems.grebe.devtools.mcp.modules.skills.SkillService;
 import systems.grebe.devtools.mcp.modules.skills.SkillUser;
 import systems.grebe.devtools.mcp.modules.skills.SkillsPersistenceConfig;
 import systems.grebe.devtools.mcp.modules.visualvm.VisualVmModule;
+import systems.grebe.devtools.mcp.plugin.PluginManager;
+import systems.grebe.devtools.mcp.plugin.store.PluginStore;
 import systems.grebe.devtools.mcp.ui.AppIcons;
 import systems.grebe.devtools.mcp.ui.ArtifactsView;
 import systems.grebe.devtools.mcp.ui.MainView;
+import systems.grebe.devtools.mcp.ui.PluginsView;
 import systems.grebe.devtools.mcp.ui.SkillsView;
 import systems.grebe.devtools.mcp.ui.TrayManager;
 
@@ -69,7 +72,9 @@ public class FxApp extends Application {
                 new Tab("Skills", new SkillsView(context.getBean(SkillService.class),
                         context.getBean(SkillsPersistenceConfig.Status.class), context.getBean(SkillUser.class))),
                 new Tab("Artefakte", new ArtifactsView(context.getBean(JavaEnvironmentProvider.class), getHostServices(),
-                        context.getBean(VisualVmModule.class)::openFile))));
+                        context.getBean(VisualVmModule.class)::openFile)),
+                new Tab("Plugins", new PluginsView(context.getBean(PluginManager.class),
+                        context.getBean(PluginStore.class)))));
         Scene scene = new Scene(view, 1180, 760);
         scene.getStylesheets().add(getClass().getResource("/ui/app.css").toExternalForm());
         stage.setScene(scene);
