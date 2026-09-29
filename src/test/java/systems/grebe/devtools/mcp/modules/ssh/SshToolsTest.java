@@ -57,6 +57,7 @@ class SshToolsTest {
         s.setKeyPairProvider(new SimpleGeneratorHostKeyProvider(hostKey));
         s.setPasswordAuthenticator((user, password, session) -> "alice".equals(user) && "geheim".equals(password));
         s.setCommandFactory((channel, command) -> new EchoCommand(command));
+        s.setShellFactory(channel -> new FakeShell());
         s.setSubsystemFactories(List.of(new SftpSubsystemFactory()));
         s.setFileSystemFactory(new VirtualFileSystemFactory(Files.createDirectories(tmp.resolve("root"))));
         s.start();
@@ -174,6 +175,137 @@ class SshToolsTest {
         var result = module.testConnection(config("geheim", Map.of(SshModule.HOST_KEY_POLICY, "strict")));
         assertThat(result.success()).isFalse();
         assertThat(result.message()).contains("Host-Key unbekannt");
+    }
+
+    @Test
+    void shellKeepsStateBetweenCommands() {
+        SshShellTools shell = new SshShellTools(module.environment(config("geheim", Map.of())));
+        assertThat(shell.open("prod", null)).startsWith("Shell sh1 geöffnet (prod,");
+        assertThat(shell.exec(null, "cd /srv/app", null)).startsWith("Exit-Code 0 (sh1, /srv/app,");
+        assertThat(shell.exec("sh1", "pwd", null)).contains("/srv/app").doesNotContain("DTMCP");
+        assertThat(shell.exec("sh1", "fail", null)).startsWith("Exit-Code 2").contains("kaputt");
+        assertThat(shell.close("sh1")).startsWith("Shell sh1 geschlossen");
+        assertThatThrownBy(() -> shell.read("sh1", 0, null)).hasMessageContaining("nicht (mehr) offen");
+    }
+
+    @Test
+    void longRunningCommandIsStreamedThenNextCommandRuns() {
+        SshShellTools shell = new SshShellTools(module.environment(config("geheim", Map.of())));
+        shell.open("prod", false);
+        String first = shell.exec(null, "slow", 1);
+        assertThat(first).startsWith("Läuft noch nach 1 s").contains("start").doesNotContain("ende");
+        assertThatThrownBy(() -> shell.exec(null, "pwd", null)).hasMessageContaining("läuft noch ein Befehl");
+        String rest = shell.read(null, 10, null);
+        assertThat(rest).startsWith("Befehl beendet: Exit-Code 0 (sh1, /home/alice)").contains("ende")
+                .doesNotContain("DTMCP");
+        assertThat(shell.exec(null, "pwd", null)).startsWith("Exit-Code 0").contains("/home/alice");
+    }
+
+    @Test
+    void interactivePromptIsAnsweredWithSend() {
+        SshShellTools shell = new SshShellTools(module.environment(config("geheim", Map.of())));
+        shell.open("prod", false);
+        assertThat(shell.exec(null, "ask", 1)).startsWith("Läuft noch").contains("Weiter? [y/n]");
+        assertThat(shell.send(null, "y", null, null, 5, null)).contains("Antwort: y", "Befehl beendet: Exit-Code 0");
+        assertThat(shell.send(null, "exit", null, null, 5, null)).contains("[Shell sh1 beendet");
+        assertThat(new SshTools(module.environment(config("geheim", Map.of()))).connections()).doesNotContain("Offene Shell");
+    }
+
+    @Test
+    void cleansTerminalControlSequences() {
+        assertThat(SshShells.clean("\u001B[1;32mgrün\u001B[0m\r\n\u001B]0;titel\u0007ok")).isEqualTo("grün\nok");
+    }
+
+    /**
+     * Zeilenweise Shell: {@code { befehl} + {@code }; echo "__DTMCP_x_$?__"} wie von ssh_shell_exec; kennt cd, pwd, fail
+     * (Exit 2), slow (1,5 s), ask (liest eine Antwort von stdin) und exit.
+     */
+    private static final class FakeShell implements Command {
+        private InputStream in;
+        private OutputStream out;
+        private OutputStream err;
+        private ExitCallback exit;
+
+        @Override
+        public void setInputStream(InputStream in) {
+            this.in = in;
+        }
+
+        @Override
+        public void setOutputStream(OutputStream out) {
+            this.out = out;
+        }
+
+        @Override
+        public void setErrorStream(OutputStream err) {
+            this.err = err;
+        }
+
+        @Override
+        public void setExitCallback(ExitCallback callback) {
+            this.exit = callback;
+        }
+
+        @Override
+        public void start(ChannelSession channel, Environment env) {
+            Thread.ofVirtual().start(() -> {
+                var r = new java.io.BufferedReader(new java.io.InputStreamReader(in, StandardCharsets.UTF_8));
+                String cwd = "/home/alice";
+                try {
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        var block = java.util.regex.Pattern.compile("\\{ printf '%s%s\\\\n' 'DTMCP_B_' '([0-9a-f]+)'; (.*)")
+                                .matcher(line);
+                        String nonce = null;
+                        String cmd = line;
+                        if (block.matches()) {
+                            nonce = block.group(1);
+                            cmd = block.group(2);
+                            r.readLine(); // "}; printf … DTMCP_E_ …" – die Shell liest den Block ganz, bevor er läuft
+                            print(out, "DTMCP_B_" + nonce + "\n");
+                        }
+                        int code = 0;
+                        switch (cmd.split(" ")[0]) {
+                            case "cd" -> cwd = cmd.substring(3);
+                            case "pwd" -> print(out, cwd + "\n");
+                            case "fail" -> {
+                                print(err, "kaputt\n");
+                                code = 2;
+                            }
+                            case "slow" -> {
+                                print(out, "start\n");
+                                Thread.sleep(1500);
+                                print(out, "ende\n");
+                            }
+                            case "ask" -> {
+                                print(out, "Weiter? [y/n] ");
+                                print(out, "Antwort: " + r.readLine() + "\n");
+                            }
+                            case "exit" -> {
+                                exit.onExit(0);
+                                return;
+                            }
+                            default -> print(out, "ran: " + cmd + "\n");
+                        }
+                        if (nonce != null) {
+                            print(out, "DTMCP_E_" + nonce + "__" + code + "__" + cwd + "\n");
+                        }
+                    }
+                    exit.onExit(0);
+                } catch (IOException | InterruptedException e) {
+                    exit.onExit(1);
+                }
+            });
+        }
+
+        private static void print(OutputStream o, String s) throws IOException {
+            o.write(s.getBytes(StandardCharsets.UTF_8));
+            o.flush();
+        }
+
+        @Override
+        public void destroy(ChannelSession channel) {
+        }
     }
 
     /** Liest stdin, gibt Befehl und Eingabe aus, schreibt nach stderr und endet mit Exit-Code 3; "sleep" hängt. */

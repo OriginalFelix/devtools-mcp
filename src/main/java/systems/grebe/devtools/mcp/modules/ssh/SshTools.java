@@ -47,6 +47,10 @@ public class SshTools {
             }
             sb.append('\n');
         }
+        for (SshShells.Shell s : env.shells().list()) {
+            sb.append("Offene Shell ").append(s.id).append(" auf ").append(s.connection.name())
+                    .append(s.pty ? " (PTY)" : "").append(s.running != null ? ", Befehl läuft" : "").append('\n');
+        }
         if (!env.duplicates().isEmpty()) {
             sb.append("Achtung: mehrfach vergebene Namen ").append(env.duplicates()).append(" – nur der erste Eintrag gilt.\n");
         }

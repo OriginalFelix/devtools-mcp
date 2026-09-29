@@ -36,12 +36,16 @@ public class SshModule implements ToolModule {
     static final String MAX_EXEC_SECONDS = "maxExecSeconds";
     static final String MAX_LINES = "maxOutputLines";
     static final String MAX_OUTPUT_KB = "maxOutputKb";
+    static final String MAX_SHELLS = "maxShells";
+    static final String SHELL_IDLE_MINUTES = "shellIdleMinutes";
     static final String ALLOW_EXEC = "allowExec";
     static final String ALLOW_WRITE = "allowWrite";
 
     /** Über alle Konfigurationsänderungen hinweg dieselbe Instanz, damit alte Sitzungen geschlossen werden können. */
     private final SshSessions sessions = new SshSessions();
+    private final SshShells shells = new SshShells();
     private final Path defaultKnownHosts;
+    private java.util.Map<String, String> lastValues;
 
     @Autowired
     public SshModule(SettingsStore store) {
@@ -54,7 +58,7 @@ public class SshModule implements ToolModule {
     }
 
     SshEnvironment environment(ModuleConfig config) {
-        return new SshEnvironment(config, sessions, defaultKnownHosts);
+        return new SshEnvironment(config, sessions, shells, defaultKnownHosts);
     }
 
     @Override
@@ -79,7 +83,10 @@ public class SshModule implements ToolModule {
                 Für Server, die in der DevTools-App als SSH-Verbindung hinterlegt sind, diese Tools statt `ssh`, `scp` oder \
                 `sftp` in der Shell verwenden – die Zugangsdaten kennt nur die App:
                 - `ssh_connections`: welche Verbindungen es gibt (Name, Benutzer@Host, Beschreibung).
-                - `ssh_exec`: Befehl ausführen (Exit-Code, stdout, stderr); kein Terminal, keine interaktiven Programme.
+                - `ssh_exec`: einzelner Befehl (Exit-Code, stdout, stderr); kein Terminal, kein Zustand zwischen Aufrufen.
+                - Mehrere Befehle nacheinander, lang laufende Befehle mitlesen, Rückfragen beantworten: `ssh_shell_open` → \
+                `ssh_shell_exec` (Befehl, wartet auf Exit-Code oder liefert Teilausgabe) → `ssh_shell_read` (neue Ausgabe \
+                seit dem letzten Lesen) / `ssh_shell_send` (Eingabe, ctrl=c) → nächster `ssh_shell_exec` → `ssh_shell_close`.
                 - `ssh_list_dir`, `ssh_read_file`: Verzeichnisse und Textdateien per SFTP lesen.
                 - `ssh_write_file` (nur wenn angeboten): Datei schreiben – nur auf ausdrückliche Anweisung des Nutzers.
                 Verändernde Befehle (Neustarts, Löschen, Paketinstallation, Konfigurationsänderungen) nur auf ausdrückliche \
@@ -124,19 +131,32 @@ public class SshModule implements ToolModule {
                 ConfigField.of(MAX_LINES, "Max. Ausgabezeilen", FieldType.INT).withDefault("400"),
                 ConfigField.of(MAX_OUTPUT_KB, "Max. Ausgabe (KB)", FieldType.INT).withDefault("1024")
                         .withHelp("Je Befehl bzw. gelesener Datei; der Rest wird verworfen."),
+                ConfigField.of(MAX_SHELLS, "Max. offene Shells", FieldType.INT).withDefault("5")
+                        .withHelp("Interaktive Shells (ssh_shell_open) über alle Verbindungen, je eine eigene SSH-Sitzung."),
+                ConfigField.of(SHELL_IDLE_MINUTES, "Shells schließen nach (Minuten ohne Nutzung)", FieldType.INT)
+                        .withDefault("30"),
                 ConfigField.of(ALLOW_EXEC, "Befehle ausführen erlauben", FieldType.BOOLEAN).withDefault("true")
-                        .withHelp("ssh_exec – beliebige Befehle mit den Rechten des hinterlegten Benutzers."),
+                        .withHelp("ssh_exec und die interaktiven ssh_shell_*-Tools – beliebige Befehle mit den Rechten "
+                                + "des hinterlegten Benutzers."),
                 ConfigField.of(ALLOW_WRITE, "Dateien schreiben erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("ssh_write_file (SFTP)."));
     }
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        sessions.closeAll(); // Verbindungsdaten können sich geändert haben
+        // Neu aufgebaut wird auch beim An-/Abschalten einzelner Tools – offene Shells nur bei geänderten Werten schließen
+        synchronized (this) {
+            if (!config.rawValues().equals(lastValues)) {
+                sessions.closeAll();
+                shells.closeAll();
+                lastValues = config.rawValues();
+            }
+        }
         SshEnvironment env = environment(config);
         List<Object> beans = new ArrayList<>(List.of(new SshTools(env)));
         if (config.getBoolean(ALLOW_EXEC)) {
             beans.add(new SshExecTools(env));
+            beans.add(new SshShellTools(env));
         }
         if (config.getBoolean(ALLOW_WRITE)) {
             beans.add(new SshWriteTools(env));
@@ -184,5 +204,6 @@ public class SshModule implements ToolModule {
     @PreDestroy
     void close() {
         sessions.closeAll();
+        shells.closeAll();
     }
 }

@@ -314,7 +314,7 @@ public class ToolRegistry {
                         continue;
                     }
                     try {
-                        server.addTool(McpToolUtils.toSyncToolSpecification(cb));
+                        server.addTool(ToolProgress.wrap(McpToolUtils.toSyncToolSpecification(cb)));
                         s.registered.add(name);
                     } catch (RuntimeException e) {
                         LOG.error("Tool {} konnte nicht registriert werden", name, e);

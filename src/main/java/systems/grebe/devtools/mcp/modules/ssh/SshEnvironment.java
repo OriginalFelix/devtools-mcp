@@ -23,6 +23,7 @@ import com.jcraft.jsch.SftpException;
 import com.jcraft.jsch.UIKeyboardInteractive;
 import com.jcraft.jsch.UserInfo;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.core.ToolProgress;
 
 /** Ausgewertete Konfiguration des SSH-Moduls: Verbindungen, Host-Key-Prüfung, Grenzen – und die Ausführung selbst. */
 final class SshEnvironment {
@@ -39,16 +40,22 @@ final class SshEnvironment {
     private final Map<String, SshConnection> connections = new LinkedHashMap<>();
     private final List<String> duplicates = new ArrayList<>();
     private final SshSessions sessions;
+    private final SshShells shells;
     private final Path knownHosts;
     private final boolean acceptNewHostKeys;
     private final Duration connectTimeout;
     private final int maxExecSeconds;
     private final int maxLines;
     private final int maxBytes;
+    private final int maxShells;
+    private final long shellIdleMillis;
     private TofuHostKeys hostKeys;
 
-    SshEnvironment(ModuleConfig c, SshSessions sessions, Path defaultKnownHosts) {
+    SshEnvironment(ModuleConfig c, SshSessions sessions, SshShells shells, Path defaultKnownHosts) {
         this.sessions = sessions;
+        this.shells = shells;
+        this.maxShells = Math.max(1, c.getInt(SshModule.MAX_SHELLS, 5));
+        this.shellIdleMillis = Math.max(1, c.getInt(SshModule.SHELL_IDLE_MINUTES, 30)) * 60_000L;
         for (Map<String, String> r : c.getRecords(SshModule.CONNECTIONS)) {
             SshConnection conn = SshConnection.of(r);
             if (conn.name().isEmpty()) {
@@ -130,6 +137,18 @@ final class SshEnvironment {
 
     int maxBytes() {
         return maxBytes;
+    }
+
+    SshShells shells() {
+        return shells;
+    }
+
+    int maxShells() {
+        return maxShells;
+    }
+
+    long shellIdleMillis() {
+        return shellIdleMillis;
     }
 
     // ------------------------------------------------------------------ Sitzungen
@@ -241,6 +260,12 @@ final class SshEnvironment {
                             // best effort
                         }
                         break;
+                    }
+                    if (ToolProgress.due()) {
+                        String line = SshShells.lastLine(out.text());
+                        if (!line.isEmpty()) {
+                            ToolProgress.report(c.name() + ": " + line);
+                        }
                     }
                     Thread.sleep(25);
                 }

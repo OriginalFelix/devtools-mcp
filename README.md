@@ -17,7 +17,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
 | **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
-| **SSH** (JSch) | `ssh_connections`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` (Standard an), `ssh_write_file` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
+| **SSH** (JSch) | `ssh_connections`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -103,6 +103,21 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
   getrennt nach stdout/stderr, begrenzt auf „Max. Ausgabe (KB)“ und „Max. Ausgabezeilen“, Abbruch nach
   „Max. Befehlsdauer“. Sitzungen werden je Verbindung wiederverwendet (nach 10 min Leerlauf, bei geänderter
   Konfiguration und beim Beenden geschlossen).
+* Interaktive Shells für Abläufe über mehrere Befehle: `ssh_shell_open` → `ssh_shell_exec` → … → `ssh_shell_close`.
+  Zustand (Verzeichnis, Variablen) bleibt erhalten. Ein Hintergrund-Thread puffert die Ausgabe; `ssh_shell_exec` wartet
+  auf Exit-Code und Arbeitsverzeichnis oder liefert nach dem Timeout die Teilausgabe – der Befehl läuft weiter.
+  `ssh_shell_read` holt die neue Ausgabe seit dem letzten Lesen (Mitlesen lang laufender Befehle) und meldet das Ende,
+  `ssh_shell_send` schickt Eingaben (Rückfragen, REPL) oder `ctrl=c`. Optional mit PTY (sudo, top, less); Steuersequenzen
+  werden entfernt. Befehlsgrenzen erkennt das Modul an Markierungen (POSIX-Shell):
+  `{ printf '%s%s\n' 'DTMCP_B_' '<nonce>'; befehl⏎}; printf '%s%s__%s__%s\n' 'DTMCP_E_' '<nonce>' "$?" "$PWD"`. Der Block
+  wird ganz gelesen, bevor der Befehl startet (ein Programm, das von stdin liest, verschluckt die Endmarkierung nicht);
+  die Markierungen werden aus getrennten Teilen zusammengesetzt, damit das Echo mit PTY nie eine fertige enthält, und die
+  Nonce ist zufällig (64 Bit), damit sich kein Exit-Code fälschen lässt – beides nach dem Vorbild von
+  [ssh-mcp](https://github.com/tufantunc/ssh-mcp).
+* Während `ssh_exec`, `ssh_shell_exec` und `ssh_shell_read` warten, sendet der Server die jeweils letzte Ausgabezeile als
+  `notifications/progress`, sofern der Client ein `progressToken` mitschickt (`core/ToolProgress`, für alle Module nutzbar).
+  Das sieht nur der Nutzer im Client – das LLM bekommt Ausgabe ausschließlich über die Tool-Ergebnisse. Jede Shell hat eine eigene SSH-Sitzung; höchstens „Max. offene Shells“, geschlossen nach
+  „Shells schließen nach“ Minuten ohne Nutzung, bei geänderter Konfiguration und beim Beenden.
 * `ssh_list_dir`, `ssh_read_file` (Zeilenbereich, Binärdateien werden abgelehnt) und `ssh_write_file` laufen über SFTP.
 * Host-Keys: `accept-new` (Standard) merkt sich den Schlüssel beim ersten Verbinden in `~/.devtools-mcp/ssh_known_hosts`
   und lehnt einen geänderten ab; `strict` akzeptiert nur Hosts, die schon in der Datei stehen. *Verbindung testen*
