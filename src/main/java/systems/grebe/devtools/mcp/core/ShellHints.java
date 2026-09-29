@@ -42,6 +42,9 @@ public final class ShellHints {
     public static final String GRAPH = " Für freigegebene Java-Projekte gilt: Struktur, Aufrufer und Abhängigkeiten über "
             + "die graph_*-Tools ermitteln, nicht mit `grep`/`find` in der Shell.";
 
+    public static final String TICKET = " Tickets (Jira, GitHub, GitLab) immer über die ticket_*-Tools lesen, nicht per "
+            + "`curl` gegen die REST-API, mit `gh`/`glab` in der Shell oder im Browser.";
+
     private ShellHints() {
     }
 }

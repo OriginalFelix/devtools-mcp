@@ -160,7 +160,7 @@ class McpServerIntegrationTest {
                 // alle Module mit Hinweisen, auch standardmäßig deaktivierte (Instructions stehen ab Start fest)
                 .contains("Tools `build_*`", "Tools `container_*`", "Tools `sonar_*`", "Tools `jvm_*`",
                         "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`", "Tools `graph_*`",
-                        "`graph_report`", "`graph_neighbors`",
+                        "`graph_report`", "`graph_neighbors`", "Tools `ticket_*`", "`ticket_get`", "`ticket_board`",
                         "## Skills – Tools `skills_*`", "`skills_list`", "`skills_create`", "`skills_patch`")
                 .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
         // Reihenfolge wie in der Modulliste: order, dann Anzeigename – Skills zuerst, damit sie vor jeder Aufgabe greifen
@@ -177,11 +177,13 @@ class McpServerIntegrationTest {
         // ungeprüft bleibt.
         Path composeDir = Files.createDirectories(repoDir.resolve("compose-app"));
         Files.writeString(composeDir.resolve("compose.yaml"), "services: {}\n");
-        List.of("sonar", "debug", "asprof", "build", "graph").forEach(id -> registry.setModuleEnabled(id, true));
+        List.of("sonar", "debug", "asprof", "build", "graph", "ticket").forEach(id -> registry.setModuleEnabled(id, true));
         registry.updateConfig("container", Map.of("allowExec", "true", "allowLifecycle", "true", "allowCopy", "true",
                 "allowCreate", "true", "allowRemove", "true", "allowCompose", "true",
                 "composeProjects", composeDir.toString()));
         registry.updateConfig("skills", Map.of("allowDelete", "true"));
+        registry.updateConfig("ticket", Map.of("allowComment", "true", "allowTransition", "true", "allowAssign", "true",
+                "allowEdit", "true", "allowCreate", "true", "allowDelete", "true"));
         try {
             Map<String, String> hintByPrefix = Map.ofEntries(
                     Map.entry("git_", ShellHints.GIT), Map.entry("build_", ShellHints.BUILD),
@@ -189,9 +191,9 @@ class McpServerIntegrationTest {
                     Map.entry("jvm_", ShellHints.JVM), Map.entry("jfr_", ShellHints.JFR),
                     Map.entry("asprof_", ShellHints.ASPROF), Map.entry("visualvm_", ShellHints.VISUALVM),
                     Map.entry("debug_", ShellHints.DEBUG), Map.entry("skills_", ShellHints.SKILLS),
-                    Map.entry("graph_", ShellHints.GRAPH));
+                    Map.entry("graph_", ShellHints.GRAPH), Map.entry("ticket_", ShellHints.TICKET));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(105); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(120); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -203,9 +205,10 @@ class McpServerIntegrationTest {
             assertThat(tools).filteredOn(t -> t.name().equals("container_list")).singleElement()
                     .extracting(McpSchema.Tool::description).asString().contains("Statt `podman ps -a` verwenden.");
         } finally {
-            List.of("sonar", "debug", "asprof", "build", "graph").forEach(id -> registry.setModuleEnabled(id, false));
+            List.of("sonar", "debug", "asprof", "build", "graph", "ticket").forEach(id -> registry.setModuleEnabled(id, false));
             registry.updateConfig("container", Map.of());
             registry.updateConfig("skills", Map.of());
+            registry.updateConfig("ticket", Map.of());
         }
     }
 
@@ -326,6 +329,28 @@ class McpServerIntegrationTest {
 
     private static String text(McpSchema.CallToolResult result) {
         return ((McpSchema.TextContent) result.content().getFirst()).text();
+    }
+
+    @Test
+    void ticketModuleOffGivesNoToolsAndReportsMissingSystemAsToolError() {
+        assertThat(toolNames()).noneMatch(n -> n.startsWith("ticket_")); // Standard: aus
+        registry.setModuleEnabled("ticket", true);
+        try {
+            assertThat(toolNames()).contains("ticket_providers", "ticket_boards", "ticket_board", "ticket_search",
+                    "ticket_get", "ticket_status", "ticket_links", "ticket_transitions")
+                    .doesNotContain("ticket_comment", "ticket_transition", "ticket_assign", "ticket_update", "ticket_create",
+                            "ticket_delete", "ticket_delete_comment");
+            // Schalter wirken live auf tools/list
+            registry.updateConfig("ticket", Map.of("allowComment", "true"));
+            assertThat(toolNames()).contains("ticket_comment").doesNotContain("ticket_transition", "ticket_create");
+            // kein System aktiv: fachlicher Fehler mit nächstem Schritt, als isError beim LLM
+            McpSchema.CallToolResult result = client.callTool(callRequest("ticket_get", Map.of("key", "ABC-1")));
+            assertThat(result.isError()).isTrue();
+            assertThat(text(result)).contains("Kein Ticket-System aktiviert", "Module → Tickets");
+        } finally {
+            registry.setModuleEnabled("ticket", false);
+            registry.updateConfig("ticket", Map.of());
+        }
     }
 
     @Test
