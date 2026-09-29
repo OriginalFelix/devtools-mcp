@@ -68,11 +68,17 @@ dependencies {
     implementation("org.yaml:snakeyaml")
     implementation("org.apache.maven.resolver:maven-resolver-supplier-mvn3:2.0.23")
 
+    // SSH-Modul: Befehle und SFTP über JSch (gepflegter Fork mit aktuellen Algorithmen, ohne weitere Abhängigkeiten)
+    implementation("com.github.mwiede:jsch:2.27.2")
+
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
     }
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    // Eingebetteter SSH-/SFTP-Server für die Tests des SSH-Moduls
+    testImplementation("org.apache.sshd:sshd-core:2.15.0")
+    testImplementation("org.apache.sshd:sshd-sftp:2.15.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

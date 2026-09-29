@@ -17,6 +17,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
 | **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
+| **SSH** (JSch) | `ssh_connections`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` (Standard an), `ssh_write_file` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -91,6 +92,22 @@ Ein weiteres System (z.B. YouTrack) braucht eine `TicketProvider`-Klasse und ein
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`; `spi/HttpJson`
 (JSON über HTTP mit verständlichen Fehlermeldungen) steht Providern – auch aus Plugins – zur Verfügung.
 
+### SSH
+
+Verbindungen werden unter Module → SSH als Tabelle gepflegt (Name, Host, Port, Benutzer, Passwort, optional
+Schlüsseldatei + Passphrase und eine Beschreibung für das LLM). Die ganze Liste liegt verschlüsselt in `settings.json`;
+das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung. Alle Tools nehmen `connection`
+(Name, ohne Groß-/Kleinschreibung; leer = die einzige Verbindung).
+
+* `ssh_exec` führt eine Befehlszeile in der Login-Shell aus (kein PTY), optional mit `workDir` und `stdin`; Ausgabe
+  getrennt nach stdout/stderr, begrenzt auf „Max. Ausgabe (KB)“ und „Max. Ausgabezeilen“, Abbruch nach
+  „Max. Befehlsdauer“. Sitzungen werden je Verbindung wiederverwendet (nach 10 min Leerlauf, bei geänderter
+  Konfiguration und beim Beenden geschlossen).
+* `ssh_list_dir`, `ssh_read_file` (Zeilenbereich, Binärdateien werden abgelehnt) und `ssh_write_file` laufen über SFTP.
+* Host-Keys: `accept-new` (Standard) merkt sich den Schlüssel beim ersten Verbinden in `~/.devtools-mcp/ssh_known_hosts`
+  und lehnt einen geänderten ab; `strict` akzeptiert nur Hosts, die schon in der Datei stehen. *Verbindung testen*
+  verbindet sich mit jeder Verbindung und zeigt Server-Version und Fingerprint.
+
 ### Ziel-JVMs
 
 Alle Performance-Tools nehmen dieselbe `target`-Angabe:
@@ -152,6 +169,9 @@ der Schlüssel liegt in `secret.key` daneben.
   sind einzeln schaltbar und standardmäßig aus. exec optional nur mit freigegebenen Programmen, `run` bindet Ports
   an 127.0.0.1 und erlaubt Bind-Mounts nur aus freigegebenen Host-Verzeichnissen, `rm` standardmäßig nur für über
   `container_run` angelegte Container (Label `devtools-mcp`). Passwörter/Tokens in Umgebungsvariablen werden maskiert.
+* SSH: Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; Host-Key-Prüfung gegen eine eigene
+  known_hosts-Datei (geänderte Schlüssel werden immer abgelehnt). `ssh_exec` läuft mit den vollen Rechten des
+  hinterlegten Benutzers – dafür einen eingeschränkten Benutzer anlegen oder den Schalter abschalten.
 
 ### Code-Graph (Java)
 
@@ -365,8 +385,11 @@ public class JiraModule implements ToolModule {
 }
 ```
 
-Feldtypen: `STRING`, `SECRET`, `INT`, `BOOLEAN`, `URL`, `DIRECTORY`, `DIRECTORY_LIST`, `ENUM`, `STRING_LIST`.
-Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
+Feldtypen: `STRING`, `SECRET`, `INT`, `BOOLEAN`, `URL`, `DIRECTORY`, `DIRECTORY_LIST`, `ENUM`, `STRING_LIST`,
+`RECORD_LIST`. Letzterer ist eine Liste gleichartiger Datensätze (z.B. Verbindungen):
+`ConfigField.records("connections", "Verbindungen", ConfigField.of("name", …), …)` – die UI zeigt eine Tabelle mit
+Hinzufügen/Bearbeiten/Entfernen (Dialog aus denselben Feldern), gelesen wird mit `config.getRecords("connections")`.
+Gespeichert wird ein JSON-Array; enthält ein Feld ein `SECRET`, wird der ganze Wert verschlüsselt. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
 
 ## Plugins
 

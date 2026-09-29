@@ -19,5 +19,10 @@ public enum FieldType {
     /** Auswahl aus {@link ConfigField#options()}. */
     ENUM,
     /** Freie Liste von Texten (eine Zeile je Eintrag). */
-    STRING_LIST
+    STRING_LIST,
+    /**
+     * Liste gleichartiger Datensätze (z.B. Verbindungen), Felder aus {@link ConfigField#columns()}. Gespeichert als
+     * JSON-Array von Objekten; enthält eine Spalte ein {@link #SECRET}, wird der ganze Wert verschlüsselt abgelegt.
+     */
+    RECORD_LIST
 }

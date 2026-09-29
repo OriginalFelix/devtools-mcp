@@ -273,7 +273,7 @@ public class ToolRegistry {
 
     private static Set<String> secretKeys(ToolModule m) {
         return m.configSchema().stream()
-                .filter(f -> f.type() == FieldType.SECRET)
+                .filter(ConfigField::secret)
                 .map(ConfigField::key)
                 .collect(Collectors.toSet());
     }

@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.net.ServerSocket;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,7 +48,8 @@ public final class Fixture implements AutoCloseable {
         if (jdwp) {
             cmd.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:" + jdwpPort);
         }
-        cmd.addAll(List.of("-cp", System.getProperty("java.class.path"), FixtureApp.class.getName()));
+        // Classpath per @argfile: unter Windows ist die Befehlszeile auf 32k Zeichen begrenzt (CreateProcess error=206)
+        cmd.addAll(List.of("@" + classpathArgFile(), FixtureApp.class.getName()));
         if (deadlock) {
             cmd.add("deadlock");
         }
@@ -71,6 +73,19 @@ public final class Fixture implements AutoCloseable {
             return new Fixture(p, jmxPort, jdwpPort);
         } catch (Exception e) {
             throw new IllegalStateException("Fixture-JVM startet nicht", e);
+        }
+    }
+
+    /** Argumentdatei mit {@code -cp}; in Argumentdateien ist {@code \} ein Escape-Zeichen, daher {@code /} als Trenner. */
+    private static Path classpathArgFile() {
+        try {
+            Path file = Files.createTempFile("fixture-cp", ".args");
+            file.toFile().deleteOnExit();
+            String cp = System.getProperty("java.class.path").replace('\\', '/');
+            Files.writeString(file, "-cp \"" + cp + "\"\n");
+            return file;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 
