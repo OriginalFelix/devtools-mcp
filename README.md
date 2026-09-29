@@ -16,6 +16,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **VisualVM** | `visualvm_heap_analyze` (Heap-Engine: Histogramm, Retained Size, Pfad zur GC-Wurzel), `visualvm_sample_cpu` (JMX-Sampler, `.nps`-Snapshot), `visualvm_open`, `visualvm_open_file` (externe VisualVM-GUI) |
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
+| **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets) – nur lesend (Standard: aus) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -45,6 +46,23 @@ und eine Zeile in `src/main/resources/META-INF/services/systems.grebe.devtools.m
 Die UI zeigt dann automatisch „nerdctl (containerd): aktiv / Programm“, die Laufzeit erscheint in `container_runtimes`
 und ist über den Parameter `runtime` in allen `container_*`-Tools wählbar. Laufzeiten ohne CLI implementieren
 `ContainerRuntime` direkt (z.B. über eine REST-API).
+
+### Ticket-Systeme erweitern (ServiceLoader)
+
+Das Modul **Tickets** arbeitet nach demselben Muster über `modules/ticket/spi`: `TicketProvider` (ID, Felder, Hilfetexte)
+erzeugt ein `TicketSystem` mit `boards`, `board`, `search`, `ticket` und optional `ownsKey`. Mitgeliefert sind
+
+| Provider | Anbindung | Board = | Projekt | Schlüssel |
+|---|---|---|---|---|
+| `jira` | REST v2 + Agile 1.0; Cloud (`/search/jql`, Token-Paging, Basic mit E-Mail+API-Token) oder Data Center (`/search`, PAT als Bearer) | Scrum: aktiver Sprint, Kanban: offen + 14 Tage erledigt; Spalten aus der Board-Konfiguration | `ABC` | `ABC-123`, Browse-URL |
+| `github` | REST (Issues, Suche) + GraphQL (Projects v2) | Project, Spalten = Single-Select-Feld `Status` (einstellbar) | `owner/repo` bzw. `owner` | `owner/repo#12`, `#12`, URL |
+| `gitlab` | REST v4, Projekt oder Gruppe (automatisch erkannt) | Issue-Board: Open, Label-/Assignee-/Milestone-Listen, Closed | `gruppe/projekt` bzw. `gruppe` | `gruppe/projekt#12`, `#12`, URL |
+
+Jedes System hat in der UI „aktiv“, seine Felder und ein Standardprojekt. Ohne `provider` wählt das Modul das System, das
+den Schlüssel als seinen erkennt (Jira-Schlüssel, URL seines Hosts), sonst das Standard-System bzw. das einzige aktive.
+Ein weiteres System (z.B. YouTrack) braucht eine `TicketProvider`-Klasse und eine Zeile in
+`src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`; `spi/HttpJson`
+(JSON über HTTP mit verständlichen Fehlermeldungen) steht Providern – auch aus Plugins – zur Verfügung.
 
 ### Ziel-JVMs
 
