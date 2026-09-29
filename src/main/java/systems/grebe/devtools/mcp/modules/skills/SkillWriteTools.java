@@ -21,7 +21,7 @@ public class SkillWriteTools {
         this.maxContentChars = maxContentChars;
     }
 
-    @Tool(name = "create", description = "Legt einen neuen Skill an. Anlegen, wenn eine Aufgabe schwierig oder "
+    @Tool(name = "create", description = "Speichert neu Gelerntes dauerhaft als Skill (Ablauf, Fix). Anlegen, wenn eine Aufgabe schwierig oder "
             + "mehrstufig war, Fehlversuche nötig waren, der Nutzer korrigiert hat oder ein nicht offensichtlicher "
             + "Ablauf gefunden wurde, der wiederkommen wird. Vorher mit skills_list prüfen, ob es schon einen "
             + "passenden gibt – dann skills_patch. Inhalt als Markdown: wann verwenden, Schritte, konkrete "
@@ -37,7 +37,7 @@ public class SkillWriteTools {
         return service.create(name, description, content, category, tags, maxContentChars);
     }
 
-    @Tool(name = "patch", description = "Ersetzt gezielt eine Textstelle im Skill-Inhalt oder – mit file_path – in "
+    @Tool(name = "patch", description = "Ergänzt einen Skill um Korrekturen und Workarounds. Ersetzt gezielt eine Textstelle im Skill-Inhalt oder – mit file_path – in "
             + "einer Zusatzdatei. Bevorzugter Weg für Ergänzungen und Korrekturen: old_string muss exakt und "
             + "eindeutig vorkommen (sonst replace_all=true). Zum Anhängen den letzten Abschnitt als old_string "
             + "nehmen und erweitert als new_string übergeben. Bei einer globalen Vorlage entsteht automatisch eine "

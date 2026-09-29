@@ -250,12 +250,18 @@ class McpServerIntegrationTest {
         registry.updateConfig("skills", Map.of("reviewNudgeInterval", "3"));
         McpSyncClient second = connect(null);
         try {
+            // Erster Aufruf je Session: Hinweis auf die Bibliothek – für Clients ohne Server-Instructions
+            // (Anzahl hängt von anderen Tests auf derselben Datenbank ab; „noch leer“ prüft der Unit-Test)
+            assertThat(text(client.callTool(callRequest("git_status", Map.of()))))
+                    .contains("[DevTools-Skills] Skill-Bibliothek des Nutzers auf diesem Server: ",
+                            "skills_create").doesNotContain("Tool-Aufrufe");
             // B: Erinnerung nach 3 Aufrufen ohne Skill-Pflege – je Session gezählt
-            assertThat(text(client.callTool(callRequest("git_status", Map.of())))).doesNotContain("[DevTools-Skills]");
             assertThat(text(client.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
-            assertThat(text(second.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
+            assertThat(text(second.callTool(callRequest("git_log", Map.of())))).contains("Skill-Bibliothek")
+                    .doesNotContain("Tool-Aufrufe");
             assertThat(text(client.callTool(callRequest("git_log", Map.of()))))
-                    .contains("Initialer Commit", "[DevTools-Skills] 3 Tool-Aufrufe", "skills_review");
+                    .contains("Initialer Commit", "[DevTools-Skills] 3 Tool-Aufrufe", "skills_review")
+                    .doesNotContain("Skill-Bibliothek");
 
             // Skill-Pflege setzt zurück und wird für den Review gemerkt
             client.callTool(callRequest("skills_create", Map.of("name", "review-demo",
@@ -285,6 +291,12 @@ class McpServerIntegrationTest {
 
             // ohne Schreibrecht: kein Review-Tool, kein Prompt, keine Erinnerung
             registry.updateConfig("skills", Map.of("allowWrite", "false", "reviewNudgeInterval", "1"));
+            McpSyncClient third = connect(null);
+            try {
+                assertThat(text(third.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
+            } finally {
+                third.closeGracefully();
+            }
             assertThat(toolNames()).doesNotContain("skills_review");
             assertThat(client.listPrompts().prompts()).extracting(McpSchema.Prompt::name).doesNotContain("skills_review");
             assertThat(text(client.callTool(callRequest("git_log", Map.of())))).doesNotContain("[DevTools-Skills]");
@@ -293,6 +305,23 @@ class McpServerIntegrationTest {
             registry.updateConfig("skills", Map.of());
         }
         assertThat(client.listPrompts().prompts()).extracting(McpSchema.Prompt::name).contains("skills_review");
+    }
+
+    @Test
+    void skillToolsStateTheirTriggerInTheFirstSentence() {
+        // Hermes zeigt ausgelagerte MCP-Tools nur mit dem ersten Satz (max. 60 Zeichen) – der muss den Auslöser nennen.
+        Map<String, String> expected = Map.of(
+                "skills_list", "VOR einer Aufgabe: gespeicherte Skills des Nutzers suchen.",
+                "skills_view", "Lädt einen gespeicherten Skill (erprobter Ablauf).",
+                "skills_create", "Speichert neu Gelerntes dauerhaft als Skill (Ablauf, Fix).",
+                "skills_patch", "Ergänzt einen Skill um Korrekturen und Workarounds.",
+                "skills_review", "Nach mehrstufiger Aufgabe: prüfen, was als Skill bleibt.");
+        List<McpSchema.Tool> tools = client.listTools().tools();
+        expected.forEach((name, sentence) -> {
+            assertThat(sentence).hasSizeLessThanOrEqualTo(60);
+            assertThat(tools).filteredOn(t -> t.name().equals(name)).singleElement()
+                    .extracting(McpSchema.Tool::description).asString().startsWith(sentence + " ");
+        });
     }
 
     private static String text(McpSchema.CallToolResult result) {

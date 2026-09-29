@@ -20,7 +20,7 @@ class SkillsModuleTest {
 
     private SkillsModule module(SkillsPersistenceConfig.Status status) {
         SettingsStore store = new SettingsStore(home);
-        return new SkillsModule(null, status, new SkillReview(), new SkillReviewTracker(null),
+        return new SkillsModule(null, status, new SkillReview(), new SkillReviewTracker(null, null),
                 new SkillUser(store, () -> java.util.Optional.of(SkillServiceTest.USER)), store);
     }
 

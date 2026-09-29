@@ -15,8 +15,8 @@ public class SkillReadTools {
         this.service = service;
     }
 
-    @Tool(name = "list", description = "Listet die Skills des Nutzers und die globalen Vorlagen (markiert mit "
-            + "(global)) mit Beschreibung, Kategorie und Tags, optional gefiltert per Suchtext über Name, "
+    @Tool(name = "list", description = "VOR einer Aufgabe: gespeicherte Skills des Nutzers suchen. "
+            + "Listet die Skills des Nutzers und die globalen Vorlagen (markiert mit (global)) mit Beschreibung, Kategorie und Tags, optional gefiltert per Suchtext über Name, "
             + "Beschreibung, Tags und Inhalt. VOR Beginn einer Aufgabe aufrufen und passende Skills mit skills_view "
             + "laden – sie enthalten erprobte Abläufe, Befehle, Fallstricke und Vorlieben des Nutzers."
             + ShellHints.SKILLS)
@@ -26,8 +26,8 @@ public class SkillReadTools {
         return service.list(query, category);
     }
 
-    @Tool(name = "view", description = "Lädt einen Skill vollständig (Metadaten, Inhalt, Liste der Zusatzdateien) "
-            + "oder mit file_path eine einzelne Zusatzdatei. Die Anweisungen des Skills befolgen; ist er veraltet oder "
+    @Tool(name = "view", description = "Lädt einen gespeicherten Skill (erprobter Ablauf). Vollständig mit "
+            + "Metadaten, Inhalt und Liste der Zusatzdateien oder mit file_path eine einzelne Zusatzdatei. Die Anweisungen des Skills befolgen; ist er veraltet oder "
             + "lückenhaft, nach der Aufgabe mit skills_patch korrigieren." + ShellHints.SKILLS)
     public String view(
             @ToolParam(description = NAME) String name,
