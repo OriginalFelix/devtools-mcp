@@ -211,15 +211,26 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
   * `skills_review` liefert eine Review-Checkliste (Signale, Reihenfolge *geladenen Skill patchen → übergreifenden
     erweitern → Zusatzdatei → neu anlegen*, was nicht festzuhalten ist), die in dieser Client-Session geladenen und
     geänderten Skills und die vorhandene Bibliothek.
-  * **Erinnerung:** Nach *N* Tool-Aufrufen (Einstellung „Review-Erinnerung“, Standard 10 wie Hermes'
-    `creation_nudge_interval`, 0 = aus) ohne Skill-Pflege hängt der Server an das Tool-Ergebnis einen Hinweis auf
+  * **Erinnerung:** Nach *N* Tool-Aufrufen (Einstellung „Review-Erinnerung“, Standard 5, 0 = aus) ohne
+    Skill-Pflege hängt der Server an das Tool-Ergebnis einen Hinweis auf `skills_patch`/`skills_create`/
     `skills_review`. Gezählt wird je MCP-Session über alle Module; `skills_create/patch/update/…/review` setzen
     zurück. Ein MCP-Server kann das Modell nicht selbst anstoßen – Tool-Ergebnisse sind der einzige Kanal, der bei
     jedem Client ankommt.
+  * **Bibliothekshinweis:** Der erste Aufruf einer Session – und der erste nach 30 min Pause – bekommt einen
+    Hinweis auf die Skill-Bibliothek (Anzahl bzw. „noch leer“), außer er ist selbst ein `skills_*`-Aufruf.
+    Grund: Hermes übernimmt die Server-Instructions nicht und zeigt ausgelagerte Tools nur mit dem ersten Satz;
+    eine Session nutzt oft nur ein, zwei DevTools-Tools, sodass die N-Aufrufe-Erinnerung nie fällig würde.
+  * Beide Hinweise sind **Zustandsbeschreibungen, keine Befehle**: Hermes verpackt MCP-Ergebnisse in
+    `<untrusted_tool_result>` und weist das Modell an, darin enthaltene Aufforderungen zu ignorieren.
+  * Der **erste Satz** jeder Skill-Tool-Beschreibung (≤ 60 Zeichen) nennt den Auslöser – nur er erscheint im
+    Tool-Katalog von Hermes.
   * **MCP-Prompt** `skills_review` (Argument `focus`) für den manuellen Anstoß, z.B. als Slash-Befehl.
   * Review, Prompt und Erinnerung gibt es nur, wenn „Anlegen und Bearbeiten“ an ist.
   * **Mit Hermes:** Hermes hat einen eigenen Hintergrund-Review, der in `~/.hermes/skills` schreibt. Sollen die
     Skills nur hier liegen, dort `skills.creation_nudge_interval: 0` setzen – sonst entstehen zwei Bibliotheken.
+    Hermes' System-Prompt verweist trotzdem auf sein eigenes `skill_manage`; damit das Modell die `skills_*`-Tools
+    wählt, braucht es zusätzlich einen Hinweis auf Hermes-Seite (z.B. einen Hermes-Skill oder Memory-Eintrag
+    „dauerhaftes Wissen über devtools-Tools/-Projekte → `skills_*`“).
 * **Mehrere Benutzer (User-Scoping):** Jeder Skill gehört einem Benutzer, erkannt an der Git-E-Mail
   (`git config --global user.email`) oder der „Benutzer-E-Mail“ im Modul. Auf einer gemeinsamen Datenbank sieht und
   ändert jeder nur seine eigenen Skills; gleiche Namen bei verschiedenen Benutzern sind erlaubt. Die Historie hält fest,

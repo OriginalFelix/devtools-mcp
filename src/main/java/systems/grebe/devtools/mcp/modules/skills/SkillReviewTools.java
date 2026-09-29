@@ -19,7 +19,8 @@ public class SkillReviewTools {
         this.tracker = tracker;
     }
 
-    @Tool(name = "review", description = "Skill-Review zur Selbstverbesserung: liefert eine Checkliste (Signale, "
+    @Tool(name = "review", description = "Nach mehrstufiger Aufgabe: prüfen, was als Skill bleibt. Skill-Review zur "
+            + "Selbstverbesserung: liefert eine Checkliste (Signale, "
             + "Reihenfolge patchen vor neu anlegen, was nicht festzuhalten ist), die in dieser Session geladenen und "
             + "geänderten Skills und die vorhandene Bibliothek. Aufrufen, wenn eine Aufgabe mit mehreren Schritten "
             + "abgeschlossen ist, der Nutzer korrigiert hat oder der Server daran erinnert – danach die Checkliste "

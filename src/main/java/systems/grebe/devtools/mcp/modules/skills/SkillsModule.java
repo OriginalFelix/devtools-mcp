@@ -99,8 +99,10 @@ public class SkillsModule implements ToolModule {
                 die ab dann statt der Vorlage gilt – dafür nichts Besonderes tun und keinen neuen Skill anlegen.
 
                 Selbstverbesserung: Nach einer abgeschlossenen mehrstufigen Aufgabe `skills_review` aufrufen und die \
-                Checkliste abarbeiten. Hängt der Server an ein Tool-Ergebnis den Hinweis „[DevTools-Skills] … \
-                skills_review“, gilt das ebenso – sobald die laufende Aufgabe fertig ist, nicht mittendrin.
+                Checkliste abarbeiten. Hängt der Server an ein Tool-Ergebnis einen Hinweis „[DevTools-Skills] …“ \
+                (Stand der Bibliothek bzw. Aufrufe seit der letzten Skill-Pflege), gilt das ebenso – sobald die \
+                laufende Aufgabe fertig ist, nicht mittendrin. Hat der Client einen eigenen Skill-Speicher, gehört \
+                Wissen über die hier angebotenen Tools und Projekte in diese Bibliothek.
 
                 Inhalt: Lehren statt Protokoll – Regel plus Begründung, konkrete Befehle/Tool-Aufrufe, Prüfschritte. \
                 Keine Einmal-Details (Datumsangaben, Ticketnummern, PIDs) und niemals Passwörter, Tokens oder andere \
@@ -149,10 +151,11 @@ public class SkillsModule implements ToolModule {
                 ConfigField.of(MAX_CONTENT, "Max. Zeichen je Inhalt", FieldType.INT).withDefault("100000")
                         .withHelp("Obergrenze für Skill-Inhalt und Zusatzdateien."),
                 ConfigField.of(REVIEW_INTERVAL, "Review-Erinnerung nach N Tool-Aufrufen", FieldType.INT)
-                        .withDefault("10")
+                        .withDefault(String.valueOf(SkillReviewTracker.DEFAULT_INTERVAL))
                         .withHelp("Wie Hermes' creation_nudge_interval: nach so vielen Aufrufen ohne Skill-Pflege "
-                                + "(je Client-Session) erinnert ein Hinweis im Tool-Ergebnis an skills_review. "
-                                + "0 = aus."));
+                                + "(je Client-Session) erinnert ein Hinweis im Tool-Ergebnis an skills_review. Der "
+                                + "erste Aufruf einer Session (und der erste nach 30 min Pause) weist außerdem auf die "
+                                + "Skill-Bibliothek hin. 0 = beides aus."));
     }
 
     static String defaultJdbcUrl(Path home) {

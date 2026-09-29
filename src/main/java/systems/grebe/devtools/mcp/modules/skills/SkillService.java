@@ -288,6 +288,12 @@ public class SkillService {
         return sb.append("Einzelne Stände mit skills_history(name, revision) ansehen.").toString();
     }
 
+    /** Anzahl der für den aktuellen Benutzer sichtbaren Skills (eigene und nicht verdeckte Vorlagen). */
+    @Transactional(readOnly = true)
+    public int visibleCount() {
+        return visible(users.email(), null, null).size();
+    }
+
     /** Eigene Skills und globale Vorlagen – für „Verbindung testen“. */
     @Transactional(readOnly = true)
     public String countText() {
