@@ -12,6 +12,7 @@ import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 import systems.grebe.devtools.mcp.config.SettingsStore;
@@ -108,7 +109,12 @@ public class SkillsPersistenceConfig {
         }
     }
 
+    /**
+     * {@code @Primary}: Spring Boots JPA-Autokonfiguration (EntityManagerFactory der Skills) nimmt die primäre
+     * DataSource; daneben gibt es die Core-Datenbank ({@code CoreDatabaseConfig}).
+     */
     @Bean
+    @Primary
     HikariDataSource dataSource(Status skillsDatabaseStatus) {
         Connection c = skillsDatabaseStatus.effective();
         HikariDataSource ds = DataSourceBuilder.create().type(HikariDataSource.class)

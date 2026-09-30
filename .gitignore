@@ -6,3 +6,15 @@
 *.iml
 .vscode/
 *.log
+
+# Vaadin: beim Build erzeugt
+/src/main/frontend/generated/
+/src/main/frontend/index.html
+/src/main/bundles/
+/node_modules/
+/vite.generated.ts
+/package.json
+/package-lock.json
+/tsconfig.json
+/types.d.ts
+/vite.config.ts

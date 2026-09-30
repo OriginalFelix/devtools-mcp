@@ -27,21 +27,23 @@ public final class ToolScope implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(ToolScope.class);
 
     /** Einzelplatz: der Benutzer am Rechner, Einstellungen aus {@code settings.json}. */
-    public static final ToolScope LOCAL = new ToolScope("local", null, null, null, true);
+    public static final ToolScope LOCAL = new ToolScope("local", null, null, null, null, true);
 
     private static final ThreadLocal<ToolScope> CURRENT = new ThreadLocal<>();
 
     private final String id;
     private final String userId;
     private final String userName;
+    private final String email;
     private final String profileId;
     private final boolean admin;
     private final Map<String, Object> state = new LinkedHashMap<>();
 
-    public ToolScope(String id, String userId, String userName, String profileId, boolean admin) {
+    public ToolScope(String id, String userId, String userName, String email, String profileId, boolean admin) {
         this.id = id;
         this.userId = userId;
         this.userName = userName;
+        this.email = email;
         this.profileId = profileId;
         this.admin = admin;
     }
@@ -58,6 +60,11 @@ public final class ToolScope implements AutoCloseable {
 
     public Optional<String> userName() {
         return Optional.ofNullable(userName);
+    }
+
+    /** E-Mail des Benutzers (z.B. Eigentümer seiner Skills); leer im Einzelplatz-Betrieb oder wenn nicht gepflegt. */
+    public Optional<String> email() {
+        return Optional.ofNullable(email);
     }
 
     public Optional<String> profileId() {

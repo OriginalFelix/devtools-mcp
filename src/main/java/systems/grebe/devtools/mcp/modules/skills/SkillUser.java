@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.core.ToolScope;
 
 /**
  * Wer die Skills gerade benutzt: Jede App-Instanz arbeitet für genau einen Benutzer, erkannt an der Git-E-Mail
@@ -21,6 +22,9 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
  *
  * <p>Die Werte werden bei jedem Aufruf frisch gelesen, damit Änderungen in der UI sofort gelten; die Git-E-Mail wird
  * einmal ermittelt.
+ *
+ * <p>Team-Server: Läuft ein Tool für einen angemeldeten Benutzer ({@link ToolScope#current()} mit Benutzer-ID), gilt
+ * ausschließlich dessen Konto-E-Mail – Modul-Einstellung und Git-E-Mail gehören dem Server, nicht dem Benutzer.
  */
 @Component
 public class SkillUser {
@@ -49,12 +53,20 @@ public class SkillUser {
 
     /** Aktueller Benutzer; wirft mit Hinweis, wenn weder Einstellung noch Git-E-Mail vorhanden sind. */
     public String email() {
-        return emailIfKnown().orElseThrow(() -> new IllegalStateException("Kein Benutzer für die Skills: weder im "
-                + "Modul „Skills“ eine E-Mail eingetragen noch eine Git-E-Mail gesetzt (git config --global "
-                + "user.email …)."));
+        return emailIfKnown().orElseThrow(() -> ToolScope.current().userId().isPresent()
+                ? new IllegalStateException("Kein Benutzer für die Skills: im Konto von '"
+                        + ToolScope.current().userName().orElse("?") + "' ist keine E-Mail hinterlegt (Web-UI → Mein "
+                        + "Konto).")
+                : new IllegalStateException("Kein Benutzer für die Skills: weder im "
+                        + "Modul „Skills“ eine E-Mail eingetragen noch eine Git-E-Mail gesetzt (git config --global "
+                        + "user.email …)."));
     }
 
     public Optional<String> emailIfKnown() {
+        ToolScope scope = ToolScope.current();
+        if (scope.userId().isPresent()) {
+            return scope.email().map(SkillUser::normalize);
+        }
         String configured = values().get(SkillsModule.USER_EMAIL);
         if (configured != null && !configured.isBlank()) {
             return Optional.of(normalize(configured));
@@ -69,6 +81,9 @@ public class SkillUser {
 
     /** Woher der Benutzer stammt – für Anzeige und Log. */
     public String source() {
+        if (ToolScope.current().userId().isPresent()) {
+            return "Benutzerkonto";
+        }
         String configured = values().get(SkillsModule.USER_EMAIL);
         return configured != null && !configured.isBlank() ? "Modul-Einstellung" : "Git (user.email)";
     }

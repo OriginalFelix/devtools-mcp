@@ -180,7 +180,8 @@ der Schlüssel liegt in `secret.key` daneben.
 
 ### Sicherheit
 
-* Nur `127.0.0.1`; optional zusätzlich Bearer-Token.
+* Standard nur `127.0.0.1`; Clients auf demselben Rechner ohne Token (Einzelplatz) oder mit dem Zugriffstoken aus
+  den Einstellungen. Team-Server: persönliche JWT je Benutzer (siehe unten).
 * Git/Build arbeiten ausschließlich in den freigegebenen Verzeichnissen; Pfade außerhalb werden abgewiesen.
 * Build: nur freigegebene Tasks/Goals, Argumente werden gegen eine Zeichen-Whitelist geprüft (kein Shell-Injection
   über `cmd.exe`), ein Build pro Projekt gleichzeitig, Timeout.
@@ -197,6 +198,36 @@ der Schlüssel liegt in `secret.key` daneben.
 * SSH: Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; Host-Key-Prüfung gegen eine eigene
   known_hosts-Datei (geänderte Schlüssel werden immer abgelehnt). `ssh_exec` läuft mit den vollen Rechten des
   hinterlegten Benutzers – dafür einen eingeschränkten Benutzer anlegen oder den Schalter abschalten.
+
+### Team-Server: Benutzer und Zugriffstokens
+
+Neben der Desktop-App läuft der Server auch ohne Oberfläche, mit Web-UI (Vaadin Flow) unter derselben Adresse:
+
+```bash
+java -jar devtools-mcp.jar --headless --server.address=0.0.0.0   # oder DEVTOOLS_MCP_HEADLESS=true
+```
+
+* **Benutzer** (Rolle Administrator/Benutzer) liegen in der Core-Datenbank `core.mv.db` neben `settings.json`
+  (H2, Schema per Flyway aus `db/core`; andere Datenbank über `devtools.core.datasource.url/username/password`).
+  Beim ersten Start wird `admin` angelegt – Passwort aus `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig
+  im Log. Der letzte aktive Administrator lässt sich weder sperren, herabstufen noch löschen.
+* **Passwörter:** PBKDF2 mit HMAC-SHA3-512, 16 Byte Zufalls-Salt, 210.000 Iterationen
+  (`pbkdf2-sha3-512$<iterationen>$<salt>$<hash>`); wird die Iterationszahl angehoben, rechnet die nächste Anmeldung
+  den Hash neu.
+* **MCP-Zugriffstokens:** Jeder Benutzer erzeugt unter *Mein Konto* persönliche Tokens (JWT, HS512, Schlüssel
+  `jwt.key`; Gültigkeit 30/90/365 Tage oder unbegrenzt). Das Token wird nur einmal angezeigt, gespeichert wird nur
+  seine ID; Widerruf, Sperren oder Löschen des Benutzers wirken sofort. Client-Konfiguration z.B.
+  `claude mcp add --transport http devtools https://<host>/mcp --header "Authorization: Bearer <token>"`.
+* **Eigene Runtime je Benutzer:** MCP kennt nur eine Tool-Liste je Server – deshalb bekommt jeder Benutzer beim
+  ersten Request einen eigenen MCP-Server (`server/UserRuntimes`, verteilt von `server/McpDispatcherConfig`).
+  Zustandsbehaftete Module halten ihren Zustand im `ToolScope` des Benutzers (SSH-Sitzungen, Debugger), das
+  Aufrufprotokoll nennt den Benutzer, Skills gehören der E-Mail seines Kontos (ohne E-Mail keine Skill-Tools).
+  Einstellungen der Module gelten vorerst für alle Benutzer (Profile folgen).
+* **Anfragen ohne Token** bekommen die lokale Runtime nur, wenn der Server ausschließlich auf einer Loopback-Adresse
+  lauscht und kein Einzelplatz-Token gesetzt ist. Leitet ein Reverse-Proxy auf demselben Rechner an `127.0.0.1`
+  weiter, `devtools.mcp.allow-anonymous-local=false` setzen. TLS übernimmt der Reverse-Proxy
+  (`server.forward-headers-strategy=native`, damit die Web-UI die öffentliche Adresse anzeigt).
+* Entwicklung der Web-UI mit Hot-Reload: `./gradlew -Pvaadin.productionMode=false bootRun`.
 
 ### Code-Graph (Java)
 

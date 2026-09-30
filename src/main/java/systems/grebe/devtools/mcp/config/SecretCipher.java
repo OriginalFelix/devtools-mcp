@@ -89,7 +89,8 @@ public final class SecretCipher {
         }
     }
 
-    private static void restrictToOwner(Path file) {
+    /** Datei nur für den Eigentümer les- und schreibbar (auch für andere Schlüsseldateien, z.B. JWT). */
+    public static void restrictToOwner(Path file) {
         var f = file.toFile();
         // funktioniert plattformübergreifend (unter Windows best effort)
         f.setReadable(false, false);

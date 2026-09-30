@@ -1,7 +1,10 @@
 package systems.grebe.devtools.mcp.modules.skills;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
@@ -11,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import systems.grebe.devtools.mcp.core.McpRuntime;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 
 /**
@@ -24,16 +28,15 @@ public class SkillReviewPrompt {
     static final String NAME = "skills_review";
     private static final Logger LOG = LoggerFactory.getLogger(SkillReviewPrompt.class);
 
-    private final McpSyncServer server;
     private final ToolRegistry registry;
     private final SkillService service;
     private final SkillReview review;
     private final SkillReviewTracker tracker;
-    private boolean registered;
+    /** Runtimes, an deren Server der Prompt gerade registriert ist. */
+    private final Set<McpRuntime> registered = Collections.newSetFromMap(new WeakHashMap<>());
 
-    public SkillReviewPrompt(McpSyncServer server, ToolRegistry registry, SkillService service, SkillReview review,
+    public SkillReviewPrompt(ToolRegistry registry, SkillService service, SkillReview review,
                              SkillReviewTracker tracker) {
-        this.server = server;
         this.registry = registry;
         this.service = service;
         this.review = review;
@@ -43,24 +46,33 @@ public class SkillReviewPrompt {
     @EventListener(ApplicationReadyEvent.class)
     public void start() {
         registry.addChangeListener(this::sync);
+        registry.addRuntimeListener(this::sync);
         sync();
     }
 
-    synchronized void sync() {
-        boolean wanted = registry.isToolActive(SkillsModule.ID, "skills_review");
-        if (wanted == registered) {
+    /** Gleicht alle Runtimes ab (Tool {@code skills_review} an/aus). */
+    void sync() {
+        registry.runtimes().forEach(this::sync);
+    }
+
+    synchronized void sync(McpRuntime runtime) {
+        boolean wanted = runtime.isActive(SkillsModule.ID, "skills_review");
+        if (wanted == registered.contains(runtime)) {
             return;
         }
+        McpSyncServer server = runtime.server();
         try {
             if (wanted) {
                 server.addPrompt(specification());
+                registered.add(runtime);
             } else {
                 server.removePrompt(NAME);
+                registered.remove(runtime);
             }
             server.notifyPromptsListChanged();
-            registered = wanted;
         } catch (RuntimeException e) {
-            LOG.warn("Prompt {} konnte nicht {} werden", NAME, wanted ? "registriert" : "entfernt", e);
+            LOG.warn("Prompt {} konnte in {} nicht {} werden", NAME, runtime.scope(), wanted ? "registriert" : "entfernt",
+                    e);
         }
     }
 

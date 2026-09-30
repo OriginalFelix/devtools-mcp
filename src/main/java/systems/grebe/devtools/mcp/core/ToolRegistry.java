@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.core;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -8,6 +9,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import io.modelcontextprotocol.server.McpSyncServer;
@@ -28,8 +31,10 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
  * {@link McpRuntime}s ihre Tools danach neu aufbauen. Verbundene Clients werden über
  * {@code notifications/tools/list_changed} informiert.
  *
- * <p>Derzeit gibt es genau eine Runtime ({@link ToolScope#LOCAL}) am automatisch konfigurierten {@link McpSyncServer};
- * Abfragen wie {@link #isToolActive} beziehen sich auf sie.
+ * <p>Die lokale Runtime ({@link ToolScope#LOCAL}) hängt am automatisch konfigurierten {@link McpSyncServer}; Abfragen
+ * wie {@link #isToolActive} beziehen sich auf sie. Jeder per Token angemeldete Benutzer bekommt über
+ * {@link #runtime} eine eigene Runtime mit eigenem Server – MCP kennt nur eine Tool-Liste je Server. Änderungen an
+ * Modulen gelten für alle Runtimes.
  */
 @Service
 public class ToolRegistry {
@@ -37,6 +42,9 @@ public class ToolRegistry {
     private static final Logger LOG = LoggerFactory.getLogger(ToolRegistry.class);
 
     private final McpRuntime local;
+    /** Runtimes der Benutzer, Schlüssel = {@link ToolScope#id()}; Zugriff unter {@code states}. */
+    private final Map<String, McpRuntime> runtimes = new LinkedHashMap<>();
+    private final List<Consumer<McpRuntime>> runtimeListeners = new CopyOnWriteArrayList<>();
     private final SettingsStore store;
     private final ToolInvocationLog invocationLog;
     private final Map<String, ModuleState> states = new LinkedHashMap<>();
@@ -85,7 +93,81 @@ public class ToolRegistry {
     /** Schließt beim Beenden den Zustand der Module (offene SSH-Sitzungen, Debugger …). */
     @PreDestroy
     public void close() {
+        List<McpRuntime> all;
+        synchronized (states) {
+            all = new ArrayList<>(runtimes.values());
+            runtimes.clear();
+        }
+        all.forEach(McpRuntime::close);
         local.close();
+    }
+
+    // ------------------------------------------------------------------ Runtimes
+
+    /** Die Runtime des Einzelplatz-Betriebs (Server der Autokonfiguration). */
+    public McpRuntime localRuntime() {
+        return local;
+    }
+
+    /**
+     * Runtime für einen Scope; beim ersten Aufruf mit einem Server aus {@code serverFactory} angelegt und mit den
+     * Tools aller Module bestückt.
+     */
+    public McpRuntime runtime(ToolScope scope, Supplier<McpSyncServer> serverFactory) {
+        McpRuntime created;
+        synchronized (states) {
+            McpRuntime existing = runtimes.get(scope.id());
+            if (existing != null) {
+                return existing;
+            }
+            created = new McpRuntime(serverFactory.get(), scope, invocationLog);
+            for (ModuleState s : states.values()) {
+                created.rebuild(s.module, s.settings, callListeners());
+            }
+            runtimes.put(scope.id(), created);
+        }
+        LOG.info("MCP-Runtime {} gestartet: {} Tools", scope, created.activeToolNames().size());
+        runtimeListeners.forEach(l -> l.accept(created));
+        return created;
+    }
+
+    /** Alle Runtimes, die lokale zuerst. */
+    public List<McpRuntime> runtimes() {
+        synchronized (states) {
+            List<McpRuntime> all = new ArrayList<>();
+            all.add(local);
+            all.addAll(runtimes.values());
+            return all;
+        }
+    }
+
+    /**
+     * Schließt die Runtime (Zustand der Module, offene Client-Sessions). Clients bekommen danach „Session unbekannt“
+     * und verbinden sich neu – mit dann gültigen Rechten.
+     *
+     * @return ob es eine solche Runtime gab
+     */
+    public boolean closeRuntime(String scopeId) {
+        McpRuntime r;
+        synchronized (states) {
+            r = runtimes.remove(scopeId);
+        }
+        if (r == null) {
+            return false;
+        }
+        r.close();
+        try {
+            r.server().closeGracefully();
+        } catch (RuntimeException e) {
+            LOG.debug("MCP-Server von {} nicht sauber geschlossen", scopeId, e);
+        }
+        LOG.info("MCP-Runtime {} geschlossen", scopeId);
+        return true;
+    }
+
+    /** Wird für jede neue Benutzer-Runtime aufgerufen (z.B. um Prompts zu registrieren). */
+    public void addRuntimeListener(Consumer<McpRuntime> listener) {
+        runtimeListeners.add(listener);
     }
 
     // ------------------------------------------------------------------ Lesen
@@ -134,6 +216,7 @@ public class ToolRegistry {
                 return;
             }
             local.remove(moduleId);
+            runtimes.values().forEach(r -> r.remove(moduleId));
         }
         LOG.info("Modul {} entfernt", moduleId);
         changeListeners.forEach(Runnable::run);
@@ -285,6 +368,9 @@ public class ToolRegistry {
                 return; // inzwischen entfernt (Plugin deaktiviert) – keine Tools eines alten Moduls registrieren
             }
             local.rebuild(s.module, s.settings, callListeners());
+            for (McpRuntime r : runtimes.values()) {
+                r.rebuild(s.module, s.settings, callListeners());
+            }
         }
         // Kein explizites notifyToolsListChanged(): addTool/removeTool benachrichtigen die Clients bereits selbst
         // (spring.ai.mcp.server.tool-change-notification=true).
