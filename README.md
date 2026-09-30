@@ -18,7 +18,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
 | **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
-| **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte mit Zugriff, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI (Modul Standard: an) |
+| **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -148,16 +148,30 @@ Alle Performance-Tools nehmen dieselbe `target`-Angabe:
 Ergebnisse (`.jfr`, Flame Graphs `.html`, `.hprof`, `.nps`) landen im Ablageordner und erscheinen im Tab
 **Artefakte** (öffnen, im Explorer zeigen, in VisualVM öffnen, löschen).
 
+## Projektstruktur
+
+Gradle-Multiprojekt:
+
+| Projekt | Inhalt | Artefakt |
+|---|---|---|
+| `desktop` | Desktop-App: MCP-Server, alle Module, Plugins, JavaFX-Oberfläche, Anbindung an den Team-Server | `desktop/build/libs/devtools-mcp-<version>.jar` |
+| `server` | Team-Server: Web-UI (Vaadin), Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
+| `shared` | Gemeinsam: Einstellungs-Modell, REST-DTOs (`api`), Skill-Ablage (JPA) | – |
+
+MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Der Team-Server ist optional
+und verwaltet, was mehrere Entwickler teilen.
+
 ## Starten
 
 ```bash
-./gradlew bootRun          # Entwicklung
-./gradlew bootJar          # build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar → java -jar … (eingebetteter Jetty)
-./gradlew war              # build/libs/devtools-mcp-0.1.0-SNAPSHOT-wildfly.war → externer WildFly (siehe unten)
-./gradlew test             # Unit- + MCP-Integrationstests
+./gradlew :desktop:bootRun          # Desktop-App (Entwicklung)
+./gradlew :desktop:bootJar          # desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar → java -jar …
+./gradlew :server:bootRun           # Team-Server auf Port 8080
+./gradlew :server:bootJar :server:war   # Server als Jar (Jetty) bzw. WAR für WildFly
+./gradlew build                     # alles inkl. Tests
 ```
 
-Der Server lauscht auf `http://127.0.0.1:8765/mcp` (Streamable HTTP, nur localhost).
+Der MCP-Server der Desktop-App lauscht auf `http://127.0.0.1:8765/mcp` (Streamable HTTP, nur localhost).
 Über **„Client verbinden…“** zeigt die App fertige Konfigurationen, z.B.:
 
 ```bash
@@ -169,21 +183,21 @@ claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
 * **Module** (links): an/aus, Status (grün aktiv · grau aus · rot Fehler).
 * **Konfiguration** (rechts): Formular wird aus dem Modul-Schema erzeugt; *Speichern* registriert die Tools
   sofort neu, verbundene Clients erhalten `notifications/tools/list_changed`. *Verbindung testen* prüft
-  die ungespeicherten Eingaben.
+  die ungespeicherten Eingaben. Gibt der Team-Server Werte vor, steht das über dem Formular.
 * **Tools**: jedes Tool einzeln abschaltbar.
 * **Aufrufe**: Live-Protokoll aller Tool-Aufrufe mit Argumenten, Ergebnis, Dauer und Fehlern.
-* **Skills**: Übersicht der gespeicherten Skills mit Inhalt, Zusatzdateien und Historie (aktualisiert sich live).
+* **Skills**: Übersicht der gespeicherten Skills mit Inhalt, Zusatzdateien und Historie.
+* **Server**: Anbindung an einen Team-Server, aktives Profil, Verzeichnisse der Server-Projekte (siehe unten).
 * **Einstellungen**: Port (nach Neustart), optionales Bearer-Token (sofort wirksam), Tray-Verhalten.
 * Fenster schließen → läuft im System-Tray weiter; *Beenden* über das Tray-Menü.
 
 Einstellungen liegen in `~/.devtools-mcp/settings.json` (Pfad per `DEVTOOLS_MCP_HOME` bzw.
-`-Ddevtools.mcp.home` änderbar). Geheimnisse (Sonar-Token, Zugriffstoken) werden mit AES-GCM verschlüsselt,
-der Schlüssel liegt in `secret.key` daneben.
+`-Ddevtools.mcp.home` änderbar). Geheimnisse (Sonar-Token, Zugriffstoken, Desktop-Token) werden mit AES-GCM
+verschlüsselt, der Schlüssel liegt in `secret.key` daneben.
 
 ### Sicherheit
 
-* Standard nur `127.0.0.1`; Clients auf demselben Rechner ohne Token (Einzelplatz) oder mit dem Zugriffstoken aus
-  den Einstellungen. Team-Server: persönliche JWT je Benutzer (siehe unten).
+* Nur `127.0.0.1`; Clients auf demselben Rechner ohne Token oder mit dem Zugriffstoken aus den Einstellungen.
 * Git/Build arbeiten ausschließlich in den freigegebenen Verzeichnissen; Pfade außerhalb werden abgewiesen.
 * Build: nur freigegebene Tasks/Goals, Argumente werden gegen eine Zeichen-Whitelist geprüft (kein Shell-Injection
   über `cmd.exe`), ein Build pro Projekt gleichzeitig, Timeout.
@@ -201,91 +215,85 @@ der Schlüssel liegt in `secret.key` daneben.
   known_hosts-Datei (geänderte Schlüssel werden immer abgelehnt). `ssh_exec` läuft mit den vollen Rechten des
   hinterlegten Benutzers – dafür einen eingeschränkten Benutzer anlegen oder den Schalter abschalten.
 
-### Team-Server: Benutzer und Zugriffstokens
+### Team-Server
 
-Neben der Desktop-App läuft der Server auch ohne Oberfläche, mit Web-UI (Vaadin Flow) unter derselben Adresse:
+Der Team-Server (`server`) verwaltet für mehrere Entwickler Benutzer, Profile, Einstellungs-Vorgaben, Projekte und
+Skills. Er ist **kein MCP-Server**: Jeder Entwickler verbindet seine Desktop-App mit ihm; die MCP-Clients sprechen
+weiter nur mit der lokalen Desktop-App.
 
 ```bash
-java -jar devtools-mcp.jar --headless --server.address=0.0.0.0   # oder DEVTOOLS_MCP_HEADLESS=true
+java -jar devtools-server.jar            # Port 8080, Web-UI unter /
 ```
 
-* **Benutzer** (Rolle Administrator/Benutzer) liegen in der Core-Datenbank `core.mv.db` neben `settings.json`
-  (H2, Schema per Flyway aus `db/core`; andere Datenbank über `devtools.core.datasource.url/username/password`).
-  Beim ersten Start wird `admin` angelegt – Passwort aus `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig
-  im Log. Der letzte aktive Administrator lässt sich weder sperren, herabstufen noch löschen.
+* **Benutzer** (Rolle Administrator/Benutzer) liegen in der Core-Datenbank `core.mv.db` im Server-Verzeichnis
+  (`devtools.server.home`, sonst wie die Desktop-App `DEVTOOLS_MCP_HOME` bzw. `~/.devtools-mcp`; H2, Schema per
+  Flyway aus `db/core`; andere Datenbank über `devtools.core.datasource.url/username/password`). Beim ersten Start
+  wird `admin` angelegt – Passwort aus `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log. Der letzte
+  aktive Administrator lässt sich weder sperren, herabstufen noch löschen.
 * **Passwörter:** PBKDF2 mit HMAC-SHA3-512, 16 Byte Zufalls-Salt, 210.000 Iterationen
   (`pbkdf2-sha3-512$<iterationen>$<salt>$<hash>`); wird die Iterationszahl angehoben, rechnet die nächste Anmeldung
   den Hash neu.
-* **MCP-Zugriffstokens:** Jeder Benutzer erzeugt unter *Mein Konto* persönliche Tokens (JWT, HS512, Schlüssel
+* **Desktop-Tokens:** Jeder Benutzer erzeugt unter *Mein Konto* persönliche Tokens (JWT, HS512, Schlüssel
   `jwt.key`; Gültigkeit 30/90/365 Tage oder unbegrenzt). Das Token wird nur einmal angezeigt, gespeichert wird nur
-  seine ID; Widerruf, Sperren oder Löschen des Benutzers wirken sofort. Client-Konfiguration z.B.
-  `claude mcp add --transport http devtools https://<host>/mcp --header "Authorization: Bearer <token>"`.
-* **Eigene Runtime je Benutzer:** MCP kennt nur eine Tool-Liste je Server – deshalb bekommt jeder Benutzer beim
-  ersten Request einen eigenen MCP-Server (`server/UserRuntimes`, verteilt von `server/McpDispatcherConfig`).
-  Zustandsbehaftete Module halten ihren Zustand im `ToolScope` des Benutzers (SSH-Sitzungen, Debugger), das
-  Aufrufprotokoll nennt den Benutzer, Skills gehören der E-Mail seines Kontos (ohne E-Mail keine Skill-Tools).
-* **Anfragen ohne Token** bekommen die lokale Runtime nur, wenn der Server ausschließlich auf einer Loopback-Adresse
-  lauscht und kein Einzelplatz-Token gesetzt ist. Leitet ein Reverse-Proxy auf demselben Rechner an `127.0.0.1`
-  weiter, `devtools.mcp.allow-anonymous-local=false` setzen. TLS übernimmt der Reverse-Proxy
+  seine ID; Widerruf, Sperren oder Löschen des Benutzers wirken sofort.
+* **Desktop-App verbinden:** Tab *Server* → Adresse des Servers und Desktop-Token → *Verbinden*. Die App meldet dem
+  Server ihre Module samt Feldern und Tools (daraus baut die Web-UI die Einstellungs-Formulare) und gleicht alle
+  30 Sekunden Benutzer, Profil-Vorgaben und Projekte ab (per `ETag`; `devtools.team.sync-seconds`). Ändert sich
+  etwas, baut sie die Tools neu – verbundene MCP-Clients bekommen `tools/list_changed`. Ist der Server nicht
+  erreichbar, gilt der letzte Stand (verschlüsselte Cache-Datei `team-cache.json`); *Trennen* stellt die rein
+  lokalen Einstellungen wieder her.
+* **REST-API** `/api/**` (nur Desktop-Token, 401 ohne): `GET /me`, `PUT /catalog`, `GET /settings`,
+  `PUT /profile/active`, `GET /projects`, `/skills/**`. Die Vorgaben enthalten entschlüsselte Geheimnisse – den
+  Server deshalb nur über HTTPS erreichbar machen. TLS übernimmt ein Reverse-Proxy
   (`server.forward-headers-strategy=native`, damit die Web-UI die öffentliche Adresse anzeigt).
-* Entwicklung der Web-UI mit Hot-Reload: `./gradlew -Pvaadin.productionMode=false bootRun`.
+* Entwicklung der Web-UI mit Hot-Reload: `./gradlew :server:bootRun -Pvaadin.productionMode=false`.
 
 #### Deployment in WildFly
 
 Alternativ zum Jar läuft der Team-Server als WAR in einem externen WildFly (Jakarta EE 11 / Servlet 6.1, Java 25):
-`./gradlew war` baut `devtools-mcp-<version>-wildfly.war` ohne Jetty und ohne JavaFX. Einstieg ist
-`WildFlyInitializer`; die App läuft dort immer headless.
+`./gradlew :server:war` baut `devtools-server-<version>-wildfly.war` ohne Jetty. Einstieg ist `WildFlyInitializer`.
 
-* **Pfad:** `jboss-web.xml` deployt unter `/` – MCP-Endpunkt `https://<host>/mcp` wie beim Jar.
+* **Pfad:** `jboss-web.xml` deployt unter `/` – wie beim Jar.
   `jboss-deployment-structure.xml` schaltet die WildFly-Subsysteme ab, die Spring selbst mitbringt
   (JPA, CDI/Weld, Faces, JAX-RS, Bean Validation, Logging); `web.xml` mit `metadata-complete` verhindert, dass
-  WildFly annotierte Servlets aus den Bibliotheken (z.B. MCP-SDK) selbst registriert.
+  WildFly annotierte Servlets aus den Bibliotheken selbst registriert.
 * Getestet mit `quay.io/wildfly/wildfly:41.0.1.Final-jdk25`.
-* **Port und Adresse** bestimmt WildFly; `server.port` aus `settings.json` und `server.address` gelten nicht.
-  Deshalb ist `devtools.mcp.allow-anonymous-local` im WAR standardmäßig `false` – ohne Token kein Zugriff.
-* **Datenverzeichnis:** `~/.devtools-mcp` des WildFly-Benutzers, oder `-Ddevtools.mcp.home=…` /
-  `DEVTOOLS_MCP_HOME`. Admin-Passwort wie oben über `DEVTOOLS_MCP_ADMIN_PASSWORD`.
-* **JVM-Optionen** (z.B. in `standalone.conf`): `--enable-native-access=ALL-UNNAMED` für den Code-Graph (tree-sitter).
+* **Port und Adresse** bestimmt WildFly.
+* **Datenverzeichnis:** `~/.devtools-mcp` des WildFly-Benutzers, oder `-Ddevtools.server.home=…`.
+  Admin-Passwort wie oben über `DEVTOOLS_MCP_ADMIN_PASSWORD`.
 
 ### Profile und Einstellungs-Ebenen
 
-Einstellungen gelten in drei Ebenen **Global → Benutzer → Profil**; jede Ebene speichert nur, was sie überschreibt.
+Mit Team-Server gelten in der Desktop-App die lokalen Einstellungen, darüber die Vorgaben des Servers in den Ebenen
+**Global → Benutzer → Profil**; jede Ebene speichert nur, was sie vorgibt bzw. überschreibt. Was keine Ebene vorgibt,
+stellt jeder in seiner Desktop-App selbst ein (z.B. lokale Pfade).
 
-* **Global** sind die Einstellungen aus `settings.json` – dieselben wie in der Desktop-App, im Web unter
-  *Globale Einstellungen* (nur Administratoren). Die lokale Runtime (Einzelplatz) arbeitet nur damit.
+* **Global:** Vorgaben des Administrators für alle (Web → *Globale Einstellungen*; je Feld „vorgeben“).
 * **Benutzer** („Alle meine Profile“) und **Profil** (z.B. Work, Home) überschreiben einzelne Felder, Modul an/aus
-  und einzelne Tools (*Einstellungen*: je Feld „überschreiben“, sonst geerbt mit Herkunft). Überschriebene Geheimnisse
-  liegen verschlüsselt (`secret.key`) in der Core-Datenbank (`module_override`); die Web-UI schickt Geheimnisse nie
-  an den Browser – leer lassen behält den Wert.
-* **Aktives Profil** wird oben in der Web-UI umgeschaltet (Verwaltung unter *Profile*: anlegen, kopieren samt
-  Überschreibungen, umbenennen, löschen – das letzte bleibt). Jeder Benutzer startet mit „Standard“. Der Wechsel
-  gilt sofort für alle MCP-Clients des Benutzers: gleiche Session, neue Tools (`tools/list_changed`); Zustand des
-  alten Profils (SSH-Sitzungen, Debugger) wird geschlossen.
+  und einzelne Tools (*Einstellungen*: je Feld „überschreiben“, sonst geerbt mit Herkunft). Geheimnisse liegen
+  verschlüsselt (`secret.key`) in der Core-Datenbank (`module_override`).
+* **Aktives Profil** wird oben in der Web-UI oder im Tab *Server* der Desktop-App umgeschaltet (Verwaltung unter
+  *Profile*: anlegen, kopieren samt Überschreibungen, umbenennen, löschen – das letzte bleibt). Jeder Benutzer startet
+  mit „Standard“. Die Desktop-Apps übernehmen den Wechsel beim nächsten Abgleich (gleiche MCP-Session, neue Tools).
 * **Sperren:** Administratoren sperren unter *Globale Einstellungen* einzelne Felder, „Modul an/aus“ oder alle
   Tool-Schalter eines Moduls. Gesperrtes gilt nur global; Überschreibungen werden beim Speichern abgelehnt und beim
-  Auflösen ignoriert (auch bestehende). Ohne Sperre darf jeder Benutzer alles überschreiben – auf einem Team-Server
-  deshalb mindestens Verzeichnis-Freigaben (Container, SSH), Schreib-/Ausführungs-Schalter (z.B. `ssh.allowSudo`,
-  `container.allowExec`) und rein serverseitige Felder (Skill-Datenbank) sperren. Git, Build und Code-Graph nehmen
-  für Benutzer ohnehin nur ihre Projekte (siehe unten).
+  Auflösen ignoriert (auch bestehende).
+* Die Formulare entstehen aus den Modulen, die die Desktop-Apps melden (Tabelle `module_catalog`) – auch aus
+  Plugins. Solange sich keine App verbunden hat, zeigt die Web-UI keine Module.
 
 ### Projekte und Freigaben
 
-* Ein **Projekt** ist ein Verzeichnis auf dem Server mit Eigentümer, optional Beschreibung, Sonar-Projektschlüssel und
+* Ein **Projekt** ist auf dem Server nur Metadaten: Eigentümer, Name, optional Beschreibung, Sonar-Projektschlüssel und
   Ticket-Projekt (Web-UI → *Projekte*; Core-DB `project`, `project_share`).
-* Für angemeldete Benutzer ersetzen ihre Projekte die Verzeichnis-Felder von **Git** (`repositories`), **Build** und
-  **Code-Graph** (`projects`) – globale oder überschriebene Verzeichnisse gelten für sie nicht. Eigene Projekte heißen in
-  den Tools wie angelegt, freigegebene `name@eigentümer`. Das Standardprojekt eines Moduls gilt nur, wenn es eines
-  ihrer Projekte ist. Der Einzelplatz-Betrieb (lokale Runtime) bleibt bei den globalen Verzeichnissen.
+* Das **Verzeichnis** ordnet jeder in seiner Desktop-App zu (Tab *Server* → *Verzeichnis wählen…*). Projekte mit
+  Verzeichnis ergänzen die Verzeichnis-Felder von **Git** (`repositories`), **Build** und **Code-Graph**
+  (`projects`); eigene heißen in den Tools wie angelegt, freigegebene `name@eigentümer`.
 * **Freigaben** vergibt der Eigentümer (oder ein Administrator) je Benutzer: *nur lesen* oder *lesen + schreiben*.
   Nur lesend lehnen `git_create_branch`/`checkout`/`stage`/`unstage`/`commit`, `build_run`/`build_test` (führen Code
   des Projekts aus) und ein nötiger Neuaufbau des Code-Graphen ab (`Workspaces.requireWritable`, Prüfung bei jedem
-  Aufruf). Änderungen an Projekten und Freigaben erreichen verbundene Clients sofort (`tools/list_changed` bzw.
-  nächster Aufruf).
-* **Wo Projekte liegen dürfen:** Administratoren legen überall an, andere Benutzer nur unterhalb der
-  „Erlaubten Projektwurzeln“ (Modul *Projekte*, global; Symlinks werden aufgelöst geprüft). Ohne Wurzeln legen nur
-  Administratoren Projekte an und geben sie frei.
-* `projects_list` zeigt dem LLM die Projekte mit Zugriff, Pfad, erkanntem Git/Gradle/Maven, Sonar-Schlüssel und
-  Ticket-Projekt.
+  Aufruf).
+* `projects_list` zeigt dem LLM die Projekte mit Zugriff, lokalem Verzeichnis, erkanntem Git/Gradle/Maven,
+  Sonar-Schlüssel und Ticket-Projekt.
 
 ### Code-Graph (Java)
 
@@ -377,6 +385,11 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
   Tags, Markdown-Inhalt, dazu Zusatzdateien unter `references/`, `templates/`, `scripts/`, `assets/`.
 * **Historie:** jede Änderung erzeugt eine Revision mit Aktion und Notiz (`skills_history`). Mit
   `expected_revision` lehnt ein Patch ab, wenn der Skill inzwischen woanders geändert wurde.
+* **Zentral auf dem Team-Server:** Ist die Desktop-App mit einem Team-Server verbunden, liegen die Skills dort
+  (`/api/skills/**`, gleicher `SkillService`, Eigentümer ist die Konto-E-Mail, globale Vorlagen verwalten
+  Administratoren). Die Server-Datenbank ist `skills.mv.db` im Server-Verzeichnis bzw.
+  `devtools.skills.datasource.url/username/password` – eine bisher gemeinsam genutzte Skill-Datenbank lässt sich
+  direkt übernehmen. Ohne Server gilt die lokale Ablage unten.
 * **Persistenz:** Spring Data JPA (`SkillRepository`, `SkillRevisionRepository`; Zusatzdateien hängen per Cascade am Skill) auf
   Hibernate ORM 7 und HikariCP, Transaktionen per `@Transactional` im `SkillService`. Standard ist eine lokale
   H2-Datei `~/.devtools-mcp/skills.mv.db`; Schema per `hibernate.hbm2ddl.auto=update`. JDBC-URL, Benutzer, Passwort
@@ -629,17 +642,29 @@ JVM-Einstellungen, `file:`-Repositories. Heruntergeladenes landet in `plugins/.r
 ## Architektur
 
 ```
-DevToolsMcpApplication ── main() → JavaFX
-fx/FxApp                ── init(): Spring-Kontext starten · start(): Fenster + Tray · stop(): Kontext schließen
-core/ToolModule         ── Erweiterungspunkt (SPI)
-core/ToolRegistry       ── Module ⇄ McpSyncServer (addTool/removeTool zur Laufzeit, notifyToolsListChanged)
-core/ManagedToolCallback── Präfix, Protokollierung, Klartext-Ergebnisse
-config/SettingsStore    ── JSON-Persistenz, SecretCipher (AES-GCM)
-server/BearerTokenFilter── optionaler Token-Schutz
-modules/{git,sonar,build,graph,…}
-plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
-plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
-ui/                     ── MainView, ModuleDetailPane, ConfigForm (schema-getrieben), InvocationLogView, PluginsView, Dialoge
+desktop/
+  DevToolsMcpApplication ── main() → JavaFX
+  fx/FxApp                ── init(): Spring-Kontext starten · start(): Fenster + Tray · stop(): Kontext schließen
+  core/ToolModule         ── Erweiterungspunkt (SPI)
+  core/ToolRegistry       ── Module ⇄ McpSyncServer (addTool/removeTool zur Laufzeit, notifyToolsListChanged)
+  core/SettingsResolver   ── wirksame Einstellungen (lokal, ggf. überlagert vom Team-Server)
+  core/ManagedToolCallback── Präfix, Protokollierung, Klartext-Ergebnisse
+  config/SettingsStore    ── JSON-Persistenz, SecretCipher (AES-GCM)
+  server/BearerTokenFilter── optionaler Token-Schutz
+  remote/TeamServer       ── Anbindung an den Team-Server: Katalog melden, Abgleich, Cache, Projekte
+  modules/{git,sonar,build,graph,skills,…}
+  plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
+  plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
+  ui/                     ── MainView, ModuleDetailPane, ConfigForm, InvocationLogView, PluginsView, TeamView, Dialoge
+server/
+  DevToolsServerApplication ── Spring Boot (Jetty) · WildFlyInitializer (WAR)
+  account/ profile/ project/ catalog/ ── Benutzer + Tokens, Profile + Ebenen, Projekte, Modul-Katalog (JdbcClient, Flyway)
+  server/DesktopApi, SkillApi ── REST-API für die Desktop-Apps (Desktop-Token)
+  web/                        ── Vaadin-Web-UI
+shared/
+  api/                    ── DTOs der REST-API
+  core/ConfigField, config/ModuleSettings, profile/Overrides ── Einstellungs-Modell
+  modules/skills/         ── Skill-Ablage (JPA), SkillService, SkillBackend
 ```
 
 MCP-Server: Spring AI `spring-ai-starter-mcp-server-webflux` 2.0.1 (MCP Java SDK 2.0.0), Protokoll `STREAMABLE`.
