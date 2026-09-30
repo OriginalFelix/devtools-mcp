@@ -23,11 +23,11 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
-import systems.grebe.devtools.mcp.account.AccountService;
-import systems.grebe.devtools.mcp.account.AccountService.AccountPrincipal;
-import systems.grebe.devtools.mcp.account.ApiToken;
-import systems.grebe.devtools.mcp.account.TokenService;
-import systems.grebe.devtools.mcp.account.UserAccount;
+import systems.grebe.devtools.mcp.backend.account.AccountService;
+import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
+import systems.grebe.devtools.mcp.backend.account.ApiToken;
+import systems.grebe.devtools.mcp.backend.account.TokenService;
+import systems.grebe.devtools.mcp.backend.account.UserAccount;
 
 /** Eigenes Konto: Name/E-Mail, Passwort und die persönlichen Desktop-Tokens (Anmeldung der Desktop-App). */
 @Route("konto")

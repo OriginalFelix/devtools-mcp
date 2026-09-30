@@ -15,9 +15,9 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
-import systems.grebe.devtools.mcp.account.AccountService.AccountPrincipal;
-import systems.grebe.devtools.mcp.profile.Profile;
-import systems.grebe.devtools.mcp.profile.ProfileService;
+import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
+import systems.grebe.devtools.mcp.backend.profile.Profile;
+import systems.grebe.devtools.mcp.backend.profile.ProfileService;
 
 /** Eigene Profile anlegen, kopieren, umbenennen, löschen und aktivieren. */
 @Route("profile")

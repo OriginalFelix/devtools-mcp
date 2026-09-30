@@ -18,10 +18,10 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.RolesAllowed;
-import systems.grebe.devtools.mcp.account.AccountService;
-import systems.grebe.devtools.mcp.account.AccountService.AccountPrincipal;
-import systems.grebe.devtools.mcp.account.Role;
-import systems.grebe.devtools.mcp.account.UserAccount;
+import systems.grebe.devtools.mcp.backend.account.AccountService;
+import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
+import systems.grebe.devtools.mcp.backend.account.Role;
+import systems.grebe.devtools.mcp.backend.account.UserAccount;
 
 /** Benutzerverwaltung für Administratoren: anlegen, ändern, sperren, Passwort setzen, löschen. */
 @Route("benutzer")

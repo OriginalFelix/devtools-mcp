@@ -1,5 +1,5 @@
 /**
- * REST-API zwischen Desktop-App und Team-Server ({@code /api/**}, Bearer-JWT eines Benutzers). Die Records werden als
- * JSON übertragen; beide Seiten verwenden dieselben Klassen.
+ * GraphQL-API des Backends ({@code /graphql}, Bearer-JWT eines Benutzers). Die Records entsprechen den Typen in
+ * {@code schema.graphqls}; Backend und Desktop-App verwenden dieselben Klassen.
  */
 package systems.grebe.devtools.mcp.api;

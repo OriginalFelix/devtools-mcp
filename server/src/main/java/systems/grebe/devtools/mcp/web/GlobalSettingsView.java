@@ -23,11 +23,11 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import jakarta.annotation.security.RolesAllowed;
 import systems.grebe.devtools.mcp.api.ModuleDescriptor;
-import systems.grebe.devtools.mcp.catalog.ModuleCatalog;
+import systems.grebe.devtools.mcp.backend.catalog.ModuleCatalog;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.profile.Overrides;
-import systems.grebe.devtools.mcp.profile.ProfileService;
+import systems.grebe.devtools.mcp.backend.profile.ProfileService;
 
 /**
  * Globale Vorgaben und Sperren (Administratoren): Was hier vorgegeben ist, gilt in allen Desktop-Apps, soweit Benutzer

@@ -1,19 +1,21 @@
 package systems.grebe.devtools.mcp.api;
 
-import java.util.Map;
+import java.util.List;
 
 /**
- * Vorgaben des Servers für alle Module im aktiven Profil des Benutzers ({@code GET /api/settings}).
+ * Vorgaben des Backends für alle Module im aktiven Profil des Benutzers (Query {@code settings}, Subscription
+ * {@code settingsChanged}).
  *
- * @param modules Modul-ID → Vorgaben; Module ohne Vorgaben fehlen
+ * @param modules Module mit Vorgaben oder Sperren; andere fehlen
  */
-public record SettingsSnapshot(long profileId, String profileName, Map<String, ModuleOverlay> modules) {
+public record SettingsSnapshot(long profileId, String profileName, List<ModuleOverlay> modules) {
 
     public SettingsSnapshot {
-        modules = modules == null ? Map.of() : Map.copyOf(modules);
+        modules = modules == null ? List.of() : List.copyOf(modules);
     }
 
     public ModuleOverlay module(String moduleId) {
-        return modules.getOrDefault(moduleId, ModuleOverlay.NONE);
+        return modules.stream().filter(m -> moduleId.equals(m.moduleId())).findFirst()
+                .orElse(ModuleOverlay.none(moduleId));
     }
 }

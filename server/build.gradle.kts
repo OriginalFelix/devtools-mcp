@@ -4,13 +4,11 @@ plugins {
     id("com.vaadin")
 }
 
-// Team-Server: Web-UI (Vaadin Flow), Anmeldung (Spring Security), REST-API für die Desktop-App per JWT (Nimbus,
-// Version wie in vaadin-dev). Benutzer, Profile, Einstellungen und Projekte liegen in der Core-Datenbank
-// (JdbcClient + Flyway). Kein MCP – Tools laufen nur in der Desktop-App.
+// Team-Server: Backend (GraphQL-API, Benutzer, Profile, Einstellungen, Projekte, Skills) plus Web-UI (Vaadin Flow)
+// mit Formular-Anmeldung (Spring Security). Kein MCP – Tools laufen nur in der Desktop-App.
 dependencies {
-    implementation(project(":shared"))
+    implementation(project(":backend"))
 
-    implementation("org.springframework.boot:spring-boot-starter-webmvc")
     // Eingebetteter Jetty nur im bootJar; das WAR für WildFly lässt ihn weg (siehe warRuntimeClasspath)
     implementation("org.springframework.boot:spring-boot-starter-jetty")
     // Servlet-Kontext von Spring Boot; kommt sonst nur über spring-boot-jetty, das im WAR fehlt
@@ -21,12 +19,11 @@ dependencies {
     implementation("com.vaadin:vaadin-spring-boot-starter")
     developmentOnly("com.vaadin:vaadin-dev")
     implementation("org.springframework.boot:spring-boot-starter-security")
-    implementation("com.nimbusds:nimbus-jose-jwt:10.3.1")
-    implementation("org.springframework.boot:spring-boot-starter-jdbc")
-    implementation("org.springframework.boot:spring-boot-starter-flyway")
-    runtimeOnly("com.h2database:h2")
 
     testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("org.springframework.graphql:spring-graphql-test")
+    testImplementation("org.springframework:spring-webflux") // WebSocketGraphQlClient (Subscriptions)
+    testImplementation("io.projectreactor:reactor-test")
 }
 
 tasks.test {

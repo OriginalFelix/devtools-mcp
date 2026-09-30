@@ -21,12 +21,12 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
-import systems.grebe.devtools.mcp.account.AccountService;
-import systems.grebe.devtools.mcp.account.AccountService.AccountPrincipal;
-import systems.grebe.devtools.mcp.account.Role;
-import systems.grebe.devtools.mcp.account.UserAccount;
-import systems.grebe.devtools.mcp.project.Project;
-import systems.grebe.devtools.mcp.project.ProjectService;
+import systems.grebe.devtools.mcp.backend.account.AccountService;
+import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
+import systems.grebe.devtools.mcp.backend.account.Role;
+import systems.grebe.devtools.mcp.backend.account.UserAccount;
+import systems.grebe.devtools.mcp.backend.project.Project;
+import systems.grebe.devtools.mcp.backend.project.ProjectService;
 
 /** Eigene und freigegebene Projekte; Eigentümer (und Administratoren) legen an, ändern und geben frei. */
 @Route("projekte")

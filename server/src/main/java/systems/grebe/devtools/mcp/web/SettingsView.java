@@ -24,17 +24,17 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
-import systems.grebe.devtools.mcp.account.AccountService;
-import systems.grebe.devtools.mcp.account.AccountService.AccountPrincipal;
-import systems.grebe.devtools.mcp.account.UserAccount;
+import systems.grebe.devtools.mcp.backend.account.AccountService;
+import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
+import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.api.ModuleDescriptor;
 import systems.grebe.devtools.mcp.api.ModuleOverlay;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
-import systems.grebe.devtools.mcp.catalog.ModuleCatalog;
+import systems.grebe.devtools.mcp.backend.catalog.ModuleCatalog;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.profile.Overrides;
-import systems.grebe.devtools.mcp.profile.Profile;
-import systems.grebe.devtools.mcp.profile.ProfileService;
+import systems.grebe.devtools.mcp.backend.profile.Profile;
+import systems.grebe.devtools.mcp.backend.profile.ProfileService;
 
 /**
  * Eigene Einstellungen: je Modul überschreiben, was vom Globalen (bzw. für ein Profil: vom Benutzer) abweichen soll.
@@ -119,7 +119,7 @@ public class SettingsView extends HorizontalLayout {
         // geerbt: für den Benutzer das Globale, für ein Profil Globales + Benutzer
         ModuleOverlay inherited = profiles.overlay(m.id(), t.profile() == null ? null : user.id(), null);
         Overrides current = profiles.overrides(t.level(), levelId, m.id());
-        Set<String> locks = inherited.locked();
+        Set<String> locks = inherited.lockedKeys();
         String inheritedFrom = t.profile() == null ? "global" : "Benutzer/global";
 
         panel.add(new H3(m.displayName()), new Paragraph(m.description()));
@@ -138,7 +138,7 @@ public class SettingsView extends HorizontalLayout {
             boolean fromProjects = ProjectInfo.projectField(m.id(), f.key());
             boolean locked = locks.contains(f.key()) || fromProjects;
             boolean overridden = current.values().containsKey(f.key()) && !locked;
-            String inheritedValue = inherited.values().get(f.key());
+            String inheritedValue = inherited.valueMap().get(f.key());
             ed.setValue(overridden ? current.values().get(f.key()) : inheritedValue);
             ed.setReadOnly(!overridden);
             Checkbox box = new Checkbox("überschreiben", overridden);
@@ -172,11 +172,11 @@ public class SettingsView extends HorizontalLayout {
             Set<String> tools = new TreeSet<>();
             m.tools().forEach(d -> tools.add(d.name()));
             tools.addAll(current.tools().keySet());
-            tools.addAll(inherited.tools().keySet());
+            tools.addAll(inherited.toolMap().keySet());
             boolean toolsLocked = locks.contains(Overrides.TOOLS);
             panel.add(new H3("Tools"));
             for (String tool : tools) {
-                Select<String> s = tristate(tool + " (geerbt: " + label(inherited.tools().get(tool)) + ")",
+                Select<String> s = tristate(tool + " (geerbt: " + label(inherited.toolMap().get(tool)) + ")",
                         current.tools().get(tool));
                 lockHint(s, toolsLocked);
                 toolSelects.put(tool, s);

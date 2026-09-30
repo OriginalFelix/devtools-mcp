@@ -19,10 +19,10 @@ import com.vaadin.flow.router.AfterNavigationObserver;
 import com.vaadin.flow.router.Layout;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
-import systems.grebe.devtools.mcp.account.AccountService.AccountPrincipal;
-import systems.grebe.devtools.mcp.account.Role;
-import systems.grebe.devtools.mcp.profile.Profile;
-import systems.grebe.devtools.mcp.profile.ProfileService;
+import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
+import systems.grebe.devtools.mcp.backend.account.Role;
+import systems.grebe.devtools.mcp.backend.profile.Profile;
+import systems.grebe.devtools.mcp.backend.profile.ProfileService;
 
 /** Rahmen der Web-UI: Navigation links, angemeldeter Benutzer und Abmelden oben. */
 @Layout

@@ -8,7 +8,7 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.router.RouterLink;
 import jakarta.annotation.security.PermitAll;
-import systems.grebe.devtools.mcp.catalog.ModuleCatalog;
+import systems.grebe.devtools.mcp.backend.catalog.ModuleCatalog;
 
 /** Startseite: wie sich eine Desktop-App mit dem Server verbindet. */
 @Route("")
