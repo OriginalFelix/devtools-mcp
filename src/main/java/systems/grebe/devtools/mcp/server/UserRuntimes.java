@@ -19,6 +19,7 @@ import systems.grebe.devtools.mcp.core.McpRuntime;
 import systems.grebe.devtools.mcp.core.ServerInstructions;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.ToolScope;
+import systems.grebe.devtools.mcp.profile.ProfileService;
 
 /**
  * Ein eigener MCP-Server (Streamable HTTP) je angemeldetem Benutzer, lazy beim ersten Request angelegt. Server-Info,
@@ -27,6 +28,9 @@ import systems.grebe.devtools.mcp.core.ToolScope;
  *
  * <p>Wird ein Benutzer geändert (Rolle, gesperrt, gelöscht, E-Mail), schließt die Runtime: seine Clients bekommen
  * „Session unbekannt“, verbinden sich neu und laufen dann mit dem aktuellen Stand – oder bekommen 401.
+ *
+ * <p>Profilwechsel und geänderte Einstellungen bauen dagegen nur die Tools neu auf ({@code tools/list_changed}); die
+ * Client-Sessions bleiben. Beim Profilwechsel wird der Zustand des alten Profils geschlossen (SSH-Sitzungen …).
  */
 @Component
 public class UserRuntimes {
@@ -35,16 +39,21 @@ public class UserRuntimes {
     }
 
     private final ToolRegistry registry;
+    private final ProfileService profiles;
+    private final AccountService accounts;
     private final ServerInstructions instructions;
     private final McpSyncServer localServer;
     private final String endpoint;
     private final Duration requestTimeout;
     private final Map<Long, Entry> entries = new ConcurrentHashMap<>();
 
-    public UserRuntimes(ToolRegistry registry, ServerInstructions instructions, McpSyncServer localServer,
+    public UserRuntimes(ToolRegistry registry, ProfileService profiles, AccountService accounts,
+                        ServerInstructions instructions, McpSyncServer localServer,
                         @Value("${spring.ai.mcp.server.streamable-http.mcp-endpoint:/mcp}") String endpoint,
                         @Value("${spring.ai.mcp.server.request-timeout:15m}") Duration requestTimeout) {
         this.registry = registry;
+        this.profiles = profiles;
+        this.accounts = accounts;
         this.instructions = instructions;
         this.localServer = localServer;
         this.endpoint = endpoint;
@@ -63,9 +72,7 @@ public class UserRuntimes {
     private Entry create(UserAccount user) {
         WebMvcStreamableServerTransportProvider transport = WebMvcStreamableServerTransportProvider.builder()
                 .mcpEndpoint(endpoint).build();
-        ToolScope scope = new ToolScope(scopeId(user.id()), Long.toString(user.id()), user.username(), user.email(),
-                null, user.admin());
-        McpRuntime runtime = registry.runtime(scope, () -> McpServer
+        McpRuntime runtime = registry.runtime(scope(user), () -> McpServer
                 .sync(new LiveInstructionsTransport(transport, instructions::build))
                 .serverInfo(localServer.getServerInfo())
                 .capabilities(localServer.getServerCapabilities())
@@ -74,6 +81,30 @@ public class UserRuntimes {
                 .immediateExecution(true)
                 .build());
         return new Entry(transport, runtime);
+    }
+
+    /** Scope des Benutzers mit seinem aktiven Profil. */
+    ToolScope scope(UserAccount user) {
+        return new ToolScope(scopeId(user.id()), Long.toString(user.id()), user.username(), user.email(),
+                Long.toString(profiles.activeProfile(user.id()).id()), user.admin());
+    }
+
+    /** Anderes Profil aktiv → gleiche Runtime, neuer Scope, Tools neu. */
+    @EventListener
+    public void onProfileSwitched(ProfileService.ProfileSwitchedEvent e) {
+        if (entries.containsKey(e.userId())) {
+            accounts.user(e.userId()).ifPresent(u -> registry.switchScope(scope(u)));
+        }
+    }
+
+    /** Überschreibungen oder Sperren geändert → Tools der betroffenen Runtime(s) neu. */
+    @EventListener
+    public void onSettingsChanged(ProfileService.SettingsChangedEvent e) {
+        if (e.userId() == null) {
+            registry.refreshAllRuntimes();
+        } else {
+            registry.refreshRuntime(scopeId(e.userId()));
+        }
     }
 
     /** Geänderter Benutzer → Runtime schließen; die nächste Anfrage baut sie mit dem neuen Stand neu. */

@@ -222,12 +222,31 @@ java -jar devtools-mcp.jar --headless --server.address=0.0.0.0   # oder DEVTOOLS
   ersten Request einen eigenen MCP-Server (`server/UserRuntimes`, verteilt von `server/McpDispatcherConfig`).
   Zustandsbehaftete Module halten ihren Zustand im `ToolScope` des Benutzers (SSH-Sitzungen, Debugger), das
   Aufrufprotokoll nennt den Benutzer, Skills gehören der E-Mail seines Kontos (ohne E-Mail keine Skill-Tools).
-  Einstellungen der Module gelten vorerst für alle Benutzer (Profile folgen).
 * **Anfragen ohne Token** bekommen die lokale Runtime nur, wenn der Server ausschließlich auf einer Loopback-Adresse
   lauscht und kein Einzelplatz-Token gesetzt ist. Leitet ein Reverse-Proxy auf demselben Rechner an `127.0.0.1`
   weiter, `devtools.mcp.allow-anonymous-local=false` setzen. TLS übernimmt der Reverse-Proxy
   (`server.forward-headers-strategy=native`, damit die Web-UI die öffentliche Adresse anzeigt).
 * Entwicklung der Web-UI mit Hot-Reload: `./gradlew -Pvaadin.productionMode=false bootRun`.
+
+### Profile und Einstellungs-Ebenen
+
+Einstellungen gelten in drei Ebenen **Global → Benutzer → Profil**; jede Ebene speichert nur, was sie überschreibt.
+
+* **Global** sind die Einstellungen aus `settings.json` – dieselben wie in der Desktop-App, im Web unter
+  *Globale Einstellungen* (nur Administratoren). Die lokale Runtime (Einzelplatz) arbeitet nur damit.
+* **Benutzer** („Alle meine Profile“) und **Profil** (z.B. Work, Home) überschreiben einzelne Felder, Modul an/aus
+  und einzelne Tools (*Einstellungen*: je Feld „überschreiben“, sonst geerbt mit Herkunft). Überschriebene Geheimnisse
+  liegen verschlüsselt (`secret.key`) in der Core-Datenbank (`module_override`); die Web-UI schickt Geheimnisse nie
+  an den Browser – leer lassen behält den Wert.
+* **Aktives Profil** wird oben in der Web-UI umgeschaltet (Verwaltung unter *Profile*: anlegen, kopieren samt
+  Überschreibungen, umbenennen, löschen – das letzte bleibt). Jeder Benutzer startet mit „Standard“. Der Wechsel
+  gilt sofort für alle MCP-Clients des Benutzers: gleiche Session, neue Tools (`tools/list_changed`); Zustand des
+  alten Profils (SSH-Sitzungen, Debugger) wird geschlossen.
+* **Sperren:** Administratoren sperren unter *Globale Einstellungen* einzelne Felder, „Modul an/aus“ oder alle
+  Tool-Schalter eines Moduls. Gesperrtes gilt nur global; Überschreibungen werden beim Speichern abgelehnt und beim
+  Auflösen ignoriert (auch bestehende). Ohne Sperre darf jeder Benutzer alles überschreiben – auf einem Team-Server
+  deshalb mindestens Verzeichnis-Freigaben, Schreib-/Ausführungs-Schalter (z.B. `ssh.allowSudo`,
+  `container.allowExec`) und rein serverseitige Felder (Skill-Datenbank) sperren.
 
 ### Code-Graph (Java)
 

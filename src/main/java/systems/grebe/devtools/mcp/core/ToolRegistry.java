@@ -51,9 +51,12 @@ public class ToolRegistry {
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
     private final ObjectProvider<ToolCallListener> callListenerProvider;
     private volatile List<ToolCallListener> callListeners;
+    private final ObjectProvider<SettingsResolver> resolverProvider;
 
     public ToolRegistry(McpSyncServer server, SettingsStore store, ToolInvocationLog invocationLog,
-                        List<ToolModule> modules, ObjectProvider<ToolCallListener> callListeners) {
+                        List<ToolModule> modules, ObjectProvider<ToolCallListener> callListeners,
+                        ObjectProvider<SettingsResolver> resolver) {
+        this.resolverProvider = resolver;
         this.local = new McpRuntime(server, ToolScope.LOCAL, invocationLog);
         this.store = store;
         this.invocationLog = invocationLog;
@@ -122,7 +125,7 @@ public class ToolRegistry {
             }
             created = new McpRuntime(serverFactory.get(), scope, invocationLog);
             for (ModuleState s : states.values()) {
-                created.rebuild(s.module, s.settings, callListeners());
+                created.rebuild(s.module, effective(created.scope(), s), callListeners());
             }
             runtimes.put(scope.id(), created);
         }
@@ -163,6 +166,65 @@ public class ToolRegistry {
         }
         LOG.info("MCP-Runtime {} geschlossen", scopeId);
         return true;
+    }
+
+    /**
+     * Baut alle Tools einer Benutzer-Runtime mit den aktuellen Einstellungen neu (nach Änderungen an Benutzer- oder
+     * Profil-Einstellungen). Clients bekommen {@code tools/list_changed}.
+     */
+    public void refreshRuntime(String scopeId) {
+        synchronized (states) {
+            McpRuntime r = runtimes.get(scopeId);
+            if (r == null) {
+                return;
+            }
+            for (ModuleState s : states.values()) {
+                r.rebuild(s.module, effective(r.scope(), s), callListeners());
+            }
+        }
+        changeListeners.forEach(Runnable::run);
+    }
+
+    /** Alle Benutzer-Runtimes neu aufbauen (z.B. nach geänderten Sperren). */
+    public void refreshAllRuntimes() {
+        List<String> ids;
+        synchronized (states) {
+            ids = List.copyOf(runtimes.keySet());
+        }
+        ids.forEach(this::refreshRuntime);
+    }
+
+    /**
+     * Wechselt den Scope einer bestehenden Benutzer-Runtime (anderes Profil) und baut ihre Tools neu. Gibt es die
+     * Runtime nicht, passiert nichts – sie entsteht beim nächsten Request mit dem dann aktiven Profil.
+     */
+    public void switchScope(ToolScope next) {
+        McpRuntime r;
+        synchronized (states) {
+            r = runtimes.get(next.id());
+        }
+        if (r != null) {
+            r.replaceScope(next);
+            refreshRuntime(next.id());
+        }
+    }
+
+    /** Wirksame Einstellungen eines Moduls für einen Scope (global überlagert von Benutzer/Profil). */
+    public ModuleSettings effectiveSettings(ToolScope scope, String moduleId) {
+        return effective(scope, state(moduleId));
+    }
+
+    private ModuleSettings effective(ToolScope scope, ModuleState s) {
+        if (scope == ToolScope.LOCAL) {
+            return s.settings;
+        }
+        try {
+            return resolverProvider.getIfAvailable(() -> SettingsResolver.GLOBAL_ONLY)
+                    .effective(scope, s.module, s.settings);
+        } catch (RuntimeException e) {
+            LOG.error("Einstellungen von {} für {} nicht auflösbar – nehme die globalen", s.module.id(), scope, e);
+            return s.settings;
+        }
     }
 
     /** Wird für jede neue Benutzer-Runtime aufgerufen (z.B. um Prompts zu registrieren). */
@@ -369,7 +431,7 @@ public class ToolRegistry {
             }
             local.rebuild(s.module, s.settings, callListeners());
             for (McpRuntime r : runtimes.values()) {
-                r.rebuild(s.module, s.settings, callListeners());
+                r.rebuild(s.module, effective(r.scope(), s), callListeners());
             }
         }
         // Kein explizites notifyToolsListChanged(): addTool/removeTool benachrichtigen die Clients bereits selbst

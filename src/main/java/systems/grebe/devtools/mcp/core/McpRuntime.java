@@ -32,7 +32,8 @@ public final class McpRuntime implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(McpRuntime.class);
 
     private final McpSyncServer server;
-    private final ToolScope scope;
+    /** Wechselt mit dem aktiven Profil ({@link #replaceScope}); Aufrufe lesen ihn erst zur Laufzeit. */
+    private volatile ToolScope scope;
     private final ToolInvocationLog invocationLog;
     private final Map<String, ModuleTools> modules = new HashMap<>();
 
@@ -48,6 +49,21 @@ public final class McpRuntime implements AutoCloseable {
 
     public ToolScope scope() {
         return scope;
+    }
+
+    /**
+     * Neuer Scope (z.B. anderes Profil) für denselben Benutzer: Zustand des alten Scopes wird geschlossen (offene
+     * SSH-Sitzungen …); die Tools baut der Aufrufer danach neu. Client-Sessions bleiben bestehen.
+     */
+    public void replaceScope(ToolScope next) {
+        ToolScope previous;
+        synchronized (this) {
+            previous = scope;
+            scope = next;
+        }
+        if (previous != next) {
+            previous.close();
+        }
     }
 
     /** Alle Tools, die das Modul mit seiner Konfiguration anbietet (auch deaktivierte). */
@@ -76,7 +92,8 @@ public final class McpRuntime implements AutoCloseable {
         String error = null;
         try {
             ModuleConfig cfg = ModuleConfig.of(module.configSchema(), settings.values());
-            for (ToolCallback cb : ToolScope.callIn(scope, () -> module.createTools(cfg, scope))) {
+            ToolScope s = scope;
+            for (ToolCallback cb : ToolScope.callIn(s, () -> module.createTools(cfg, s))) {
                 tools.add(new ManagedToolCallback(module.id(), cb, invocationLog, listeners));
             }
         } catch (RuntimeException e) {
@@ -130,7 +147,7 @@ public final class McpRuntime implements AutoCloseable {
     private McpServerFeatures.SyncToolSpecification inScope(McpServerFeatures.SyncToolSpecification spec) {
         BiFunction<McpSyncServerExchange, McpSchema.CallToolRequest, McpSchema.CallToolResult> handler = spec.callHandler();
         return new McpServerFeatures.SyncToolSpecification(spec.tool(),
-                (exchange, request) -> ToolScope.callIn(scope, () -> handler.apply(exchange, request)));
+                (exchange, request) -> ToolScope.callIn(this.scope, () -> handler.apply(exchange, request)));
     }
 
     /** Übernimmt die {@link ToolHints} eines Tools in seine MCP-Definition (Spring AI kennt sie nicht). */
