@@ -19,6 +19,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
+| **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -134,6 +135,23 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
   und lehnt einen geänderten ab; `strict` akzeptiert nur Hosts, die schon in der Datei stehen. *Verbindung testen*
   verbindet sich mit jeder Verbindung und zeigt Server-Version und Fingerprint.
 
+### Maven-Artefakte
+
+Liest aus einem Maven-Repository im Standard-Layout (Standard: Maven Central, sonst Nexus/Artifactory mit optionaler
+Anmeldung) `maven-metadata.xml`, POMs und JARs – ohne lokales `~/.m2` und ohne Maven-Installation.
+
+* `maven_latest_version` sortiert nach Maven-Versionslogik und trennt Releases von Vorabversionen (alpha, beta, RC, M,
+  SNAPSHOT …). Mit `currentVersion` meldet es, wie viele Releases dazwischen liegen und ob der Sprung laut SemVer
+  inkompatibel sein darf (Major bzw. Minor unter 1.0).
+* `maven_artifact_info` wertet das POM samt Parent-Kette aus (Properties, Lizenzen, SCM, dependencyManagement);
+  Versionen aus importierten BOMs bleiben offen.
+* `maven_breaking_changes` vergleicht zwei Versionen dreifach: POM (Java-Ziel, Lizenz, weggefallene transitive
+  Abhängigkeiten, Major-Sprünge von Abhängigkeiten), öffentliche API beider JARs auf Bytecode-Ebene
+  (`java.lang.classfile`, ähnlich japicmp: entfernte Klassen/Methoden/Felder, geänderte Signaturen, final/abstract/static,
+  weggefallene Obertypen, neue abstrakte Methoden und Pflicht-Elemente in Annotations; Methoden, die in eine –
+  auch package-private – Oberklasse wandern, zählen nicht) und die GitHub-Releases dazwischen (Abschnitte und Zeilen mit
+  „Breaking“, „incompatible“, „removed“ …). Änderungen in `internal`/`impl`/`shaded`-Paketen sind standardmäßig
+  ausgeblendet. Ohne GitHub-Token erlaubt GitHub 60 Abfragen pro Stunde.
 ### Ziel-JVMs
 
 Alle Performance-Tools nehmen dieselbe `target`-Angabe:
