@@ -73,6 +73,7 @@ final class BuildRunner {
 
     Result run(String project, List<String> tasks, List<String> args) {
         Path dir = resolve(project);
+        Workspaces.requireWritable(dir); // Build führt Code des Projekts aus und schreibt build/ bzw. target/
         BuildTool tool = BuildTool.detect(dir);
         if (tasks == null || tasks.isEmpty()) {
             throw new IllegalArgumentException("Mindestens ein Task/Goal angeben.");

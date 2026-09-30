@@ -30,7 +30,7 @@ public class GitWriteTools {
             @ToolParam(description = "Name des neuen Branches, z.B. 'feature/login'") String name,
             @ToolParam(required = false, description = "Startrevision; Standard HEAD") String startPoint,
             @ToolParam(required = false, description = "Direkt auschecken (Standard true)") Boolean checkout) {
-        return git.with(repository, (g, root) -> {
+        return git.withWrite(repository, (g, root) -> {
             Repository repo = g.getRepository();
             String start = startPoint == null || startPoint.isBlank() ? "HEAD" : startPoint;
             GitSupport.resolveRev(repo, start);
@@ -48,7 +48,7 @@ public class GitWriteTools {
     public String checkout(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(description = "Branch-Name") String branch) {
-        return git.with(repository, (g, root) -> {
+        return git.withWrite(repository, (g, root) -> {
             g.checkout().setName(branch).call();
             return "Ausgecheckt: " + g.getRepository().getBranch();
         });
@@ -59,7 +59,7 @@ public class GitWriteTools {
     public String stage(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(required = false, description = "Relative Pfade; leer = alles") List<String> paths) {
-        return git.with(repository, (g, root) -> {
+        return git.withWrite(repository, (g, root) -> {
             List<String> rels = paths == null || paths.isEmpty() ? List.of(".")
                     : paths.stream().map(p -> Workspaces.relativePath(root, p)).toList();
             AddCommand add = g.add();
@@ -82,7 +82,7 @@ public class GitWriteTools {
     public String unstage(
             @ToolParam(required = false, description = REPO_PARAM) String repository,
             @ToolParam(required = false, description = "Relative Pfade; leer = alles") List<String> paths) {
-        return git.with(repository, (g, root) -> {
+        return git.withWrite(repository, (g, root) -> {
             ResetCommand reset = g.reset();
             if (paths == null || paths.isEmpty()) {
                 reset.setMode(ResetCommand.ResetType.MIXED);
@@ -103,7 +103,7 @@ public class GitWriteTools {
         if (message == null || message.isBlank()) {
             throw new IllegalArgumentException("Commit-Nachricht darf nicht leer sein.");
         }
-        return git.with(repository, (g, root) -> {
+        return git.withWrite(repository, (g, root) -> {
             Status s = g.status().call();
             boolean staged = !s.getAdded().isEmpty() || !s.getChanged().isEmpty() || !s.getRemoved().isEmpty();
             boolean commitAll = Boolean.TRUE.equals(all);

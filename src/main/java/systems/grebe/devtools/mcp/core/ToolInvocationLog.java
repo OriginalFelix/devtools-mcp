@@ -29,15 +29,17 @@ public class ToolInvocationLog {
 
     public ToolInvocation record(String moduleId, String tool, String args, String result,
                                  Duration duration, boolean success) {
+        ToolScope scope = ToolScope.current();
         ToolInvocation inv = new ToolInvocation(ids.incrementAndGet(), Instant.now(), moduleId, tool,
-                truncate(args), truncate(result), duration, success);
+                truncate(args), truncate(result), duration, success, scope.userId().orElse(null),
+                scope.userName().orElse("lokal"));
         synchronized (entries) {
             entries.addFirst(inv);
             while (entries.size() > CAPACITY) {
                 entries.removeLast();
             }
         }
-        LOG.info("Tool {} {} in {} ms", tool, success ? "OK" : "FEHLER", duration.toMillis());
+        LOG.info("Tool {} {} in {} ms ({})", tool, success ? "OK" : "FEHLER", duration.toMillis(), inv.user());
         for (Consumer<ToolInvocation> l : listeners) {
             try {
                 l.accept(inv);

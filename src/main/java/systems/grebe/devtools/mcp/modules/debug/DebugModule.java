@@ -9,6 +9,7 @@ import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
 
 /** Java-Debugger (JDI) – verbindet sich mit einer per JDWP gestarteten JVM. Nur lesend, keine Ausdrucksauswertung. */
@@ -19,11 +20,9 @@ public class DebugModule implements ToolModule {
     static final String DEPTH = "variableDepth";
 
     private final JavaEnvironmentProvider env;
-    private final DebugSessions sessions;
 
-    public DebugModule(JavaEnvironmentProvider env, DebugSessions sessions) {
+    public DebugModule(JavaEnvironmentProvider env) {
         this.env = env;
-        this.sessions = sessions;
     }
 
     @Override
@@ -67,6 +66,12 @@ public class DebugModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
+        return createTools(config, ToolScope.LOCAL);
+    }
+
+    @Override
+    public List<ToolCallback> createTools(ModuleConfig config, ToolScope scope) {
+        DebugSessions sessions = scope.state("debug.sessions", DebugSessions::new);
         return List.of(ToolCallbacks.from(new DebugTools(env, sessions,
                 Math.max(1, config.getInt(MAX_WAIT, 120)), Math.max(0, Math.min(5, config.getInt(DEPTH, 2))))));
     }

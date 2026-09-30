@@ -53,6 +53,15 @@ public interface ToolModule {
      */
     List<ToolCallback> createTools(ModuleConfig config);
 
+    /**
+     * Erzeugt die Tools für einen bestimmten Benutzer/Profil. Zustand, der zwischen Aufrufen erhalten bleibt (offene
+     * Verbindungen …), gehört in {@link ToolScope#state}, nicht ins Modul. Standard: {@link #createTools(ModuleConfig)}
+     * – Module ohne solchen Zustand (und bestehende Plugins) brauchen nichts zu ändern.
+     */
+    default List<ToolCallback> createTools(ModuleConfig config, ToolScope scope) {
+        return createTools(config);
+    }
+
     /** Prüft die (evtl. noch ungespeicherte) Konfiguration, z.B. Erreichbarkeit eines Servers. */
     default ConnectionTestResult testConnection(ModuleConfig config) {
         return ConnectionTestResult.ok("Für dieses Modul ist keine Verbindungsprüfung vorgesehen.");

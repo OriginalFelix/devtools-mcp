@@ -2,6 +2,7 @@ plugins {
     java
     id("org.springframework.boot") version "4.1.1"
     id("io.spring.dependency-management") version "1.1.7"
+    id("com.vaadin") version "25.2.8"
 }
 
 group = "systems.grebe"
@@ -18,6 +19,7 @@ repositories {
 }
 
 val springAiVersion = "2.0.1"
+val vaadinVersion = "25.2.8"
 val javafxVersion = "25"
 val jgitVersion = "7.6.0.202603022253-r"
 
@@ -33,11 +35,22 @@ val javafxPlatform = when {
 dependencyManagement {
     imports {
         mavenBom("org.springframework.ai:spring-ai-bom:$springAiVersion")
+        mavenBom("com.vaadin:vaadin-bom:$vaadinVersion")
     }
 }
 
 dependencies {
-    implementation("org.springframework.ai:spring-ai-starter-mcp-server-webflux")
+    implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc")
+
+    // Team-Server: Web-UI (Vaadin Flow), Anmeldung (Spring Security), MCP-Zugriff per JWT (Nimbus, Version wie in
+    // vaadin-dev). Benutzer/Tokens liegen in einer eigenen Core-Datenbank (JdbcClient + Flyway), getrennt von den Skills.
+    implementation("com.vaadin:vaadin-spring-boot-starter")
+    developmentOnly("com.vaadin:vaadin-dev")
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("com.nimbusds:nimbus-jose-jwt:10.3.1")
+    implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
+
     implementation("org.eclipse.jgit:org.eclipse.jgit:$jgitVersion")
 
     // Performance/Diagnose: Flame Graphs aus JFR (async-profiler-Konverter) und VisualVM-Engines (Heap, Sampler)
@@ -76,6 +89,7 @@ dependencies {
     }
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.security:spring-security-test")
     // Eingebetteter SSH-/SFTP-Server für die Tests des SSH-Moduls
     testImplementation("org.apache.sshd:sshd-core:2.15.0")
     testImplementation("org.apache.sshd:sshd-sftp:2.15.0")
@@ -90,6 +104,14 @@ tasks.withType<JavaCompile>().configureEach {
 tasks.test {
     useJUnitPlatform()
     systemProperty("java.awt.headless", "true")
+    // vaadin-dev ist nur developmentOnly – ohne diese Angabe suchte Vaadin in Tests den Dev-Server
+    systemProperty("vaadin.productionMode", "true")
+}
+
+// Vaadin im Produktionsmodus bauen (auch für Tests und bootJar): ohne eigenes Frontend nimmt das Plugin das
+// vorkompilierte Bundle, Node wird nicht gebraucht. Entwicklung mit Hot-Reload: -Pvaadin.productionMode=false bootRun
+vaadin {
+    productionMode = (findProperty("vaadin.productionMode") as String?)?.toBoolean() ?: true
 }
 
 springBoot {

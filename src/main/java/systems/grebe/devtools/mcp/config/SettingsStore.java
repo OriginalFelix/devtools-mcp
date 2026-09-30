@@ -93,6 +93,16 @@ public class SettingsStore {
         persist();
     }
 
+    /** Verschlüsselt ein Geheimnis mit dem Schlüssel aus {@code secret.key} (z.B. für Einstellungen in der Datenbank). */
+    public String encrypt(String plain) {
+        return cipher.encrypt(plain);
+    }
+
+    /** Gegenstück zu {@link #encrypt}; nicht verschlüsselte Werte kommen unverändert zurück. */
+    public String decrypt(String stored) {
+        return cipher.decrypt(stored);
+    }
+
     // ---------------------------------------------------------------- Persistenz
 
     private void load() {

@@ -9,14 +9,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
-import io.modelcontextprotocol.spec.McpSchema;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.mcp.McpToolUtils;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.beans.factory.ObjectProvider;
@@ -27,26 +27,37 @@ import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 
 /**
- * Zentrale Verwaltung aller {@link ToolModule}s: hält Konfiguration und Aktivierungsstatus und
- * synchronisiert die am {@link McpSyncServer} registrierten Tools zur Laufzeit. Verbundene Clients werden
- * über {@code notifications/tools/list_changed} informiert.
+ * Zentrale Verwaltung aller {@link ToolModule}s: hält Konfiguration und Aktivierungsstatus und lässt die
+ * {@link McpRuntime}s ihre Tools danach neu aufbauen. Verbundene Clients werden über
+ * {@code notifications/tools/list_changed} informiert.
+ *
+ * <p>Die lokale Runtime ({@link ToolScope#LOCAL}) hängt am automatisch konfigurierten {@link McpSyncServer}; Abfragen
+ * wie {@link #isToolActive} beziehen sich auf sie. Jeder per Token angemeldete Benutzer bekommt über
+ * {@link #runtime} eine eigene Runtime mit eigenem Server – MCP kennt nur eine Tool-Liste je Server. Änderungen an
+ * Modulen gelten für alle Runtimes.
  */
 @Service
 public class ToolRegistry {
 
     private static final Logger LOG = LoggerFactory.getLogger(ToolRegistry.class);
 
-    private final McpSyncServer server;
+    private final McpRuntime local;
+    /** Runtimes der Benutzer, Schlüssel = {@link ToolScope#id()}; Zugriff unter {@code states}. */
+    private final Map<String, McpRuntime> runtimes = new LinkedHashMap<>();
+    private final List<Consumer<McpRuntime>> runtimeListeners = new CopyOnWriteArrayList<>();
     private final SettingsStore store;
     private final ToolInvocationLog invocationLog;
     private final Map<String, ModuleState> states = new LinkedHashMap<>();
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
     private final ObjectProvider<ToolCallListener> callListenerProvider;
     private volatile List<ToolCallListener> callListeners;
+    private final ObjectProvider<SettingsResolver> resolverProvider;
 
     public ToolRegistry(McpSyncServer server, SettingsStore store, ToolInvocationLog invocationLog,
-                        List<ToolModule> modules, ObjectProvider<ToolCallListener> callListeners) {
-        this.server = server;
+                        List<ToolModule> modules, ObjectProvider<ToolCallListener> callListeners,
+                        ObjectProvider<SettingsResolver> resolver) {
+        this.resolverProvider = resolver;
+        this.local = new McpRuntime(server, ToolScope.LOCAL, invocationLog);
         this.store = store;
         this.invocationLog = invocationLog;
         // Lazy: Listener dürfen ihrerseits die Registry brauchen (ObjectProvider), ohne Zirkelbezug beim Start.
@@ -80,6 +91,145 @@ public class ToolRegistry {
         }
         ids.forEach(this::rebuild);
         LOG.info("MCP-Tools registriert: {} aktiv", activeToolCount());
+    }
+
+    /** Schließt beim Beenden den Zustand der Module (offene SSH-Sitzungen, Debugger …). */
+    @PreDestroy
+    public void close() {
+        List<McpRuntime> all;
+        synchronized (states) {
+            all = new ArrayList<>(runtimes.values());
+            runtimes.clear();
+        }
+        all.forEach(McpRuntime::close);
+        local.close();
+    }
+
+    // ------------------------------------------------------------------ Runtimes
+
+    /** Die Runtime des Einzelplatz-Betriebs (Server der Autokonfiguration). */
+    public McpRuntime localRuntime() {
+        return local;
+    }
+
+    /**
+     * Runtime für einen Scope; beim ersten Aufruf mit einem Server aus {@code serverFactory} angelegt und mit den
+     * Tools aller Module bestückt.
+     */
+    public McpRuntime runtime(ToolScope scope, Supplier<McpSyncServer> serverFactory) {
+        McpRuntime created;
+        synchronized (states) {
+            McpRuntime existing = runtimes.get(scope.id());
+            if (existing != null) {
+                return existing;
+            }
+            created = new McpRuntime(serverFactory.get(), scope, invocationLog);
+            for (ModuleState s : states.values()) {
+                created.rebuild(s.module, effective(created.scope(), s), callListeners());
+            }
+            runtimes.put(scope.id(), created);
+        }
+        LOG.info("MCP-Runtime {} gestartet: {} Tools", scope, created.activeToolNames().size());
+        runtimeListeners.forEach(l -> l.accept(created));
+        return created;
+    }
+
+    /** Alle Runtimes, die lokale zuerst. */
+    public List<McpRuntime> runtimes() {
+        synchronized (states) {
+            List<McpRuntime> all = new ArrayList<>();
+            all.add(local);
+            all.addAll(runtimes.values());
+            return all;
+        }
+    }
+
+    /**
+     * Schließt die Runtime (Zustand der Module, offene Client-Sessions). Clients bekommen danach „Session unbekannt“
+     * und verbinden sich neu – mit dann gültigen Rechten.
+     *
+     * @return ob es eine solche Runtime gab
+     */
+    public boolean closeRuntime(String scopeId) {
+        McpRuntime r;
+        synchronized (states) {
+            r = runtimes.remove(scopeId);
+        }
+        if (r == null) {
+            return false;
+        }
+        r.close();
+        try {
+            r.server().closeGracefully();
+        } catch (RuntimeException e) {
+            LOG.debug("MCP-Server von {} nicht sauber geschlossen", scopeId, e);
+        }
+        LOG.info("MCP-Runtime {} geschlossen", scopeId);
+        return true;
+    }
+
+    /**
+     * Baut alle Tools einer Benutzer-Runtime mit den aktuellen Einstellungen neu (nach Änderungen an Benutzer- oder
+     * Profil-Einstellungen). Clients bekommen {@code tools/list_changed}.
+     */
+    public void refreshRuntime(String scopeId) {
+        synchronized (states) {
+            McpRuntime r = runtimes.get(scopeId);
+            if (r == null) {
+                return;
+            }
+            for (ModuleState s : states.values()) {
+                r.rebuild(s.module, effective(r.scope(), s), callListeners());
+            }
+        }
+        changeListeners.forEach(Runnable::run);
+    }
+
+    /** Alle Benutzer-Runtimes neu aufbauen (z.B. nach geänderten Sperren). */
+    public void refreshAllRuntimes() {
+        List<String> ids;
+        synchronized (states) {
+            ids = List.copyOf(runtimes.keySet());
+        }
+        ids.forEach(this::refreshRuntime);
+    }
+
+    /**
+     * Wechselt den Scope einer bestehenden Benutzer-Runtime (anderes Profil) und baut ihre Tools neu. Gibt es die
+     * Runtime nicht, passiert nichts – sie entsteht beim nächsten Request mit dem dann aktiven Profil.
+     */
+    public void switchScope(ToolScope next) {
+        McpRuntime r;
+        synchronized (states) {
+            r = runtimes.get(next.id());
+        }
+        if (r != null) {
+            r.replaceScope(next);
+            refreshRuntime(next.id());
+        }
+    }
+
+    /** Wirksame Einstellungen eines Moduls für einen Scope (global überlagert von Benutzer/Profil). */
+    public ModuleSettings effectiveSettings(ToolScope scope, String moduleId) {
+        return effective(scope, state(moduleId));
+    }
+
+    private ModuleSettings effective(ToolScope scope, ModuleState s) {
+        if (scope == ToolScope.LOCAL) {
+            return s.settings;
+        }
+        try {
+            return resolverProvider.getIfAvailable(() -> SettingsResolver.GLOBAL_ONLY)
+                    .effective(scope, s.module, s.settings);
+        } catch (RuntimeException e) {
+            LOG.error("Einstellungen von {} für {} nicht auflösbar – nehme die globalen", s.module.id(), scope, e);
+            return s.settings;
+        }
+    }
+
+    /** Wird für jede neue Benutzer-Runtime aufgerufen (z.B. um Prompts zu registrieren). */
+    public void addRuntimeListener(Consumer<McpRuntime> listener) {
+        runtimeListeners.add(listener);
     }
 
     // ------------------------------------------------------------------ Lesen
@@ -124,18 +274,11 @@ public class ToolRegistry {
     /** Entfernt ein zur Laufzeit aufgenommenes Modul samt seiner Tools. Gespeicherte Einstellungen bleiben erhalten. */
     public void unregister(String moduleId) {
         synchronized (states) {
-            ModuleState s = states.remove(moduleId);
-            if (s == null) {
+            if (states.remove(moduleId) == null) {
                 return;
             }
-            for (String name : s.registered) {
-                try {
-                    server.removeTool(name);
-                } catch (RuntimeException e) {
-                    LOG.debug("Tool {} war nicht registriert", name);
-                }
-            }
-            s.registered = new LinkedHashSet<>();
+            local.remove(moduleId);
+            runtimes.values().forEach(r -> r.remove(moduleId));
         }
         LOG.info("Modul {} entfernt", moduleId);
         changeListeners.forEach(Runnable::run);
@@ -152,28 +295,27 @@ public class ToolRegistry {
 
     /** Alle Tools, die das Modul mit der aktuellen Konfiguration anbietet (auch deaktivierte). */
     public List<ToolDefinition> availableTools(String moduleId) {
-        return state(moduleId).tools.stream().map(ToolCallback::getToolDefinition).toList();
+        state(moduleId);
+        return local.tools(moduleId).stream().map(ToolCallback::getToolDefinition).toList();
     }
 
     /** Fehler beim Erzeugen der Tools, falls vorhanden. */
     public Optional<String> moduleError(String moduleId) {
-        return Optional.ofNullable(state(moduleId).error);
+        state(moduleId);
+        return local.error(moduleId);
     }
 
     public boolean isToolActive(String moduleId, String toolName) {
-        return state(moduleId).registered.contains(toolName);
+        state(moduleId);
+        return local.isActive(moduleId, toolName);
     }
 
     public int activeToolCount() {
-        synchronized (states) {
-            return states.values().stream().mapToInt(s -> s.registered.size()).sum();
-        }
+        return activeToolNames().size();
     }
 
     public List<String> activeToolNames() {
-        synchronized (states) {
-            return states.values().stream().flatMap(s -> s.registered.stream()).sorted().toList();
-        }
+        return local.activeToolNames();
     }
 
     // ------------------------------------------------------------------ Ändern
@@ -287,59 +429,14 @@ public class ToolRegistry {
             if (states.get(moduleId) != s) {
                 return; // inzwischen entfernt (Plugin deaktiviert) – keine Tools eines alten Moduls registrieren
             }
-            List<ManagedToolCallback> tools = new ArrayList<>();
-            String error = null;
-            try {
-                ModuleConfig cfg = ModuleConfig.of(s.module.configSchema(), s.settings.values());
-                for (ToolCallback cb : s.module.createTools(cfg)) {
-                    tools.add(new ManagedToolCallback(s.module.id(), cb, invocationLog, callListeners()));
-                }
-            } catch (RuntimeException e) {
-                LOG.error("Tools für Modul {} konnten nicht erzeugt werden", moduleId, e);
-                error = ManagedToolCallback.describe(e);
-            }
-            s.tools = tools;
-            s.error = error;
-
-            for (String name : s.registered) {
-                try {
-                    server.removeTool(name);
-                } catch (RuntimeException e) {
-                    LOG.debug("Tool {} war nicht registriert", name);
-                }
-            }
-            s.registered = new LinkedHashSet<>();
-            if (s.settings.enabled()) {
-                for (ManagedToolCallback cb : tools) {
-                    String name = cb.getToolDefinition().name();
-                    if (s.settings.disabledTools().contains(name)) {
-                        continue;
-                    }
-                    try {
-                        server.addTool(ToolProgress.wrap(withAnnotations(McpToolUtils.toSyncToolSpecification(cb),
-                                ToolBeans.annotations(cb))));
-                        s.registered.add(name);
-                    } catch (RuntimeException e) {
-                        LOG.error("Tool {} konnte nicht registriert werden", name, e);
-                    }
-                }
+            local.rebuild(s.module, s.settings, callListeners());
+            for (McpRuntime r : runtimes.values()) {
+                r.rebuild(s.module, effective(r.scope(), s), callListeners());
             }
         }
         // Kein explizites notifyToolsListChanged(): addTool/removeTool benachrichtigen die Clients bereits selbst
         // (spring.ai.mcp.server.tool-change-notification=true).
         changeListeners.forEach(Runnable::run);
-    }
-
-    /** Übernimmt die {@link ToolHints} eines Tools in seine MCP-Definition (Spring AI kennt sie nicht). */
-    static McpServerFeatures.SyncToolSpecification withAnnotations(McpServerFeatures.SyncToolSpecification spec,
-                                                                   McpSchema.ToolAnnotations annotations) {
-        if (annotations == null) {
-            return spec;
-        }
-        McpSchema.Tool t = spec.tool();
-        McpSchema.Tool tool = new McpSchema.Tool(t.name(), t.title(), t.description(), t.inputSchema(),
-                t.outputSchema(), annotations, t.meta(), t.icons());
-        return new McpServerFeatures.SyncToolSpecification(tool, spec.callHandler());
     }
 
     private List<ToolCallListener> callListeners() {
@@ -364,9 +461,6 @@ public class ToolRegistry {
     private static final class ModuleState {
         final ToolModule module;
         ModuleSettings settings;
-        List<ManagedToolCallback> tools = List.of();
-        Set<String> registered = new LinkedHashSet<>();
-        String error;
 
         ModuleState(ToolModule module, ModuleSettings settings) {
             this.module = module;

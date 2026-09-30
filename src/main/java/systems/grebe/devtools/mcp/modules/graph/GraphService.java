@@ -181,6 +181,7 @@ final class GraphService {
                     }
                 }
             }
+            Workspaces.requireWritable(root); // nur lesend freigegeben: vorhandenen Graphen nutzen, nicht neu bauen
             GraphFile data = builder.build(sources, key.project(), progress)
                     .withBranch(current, git == null ? null : git.commit());
             sources.clear();

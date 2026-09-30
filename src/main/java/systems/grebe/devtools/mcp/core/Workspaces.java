@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -25,9 +27,23 @@ public final class Workspaces {
     private final Map<String, Path> byName = new LinkedHashMap<>();
     private final String kind;
 
+    /**
+     * Benannter Eintrag {@code name=pfad} (so übergibt die Projektverwaltung freigegebene Projekte); der Name darf
+     * weder Pfadtrenner noch Doppelpunkt enthalten, damit Pfade wie {@code C:/x=y} oder {@code /srv/a=b} nicht als
+     * Name gelesen werden.
+     */
+    private static final Pattern NAMED = Pattern.compile("([A-Za-z0-9._@ -]+)=(.+)");
+
     public Workspaces(List<String> configured, Predicate<Path> marker, String kind) {
         this.kind = kind;
-        for (String entry : configured) {
+        for (String raw : configured) {
+            String entry = raw;
+            String name = null;
+            Matcher named = NAMED.matcher(raw.strip());
+            if (named.matches()) {
+                name = named.group(1).strip();
+                entry = named.group(2).strip();
+            }
             Path dir;
             try {
                 dir = Path.of(entry).toAbsolutePath().normalize();
@@ -38,7 +54,11 @@ public final class Workspaces {
                 continue;
             }
             if (marker.test(dir)) {
-                add(dir);
+                if (name != null) {
+                    byName.putIfAbsent(name, dir);
+                } else {
+                    add(dir);
+                }
             } else {
                 try (Stream<Path> children = Files.list(dir)) {
                     children.filter(Files::isDirectory).filter(marker)
@@ -102,6 +122,18 @@ public final class Workspaces {
             // kein Pfad
         }
         throw new IllegalArgumentException("'" + wanted + "' ist nicht freigegeben. Verfügbar: " + byName.keySet());
+    }
+
+    /**
+     * Wirft, wenn der aktuelle Benutzer in diesem Arbeitsverzeichnis nicht schreiben darf (Projekt nur lesend
+     * freigegeben). Aufzurufen vor allem, was das Verzeichnis ändert oder Code daraus ausführt.
+     */
+    public static void requireWritable(Path root) {
+        if (!ToolScope.current().canWrite(root)) {
+            throw new IllegalStateException("'" + root.getFileName() + "' ist für dich nur lesend freigegeben – "
+                    + "schreibende Aktionen (Commit, Build, Graph-Aufbau …) sind nicht erlaubt. Der Eigentümer kann "
+                    + "die Freigabe in der Web-UI unter „Projekte“ auf Schreiben ändern.");
+        }
     }
 
     /** Prüft einen relativen Pfad innerhalb eines Arbeitsverzeichnisses und liefert ihn mit '/' getrennt. */

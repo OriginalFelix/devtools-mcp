@@ -18,6 +18,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
 | **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
+| **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte mit Zugriff, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -180,7 +181,8 @@ der Schlüssel liegt in `secret.key` daneben.
 
 ### Sicherheit
 
-* Nur `127.0.0.1`; optional zusätzlich Bearer-Token.
+* Standard nur `127.0.0.1`; Clients auf demselben Rechner ohne Token (Einzelplatz) oder mit dem Zugriffstoken aus
+  den Einstellungen. Team-Server: persönliche JWT je Benutzer (siehe unten).
 * Git/Build arbeiten ausschließlich in den freigegebenen Verzeichnissen; Pfade außerhalb werden abgewiesen.
 * Build: nur freigegebene Tasks/Goals, Argumente werden gegen eine Zeichen-Whitelist geprüft (kein Shell-Injection
   über `cmd.exe`), ein Build pro Projekt gleichzeitig, Timeout.
@@ -197,6 +199,75 @@ der Schlüssel liegt in `secret.key` daneben.
 * SSH: Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; Host-Key-Prüfung gegen eine eigene
   known_hosts-Datei (geänderte Schlüssel werden immer abgelehnt). `ssh_exec` läuft mit den vollen Rechten des
   hinterlegten Benutzers – dafür einen eingeschränkten Benutzer anlegen oder den Schalter abschalten.
+
+### Team-Server: Benutzer und Zugriffstokens
+
+Neben der Desktop-App läuft der Server auch ohne Oberfläche, mit Web-UI (Vaadin Flow) unter derselben Adresse:
+
+```bash
+java -jar devtools-mcp.jar --headless --server.address=0.0.0.0   # oder DEVTOOLS_MCP_HEADLESS=true
+```
+
+* **Benutzer** (Rolle Administrator/Benutzer) liegen in der Core-Datenbank `core.mv.db` neben `settings.json`
+  (H2, Schema per Flyway aus `db/core`; andere Datenbank über `devtools.core.datasource.url/username/password`).
+  Beim ersten Start wird `admin` angelegt – Passwort aus `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig
+  im Log. Der letzte aktive Administrator lässt sich weder sperren, herabstufen noch löschen.
+* **Passwörter:** PBKDF2 mit HMAC-SHA3-512, 16 Byte Zufalls-Salt, 210.000 Iterationen
+  (`pbkdf2-sha3-512$<iterationen>$<salt>$<hash>`); wird die Iterationszahl angehoben, rechnet die nächste Anmeldung
+  den Hash neu.
+* **MCP-Zugriffstokens:** Jeder Benutzer erzeugt unter *Mein Konto* persönliche Tokens (JWT, HS512, Schlüssel
+  `jwt.key`; Gültigkeit 30/90/365 Tage oder unbegrenzt). Das Token wird nur einmal angezeigt, gespeichert wird nur
+  seine ID; Widerruf, Sperren oder Löschen des Benutzers wirken sofort. Client-Konfiguration z.B.
+  `claude mcp add --transport http devtools https://<host>/mcp --header "Authorization: Bearer <token>"`.
+* **Eigene Runtime je Benutzer:** MCP kennt nur eine Tool-Liste je Server – deshalb bekommt jeder Benutzer beim
+  ersten Request einen eigenen MCP-Server (`server/UserRuntimes`, verteilt von `server/McpDispatcherConfig`).
+  Zustandsbehaftete Module halten ihren Zustand im `ToolScope` des Benutzers (SSH-Sitzungen, Debugger), das
+  Aufrufprotokoll nennt den Benutzer, Skills gehören der E-Mail seines Kontos (ohne E-Mail keine Skill-Tools).
+* **Anfragen ohne Token** bekommen die lokale Runtime nur, wenn der Server ausschließlich auf einer Loopback-Adresse
+  lauscht und kein Einzelplatz-Token gesetzt ist. Leitet ein Reverse-Proxy auf demselben Rechner an `127.0.0.1`
+  weiter, `devtools.mcp.allow-anonymous-local=false` setzen. TLS übernimmt der Reverse-Proxy
+  (`server.forward-headers-strategy=native`, damit die Web-UI die öffentliche Adresse anzeigt).
+* Entwicklung der Web-UI mit Hot-Reload: `./gradlew -Pvaadin.productionMode=false bootRun`.
+
+### Profile und Einstellungs-Ebenen
+
+Einstellungen gelten in drei Ebenen **Global → Benutzer → Profil**; jede Ebene speichert nur, was sie überschreibt.
+
+* **Global** sind die Einstellungen aus `settings.json` – dieselben wie in der Desktop-App, im Web unter
+  *Globale Einstellungen* (nur Administratoren). Die lokale Runtime (Einzelplatz) arbeitet nur damit.
+* **Benutzer** („Alle meine Profile“) und **Profil** (z.B. Work, Home) überschreiben einzelne Felder, Modul an/aus
+  und einzelne Tools (*Einstellungen*: je Feld „überschreiben“, sonst geerbt mit Herkunft). Überschriebene Geheimnisse
+  liegen verschlüsselt (`secret.key`) in der Core-Datenbank (`module_override`); die Web-UI schickt Geheimnisse nie
+  an den Browser – leer lassen behält den Wert.
+* **Aktives Profil** wird oben in der Web-UI umgeschaltet (Verwaltung unter *Profile*: anlegen, kopieren samt
+  Überschreibungen, umbenennen, löschen – das letzte bleibt). Jeder Benutzer startet mit „Standard“. Der Wechsel
+  gilt sofort für alle MCP-Clients des Benutzers: gleiche Session, neue Tools (`tools/list_changed`); Zustand des
+  alten Profils (SSH-Sitzungen, Debugger) wird geschlossen.
+* **Sperren:** Administratoren sperren unter *Globale Einstellungen* einzelne Felder, „Modul an/aus“ oder alle
+  Tool-Schalter eines Moduls. Gesperrtes gilt nur global; Überschreibungen werden beim Speichern abgelehnt und beim
+  Auflösen ignoriert (auch bestehende). Ohne Sperre darf jeder Benutzer alles überschreiben – auf einem Team-Server
+  deshalb mindestens Verzeichnis-Freigaben (Container, SSH), Schreib-/Ausführungs-Schalter (z.B. `ssh.allowSudo`,
+  `container.allowExec`) und rein serverseitige Felder (Skill-Datenbank) sperren. Git, Build und Code-Graph nehmen
+  für Benutzer ohnehin nur ihre Projekte (siehe unten).
+
+### Projekte und Freigaben
+
+* Ein **Projekt** ist ein Verzeichnis auf dem Server mit Eigentümer, optional Beschreibung, Sonar-Projektschlüssel und
+  Ticket-Projekt (Web-UI → *Projekte*; Core-DB `project`, `project_share`).
+* Für angemeldete Benutzer ersetzen ihre Projekte die Verzeichnis-Felder von **Git** (`repositories`), **Build** und
+  **Code-Graph** (`projects`) – globale oder überschriebene Verzeichnisse gelten für sie nicht. Eigene Projekte heißen in
+  den Tools wie angelegt, freigegebene `name@eigentümer`. Das Standardprojekt eines Moduls gilt nur, wenn es eines
+  ihrer Projekte ist. Der Einzelplatz-Betrieb (lokale Runtime) bleibt bei den globalen Verzeichnissen.
+* **Freigaben** vergibt der Eigentümer (oder ein Administrator) je Benutzer: *nur lesen* oder *lesen + schreiben*.
+  Nur lesend lehnen `git_create_branch`/`checkout`/`stage`/`unstage`/`commit`, `build_run`/`build_test` (führen Code
+  des Projekts aus) und ein nötiger Neuaufbau des Code-Graphen ab (`Workspaces.requireWritable`, Prüfung bei jedem
+  Aufruf). Änderungen an Projekten und Freigaben erreichen verbundene Clients sofort (`tools/list_changed` bzw.
+  nächster Aufruf).
+* **Wo Projekte liegen dürfen:** Administratoren legen überall an, andere Benutzer nur unterhalb der
+  „Erlaubten Projektwurzeln“ (Modul *Projekte*, global; Symlinks werden aufgelöst geprüft). Ohne Wurzeln legen nur
+  Administratoren Projekte an und geben sie frei.
+* `projects_list` zeigt dem LLM die Projekte mit Zugriff, Pfad, erkanntem Git/Gradle/Maven, Sonar-Schlüssel und
+  Ticket-Projekt.
 
 ### Code-Graph (Java)
 
