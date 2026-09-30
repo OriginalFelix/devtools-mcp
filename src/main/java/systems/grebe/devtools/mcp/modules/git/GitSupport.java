@@ -69,6 +69,12 @@ final class GitSupport {
         }
     }
 
+    /** Wie {@link #with}, aber nur, wenn der Benutzer im Repository schreiben darf. */
+    <T> T withWrite(String repo, GitAction<T> action) {
+        Workspaces.requireWritable(resolve(repo));
+        return with(repo, action);
+    }
+
     static ObjectId resolveRev(Repository repository, String rev) throws IOException {
         String r = rev == null || rev.isBlank() ? "HEAD" : rev.trim();
         ObjectId id = repository.resolve(r);

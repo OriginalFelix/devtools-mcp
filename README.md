@@ -18,6 +18,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
 | **Tickets** (Jira, GitHub, GitLab; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
+| **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte mit Zugriff, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -245,8 +246,28 @@ Einstellungen gelten in drei Ebenen **Global → Benutzer → Profil**; jede Ebe
 * **Sperren:** Administratoren sperren unter *Globale Einstellungen* einzelne Felder, „Modul an/aus“ oder alle
   Tool-Schalter eines Moduls. Gesperrtes gilt nur global; Überschreibungen werden beim Speichern abgelehnt und beim
   Auflösen ignoriert (auch bestehende). Ohne Sperre darf jeder Benutzer alles überschreiben – auf einem Team-Server
-  deshalb mindestens Verzeichnis-Freigaben, Schreib-/Ausführungs-Schalter (z.B. `ssh.allowSudo`,
-  `container.allowExec`) und rein serverseitige Felder (Skill-Datenbank) sperren.
+  deshalb mindestens Verzeichnis-Freigaben (Container, SSH), Schreib-/Ausführungs-Schalter (z.B. `ssh.allowSudo`,
+  `container.allowExec`) und rein serverseitige Felder (Skill-Datenbank) sperren. Git, Build und Code-Graph nehmen
+  für Benutzer ohnehin nur ihre Projekte (siehe unten).
+
+### Projekte und Freigaben
+
+* Ein **Projekt** ist ein Verzeichnis auf dem Server mit Eigentümer, optional Beschreibung, Sonar-Projektschlüssel und
+  Ticket-Projekt (Web-UI → *Projekte*; Core-DB `project`, `project_share`).
+* Für angemeldete Benutzer ersetzen ihre Projekte die Verzeichnis-Felder von **Git** (`repositories`), **Build** und
+  **Code-Graph** (`projects`) – globale oder überschriebene Verzeichnisse gelten für sie nicht. Eigene Projekte heißen in
+  den Tools wie angelegt, freigegebene `name@eigentümer`. Das Standardprojekt eines Moduls gilt nur, wenn es eines
+  ihrer Projekte ist. Der Einzelplatz-Betrieb (lokale Runtime) bleibt bei den globalen Verzeichnissen.
+* **Freigaben** vergibt der Eigentümer (oder ein Administrator) je Benutzer: *nur lesen* oder *lesen + schreiben*.
+  Nur lesend lehnen `git_create_branch`/`checkout`/`stage`/`unstage`/`commit`, `build_run`/`build_test` (führen Code
+  des Projekts aus) und ein nötiger Neuaufbau des Code-Graphen ab (`Workspaces.requireWritable`, Prüfung bei jedem
+  Aufruf). Änderungen an Projekten und Freigaben erreichen verbundene Clients sofort (`tools/list_changed` bzw.
+  nächster Aufruf).
+* **Wo Projekte liegen dürfen:** Administratoren legen überall an, andere Benutzer nur unterhalb der
+  „Erlaubten Projektwurzeln“ (Modul *Projekte*, global; Symlinks werden aufgelöst geprüft). Ohne Wurzeln legen nur
+  Administratoren Projekte an und geben sie frei.
+* `projects_list` zeigt dem LLM die Projekte mit Zugriff, Pfad, erkanntem Git/Gradle/Maven, Sonar-Schlüssel und
+  Ticket-Projekt.
 
 ### Code-Graph (Java)
 

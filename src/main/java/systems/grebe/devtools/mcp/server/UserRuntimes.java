@@ -20,6 +20,7 @@ import systems.grebe.devtools.mcp.core.ServerInstructions;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.profile.ProfileService;
+import systems.grebe.devtools.mcp.project.ProjectService;
 
 /**
  * Ein eigener MCP-Server (Streamable HTTP) je angemeldetem Benutzer, lazy beim ersten Request angelegt. Server-Info,
@@ -40,6 +41,7 @@ public class UserRuntimes {
 
     private final ToolRegistry registry;
     private final ProfileService profiles;
+    private final ProjectService projects;
     private final AccountService accounts;
     private final ServerInstructions instructions;
     private final McpSyncServer localServer;
@@ -47,12 +49,14 @@ public class UserRuntimes {
     private final Duration requestTimeout;
     private final Map<Long, Entry> entries = new ConcurrentHashMap<>();
 
-    public UserRuntimes(ToolRegistry registry, ProfileService profiles, AccountService accounts,
+    public UserRuntimes(ToolRegistry registry, ProfileService profiles, ProjectService projects,
+                        AccountService accounts,
                         ServerInstructions instructions, McpSyncServer localServer,
                         @Value("${spring.ai.mcp.server.streamable-http.mcp-endpoint:/mcp}") String endpoint,
                         @Value("${spring.ai.mcp.server.request-timeout:15m}") Duration requestTimeout) {
         this.registry = registry;
         this.profiles = profiles;
+        this.projects = projects;
         this.accounts = accounts;
         this.instructions = instructions;
         this.localServer = localServer;
@@ -86,7 +90,8 @@ public class UserRuntimes {
     /** Scope des Benutzers mit seinem aktiven Profil. */
     ToolScope scope(UserAccount user) {
         return new ToolScope(scopeId(user.id()), Long.toString(user.id()), user.username(), user.email(),
-                Long.toString(profiles.activeProfile(user.id()).id()), user.admin());
+                Long.toString(profiles.activeProfile(user.id()).id()), user.admin(),
+                root -> projects.canWrite(user.id(), root));
     }
 
     /** Anderes Profil aktiv → gleiche Runtime, neuer Scope, Tools neu. */
@@ -107,10 +112,20 @@ public class UserRuntimes {
         }
     }
 
-    /** Geänderter Benutzer → Runtime schließen; die nächste Anfrage baut sie mit dem neuen Stand neu. */
+    /** Projekte oder Freigaben geändert → Projektlisten der betroffenen Benutzer neu. */
+    @EventListener
+    public void onProjectsChanged(ProjectService.ProjectsChangedEvent e) {
+        e.userIds().forEach(id -> registry.refreshRuntime(scopeId(id)));
+    }
+
+    /**
+     * Geänderter Benutzer → Runtime schließen; die nächste Anfrage baut sie mit dem neuen Stand neu. Die übrigen
+     * Runtimes bauen neu auf, weil mit einem gelöschten Benutzer auch seine Projekte samt Freigaben verschwinden.
+     */
     @EventListener
     public void onAccountChanged(AccountService.AccountChangedEvent e) {
         close(e.userId());
+        registry.refreshAllRuntimes();
     }
 
     public void close(long userId) {

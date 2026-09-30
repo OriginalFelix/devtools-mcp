@@ -29,6 +29,8 @@ import systems.grebe.devtools.mcp.account.UserAccount;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.project.Project;
+import systems.grebe.devtools.mcp.project.ProjectService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -65,6 +67,9 @@ class MultiUserMcpIntegrationTest {
 
     @Autowired
     ToolInvocationLog log;
+
+    @Autowired
+    ProjectService projects;
 
     @TempDir
     Path repoDir;
@@ -120,13 +125,17 @@ class MultiUserMcpIntegrationTest {
     @Test
     void userTokenGetsOwnRuntimeAndCallsAreLoggedWithUser() {
         UserAccount alice = newUser("alice@example.com");
+        // angemeldete Benutzer arbeiten nur mit ihren Projekten (Administrator legt überall an und gibt frei)
+        UserAccount admin = accounts.userByName(AccountService.INITIAL_ADMIN).orElseThrow();
+        Project p = projects.create(admin.id(), "repo" + USERS.incrementAndGet(), repoDir.toString(), null, null, null);
+        projects.share(admin.id(), p.id(), alice.username(), Project.Access.READ);
         McpSyncClient c = connect(tokens.issue(alice, "Test", Duration.ofDays(1)).jwt());
 
         assertThat(toolNames(c)).contains("git_status", "git_log");
         assertThat(registry.runtimes()).anyMatch(r -> r.scope().userName().orElse("").equals(alice.username()));
 
         McpSchema.CallToolResult r = c.callTool(McpSchema.CallToolRequest.builder("git_status")
-                .arguments(Map.of()).build());
+                .arguments(Map.of("repository", p.name() + "@admin")).build());
         assertThat(r.isError()).isNotEqualTo(Boolean.TRUE);
         assertThat(log.snapshot().getFirst()).satisfies(inv -> {
             assertThat(inv.toolName()).isEqualTo("git_status");

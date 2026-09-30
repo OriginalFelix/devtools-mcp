@@ -35,6 +35,7 @@ import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.profile.Overrides;
 import systems.grebe.devtools.mcp.profile.Profile;
 import systems.grebe.devtools.mcp.profile.ProfileService;
+import systems.grebe.devtools.mcp.project.ProjectService;
 import systems.grebe.devtools.mcp.server.UserRuntimes;
 
 /**
@@ -128,7 +129,8 @@ public class SettingsView extends HorizontalLayout {
         Map<String, FieldEditor> editors = new LinkedHashMap<>();
         for (ConfigField f : m.configSchema()) {
             FieldEditor ed = FieldEditor.of(f);
-            boolean locked = locks.contains(f.key());
+            boolean fromProjects = ProjectService.projectField(m.id(), f.key());
+            boolean locked = locks.contains(f.key()) || fromProjects;
             boolean overridden = current.values().containsKey(f.key()) && !locked;
             ed.setValue(overridden ? current.values().get(f.key()) : inherited.values().get(f.key()));
             ed.setReadOnly(!overridden);
@@ -140,8 +142,9 @@ public class SettingsView extends HorizontalLayout {
                     ed.setValue(inherited.values().get(f.key()));
                 }
             });
-            Span origin = new Span(locked ? "gesperrt (global)" : overridden ? "überschrieben" : "geerbt: "
-                    + inheritedFrom);
+            Span origin = new Span(fromProjects ? "aus deinen Projekten"
+                    : locked ? "gesperrt (global)"
+                    : overridden ? "überschrieben" : "geerbt: " + inheritedFrom);
             origin.getStyle().set("font-size", "var(--vaadin-font-size-s, 0.875rem)").set("opacity", "0.7");
             VerticalLayout side = new VerticalLayout(box, origin);
             side.setPadding(false);

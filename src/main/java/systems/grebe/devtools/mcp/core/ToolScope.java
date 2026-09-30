@@ -1,11 +1,13 @@
 package systems.grebe.devtools.mcp.core;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import org.slf4j.Logger;
@@ -37,9 +39,20 @@ public final class ToolScope implements AutoCloseable {
     private final String email;
     private final String profileId;
     private final boolean admin;
+    private final Predicate<Path> writable;
     private final Map<String, Object> state = new LinkedHashMap<>();
 
     public ToolScope(String id, String userId, String userName, String email, String profileId, boolean admin) {
+        this(id, userId, userName, email, profileId, admin, root -> true);
+    }
+
+    /**
+     * @param writable ob der Benutzer in einem Projektverzeichnis schreiben darf (Commit, Build …); wird bei jedem
+     *                 Aufruf gefragt, Freigaben gelten also sofort
+     */
+    public ToolScope(String id, String userId, String userName, String email, String profileId, boolean admin,
+                     Predicate<Path> writable) {
+        this.writable = writable;
         this.id = id;
         this.userId = userId;
         this.userName = userName;
@@ -73,6 +86,11 @@ public final class ToolScope implements AutoCloseable {
 
     public boolean admin() {
         return admin;
+    }
+
+    /** Ob in diesem Projektverzeichnis geschrieben werden darf (siehe {@link Workspaces#requireWritable}). */
+    public boolean canWrite(Path root) {
+        return writable.test(root);
     }
 
     /**

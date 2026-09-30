@@ -18,7 +18,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ConfigField;
-import systems.grebe.devtools.mcp.core.SettingsResolver;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolScope;
 
@@ -34,7 +33,7 @@ import systems.grebe.devtools.mcp.core.ToolScope;
  * {@link ProfileSwitchedEvent}, damit die Runtime des Benutzers ihre Tools neu aufbaut.
  */
 @Service
-public class ProfileService implements SettingsResolver {
+public class ProfileService {
 
     public static final String DEFAULT_PROFILE = "Standard";
     private static final int MAX_NAME = 64;
@@ -229,7 +228,7 @@ public class ProfileService implements SettingsResolver {
 
     // ---------------------------------------------------------------- Auflösung
 
-    @Override
+    /** Globale Einstellungen, überlagert von Benutzer und aktivem Profil des Scopes (siehe {@code ProjectSettings}). */
     public ModuleSettings effective(ToolScope scope, ToolModule module, ModuleSettings global) {
         Optional<Long> userId = scope.userId().map(Long::parseLong);
         if (userId.isEmpty()) {

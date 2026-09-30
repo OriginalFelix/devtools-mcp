@@ -191,9 +191,10 @@ class McpServerIntegrationTest {
                     Map.entry("jvm_", ShellHints.JVM), Map.entry("jfr_", ShellHints.JFR),
                     Map.entry("asprof_", ShellHints.ASPROF), Map.entry("visualvm_", ShellHints.VISUALVM),
                     Map.entry("debug_", ShellHints.DEBUG), Map.entry("skills_", ShellHints.SKILLS),
-                    Map.entry("graph_", ShellHints.GRAPH), Map.entry("ticket_", ShellHints.TICKET));
+                    Map.entry("graph_", ShellHints.GRAPH), Map.entry("ticket_", ShellHints.TICKET),
+                    Map.entry("projects_", ShellHints.PROJECTS));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(120); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(121); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
