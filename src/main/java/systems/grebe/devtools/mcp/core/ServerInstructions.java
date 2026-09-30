@@ -13,7 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.ai.mcp.server.webflux.transport.WebFluxStreamableServerTransportProvider;
+import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStreamableServerTransportProvider;
 import systems.grebe.devtools.mcp.plugin.PluginManager;
 
 /**
@@ -85,21 +85,25 @@ public class ServerInstructions {
      * Überschreibt die statischen {@code spring.ai.mcp.server.instructions} aus {@code application.properties}. Der
      * Customizer läuft nach dem Setzen der Property (siehe {@code McpServerAutoConfiguration}), der Property-Text wird
      * als erster Absatz übernommen – so lassen sich Hinweise auch ohne Codeänderung ergänzen.
+     *
+     * <p>{@code @Primary}, weil die Servlet-Autokonfiguration einen eigenen Customizer mitbringt und der Server nur
+     * einen übernimmt – dessen {@code immediateExecution(true)} (Tool-Aufrufe im Request-Thread) steht deshalb hier.
      */
     @Bean
+    @Primary
     McpSyncServerCustomizer instructionsCustomizer() {
-        return builder -> builder.instructions(build());
+        return builder -> builder.immediateExecution(true).instructions(build());
     }
 
     /**
      * Baut die Instructions bei jedem {@code initialize} neu (siehe {@link LiveInstructionsTransport}): Plugins,
      * die zur Laufzeit installiert, aktiviert oder entfernt werden, sind so für jede neue Client-Session sofort
      * berücksichtigt. {@code @Primary}, damit der MCP-Server diese Hülle bekommt; die Router-Funktion hängt weiter am
-     * eigentlichen WebFlux-Transport.
+     * eigentlichen WebMVC-Transport.
      */
     @Bean
     @Primary
-    LiveInstructionsTransport liveInstructionsTransport(WebFluxStreamableServerTransportProvider transport) {
+    LiveInstructionsTransport liveInstructionsTransport(WebMvcStreamableServerTransportProvider transport) {
         return new LiveInstructionsTransport(transport, this::build);
     }
 

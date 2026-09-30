@@ -37,7 +37,7 @@ dependencyManagement {
 }
 
 dependencies {
-    implementation("org.springframework.ai:spring-ai-starter-mcp-server-webflux")
+    implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc")
     implementation("org.eclipse.jgit:org.eclipse.jgit:$jgitVersion")
 
     // Performance/Diagnose: Flame Graphs aus JFR (async-profiler-Konverter) und VisualVM-Engines (Heap, Sampler)
