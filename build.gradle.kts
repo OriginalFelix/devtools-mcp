@@ -1,5 +1,6 @@
 plugins {
     java
+    war
     id("org.springframework.boot") version "4.1.1"
     id("io.spring.dependency-management") version "1.1.7"
     id("com.vaadin") version "25.2.8"
@@ -39,8 +40,20 @@ dependencyManagement {
     }
 }
 
+// Webserver: Jetty statt des Standard-Tomcats (kommt transitiv über die WebMVC-Starter von Spring AI und Vaadin)
+configurations.all {
+    exclude(group = "org.springframework.boot", module = "spring-boot-starter-tomcat")
+    exclude(group = "org.springframework.boot", module = "spring-boot-tomcat")
+}
+
 dependencies {
     implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc")
+    // Eingebetteter Jetty nur im bootJar; das WAR für WildFly lässt ihn weg (siehe warRuntimeClasspath)
+    implementation("org.springframework.boot:spring-boot-starter-jetty")
+    // Servlet-Kontext von Spring Boot; kommt sonst nur über spring-boot-jetty, das im WAR fehlt
+    implementation("org.springframework.boot:spring-boot-web-server")
+    // EL für Hibernate Validator (sonst nur über den Jetty-Starter, fehlte dann im WAR)
+    runtimeOnly("org.apache.tomcat.embed:tomcat-embed-el")
 
     // Team-Server: Web-UI (Vaadin Flow), Anmeldung (Spring Security), MCP-Zugriff per JWT (Nimbus, Version wie in
     // vaadin-dev). Benutzer/Tokens liegen in einer eigenen Core-Datenbank (JdbcClient + Flyway), getrennt von den Skills.
@@ -116,6 +129,40 @@ vaadin {
 
 springBoot {
     mainClass = "systems.grebe.devtools.mcp.DevToolsMcpApplication"
+}
+
+// Zwei Artefakte: bootJar (ausführbar, eingebetteter Jetty, Desktop/headless) und ein WAR für einen externen WildFly
+// (build/libs/devtools-mcp-<version>-wildfly.war). Das WAR läuft nur headless, JavaFX (plattformabhängig) bleibt draußen.
+tasks.named<org.springframework.boot.gradle.tasks.bundling.BootWar>("bootWar") {
+    enabled = false
+}
+
+// Laufzeit-Classpath des WAR: wie runtimeClasspath ohne developmentOnly, aber ohne Jetty-Jars (Servlet-Stack kommt vom
+// WildFly) und ohne JavaFX. spring-boot-web-server (Servlet-Kontext für SpringBootServletInitializer) bleibt über die
+// eigene Abhängigkeit oben. Bewusst keine providedRuntime-Abhängigkeit: deren Datei-Differenz würde auch
+// alles entfernen, was der Jetty-Starter transitiv mitbringt (spring-core, spring-boot, Logback …).
+val warRuntimeClasspath by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    extendsFrom(configurations.implementation.get(), configurations.runtimeOnly.get())
+    exclude(group = "org.springframework.boot", module = "spring-boot-starter-jetty-runtime")
+    exclude(group = "org.springframework.boot", module = "spring-boot-jetty")
+    exclude(group = "org.eclipse.jetty")
+    exclude(group = "jakarta.servlet")
+    exclude(group = "org.openjfx")
+    shouldResolveConsistentlyWith(configurations.runtimeClasspath.get())
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
+        attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
+        attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.EXTERNAL))
+        attribute(TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE, objects.named(TargetJvmEnvironment.STANDARD_JVM))
+    }
+}
+
+tasks.named<War>("war") {
+    archiveClassifier = "wildfly"
+    setClasspath(sourceSets.main.get().output + warRuntimeClasspath)
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {

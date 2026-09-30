@@ -152,7 +152,8 @@ Ergebnisse (`.jfr`, Flame Graphs `.html`, `.hprof`, `.nps`) landen im Ablageordn
 
 ```bash
 ./gradlew bootRun          # Entwicklung
-./gradlew bootJar          # build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar → java -jar …
+./gradlew bootJar          # build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar → java -jar … (eingebetteter Jetty)
+./gradlew war              # build/libs/devtools-mcp-0.1.0-SNAPSHOT-wildfly.war → externer WildFly (siehe unten)
 ./gradlew test             # Unit- + MCP-Integrationstests
 ```
 
@@ -228,6 +229,23 @@ java -jar devtools-mcp.jar --headless --server.address=0.0.0.0   # oder DEVTOOLS
   weiter, `devtools.mcp.allow-anonymous-local=false` setzen. TLS übernimmt der Reverse-Proxy
   (`server.forward-headers-strategy=native`, damit die Web-UI die öffentliche Adresse anzeigt).
 * Entwicklung der Web-UI mit Hot-Reload: `./gradlew -Pvaadin.productionMode=false bootRun`.
+
+#### Deployment in WildFly
+
+Alternativ zum Jar läuft der Team-Server als WAR in einem externen WildFly (Jakarta EE 11 / Servlet 6.1, Java 25):
+`./gradlew war` baut `devtools-mcp-<version>-wildfly.war` ohne Jetty und ohne JavaFX. Einstieg ist
+`WildFlyInitializer`; die App läuft dort immer headless.
+
+* **Pfad:** `jboss-web.xml` deployt unter `/` – MCP-Endpunkt `https://<host>/mcp` wie beim Jar.
+  `jboss-deployment-structure.xml` schaltet die WildFly-Subsysteme ab, die Spring selbst mitbringt
+  (JPA, CDI/Weld, Faces, JAX-RS, Bean Validation, Logging); `web.xml` mit `metadata-complete` verhindert, dass
+  WildFly annotierte Servlets aus den Bibliotheken (z.B. MCP-SDK) selbst registriert.
+* Getestet mit `quay.io/wildfly/wildfly:41.0.1.Final-jdk25`.
+* **Port und Adresse** bestimmt WildFly; `server.port` aus `settings.json` und `server.address` gelten nicht.
+  Deshalb ist `devtools.mcp.allow-anonymous-local` im WAR standardmäßig `false` – ohne Token kein Zugriff.
+* **Datenverzeichnis:** `~/.devtools-mcp` des WildFly-Benutzers, oder `-Ddevtools.mcp.home=…` /
+  `DEVTOOLS_MCP_HOME`. Admin-Passwort wie oben über `DEVTOOLS_MCP_ADMIN_PASSWORD`.
+* **JVM-Optionen** (z.B. in `standalone.conf`): `--enable-native-access=ALL-UNNAMED` für den Code-Graph (tree-sitter).
 
 ### Profile und Einstellungs-Ebenen
 
