@@ -245,8 +245,9 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
   Subscriptions mit wachsendem Abstand neu; dazwischen gilt der letzte Stand (beim Team-Server auch über einen
   Neustart: verschlüsselte Cache-Datei `team-cache.json`). Überholte Stände erkennt die App am Änderungszähler
   (`revision`).
-* **Benutzer** (Rolle Administrator/Benutzer) liegen in der Core-Datenbank `core.mv.db` (Server: `devtools.server.home`,
-  sonst `DEVTOOLS_MCP_HOME` bzw. `~/.devtools-mcp`; H2, Schema per Flyway aus `db/core`; andere Datenbank über
+* **Benutzer** (Rolle Administrator/Benutzer) liegen in der Core-Datenbank `core.mv.db` (Server: `devtools.server.home`
+  bzw. `DEVTOOLS_SERVER_HOME`, sonst `~/.devtools-server` – getrennt vom Ordner der Desktop-App, damit beide auf einem
+  Rechner laufen; H2, Schema per Flyway aus `db/core`; andere Datenbank über
   `devtools.core.datasource.url/username/password`). Beim ersten Start des Servers wird `admin` angelegt – Passwort aus
   `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log. Der letzte aktive Administrator lässt sich weder
   sperren, herabstufen noch löschen.
@@ -273,7 +274,7 @@ Alternativ zum Jar läuft der Team-Server als WAR in einem externen WildFly (Jak
   WildFly annotierte Servlets aus den Bibliotheken selbst registriert.
 * Getestet mit `quay.io/wildfly/wildfly:41.0.1.Final-jdk25`.
 * **Port und Adresse** bestimmt WildFly.
-* **Datenverzeichnis:** `~/.devtools-mcp` des WildFly-Benutzers, oder `-Ddevtools.server.home=…`.
+* **Datenverzeichnis:** `~/.devtools-server` des WildFly-Benutzers, oder `-Ddevtools.server.home=…`.
   Admin-Passwort wie oben über `DEVTOOLS_MCP_ADMIN_PASSWORD`.
 
 ### Profile und Einstellungs-Ebenen

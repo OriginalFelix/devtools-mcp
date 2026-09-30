@@ -13,8 +13,8 @@ import systems.grebe.devtools.mcp.config.SecretCipher;
 /**
  * Datenverzeichnis des Backends: Core-Datenbank ({@code core.mv.db}), Skill-Datenbank, {@code jwt.key} und
  * {@code secret.key} (verschlüsselt Geheimnisse in den Einstellungen). Eingebettet in der Desktop-App deren Ordner
- * ({@link DataHome}), im Server {@code devtools.server.home}, sonst {@code DEVTOOLS_MCP_HOME} bzw.
- * {@code ~/.devtools-mcp}.
+ * ({@link DataHome}), im Server {@code devtools.server.home} (bzw. {@code DEVTOOLS_SERVER_HOME}), sonst
+ * {@link Home#defaultServerHome() ~/.devtools-server}.
  */
 @Configuration(proxyBeanMethods = false)
 public class BackendHome {
@@ -24,7 +24,7 @@ public class BackendHome {
     public BackendHome(ObjectProvider<DataHome> app, @Value("${devtools.server.home:}") String configured) {
         DataHome home = app.getIfAvailable();
         this.dir = (home != null ? home.dir()
-                : configured.isBlank() ? Home.defaultHome() : Path.of(configured)).toAbsolutePath();
+                : configured.isBlank() ? Home.defaultServerHome() : Path.of(configured)).toAbsolutePath();
     }
 
     public Path dir() {
