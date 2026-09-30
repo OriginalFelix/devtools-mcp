@@ -1,0 +1,226 @@
+# GraphQL-API des Backends (Team-Server oder eingebettet in der Desktop-App).
+# Anmeldung: Header „Authorization: Bearer <Desktop-Token>“ (HTTP) bzw. gleichnamiger Eintrag im Payload von
+# connection_init (WebSocket). Ohne gültiges Token antwortet jede Operation mit einem Fehler vom Typ UNAUTHORIZED.
+# Zeitpunkte sind ISO-8601-Strings (UTC).
+
+type Query {
+    "Der angemeldete Benutzer mit seinen Profilen."
+    me: Me!
+    "Von den Desktop-Apps gemeldete Module (Felder, Tools)."
+    catalog: [Module!]!
+    "Vorgaben für das aktive Profil des Benutzers."
+    settings: Settings!
+    "Überschreibungen einer Ebene des Benutzers: USER (alle Profile), PROFILE (aktives Profil) oder GLOBAL."
+    overrides(level: Level!, moduleId: String!): Overlay!
+    "Eigene und freigegebene Projekte."
+    projects: [Project!]!
+
+    "Sichtbare Skills (eigene und nicht verdeckte Vorlagen)."
+    skills: [SkillSummary!]!
+    skill(name: String!): SkillDetails
+    skillCount: Int!
+    "Texte für das LLM wie die Tools skills_list, skills_view, skills_history."
+    skillList(query: String, category: String): String!
+    skillView(name: String!, filePath: String): String!
+    skillHistory(name: String!, revision: Int): String!
+}
+
+type Mutation {
+    "Meldet die Module einer Desktop-App; ersetzt deren bisherige Beschreibung."
+    reportCatalog(modules: [ModuleInput!]!): Boolean!
+    activateProfile(profileId: Int!): Settings!
+    "Ersetzt die Überschreibungen eines Moduls auf einer Ebene (GLOBAL nur Administratoren)."
+    saveOverrides(level: Level!, moduleId: String!, input: OverlayInput!): Settings!
+    createProject(name: String!, description: String, sonarKey: String, ticketProject: String): Project!
+
+    createSkill(name: String!, description: String!, content: String!, category: String, tags: [String!],
+                maxContentChars: Int): String!
+    updateSkill(name: String!, description: String, content: String, category: String, tags: [String!],
+                note: String, expectedRevision: Int, maxContentChars: Int): String!
+    patchSkill(name: String!, oldString: String!, newString: String!, replaceAll: Boolean, filePath: String,
+               note: String, expectedRevision: Int, maxContentChars: Int): String!
+    writeSkillFile(name: String!, filePath: String!, content: String!, note: String, maxContentChars: Int): String!
+    removeSkillFile(name: String!, filePath: String!, note: String): String!
+    deleteSkill(name: String!): String!
+    publishSkill(name: String!): String!
+    unpublishSkill(name: String!): String!
+}
+
+type Subscription {
+    "Liefert sofort den aktuellen Stand und danach bei jeder Änderung (Vorgaben, Sperren, Profilwechsel)."
+    settingsChanged: Settings!
+    "Liefert sofort die Projekte und danach bei jeder Änderung an Projekten oder Freigaben."
+    projectsChanged: [Project!]!
+    "Meldet Änderungen an Skills (Anzahl sichtbarer Skills)."
+    skillsChanged: Int!
+}
+
+enum Level { GLOBAL USER PROFILE }
+
+type Me {
+    id: Int!
+    username: String!
+    displayName: String
+    email: String
+    admin: Boolean!
+    profiles: [Profile!]!
+    activeProfileId: Int!
+}
+
+type Profile {
+    id: Int!
+    name: String!
+    description: String
+}
+
+enum FieldType { STRING SECRET INT BOOLEAN URL DIRECTORY DIRECTORY_LIST ENUM STRING_LIST RECORD_LIST }
+
+type Field {
+    key: String!
+    label: String!
+    type: FieldType!
+    required: Boolean!
+    defaultValue: String
+    help: String
+    options: [String!]!
+    columns: [Field!]!
+}
+
+type Tool {
+    name: String!
+    description: String
+}
+
+type Module {
+    id: String!
+    displayName: String!
+    description: String
+    enabledByDefault: Boolean!
+    hasTools: Boolean!
+    order: Int!
+    schema: [Field!]!
+    tools: [Tool!]!
+}
+
+input FieldInput {
+    key: String!
+    label: String!
+    type: FieldType!
+    required: Boolean!
+    defaultValue: String
+    help: String
+    options: [String!]
+    columns: [FieldInput!]
+}
+
+input ToolInput {
+    name: String!
+    description: String
+}
+
+input ModuleInput {
+    id: String!
+    displayName: String!
+    description: String
+    enabledByDefault: Boolean!
+    hasTools: Boolean!
+    order: Int!
+    schema: [FieldInput!]
+    tools: [ToolInput!]
+}
+
+type Settings {
+    profileId: Int!
+    profileName: String!
+    modules: [Overlay!]!
+    "Änderungszähler des Backends beim Lesen – kleinere Revision = älterer Stand."
+    revision: Int!
+}
+
+"Vorgaben bzw. Überschreibungen eines Moduls; nur gesetzte Werte."
+type Overlay {
+    moduleId: String
+    enabled: Boolean
+    tools: [ToolSwitch!]!
+    values: [Entry!]!
+    locked: [String!]!
+}
+
+type ToolSwitch {
+    name: String!
+    enabled: Boolean!
+}
+
+type Entry {
+    key: String!
+    value: String
+}
+
+input OverlayInput {
+    enabled: Boolean
+    tools: [ToolSwitchInput!]
+    values: [EntryInput!]
+}
+
+input ToolSwitchInput {
+    name: String!
+    enabled: Boolean!
+}
+
+input EntryInput {
+    key: String!
+    value: String
+}
+
+type Project {
+    id: Int!
+    name: String!
+    owner: String!
+    toolName: String!
+    writable: Boolean!
+    access: String!
+    description: String
+    sonarKey: String
+    ticketProject: String
+}
+
+enum SkillScope { OWN COPY GLOBAL }
+
+type SkillSummary {
+    name: String!
+    description: String
+    category: String
+    tags: [String!]!
+    revision: Int!
+    useCount: Int!
+    lastUsedAt: String
+    updatedAt: String
+    fileCount: Int!
+    scope: SkillScope!
+    templateRevision: Int
+    currentTemplateRevision: Int
+}
+
+type SkillFile {
+    path: String!
+    content: String
+    updatedAt: String
+}
+
+type SkillRevision {
+    revision: Int!
+    action: String
+    note: String
+    changedBy: String
+    changedAt: String
+    description: String
+    content: String
+}
+
+type SkillDetails {
+    summary: SkillSummary!
+    content: String
+    createdAt: String
+    files: [SkillFile!]!
+    revisions: [SkillRevision!]!
+}

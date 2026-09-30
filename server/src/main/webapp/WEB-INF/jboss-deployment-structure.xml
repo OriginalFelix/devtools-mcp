@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WildFly: Spring bringt JPA (Hibernate), Validierung, Logging (Logback) und Jackson selbst mit. Die entsprechenden
+  WildFly-Subsysteme würden sonst eigene Implementierungen hinzufügen oder die Jars nach EE-Komponenten scannen.
+  jsf muss mit weld raus: Jakarta Faces registriert sonst einen Listener, der ohne CDI das Deployment abbricht.
+-->
+<jboss-deployment-structure xmlns="urn:jboss:deployment-structure:1.3">
+    <deployment>
+        <exclude-subsystems>
+            <subsystem name="jpa"/>
+            <subsystem name="weld"/>
+            <subsystem name="jsf"/>
+            <subsystem name="jaxrs"/>
+            <subsystem name="webservices"/>
+            <subsystem name="bean-validation"/>
+            <subsystem name="logging"/>
+        </exclude-subsystems>
+    </deployment>
+</jboss-deployment-structure>
