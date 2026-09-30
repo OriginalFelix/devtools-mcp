@@ -340,7 +340,7 @@ public class ToolRegistry {
             local.rebuild(s.module, effective(s), callListeners());
         }
         // Kein explizites notifyToolsListChanged(): addTool/removeTool benachrichtigen die Clients bereits selbst
-        // (spring.ai.mcp.server.tool-change-notification=true).
+        // (spring.ai.mcp.server.tool-change-notification=true), LiveInstructionsTransport bündelt sie zu einer Meldung.
         changeListeners.forEach(Runnable::run);
     }
 
