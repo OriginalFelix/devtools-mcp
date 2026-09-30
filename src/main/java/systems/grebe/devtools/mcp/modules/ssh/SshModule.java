@@ -3,11 +3,11 @@ package systems.grebe.devtools.mcp.modules.ssh;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
-import jakarta.annotation.PreDestroy;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -18,6 +18,7 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolBeans;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.ToolScope;
 
 /**
  * SSH-Zugriff auf hinterlegte Server (JSch): Befehle ausführen, Verzeichnisse und Dateien per SFTP lesen und schreiben.
@@ -44,11 +45,9 @@ public class SshModule implements ToolModule {
     static final String LOCAL_DIRS = "localDirectories";
     static final String ALLOW_SUDO = "allowSudo";
 
-    /** Über alle Konfigurationsänderungen hinweg dieselbe Instanz, damit alte Sitzungen geschlossen werden können. */
-    private final SshSessions sessions = new SshSessions();
-    private final SshShells shells = new SshShells();
+    private static final String STATE = ID + ".state";
+
     private final Path defaultKnownHosts;
-    private java.util.Map<String, String> lastValues;
 
     @Autowired
     public SshModule(SettingsStore store) {
@@ -60,8 +59,33 @@ public class SshModule implements ToolModule {
         this.defaultKnownHosts = defaultKnownHosts;
     }
 
+    /** Umgebung mit den Sitzungen des laufenden Scopes (außerhalb eines Tool-Aufrufs: lokal). */
     SshEnvironment environment(ModuleConfig config) {
-        return new SshEnvironment(config, sessions, shells, defaultKnownHosts);
+        return environment(config, state(ToolScope.current()));
+    }
+
+    private SshEnvironment environment(ModuleConfig config, ScopeState state) {
+        return new SshEnvironment(config, state.sessions, state.shells, defaultKnownHosts);
+    }
+
+    /**
+     * Sitzungen und Shells je Benutzer/Profil, über Konfigurationsänderungen hinweg dieselbe Instanz, damit alte
+     * Sitzungen geschlossen werden können.
+     */
+    private static ScopeState state(ToolScope scope) {
+        return scope.state(STATE, ScopeState::new);
+    }
+
+    private static final class ScopeState implements AutoCloseable {
+        final SshSessions sessions = new SshSessions();
+        final SshShells shells = new SshShells();
+        Map<String, String> lastValues;
+
+        @Override
+        public void close() {
+            sessions.closeAll();
+            shells.closeAll();
+        }
     }
 
     @Override
@@ -161,15 +185,20 @@ public class SshModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
+        return createTools(config, ToolScope.LOCAL);
+    }
+
+    @Override
+    public List<ToolCallback> createTools(ModuleConfig config, ToolScope scope) {
+        ScopeState state = state(scope);
         // Neu aufgebaut wird auch beim An-/Abschalten einzelner Tools – offene Shells nur bei geänderten Werten schließen
-        synchronized (this) {
-            if (!config.rawValues().equals(lastValues)) {
-                sessions.closeAll();
-                shells.closeAll();
-                lastValues = config.rawValues();
+        synchronized (state) {
+            if (!config.rawValues().equals(state.lastValues)) {
+                state.close();
+                state.lastValues = config.rawValues();
             }
         }
-        SshEnvironment env = environment(config);
+        SshEnvironment env = environment(config, state);
         List<Object> beans = new ArrayList<>(List.of(new SshTools(env)));
         if (config.getBoolean(ALLOW_EXEC)) {
             beans.add(new SshExecTools(env));
@@ -222,11 +251,5 @@ public class SshModule implements ToolModule {
         }
         String msg = sb.toString().strip();
         return allOk ? ConnectionTestResult.ok(msg) : ConnectionTestResult.failed(msg);
-    }
-
-    @PreDestroy
-    void close() {
-        sessions.closeAll();
-        shells.closeAll();
     }
 }

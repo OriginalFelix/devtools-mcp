@@ -5,12 +5,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-import jakarta.annotation.PreDestroy;
-import org.springframework.stereotype.Component;
 
-/** Hält die offenen Debug-Sitzungen über Konfigurationsänderungen hinweg und trennt sie beim Beenden. */
-@Component
-public class DebugSessions {
+/**
+ * Hält die offenen Debug-Sitzungen eines Benutzers/Profils über Konfigurationsänderungen hinweg; liegt im
+ * {@link systems.grebe.devtools.mcp.core.ToolScope} und trennt beim Schließen des Scopes (Profilwechsel, Beenden).
+ */
+public class DebugSessions implements AutoCloseable {
 
     private final Map<String, DebugSession> sessions = new ConcurrentHashMap<>();
 
@@ -46,7 +46,11 @@ public class DebugSessions {
         return true;
     }
 
-    @PreDestroy
+    @Override
+    public void close() {
+        closeAll();
+    }
+
     public void closeAll() {
         sessions.values().forEach(DebugSession::close);
         sessions.clear();
