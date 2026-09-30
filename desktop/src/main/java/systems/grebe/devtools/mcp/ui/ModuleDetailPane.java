@@ -20,7 +20,6 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.springframework.ai.tool.definition.ToolDefinition;
-import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ToolModule;
@@ -142,22 +141,18 @@ public class ModuleDetailPane extends ScrollPane {
     }
 
     private void updateOverlay() {
-        ModuleSettings local = registry.settings(module.id());
-        ModuleSettings effective = registry.effectiveSettings(module.id());
+        java.util.Set<String> locked = registry.lockedKeys(module.id());
         List<String> parts = new java.util.ArrayList<>();
-        if (local.enabled() != effective.enabled()) {
-            parts.add("Modul " + (effective.enabled() ? "aktiv" : "inaktiv"));
+        if (locked.contains("@enabled")) {
+            parts.add("Modul an/aus");
         }
-        module.configSchema().stream()
-                .filter(f -> !Objects.equals(local.values().get(f.key()), effective.values().get(f.key())))
-                .forEach(f -> parts.add(f.label()));
-        if (!local.disabledTools().equals(effective.disabledTools())) {
+        module.configSchema().stream().filter(f -> locked.contains(f.key())).forEach(f -> parts.add(f.label()));
+        if (locked.contains("@tools")) {
             parts.add("Tool-Auswahl");
         }
-        overlay.setText(parts.isEmpty() ? "" : "Vom Team-Server vorgegeben (hat Vorrang vor den Werten hier): "
-                + String.join(", ", parts));
-        overlay.setVisible(!parts.isEmpty());
-        overlay.setManaged(!parts.isEmpty());
+        overlay.setText("Änderungen gelten für " + registry.settingsTarget() + "."
+                + (parts.isEmpty() ? "" : " Vom Administrator gesperrt (Änderungen werden abgelehnt): "
+                + String.join(", ", parts)));
     }
 
     private void updateEnabledText() {

@@ -42,6 +42,7 @@ public class AccountService {
     private final ApplicationEventPublisher events;
     private final Clock clock;
     private final String initialAdminPassword;
+    private boolean createInitialAdmin = true;
 
     @Autowired
     public AccountService(AccountRepository repo, Sha3Pbkdf2PasswordEncoder encoder,
@@ -163,7 +164,7 @@ public class AccountService {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void ensureAdmin() {
-        if (repo.countUsers() > 0) {
+        if (!createInitialAdmin || repo.countUsers() > 0) {
             return;
         }
         boolean generated = initialAdminPassword.isBlank();
@@ -191,6 +192,12 @@ public class AccountService {
             sb.append(alphabet.charAt(r.nextInt(alphabet.length())));
         }
         return sb.toString();
+    }
+
+    /** Eingebettet in der Desktop-App gibt es statt {@value #INITIAL_ADMIN} nur den lokalen Benutzer. */
+    @Autowired(required = false)
+    void createInitialAdmin(@Value("${devtools.admin.create-initial:true}") boolean value) {
+        this.createInitialAdmin = value;
     }
 
     // ---------------------------------------------------------------- intern

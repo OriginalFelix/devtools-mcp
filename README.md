@@ -154,17 +154,19 @@ Gradle-Multiprojekt:
 
 | Projekt | Inhalt | Artefakt |
 |---|---|---|
-| `desktop` | Desktop-App: MCP-Server, alle Module, Plugins, JavaFX-Oberfläche, Anbindung an den Team-Server | `desktop/build/libs/devtools-mcp-<version>.jar` |
-| `server` | Team-Server: Web-UI (Vaadin), Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
-| `shared` | Gemeinsam: Einstellungs-Modell, REST-DTOs (`api`), Skill-Ablage (JPA) | – |
+| `desktop` | Desktop-App: MCP-Server, alle Module, Plugins, JavaFX-Oberfläche; Backend eingebettet oder Anbindung an einen Team-Server | `desktop/build/libs/devtools-mcp-<version>.jar` |
+| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
+| `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
+| `shared` | Gemeinsam: Einstellungs-Modell, Datenklassen der GraphQL-API (`api`) | – |
 
-MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Der Team-Server ist optional
-und verwaltet, was mehrere Entwickler teilen.
+MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
+im Team-Server, und in der Desktop-App eingebettet – außer dort ist ein Team-Server eingetragen, dann nutzt sie dessen
+Backend. Die Desktop-App spricht in beiden Fällen dieselbe GraphQL-API.
 
 ## Starten
 
 ```bash
-./gradlew :desktop:bootRun          # Desktop-App (Entwicklung)
+./gradlew :desktop:bootRun          # Desktop-App (Entwicklung, Backend eingebettet)
 ./gradlew :desktop:bootJar          # desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar → java -jar …
 ./gradlew :server:bootRun           # Team-Server auf Port 8080
 ./gradlew :server:bootJar :server:war   # Server als Jar (Jetty) bzw. WAR für WildFly
@@ -183,17 +185,20 @@ claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
 * **Module** (links): an/aus, Status (grün aktiv · grau aus · rot Fehler).
 * **Konfiguration** (rechts): Formular wird aus dem Modul-Schema erzeugt; *Speichern* registriert die Tools
   sofort neu, verbundene Clients erhalten `notifications/tools/list_changed`. *Verbindung testen* prüft
-  die ungespeicherten Eingaben. Gibt der Team-Server Werte vor, steht das über dem Formular.
+  die ungespeicherten Eingaben. Gespeichert wird im Backend als Überschreibung im aktiven Profil; gesperrte
+  Felder nennt der Hinweis über dem Formular.
 * **Tools**: jedes Tool einzeln abschaltbar.
 * **Aufrufe**: Live-Protokoll aller Tool-Aufrufe mit Argumenten, Ergebnis, Dauer und Fehlern.
 * **Skills**: Übersicht der gespeicherten Skills mit Inhalt, Zusatzdateien und Historie.
-* **Server**: Anbindung an einen Team-Server, aktives Profil, Verzeichnisse der Server-Projekte (siehe unten).
+* **Backend**: eingebettet oder Team-Server, Status, aktives Profil, Projekte mit lokalem Verzeichnis (siehe unten).
 * **Einstellungen**: Port (nach Neustart), optionales Bearer-Token (sofort wirksam), Tray-Verhalten.
 * Fenster schließen → läuft im System-Tray weiter; *Beenden* über das Tray-Menü.
 
-Einstellungen liegen in `~/.devtools-mcp/settings.json` (Pfad per `DEVTOOLS_MCP_HOME` bzw.
-`-Ddevtools.mcp.home` änderbar). Geheimnisse (Sonar-Token, Zugriffstoken, Desktop-Token) werden mit AES-GCM
-verschlüsselt, der Schlüssel liegt in `secret.key` daneben.
+Die Modul-Einstellungen liegen im Backend (eingebettet: `core.mv.db` im Datenordner). `~/.devtools-mcp/settings.json`
+(Pfad per `DEVTOOLS_MCP_HOME` bzw. `-Ddevtools.mcp.home` änderbar) hält nur noch App-Einstellungen: Port,
+Zugriffstoken, Tray, Team-Server (Adresse + Desktop-Token), Plugins und die lokalen Projektverzeichnisse. Beim ersten
+eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen aus `settings.json` als globale Vorgaben
+(Marker `backend-import.done`). Geheimnisse werden mit AES-GCM verschlüsselt, der Schlüssel liegt in `secret.key`.
 
 ### Sicherheit
 
@@ -215,37 +220,46 @@ verschlüsselt, der Schlüssel liegt in `secret.key` daneben.
   known_hosts-Datei (geänderte Schlüssel werden immer abgelehnt). `ssh_exec` läuft mit den vollen Rechten des
   hinterlegten Benutzers – dafür einen eingeschränkten Benutzer anlegen oder den Schalter abschalten.
 
-### Team-Server
+### Backend und Team-Server
 
-Der Team-Server (`server`) verwaltet für mehrere Entwickler Benutzer, Profile, Einstellungs-Vorgaben, Projekte und
-Skills. Er ist **kein MCP-Server**: Jeder Entwickler verbindet seine Desktop-App mit ihm; die MCP-Clients sprechen
-weiter nur mit der lokalen Desktop-App.
+Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte und Skills und bietet dafür eine
+**GraphQL-API** unter `/graphql` (Schema: `backend/src/main/resources/backend-graphql/schema.graphqls`; Queries/Mutations über
+HTTP, Subscriptions über WebSocket).
+
+* **Eingebettet** (Standard, kein Team-Server eingetragen): Das Backend läuft in der Desktop-App auf
+  `http://127.0.0.1:<port>/graphql`, mit Core- und Skill-Datenbank im Datenordner. Angemeldet ist ohne Login der
+  lokale Benutzer `local` (Administrator; E-Mail = frühere Einstellung „Benutzer-E-Mail“ des Skill-Moduls, sonst
+  Git-E-Mail), die App erzeugt dafür bei jedem Start ein Token.
+* **Team-Server** (`server`): dasselbe Backend plus Web-UI, für mehrere Entwickler. Tab *Backend* → Server-Adresse und
+  Desktop-Token → *Server eintragen*; gilt nach einem Neustart der App (dann läuft kein eingebettetes Backend, keine
+  lokalen Datenbanken). *Eingebettet verwenden* stellt zurück.
 
 ```bash
-java -jar devtools-server.jar            # Port 8080, Web-UI unter /
+java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL unter /graphql
 ```
 
-* **Benutzer** (Rolle Administrator/Benutzer) liegen in der Core-Datenbank `core.mv.db` im Server-Verzeichnis
-  (`devtools.server.home`, sonst wie die Desktop-App `DEVTOOLS_MCP_HOME` bzw. `~/.devtools-mcp`; H2, Schema per
-  Flyway aus `db/core`; andere Datenbank über `devtools.core.datasource.url/username/password`). Beim ersten Start
-  wird `admin` angelegt – Passwort aus `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log. Der letzte
-  aktive Administrator lässt sich weder sperren, herabstufen noch löschen.
+* **Abgleich:** Die App meldet dem Backend ihre Module samt Feldern und Tools (`reportCatalog`; daraus baut die Web-UI
+  die Formulare), lädt Benutzer, Vorgaben und Projekte und abonniert `settingsChanged`, `projectsChanged` und
+  `skillsChanged`. Änderungen – auch aus der Web-UI oder von einer anderen Desktop-App – kommen sofort an; die Tools
+  werden neu gebaut, MCP-Clients bekommen `tools/list_changed`. Bricht die Verbindung ab, verbinden sich die
+  Subscriptions mit wachsendem Abstand neu; dazwischen gilt der letzte Stand (beim Team-Server auch über einen
+  Neustart: verschlüsselte Cache-Datei `team-cache.json`). Überholte Stände erkennt die App am Änderungszähler
+  (`revision`).
+* **Benutzer** (Rolle Administrator/Benutzer) liegen in der Core-Datenbank `core.mv.db` (Server: `devtools.server.home`,
+  sonst `DEVTOOLS_MCP_HOME` bzw. `~/.devtools-mcp`; H2, Schema per Flyway aus `db/core`; andere Datenbank über
+  `devtools.core.datasource.url/username/password`). Beim ersten Start des Servers wird `admin` angelegt – Passwort aus
+  `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log. Der letzte aktive Administrator lässt sich weder
+  sperren, herabstufen noch löschen.
 * **Passwörter:** PBKDF2 mit HMAC-SHA3-512, 16 Byte Zufalls-Salt, 210.000 Iterationen
   (`pbkdf2-sha3-512$<iterationen>$<salt>$<hash>`); wird die Iterationszahl angehoben, rechnet die nächste Anmeldung
   den Hash neu.
 * **Desktop-Tokens:** Jeder Benutzer erzeugt unter *Mein Konto* persönliche Tokens (JWT, HS512, Schlüssel
   `jwt.key`; Gültigkeit 30/90/365 Tage oder unbegrenzt). Das Token wird nur einmal angezeigt, gespeichert wird nur
-  seine ID; Widerruf, Sperren oder Löschen des Benutzers wirken sofort.
-* **Desktop-App verbinden:** Tab *Server* → Adresse des Servers und Desktop-Token → *Verbinden*. Die App meldet dem
-  Server ihre Module samt Feldern und Tools (daraus baut die Web-UI die Einstellungs-Formulare) und gleicht alle
-  30 Sekunden Benutzer, Profil-Vorgaben und Projekte ab (per `ETag`; `devtools.team.sync-seconds`). Ändert sich
-  etwas, baut sie die Tools neu – verbundene MCP-Clients bekommen `tools/list_changed`. Ist der Server nicht
-  erreichbar, gilt der letzte Stand (verschlüsselte Cache-Datei `team-cache.json`); *Trennen* stellt die rein
-  lokalen Einstellungen wieder her.
-* **REST-API** `/api/**` (nur Desktop-Token, 401 ohne): `GET /me`, `PUT /catalog`, `GET /settings`,
-  `PUT /profile/active`, `GET /projects`, `/skills/**`. Die Vorgaben enthalten entschlüsselte Geheimnisse – den
-  Server deshalb nur über HTTPS erreichbar machen. TLS übernimmt ein Reverse-Proxy
-  (`server.forward-headers-strategy=native`, damit die Web-UI die öffentliche Adresse anzeigt).
+  seine ID; Widerruf, Sperren oder Löschen des Benutzers wirken sofort. Die GraphQL-API erwartet es als
+  `Authorization: Bearer …` (HTTP) bzw. im Payload von `connection_init` (WebSocket); ohne gültiges Token antwortet
+  jede Operation mit `UNAUTHORIZED`, fachliche Fehler kommen als `BAD_REQUEST` mit lesbarer Meldung.
+* Die Vorgaben enthalten entschlüsselte Geheimnisse – den Team-Server deshalb nur über HTTPS erreichbar machen. TLS
+  übernimmt ein Reverse-Proxy (`server.forward-headers-strategy=native`; WebSocket-Upgrade für `/graphql` durchreichen).
 * Entwicklung der Web-UI mit Hot-Reload: `./gradlew :server:bootRun -Pvaadin.productionMode=false`.
 
 #### Deployment in WildFly
@@ -264,28 +278,28 @@ Alternativ zum Jar läuft der Team-Server als WAR in einem externen WildFly (Jak
 
 ### Profile und Einstellungs-Ebenen
 
-Mit Team-Server gelten in der Desktop-App die lokalen Einstellungen, darüber die Vorgaben des Servers in den Ebenen
-**Global → Benutzer → Profil**; jede Ebene speichert nur, was sie vorgibt bzw. überschreibt. Was keine Ebene vorgibt,
-stellt jeder in seiner Desktop-App selbst ein (z.B. lokale Pfade).
+Die wirksamen Modul-Einstellungen sind die Vorbelegung des Moduls, darüber die Ebenen **Global → Benutzer → Profil**;
+jede Ebene speichert nur, was sie vorgibt bzw. überschreibt. Speichern in der Desktop-App schreibt ins aktive Profil
+(nur geänderte Werte).
 
 * **Global:** Vorgaben des Administrators für alle (Web → *Globale Einstellungen*; je Feld „vorgeben“).
 * **Benutzer** („Alle meine Profile“) und **Profil** (z.B. Work, Home) überschreiben einzelne Felder, Modul an/aus
   und einzelne Tools (*Einstellungen*: je Feld „überschreiben“, sonst geerbt mit Herkunft). Geheimnisse liegen
   verschlüsselt (`secret.key`) in der Core-Datenbank (`module_override`).
-* **Aktives Profil** wird oben in der Web-UI oder im Tab *Server* der Desktop-App umgeschaltet (Verwaltung unter
-  *Profile*: anlegen, kopieren samt Überschreibungen, umbenennen, löschen – das letzte bleibt). Jeder Benutzer startet
-  mit „Standard“. Die Desktop-Apps übernehmen den Wechsel beim nächsten Abgleich (gleiche MCP-Session, neue Tools).
+* **Aktives Profil** wird oben in der Web-UI oder im Tab *Backend* der Desktop-App umgeschaltet (Verwaltung in der
+  Web-UI unter *Profile*: anlegen, kopieren samt Überschreibungen, umbenennen, löschen – das letzte bleibt). Jeder
+  Benutzer startet mit „Standard“. Die Desktop-Apps übernehmen den Wechsel sofort (gleiche MCP-Session, neue Tools).
 * **Sperren:** Administratoren sperren unter *Globale Einstellungen* einzelne Felder, „Modul an/aus“ oder alle
   Tool-Schalter eines Moduls. Gesperrtes gilt nur global; Überschreibungen werden beim Speichern abgelehnt und beim
   Auflösen ignoriert (auch bestehende).
-* Die Formulare entstehen aus den Modulen, die die Desktop-Apps melden (Tabelle `module_catalog`) – auch aus
-  Plugins. Solange sich keine App verbunden hat, zeigt die Web-UI keine Module.
+* Die Formulare der Web-UI entstehen aus den Modulen, die die Desktop-Apps melden (Tabelle `module_catalog`) – auch
+  aus Plugins. Solange sich keine App verbunden hat, zeigt die Web-UI keine Module.
 
 ### Projekte und Freigaben
 
-* Ein **Projekt** ist auf dem Server nur Metadaten: Eigentümer, Name, optional Beschreibung, Sonar-Projektschlüssel und
-  Ticket-Projekt (Web-UI → *Projekte*; Core-DB `project`, `project_share`).
-* Das **Verzeichnis** ordnet jeder in seiner Desktop-App zu (Tab *Server* → *Verzeichnis wählen…*). Projekte mit
+* Ein **Projekt** ist im Backend nur Metadaten: Eigentümer, Name, optional Beschreibung, Sonar-Projektschlüssel und
+  Ticket-Projekt (Web-UI → *Projekte* bzw. Tab *Backend* → *Neues Projekt*; Core-DB `project`, `project_share`).
+* Das **Verzeichnis** ordnet jeder in seiner Desktop-App zu (Tab *Backend* → *Verzeichnis wählen…*). Projekte mit
   Verzeichnis ergänzen die Verzeichnis-Felder von **Git** (`repositories`), **Build** und **Code-Graph**
   (`projects`); eigene heißen in den Tools wie angelegt, freigegebene `name@eigentümer`.
 * **Freigaben** vergibt der Eigentümer (oder ein Administrator) je Benutzer: *nur lesen* oder *lesen + schreiben*.
@@ -385,20 +399,15 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
   Tags, Markdown-Inhalt, dazu Zusatzdateien unter `references/`, `templates/`, `scripts/`, `assets/`.
 * **Historie:** jede Änderung erzeugt eine Revision mit Aktion und Notiz (`skills_history`). Mit
   `expected_revision` lehnt ein Patch ab, wenn der Skill inzwischen woanders geändert wurde.
-* **Zentral auf dem Team-Server:** Ist die Desktop-App mit einem Team-Server verbunden, liegen die Skills dort
-  (`/api/skills/**`, gleicher `SkillService`, Eigentümer ist die Konto-E-Mail, globale Vorlagen verwalten
-  Administratoren). Die Server-Datenbank ist `skills.mv.db` im Server-Verzeichnis bzw.
-  `devtools.skills.datasource.url/username/password` – eine bisher gemeinsam genutzte Skill-Datenbank lässt sich
-  direkt übernehmen. Ohne Server gilt die lokale Ablage unten.
-* **Persistenz:** Spring Data JPA (`SkillRepository`, `SkillRevisionRepository`; Zusatzdateien hängen per Cascade am Skill) auf
-  Hibernate ORM 7 und HikariCP, Transaktionen per `@Transactional` im `SkillService`. Standard ist eine lokale
-  H2-Datei `~/.devtools-mcp/skills.mv.db`; Schema per `hibernate.hbm2ddl.auto=update`. JDBC-URL, Benutzer, Passwort
-  (verschlüsselt) und Schema-Modus sind im Modul einstellbar. Andere Datenbanken brauchen ihren JDBC-Treiber auf dem
-  Classpath.
-* **Verbindung ändern:** `SkillsPersistenceConfig` baut die `DataSource` beim Start aus den Modul-Einstellungen
-  (nicht aus `application.properties`). Neue Werte gelten deshalb **erst nach einem Neustart der App**;
-  *Verbindung testen* prüft sie vorher per JDBC, ohne die laufende Verbindung anzufassen. Ist die Datenbank beim
-  Start nicht erreichbar, startet die App trotzdem – das Skills-Modul zeigt dann einen Fehler statt Tools.
+* **Ablage im Backend:** Skills liegen im Backend (eingebettet oder Team-Server) und gehören der E-Mail des
+  Benutzerkontos; globale Vorlagen verwalten Administratoren (eingebettet: der lokale Benutzer). Die App erreicht sie
+  über GraphQL, Änderungen meldet `skillsChanged` (die Skills-Ansicht aktualisiert sich live).
+* **Persistenz:** Spring Data JPA (`SkillRepository`, `SkillRevisionRepository`; Zusatzdateien hängen per Cascade am
+  Skill) auf Hibernate ORM 7 und HikariCP, Transaktionen per `@Transactional` im `SkillService`. Standard ist die
+  H2-Datei `skills.mv.db` im Datenordner; andere Datenbank über `devtools.skills.datasource.url/username/password`
+  (eine bisher gemeinsam genutzte Skill-Datenbank lässt sich direkt übernehmen; früher im Skill-Modul eingetragene
+  Verbindungen übernimmt die Desktop-App beim Start). Schema per `hibernate.hbm2ddl.auto=update`
+  (`devtools.skills.schema-action`). Ist die Datenbank nicht erreichbar, startet das Backend nicht.
 * **Selbstverbesserung** (angelehnt an Hermes' Skill-Review):
   * `skills_review` liefert eine Review-Checkliste (Signale, Reihenfolge *geladenen Skill patchen → übergreifenden
     erweitern → Zusatzdatei → neu anlegen*, was nicht festzuhalten ist), die in dieser Client-Session geladenen und
@@ -643,28 +652,30 @@ JVM-Einstellungen, `file:`-Repositories. Heruntergeladenes landet in `plugins/.r
 
 ```
 desktop/
-  DevToolsMcpApplication ── main() → JavaFX
+  DevToolsMcpApplication ── main() → JavaFX; Backend-Paket nur über remote/EmbeddedBackend
   fx/FxApp                ── init(): Spring-Kontext starten · start(): Fenster + Tray · stop(): Kontext schließen
   core/ToolModule         ── Erweiterungspunkt (SPI)
   core/ToolRegistry       ── Module ⇄ McpSyncServer (addTool/removeTool zur Laufzeit, notifyToolsListChanged)
-  core/SettingsResolver   ── wirksame Einstellungen (lokal, ggf. überlagert vom Team-Server)
+  core/SettingsResolver   ── wirksame Einstellungen lesen/speichern (Backend, vorher settings.json)
   core/ManagedToolCallback── Präfix, Protokollierung, Klartext-Ergebnisse
-  config/SettingsStore    ── JSON-Persistenz, SecretCipher (AES-GCM)
-  server/BearerTokenFilter── optionaler Token-Schutz
-  remote/TeamServer       ── Anbindung an den Team-Server: Katalog melden, Abgleich, Cache, Projekte
+  config/SettingsStore    ── settings.json (App-Einstellungen), SecretCipher (AES-GCM)
+  server/BearerTokenFilter── optionaler Token-Schutz für /mcp
+  remote/                 ── EmbeddedBackend + LocalUser, BackendConnection (GraphQL-Client, Subscriptions, Cache),
+                             BackendSettingsResolver, BackendSkills
   modules/{git,sonar,build,graph,skills,…}
   plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
   plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
-  ui/                     ── MainView, ModuleDetailPane, ConfigForm, InvocationLogView, PluginsView, TeamView, Dialoge
+  ui/                     ── MainView, ModuleDetailPane, ConfigForm, InvocationLogView, PluginsView, BackendView, Dialoge
+backend/
+  backend/BackendConfig   ── Einstieg (Component-Scan des Backends)
+  backend/BackendGraphQlController, GraphQlAuth, GraphQlErrors, ChangeBus ── GraphQL-API, Token, Fehler, Subscriptions
+  backend/{account,profile,project,catalog,skills} ── Benutzer + Tokens, Profile + Ebenen, Projekte, Katalog, Skills
 server/
   DevToolsServerApplication ── Spring Boot (Jetty) · WildFlyInitializer (WAR)
-  account/ profile/ project/ catalog/ ── Benutzer + Tokens, Profile + Ebenen, Projekte, Modul-Katalog (JdbcClient, Flyway)
-  server/DesktopApi, SkillApi ── REST-API für die Desktop-Apps (Desktop-Token)
-  web/                        ── Vaadin-Web-UI
+  server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI
 shared/
-  api/                    ── DTOs der REST-API
-  core/ConfigField, config/ModuleSettings, profile/Overrides ── Einstellungs-Modell
-  modules/skills/         ── Skill-Ablage (JPA), SkillService, SkillBackend
+  api/                    ── Datenklassen der GraphQL-API
+  core/ConfigField, config/ModuleSettings, profile/Overrides, modules/skills/{SkillBackend,SkillViews}
 ```
 
 MCP-Server: Spring AI `spring-ai-starter-mcp-server-webflux` 2.0.1 (MCP Java SDK 2.0.0), Protokoll `STREAMABLE`.

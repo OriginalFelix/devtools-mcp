@@ -1,5 +1,6 @@
 plugins {
     `java-library`
+    `java-test-fixtures`
 }
 
 // Backend: Benutzer und Tokens, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte und Skills mit GraphQL-API
@@ -20,4 +21,6 @@ dependencies {
     runtimeOnly("com.h2database:h2")
 
     testImplementation("org.springframework.graphql:spring-graphql-test")
+    // SkillTestSupport: schlanker Skill-Kontext, auch für die UI-Tests der Desktop-App
+    testFixturesImplementation("org.springframework.boot:spring-boot-starter-data-jpa")
 }

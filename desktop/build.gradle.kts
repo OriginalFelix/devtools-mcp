@@ -15,7 +15,10 @@ val javafxPlatform = when {
 }
 
 dependencies {
-    implementation(project(":shared"))
+    // Backend (GraphQL, Benutzer, Profile, Projekte, Skills): eingebettet ohne eingetragenen Team-Server
+    implementation(project(":backend"))
+    // GraphQL-Client für Subscriptions (WebSocketGraphQlClient über den Jakarta-WebSocket-Client von Jetty)
+    implementation("org.springframework:spring-webflux")
 
     implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-jetty")
@@ -33,11 +36,6 @@ dependencies {
     implementation("io.github.tree-sitter:jtreesitter:0.26.1")
     runtimeOnly("io.github.bonede:tree-sitter:0.26.6")
     runtimeOnly("io.github.bonede:tree-sitter-java:0.23.5")
-
-    // Skills: Spring Data JPA (Hibernate ORM + HikariCP), Standard-Datenbank H2 als lokale Datei.
-    // Die DataSource baut SkillsPersistenceConfig aus den Modul-Einstellungen. Versionen aus der Boot-BOM.
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    runtimeOnly("com.h2database:h2")
 
     // Code-Graph-Ablage: Spring Data Neo4j (Entities für Projekt/Branch, Bulk-Cypher über Neo4jClient für Knoten/Kanten)
     // Bewusst ohne Boot-Starter: die Verbindung kommt aus den Modul-Einstellungen und wird zur Laufzeit gebaut
@@ -57,6 +55,8 @@ dependencies {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
     }
 
+    testImplementation("io.projectreactor:reactor-test")
+    testImplementation(testFixtures(project(":backend")))
     // Eingebetteter SSH-/SFTP-Server für die Tests des SSH-Moduls
     testImplementation("org.apache.sshd:sshd-core:2.15.0")
     testImplementation("org.apache.sshd:sshd-sftp:2.15.0")

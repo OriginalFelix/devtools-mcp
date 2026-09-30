@@ -14,6 +14,7 @@ import systems.grebe.devtools.mcp.backend.skills.SkillService;
 public class ChangeBus {
 
     private final Sinks.Many<BackendChanged> sink = Sinks.many().multicast().directBestEffort();
+    private final java.util.concurrent.atomic.AtomicLong revision = new java.util.concurrent.atomic.AtomicLong();
 
     public ChangeBus(SkillService skills) {
         skills.addChangeListener(() -> publish(BackendChanged.all(BackendChanged.Topic.SKILLS)));
@@ -21,9 +22,15 @@ public class ChangeBus {
 
     @EventListener
     public void publish(BackendChanged event) {
+        revision.incrementAndGet();
         synchronized (sink) {
             sink.tryEmitNext(event);
         }
+    }
+
+    /** Änderungszähler: steigt mit jedem Ereignis (vor dem Verteilen). */
+    public long revision() {
+        return revision.get();
     }
 
     /** Ereignisse eines Themas, die den Benutzer betreffen. */

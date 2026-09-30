@@ -38,10 +38,9 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
-import systems.grebe.devtools.mcp.modules.skills.SkillUser;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
-import systems.grebe.devtools.mcp.modules.skills.SkillsPersistenceConfig;
 
 /**
  * Übersicht der Skills des aktuellen Benutzers und der globalen Vorlagen: links Liste mit Suche und Filtern, rechts
@@ -61,7 +60,8 @@ public class SkillsView extends BorderPane {
             .withZone(ZoneId.systemDefault());
 
     private final SkillBackend service;
-    private final SkillUser users;
+    /** Angemeldetes Konto am Backend (Eigentümer der Skills, Administrator für Vorlagen). */
+    private final Supplier<Optional<Me>> account;
     private final ComboBox<String> scopeFilter = new ComboBox<>();
     private final Label userLabel = new Label();
     private final Label readOnlyHint = new Label();
@@ -90,22 +90,10 @@ public class SkillsView extends BorderPane {
     private final Tab historyTab = new Tab("Historie");
     private final VBox detail;
 
-    public SkillsView(SkillBackend service, SkillsPersistenceConfig.Status status, SkillUser users) {
+    public SkillsView(SkillBackend service, Supplier<Optional<Me>> account) {
         this.service = service;
-        this.users = users;
+        this.account = account;
         getStyleClass().add("skills-view");
-        if (!status.available()) {
-            Label error = new Label("Skill-Datenbank " + status.configured().jdbcUrl() + " war beim Start nicht "
-                    + "erreichbar:\n" + status.error() + "\n\nEinstellungen im Modul „Skills“ prüfen (Verbindung "
-                    + "testen) und die App neu starten.");
-            error.getStyleClass().addAll("status-text", "error");
-            error.setWrapText(true);
-            error.setPadding(new Insets(24));
-            setCenter(error);
-            detail = null;
-            return;
-        }
-
         detail = buildDetail();
         placeholder.getStyleClass().add("form-help");
         detailHolder.getStyleClass().add("detail-holder");
@@ -234,8 +222,10 @@ public class SkillsView extends BorderPane {
 
     /** Lädt die Übersicht neu (Hintergrund-Thread) und behält Auswahl und Filter. */
     public void refresh() {
-        userLabel.setText(users.emailIfKnown().map(e -> "Benutzer: " + e + " (" + users.source() + ")")
-                .orElse("Kein Benutzer – im Modul „Skills“ eintragen oder git config --global user.email setzen"));
+        userLabel.setText(account.get().map(me -> me.email() == null
+                        ? "Konto " + me.username() + " ohne E-Mail – Skills brauchen eine E-Mail im Konto"
+                        : "Benutzer: " + me.email() + " (Konto " + me.username() + ")")
+                .orElse("Backend noch nicht verbunden"));
         background(service::overview, list -> {
             String keep = selected().map(SkillViews.Summary::name).orElse(null);
             items.setAll(list);
@@ -302,7 +292,7 @@ public class SkillsView extends BorderPane {
     }
 
     private void updateActions(SkillViews.Summary s) {
-        boolean admin = users.admin();
+        boolean admin = account.get().map(Me::admin).orElse(false);
         delete.setDisable(s == null || s.global());
         publish.setVisible(admin);
         publish.setManaged(admin);

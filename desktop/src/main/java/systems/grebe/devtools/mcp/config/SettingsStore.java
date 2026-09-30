@@ -28,7 +28,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Lädt und speichert alle Einstellungen als JSON in {@code ~/.devtools-mcp/settings.json}.
  * Geheimnisse (Felder vom Typ SECRET) werden verschlüsselt abgelegt. Thread-sicher.
  */
-public class SettingsStore {
+public class SettingsStore implements DataHome {
 
     private static final Logger LOG = LoggerFactory.getLogger(SettingsStore.class);
 
@@ -55,6 +55,11 @@ public class SettingsStore {
 
     public Path file() {
         return file;
+    }
+
+    @Override
+    public Path dir() {
+        return file.toAbsolutePath().getParent();
     }
 
     public synchronized ServerSettings server() {

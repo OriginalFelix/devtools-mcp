@@ -7,7 +7,8 @@ build/
 .vscode/
 *.log
 
-# Vaadin (Server): beim Build erzeugt
+# Vaadin (Server): beim Build bzw. Start erzeugt – auch im Wurzelordner, wenn das Server-Jar von dort startet
+/src/main/frontend/
 /server/src/main/frontend/generated/
 /server/src/main/frontend/index.html
 /server/src/main/bundles/

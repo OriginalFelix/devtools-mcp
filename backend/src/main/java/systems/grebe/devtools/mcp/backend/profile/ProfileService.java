@@ -274,7 +274,7 @@ public class ProfileService {
                 modules.add(o);
             }
         }
-        return new SettingsSnapshot(profile.id(), profile.name(), modules);
+        return new SettingsSnapshot(profile.id(), profile.name(), modules, 0);
     }
 
     /**

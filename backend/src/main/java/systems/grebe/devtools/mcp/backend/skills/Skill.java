@@ -35,7 +35,7 @@ import jakarta.persistence.Version;
 public class Skill {
 
     /** Spaltenbreite für Markdown-Inhalte; die tatsächliche Obergrenze setzt die Modulkonfiguration. */
-    static final int CONTENT_COLUMN = 200_000;
+    public static final int CONTENT_COLUMN = 200_000;
 
     @Id
     @GeneratedValue

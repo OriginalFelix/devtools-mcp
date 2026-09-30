@@ -19,18 +19,16 @@ import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
-import systems.grebe.devtools.mcp.modules.skills.SkillUser;
-import systems.grebe.devtools.mcp.modules.skills.SkillsPersistenceConfig;
 import systems.grebe.devtools.mcp.modules.visualvm.VisualVmModule;
 import systems.grebe.devtools.mcp.plugin.PluginManager;
 import systems.grebe.devtools.mcp.plugin.store.PluginStore;
-import systems.grebe.devtools.mcp.remote.TeamServer;
+import systems.grebe.devtools.mcp.remote.BackendConnection;
 import systems.grebe.devtools.mcp.ui.AppIcons;
 import systems.grebe.devtools.mcp.ui.ArtifactsView;
+import systems.grebe.devtools.mcp.ui.BackendView;
 import systems.grebe.devtools.mcp.ui.MainView;
 import systems.grebe.devtools.mcp.ui.PluginsView;
 import systems.grebe.devtools.mcp.ui.SkillsView;
-import systems.grebe.devtools.mcp.ui.TeamView;
 import systems.grebe.devtools.mcp.ui.TrayManager;
 
 /**
@@ -70,14 +68,14 @@ public class FxApp extends Application {
         String endpoint = "http://127.0.0.1:" + port
                 + context.getEnvironment().getProperty("spring.ai.mcp.server.streamable-http.mcp-endpoint", "/mcp");
 
+        BackendConnection backend = context.getBean(BackendConnection.class);
         MainView view = new MainView(registry, log, store, endpoint, stage, List.of(
-                new Tab("Skills", new SkillsView(context.getBean(SkillBackend.class),
-                        context.getBean(SkillsPersistenceConfig.Status.class), context.getBean(SkillUser.class))),
+                new Tab("Skills", skillsView(backend)),
                 new Tab("Artefakte", new ArtifactsView(context.getBean(JavaEnvironmentProvider.class), getHostServices(),
                         context.getBean(VisualVmModule.class)::openFile)),
                 new Tab("Plugins", new PluginsView(context.getBean(PluginManager.class),
                         context.getBean(PluginStore.class))),
-                new Tab("Server", new TeamView(context.getBean(TeamServer.class)))));
+                new Tab("Backend", new BackendView(backend))));
         Scene scene = new Scene(view, 1180, 760);
         scene.getStylesheets().add(getClass().getResource("/ui/app.css").toExternalForm());
         stage.setScene(scene);
@@ -101,6 +99,13 @@ public class FxApp extends Application {
         if (!(trayAvailable && store.server().startMinimized())) {
             stage.show();
         }
+    }
+
+    /** Skills-Ansicht; lädt neu, wenn sich Konto oder Verbindung ändern. */
+    private SkillsView skillsView(BackendConnection backend) {
+        SkillsView v = new SkillsView(context.getBean(SkillBackend.class), backend::me);
+        backend.addListener(() -> Platform.runLater(v::refresh));
+        return v;
     }
 
     private void exit() {

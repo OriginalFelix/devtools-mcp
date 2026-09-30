@@ -32,7 +32,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Instructions), eine Installation zur Laufzeit erscheint sofort in {@code tools/list}, Deaktivieren und Entfernen
  * nehmen die Tools wieder weg – ohne Neustart.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "devtools.local-user.email=plugin@example.com")
 class PluginIntegrationTest {
 
     @TempDir
@@ -56,11 +57,6 @@ class PluginIntegrationTest {
             return new SettingsStore(home);
         }
 
-        @Bean
-        @Primary
-        systems.grebe.devtools.mcp.modules.skills.SkillUser testSkillUser(SettingsStore settingsStore) {
-            return systems.grebe.devtools.mcp.modules.skills.SkillTestContext.user(settingsStore, "plugin@example.com");
-        }
     }
 
     @LocalServerPort

@@ -14,10 +14,9 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import systems.grebe.devtools.mcp.modules.skills.SkillService;
-import systems.grebe.devtools.mcp.modules.skills.SkillTestContext;
+import systems.grebe.devtools.mcp.backend.skills.SkillService;
+import systems.grebe.devtools.mcp.backend.skills.SkillTestSupport;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
-import systems.grebe.devtools.mcp.modules.skills.SkillsPersistenceConfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -49,12 +48,11 @@ class SkillsViewLiveUpdateTest {
     @Test
     void viewFollowsChangesMadeThroughTheService() throws Exception {
         Assumptions.assumeTrue(toolkit, "kein JavaFX-Toolkit verfügbar");
-        try (var ctx = SkillTestContext.start(home)) {
+        try (var ctx = SkillTestSupport.start(home)) {
             SkillService service = ctx.getBean(SkillService.class);
             AtomicReference<SkillsView> view = new AtomicReference<>();
             onFx(() -> {
-                SkillsView v = new SkillsView(service, ctx.getBean(SkillsPersistenceConfig.Status.class),
-                        ctx.getBean(systems.grebe.devtools.mcp.modules.skills.SkillUser.class));
+                SkillsView v = new SkillsView(service, java.util.Optional::empty);
                 Stage stage = new Stage();
                 stage.setScene(new Scene(v, 900, 500));
                 stage.show();

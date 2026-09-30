@@ -1,4 +1,4 @@
-package systems.grebe.devtools.mcp.modules.skills;
+package systems.grebe.devtools.mcp.backend.skills;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 
 /**
  * Mehrere Benutzer auf einer gemeinsamen Datenbank: Jeder sieht nur seine Skills plus die globalen Vorlagen;
@@ -34,12 +35,11 @@ class SkillScopingTest {
         contexts.forEach(ConfigurableApplicationContext::close);
     }
 
-    /** App-Instanz eines Benutzers; {@code admin} = Schalter „Globale Vorlagen verwalten“. */
+    /** Backend-Instanz eines Benutzers auf einer gemeinsamen Datenbank; {@code admin} = Administrator. */
     private SkillService app(String user, boolean admin) {
         Path dir = home.resolve(user);
         String url = "jdbc:h2:file:" + home.resolve("shared").toAbsolutePath() + ";AUTO_SERVER=TRUE";
-        ConfigurableApplicationContext ctx = SkillServiceTest.start(dir, Map.of(SkillsModule.JDBC_URL, url,
-                SkillsModule.ADMIN, String.valueOf(admin)), user);
+        ConfigurableApplicationContext ctx = SkillTestSupport.start(dir, url, user, admin, null);
         contexts.add(ctx);
         return ctx.getBean(SkillService.class);
     }
@@ -117,9 +117,9 @@ class SkillScopingTest {
         });
 
         long templates = jdbc().queryForObject("select count(*) from skill where owner = ?", Long.class,
-                SkillUser.GLOBAL);
+                SkillOwner.GLOBAL);
         assertThat(templates).isEqualTo(1);
-        assertThat(jdbc().queryForObject("select content from skill where owner = ?", String.class, SkillUser.GLOBAL))
+        assertThat(jdbc().queryForObject("select content from skill where owner = ?", String.class, SkillOwner.GLOBAL))
                 .doesNotContain("GC-Wurzel");
 
         // Löscht Bernd seine Kopie, gilt wieder die Vorlage
@@ -149,7 +149,7 @@ class SkillScopingTest {
         admin.writeFile("t", "references/a.md", "A", null, 5_000);
         admin.publish("t");
         String template = jdbc().queryForObject("select content from skill where owner = ?", String.class,
-                SkillUser.GLOBAL);
+                SkillOwner.GLOBAL);
 
         SkillService b1 = app(BERND, false);
         assertThat(b1.update("t", null, "neu", null, null, null, null, 5_000)).contains("persönliche Kopie angelegt");
@@ -160,10 +160,10 @@ class SkillScopingTest {
         assertThat(b1.view("t", null)).doesNotContain("references/a.md");
 
         // Vorlage unverändert, Datei a.md weiterhin da
-        assertThat(jdbc().queryForObject("select content from skill where owner = ?", String.class, SkillUser.GLOBAL))
+        assertThat(jdbc().queryForObject("select content from skill where owner = ?", String.class, SkillOwner.GLOBAL))
                 .isEqualTo(template);
         assertThat(jdbc().queryForObject("select count(*) from skill_file f join skill k on f.skill_id = k.id "
-                + "where k.owner = ?", Long.class, SkillUser.GLOBAL)).isEqualTo(1);
+                + "where k.owner = ?", Long.class, SkillOwner.GLOBAL)).isEqualTo(1);
     }
 
     @Test
@@ -202,29 +202,17 @@ class SkillScopingTest {
         assertThatThrownBy(() -> bernd.publish("x")).hasMessageContaining("nicht freigegeben");
         assertThatThrownBy(() -> bernd.unpublish("x")).hasMessageContaining("nicht freigegeben");
         assertThat(jdbc().queryForObject("select count(*) from skill where owner = ?", Long.class,
-                SkillUser.GLOBAL)).isZero();
+                SkillOwner.GLOBAL)).isZero();
 
         SkillService anna = app(ANNA, true);
         assertThatThrownBy(() -> anna.publish("x")).hasMessageContaining("Nur eigene Skills");
     }
 
     @Test
-    void userFromSettingsOverridesGitAndMissingUserIsReported() {
-        Path dir = home.resolve("u");
-        ConfigurableApplicationContext ctx = SkillServiceTest.start(dir,
-                Map.of(SkillsModule.USER_EMAIL, " Felix.Grebe@test.de "), "git@example.com");
-        contexts.add(ctx);
-        SkillUser users = ctx.getBean(SkillUser.class);
-        assertThat(users.email()).isEqualTo("felix.grebe@test.de");
-        assertThat(users.source()).isEqualTo("Modul-Einstellung");
-
-        ConfigurableApplicationContext noUser = SkillServiceTest.start(home.resolve("n"), Map.of(), null);
+    void missingUserIsReported() {
+        ConfigurableApplicationContext noUser = SkillTestSupport.start(home.resolve("n"), null, null, false, null);
         contexts.add(noUser);
-        assertThat(noUser.getBean(SkillUser.class).emailIfKnown()).isEmpty();
         assertThatThrownBy(() -> noUser.getBean(SkillService.class).list(null, null))
-                .hasMessageContaining("git config --global user.email");
-
-        assertThatThrownBy(() -> SkillUser.normalize("kein-at-zeichen")).hasMessageContaining("Ungültige");
-        assertThatThrownBy(() -> SkillUser.normalize(SkillUser.GLOBAL)).hasMessageContaining("Ungültige");
+                .hasMessageContaining("Kein Benutzer");
     }
 }

@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 import javafx.application.Platform;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -22,6 +23,7 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -32,54 +34,52 @@ import javafx.util.StringConverter;
 import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.config.TeamSettings;
-import systems.grebe.devtools.mcp.remote.TeamServer;
+import systems.grebe.devtools.mcp.remote.BackendConnection;
 
 /**
- * Tab „Server“: Anbindung an einen Team-Server (Adresse + Desktop-Token), aktives Profil und die Server-Projekte mit
- * ihrem lokalen Verzeichnis. Netzwerkzugriffe laufen im Hintergrund.
+ * Tab „Backend“: eingebettet oder Team-Server (Adresse + Desktop-Token, wirksam nach Neustart), Verbindungsstatus,
+ * aktives Profil und die Projekte mit ihrem lokalen Verzeichnis. Netzwerkzugriffe laufen im Hintergrund.
  */
-public class TeamView extends BorderPane {
+public class BackendView extends BorderPane {
 
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
 
-    private final TeamServer team;
+    private final BackendConnection backend;
     private final TextField url = new TextField();
     private final PasswordField token = new PasswordField();
-    private final Button connect = new Button("Verbinden");
-    private final Button disconnect = new Button("Trennen");
-    private final Button sync = new Button("Jetzt abgleichen");
+    private final Button useServer = new Button("Server eintragen");
+    private final Button useEmbedded = new Button("Eingebettet verwenden");
+    private final Label mode = new Label();
     private final Label status = new Label();
     private final Label user = new Label();
     private final ComboBox<Me.ProfileInfo> profile = new ComboBox<>();
+    private final Button newProject = new Button("Neues Projekt…");
     private final ObservableList<ProjectInfo> projects = FXCollections.observableArrayList();
     private final TableView<ProjectInfo> table = new TableView<>(projects);
     private boolean updating;
 
-    public TeamView(TeamServer team) {
-        this.team = team;
+    public BackendView(BackendConnection backend) {
+        this.backend = backend;
         setPadding(new Insets(16));
 
-        TeamSettings current = team.settingsOfConnection();
+        TeamSettings current = backend.serverSettings();
         url.setText(current.url());
-        url.setPromptText("https://devtools.example.com");
+        url.setPromptText("https://devtools.example.com – leer = eingebettetes Backend");
         token.setText(current.token());
         token.setPromptText("Desktop-Token aus der Web-UI (Mein Konto)");
         HBox.setHgrow(url, Priority.ALWAYS);
-        HBox.setHgrow(token, Priority.ALWAYS);
-        connect.getStyleClass().add("accent");
-        connect.setOnAction(e -> background(() -> team.connect(url.getText(), token.getText()), "Verbunden"));
-        disconnect.setOnAction(e -> background(() -> {
-            team.disconnect();
-            return null;
-        }, "Getrennt – es gelten wieder nur die lokalen Einstellungen"));
-        sync.setOnAction(e -> background(() -> {
-            team.sync();
-            return null;
-        }, "Abgeglichen"));
+        useServer.getStyleClass().add("accent");
+        useServer.setOnAction(e -> background(() -> backend.configureServer(url.getText(), token.getText())
+                        .map(me -> "Server eingetragen (angemeldet als " + me.username() + ")").orElse(""),
+                msg -> msg + " – wirksam nach einem Neustart der App."));
+        useEmbedded.setOnAction(e -> background(() -> {
+            backend.configureServer("", "");
+            return "Eingebettetes Backend eingestellt";
+        }, msg -> msg + " – wirksam nach einem Neustart der App."));
 
-        Label help = new Label("Mit einem Team-Server gelten zusätzlich die Vorgaben deines aktiven Profils "
-                + "(Global → Benutzer → Profil) und deine Projekte; Skills liegen dann zentral auf dem Server. Ohne "
-                + "Server arbeitet die App mit den lokalen Einstellungen.");
+        Label help = new Label("Ohne Server läuft das Backend (Benutzer, Profile, Einstellungen, Projekte, Skills) "
+                + "eingebettet in dieser App. Mit einem Team-Server gelten dessen Vorgaben (Global → Benutzer → Profil) "
+                + "und Projekte, Skills liegen dort zentral; Änderungen kommen sofort an (GraphQL-Subscriptions).");
         help.setWrapText(true);
         help.getStyleClass().add("form-help");
 
@@ -98,39 +98,41 @@ public class TeamView extends BorderPane {
             Me.ProfileInfo p = profile.getValue();
             if (!updating && p != null) {
                 background(() -> {
-                    team.activateProfile(p.id());
-                    return null;
-                }, "Profil „" + p.name() + "“ aktiv");
+                    backend.activateProfile(p.id());
+                    return "Profil „" + p.name() + "“ aktiv";
+                }, msg -> msg);
             }
         });
 
         GridPane grid = new GridPane();
         grid.setHgap(12);
         grid.setVgap(8);
-        grid.addRow(0, new Label("Adresse"), url);
-        grid.addRow(1, new Label("Token"), token);
-        grid.add(new HBox(8, connect, disconnect, sync), 1, 2);
-        grid.addRow(3, new Label("Status"), status);
-        grid.addRow(4, new Label("Benutzer"), user);
-        grid.addRow(5, new Label("Profil"), profile);
+        grid.addRow(0, new Label("Backend"), mode);
+        grid.addRow(1, new Label("Server-Adresse"), url);
+        grid.addRow(2, new Label("Desktop-Token"), token);
+        grid.add(new HBox(8, useServer, useEmbedded), 1, 3);
+        grid.addRow(4, new Label("Status"), status);
+        grid.addRow(5, new Label("Benutzer"), user);
+        grid.addRow(6, new Label("Profil"), profile);
         GridPane.setHgrow(url, Priority.ALWAYS);
         status.setWrapText(true);
         status.getStyleClass().add("status-text");
 
         Label projectsTitle = new Label("Projekte");
         projectsTitle.getStyleClass().add("section-title");
-        Label projectsHelp = new Label("Projekte verwaltest du in der Web-UI. Hier ordnest du ihnen ein Verzeichnis auf "
-                + "diesem Rechner zu – dann arbeiten Git, Build und Code-Graph damit.");
+        Label projectsHelp = new Label("Ordne den Projekten ein Verzeichnis auf diesem Rechner zu – dann arbeiten Git, "
+                + "Build und Code-Graph damit. Freigaben an andere vergibt die Web-UI des Team-Servers.");
         projectsHelp.setWrapText(true);
         projectsHelp.getStyleClass().add("form-help");
+        newProject.setOnAction(e -> createProject());
         table();
 
-        VBox top = new VBox(12, grid, help, projectsTitle, projectsHelp);
+        VBox top = new VBox(12, grid, help, projectsTitle, projectsHelp, newProject);
         top.setPadding(new Insets(0, 0, 12, 0));
         setTop(top);
         setCenter(table);
 
-        team.addListener(() -> Platform.runLater(this::refresh));
+        backend.addListener(() -> Platform.runLater(this::refresh));
         refresh();
     }
 
@@ -143,11 +145,11 @@ public class TeamView extends BorderPane {
                 : "nur lesen"));
         access.setPrefWidth(120);
         TableColumn<ProjectInfo, String> dir = new TableColumn<>("Lokales Verzeichnis");
-        dir.setCellValueFactory(c -> new SimpleStringProperty(team.settingsOfConnection().projectPaths()
+        dir.setCellValueFactory(c -> new SimpleStringProperty(backend.serverSettings().projectPaths()
                 .getOrDefault(c.getValue().id(), "")));
         dir.setPrefWidth(360);
         TableColumn<ProjectInfo, ProjectInfo> actions = new TableColumn<>("");
-        actions.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(c.getValue()));
+        actions.setCellValueFactory(c -> new SimpleObjectProperty<>(c.getValue()));
         actions.setCellFactory(col -> new TableCell<>() {
             private final Button choose = new Button("Verzeichnis wählen…");
             private final Button clear = new Button("Entfernen");
@@ -156,7 +158,7 @@ public class TeamView extends BorderPane {
             {
                 box.setAlignment(Pos.CENTER_LEFT);
                 choose.setOnAction(e -> chooseDir(getItem()));
-                clear.setOnAction(e -> team.setProjectPath(getItem().id(), null));
+                clear.setOnAction(e -> backend.setProjectPath(getItem().id(), null));
             }
 
             @Override
@@ -167,59 +169,71 @@ public class TeamView extends BorderPane {
         });
         actions.setPrefWidth(240);
         table.getColumns().addAll(List.of(name, access, dir, actions));
-        table.setPlaceholder(new Label("Keine Projekte – oder kein Server verbunden."));
+        table.setPlaceholder(new Label("Keine Projekte."));
     }
 
     private void chooseDir(ProjectInfo p) {
         DirectoryChooser chooser = new DirectoryChooser();
         chooser.setTitle("Verzeichnis für „" + p.toolName() + "“");
-        team.projectPath(p.id()).map(Path::toFile).filter(File::isDirectory).ifPresent(chooser::setInitialDirectory);
+        backend.projectPath(p.id()).map(Path::toFile).filter(File::isDirectory).ifPresent(chooser::setInitialDirectory);
         File dir = chooser.showDialog(getScene() == null ? null : getScene().getWindow());
         if (dir != null) {
-            team.setProjectPath(p.id(), dir.getAbsolutePath());
+            backend.setProjectPath(p.id(), dir.getAbsolutePath());
         }
+    }
+
+    private void createProject() {
+        TextInputDialog d = new TextInputDialog();
+        d.setTitle("Neues Projekt");
+        d.setHeaderText("Name des Projekts (danach Verzeichnis wählen)");
+        if (getScene() != null) {
+            d.initOwner(getScene().getWindow());
+        }
+        d.showAndWait().filter(n -> !n.isBlank()).ifPresent(n -> background(() -> {
+            backend.createProject(n.strip(), null);
+            return "Projekt „" + n.strip() + "“ angelegt";
+        }, msg -> msg));
     }
 
     private void refresh() {
         updating = true;
         try {
-            boolean configured = team.settingsOfConnection().configured();
-            disconnect.setDisable(!configured);
-            sync.setDisable(!configured);
-            String when = team.lastSync().map(t -> " (zuletzt " + TIME.format(t) + ")").orElse("");
-            status.setText(switch (team.status()) {
-                case OFF -> "Nicht verbunden – lokale Einstellungen";
+            mode.setText(backend.embedded() ? "eingebettet (" + backend.url() + ")" : "Team-Server " + backend.url());
+            String when = backend.lastSync().map(t -> " (zuletzt " + TIME.format(t) + ")").orElse("");
+            status.setText(switch (backend.status()) {
+                case CONNECTING -> "Verbinde …";
                 case ONLINE -> "Verbunden" + when;
-                case OFFLINE -> "Server nicht erreichbar – letzter Stand gilt" + when + ". " + team.message();
-                case ERROR -> "Fehler: " + team.message();
+                case OFFLINE -> "Nicht erreichbar – letzter Stand gilt" + when + ". " + backend.message();
+                case ERROR -> "Fehler: " + backend.message();
             });
-            Me me = team.me().orElse(null);
+            Me me = backend.me().orElse(null);
             user.setText(me == null ? "–" : me.username() + (me.email() == null ? "" : " <" + me.email() + ">")
                     + (me.admin() ? " (Administrator)" : ""));
             profile.getItems().setAll(me == null ? List.of() : me.profiles());
-            profile.setDisable(me == null || !configured);
+            profile.setDisable(me == null);
             if (me != null) {
                 me.profiles().stream().filter(p -> p.id() == me.activeProfileId()).findFirst()
                         .ifPresent(profile::setValue);
             }
-            projects.setAll(team.projects());
+            newProject.setDisable(me == null);
+            projects.setAll(backend.projects());
             table.refresh();
         } finally {
             updating = false;
         }
     }
 
-    private <T> void background(Supplier<T> action, String success) {
-        connect.setDisable(true);
+    private void background(Supplier<String> action, java.util.function.UnaryOperator<String> success) {
+        useServer.setDisable(true);
         status.setText("…");
         CompletableFuture.supplyAsync(action).whenComplete((r, e) -> Platform.runLater(() -> {
-            connect.setDisable(false);
+            useServer.setDisable(false);
             refresh();
             if (e != null) {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
                 status.setText("Fehler: " + cause.getMessage());
-            } else {
-                status.setText(success + ". " + status.getText());
+            } else if (r != null && !r.isEmpty()) {
+                status.setText(success.apply(r));
             }
         }));
     }

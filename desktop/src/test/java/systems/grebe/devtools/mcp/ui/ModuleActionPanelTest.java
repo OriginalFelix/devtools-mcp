@@ -39,7 +39,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Echte JavaFX-Oberfläche: Im Modul „Code-Graph“ ein Projekt wählen, „Indizieren“ klicken, Ergebnis abwarten.
  * Speichert einen Screenshot nach {@code build/ui-snapshots/}. Übersprungen ohne JavaFX-Toolkit.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "devtools.local-user.email=ui@example.com")
 class ModuleActionPanelTest {
 
     @TempDir
@@ -53,12 +54,6 @@ class ModuleActionPanelTest {
             return new SettingsStore(home);
         }
 
-        /** Fester Benutzer statt ~/.gitconfig des Entwicklers. */
-        @Bean
-        @Primary
-        systems.grebe.devtools.mcp.modules.skills.SkillUser testSkillUser(SettingsStore settingsStore) {
-            return systems.grebe.devtools.mcp.modules.skills.SkillTestContext.user(settingsStore, "ui@example.com");
-        }
     }
 
     @Autowired

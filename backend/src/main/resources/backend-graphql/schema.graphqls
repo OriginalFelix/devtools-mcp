@@ -133,6 +133,8 @@ type Settings {
     profileId: Int!
     profileName: String!
     modules: [Overlay!]!
+    "Änderungszähler des Backends beim Lesen – kleinere Revision = älterer Stand."
+    revision: Int!
 }
 
 "Vorgaben bzw. Überschreibungen eines Moduls; nur gesetzte Werte."

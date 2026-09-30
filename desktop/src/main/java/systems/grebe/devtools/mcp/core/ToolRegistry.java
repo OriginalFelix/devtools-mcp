@@ -19,6 +19,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
@@ -75,6 +76,7 @@ public class ToolRegistry {
     }
 
     @EventListener(ApplicationReadyEvent.class)
+    @Order(0) // vor der Backend-Verbindung (Katalog braucht die Tools)
     public void registerAll() {
         List<String> ids;
         synchronized (states) {
@@ -109,14 +111,23 @@ public class ToolRegistry {
         ids.forEach(this::rebuild);
     }
 
-    /** Wirksame Einstellungen eines Moduls (lokal, ggf. überlagert von den Vorgaben des Team-Servers). */
-    public ModuleSettings effectiveSettings(String moduleId) {
-        return effective(state(moduleId));
+    /** Gesperrte Schlüssel eines Moduls (siehe {@link SettingsResolver#locked}). */
+    public java.util.Set<String> lockedKeys(String moduleId) {
+        return resolver().locked(state(moduleId).module);
+    }
+
+    /** Wohin Änderungen an Einstellungen gehen (Anzeige). */
+    public String settingsTarget() {
+        return resolver().target();
+    }
+
+    private SettingsResolver resolver() {
+        return resolverProvider.getIfAvailable(() -> SettingsResolver.LOCAL_ONLY);
     }
 
     private ModuleSettings effective(ModuleState s) {
         try {
-            return resolverProvider.getIfAvailable(() -> SettingsResolver.LOCAL_ONLY).effective(s.module, s.settings);
+            return resolver().effective(s.module, s.settings);
         } catch (RuntimeException e) {
             LOG.error("Einstellungen von {} nicht auflösbar – nehme die lokalen", s.module.id(), e);
             return s.settings;
@@ -174,13 +185,14 @@ public class ToolRegistry {
         changeListeners.forEach(Runnable::run);
     }
 
+    /** Wirksame Einstellungen des Moduls (Backend bzw. lokal, siehe {@link SettingsResolver}). */
     public ModuleSettings settings(String moduleId) {
-        return state(moduleId).settings;
+        return effective(state(moduleId));
     }
 
     public ModuleConfig config(String moduleId) {
         ModuleState s = state(moduleId);
-        return ModuleConfig.of(s.module.configSchema(), s.settings.values());
+        return ModuleConfig.of(s.module.configSchema(), effective(s).values());
     }
 
     /** Alle Tools, die das Modul mit der aktuellen Konfiguration anbietet (auch deaktivierte). */
@@ -298,6 +310,12 @@ public class ToolRegistry {
 
     private void update(String moduleId, java.util.function.UnaryOperator<ModuleSettings> change) {
         ModuleState s = state(moduleId);
+        SettingsResolver resolver = resolver();
+        if (resolver.handlesWrites()) {
+            ModuleSettings before = effective(s);
+            resolver.save(s.module, before, change.apply(before));
+            return; // der Resolver hat den neuen Stand übernommen und alles neu aufbauen lassen
+        }
         synchronized (states) {
             s.settings = change.apply(s.settings);
             store.saveModule(moduleId, s.settings, secretKeys(s.module));

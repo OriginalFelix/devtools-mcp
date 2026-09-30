@@ -11,9 +11,8 @@ import javafx.scene.image.PixelReader;
 import javafx.scene.image.WritableImage;
 import javafx.stage.Stage;
 import javax.imageio.ImageIO;
-import systems.grebe.devtools.mcp.modules.skills.SkillService;
-import systems.grebe.devtools.mcp.modules.skills.SkillTestContext;
-import systems.grebe.devtools.mcp.modules.skills.SkillsPersistenceConfig;
+import systems.grebe.devtools.mcp.backend.skills.SkillService;
+import systems.grebe.devtools.mcp.backend.skills.SkillTestSupport;
 
 /**
  * Manueller Sichttest (kein JUnit): öffnet die Skill-Übersicht gegen einen vorhandenen Einstellungsordner, wählt einen
@@ -26,12 +25,10 @@ public final class SkillsViewSnapshot {
         Path home = Path.of(args[0]);
         Path out = Path.of(args[1]);
         String select = args.length > 2 ? args[2] : null;
-        var ctx = SkillTestContext.start(home);
+        var ctx = SkillTestSupport.start(home);
         CountDownLatch done = new CountDownLatch(1);
         Platform.startup(() -> {
-            SkillsView view = new SkillsView(ctx.getBean(SkillService.class),
-                    ctx.getBean(SkillsPersistenceConfig.Status.class),
-                    ctx.getBean(systems.grebe.devtools.mcp.modules.skills.SkillUser.class));
+            SkillsView view = new SkillsView(ctx.getBean(SkillService.class), java.util.Optional::empty);
             Stage stage = new Stage();
             Scene scene = new Scene(view, 1180, 640);
             scene.getStylesheets().add(SkillsViewSnapshot.class.getResource("/ui/app.css").toExternalForm());

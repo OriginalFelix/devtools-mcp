@@ -1,4 +1,4 @@
-package systems.grebe.devtools.mcp.modules.skills;
+package systems.grebe.devtools.mcp.backend.skills;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -19,28 +19,18 @@ import org.springframework.boot.transaction.autoconfigure.TransactionAutoConfigu
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import systems.grebe.devtools.mcp.config.ModuleSettings;
-import systems.grebe.devtools.mcp.config.SettingsStore;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 
 /**
- * Service und Spring-Data-Repositories gegen eine echte H2-Datei in einem schlanken Spring-Kontext – mit genau der
- * Persistenz-Konfiguration der App ({@link SkillsPersistenceConfig}) und ohne Test-Transaktion, damit Commit,
- * Rollback und Bulk-Updates so wirken wie im Betrieb.
+ * Service und Spring-Data-Repositories gegen eine echte H2-Datei ({@link SkillTestSupport}) – ohne Test-Transaktion,
+ * damit Commit, Rollback und Bulk-Updates so wirken wie im Betrieb.
  */
 class SkillServiceTest {
 
-    @SpringBootConfiguration
-    @ImportAutoConfiguration({HibernateJpaAutoConfiguration.class, DataJpaRepositoriesAutoConfiguration.class,
-            TransactionAutoConfiguration.class})
-    @Import({SkillsPersistenceConfig.class, SkillService.class})
-    static class SkillsOnly {
-    }
-
-    /** Benutzer der Tests, sofern nicht per Modul-Einstellung überschrieben – bewusst nicht aus ~/.gitconfig. */
-    static final String USER = "felix@example.com";
+    static final String USER = SkillTestSupport.USER;
 
     @TempDir
     Path home;
@@ -49,29 +39,9 @@ class SkillServiceTest {
     SkillService service;
     JdbcTemplate jdbc;
 
-    static ConfigurableApplicationContext start(Path home, Map<String, String> moduleValues) {
-        return start(home, moduleValues, USER);
-    }
-
-    /** {@code gitEmail} = Git-E-Mail, die {@link SkillUser} sieht ({@code null} = keine gesetzt). */
-    static ConfigurableApplicationContext start(Path home, Map<String, String> moduleValues, String gitEmail) {
-        SettingsStore store = new SettingsStore(home);
-        if (!moduleValues.isEmpty()) {
-            store.saveModule(SkillsModule.ID, new ModuleSettings(true, Set.of(), moduleValues), Set.of());
-        }
-        SkillUser users = new SkillUser(store, () -> java.util.Optional.ofNullable(gitEmail));
-        return new SpringApplicationBuilder(SkillsOnly.class)
-                .web(WebApplicationType.NONE)
-                .initializers(ctx -> {
-                    ctx.getBeanFactory().registerSingleton("settingsStore", store);
-                    ctx.getBeanFactory().registerSingleton("skillUser", users);
-                })
-                .run();
-    }
-
     @BeforeEach
     void setUp() {
-        context = start(home, Map.of());
+        context = SkillTestSupport.start(home);
         service = context.getBean(SkillService.class);
         jdbc = new JdbcTemplate(context.getBean(javax.sql.DataSource.class));
     }
@@ -95,9 +65,8 @@ class SkillServiceTest {
 
     @Test
     void defaultIsH2FileInSettingsFolder() {
-        SkillsPersistenceConfig.Status status = context.getBean(SkillsPersistenceConfig.Status.class);
-        assertThat(status.available()).isTrue();
-        assertThat(status.effective().jdbcUrl()).isEqualTo("jdbc:h2:file:" + home.toAbsolutePath().resolve("skills").toString().replace('\\', '/'));
+        assertThat(context.getBean(com.zaxxer.hikari.HikariDataSource.class).getJdbcUrl())
+                .isEqualTo("jdbc:h2:file:" + home.toAbsolutePath().resolve("skills").toString().replace('\\', '/'));
         createHeapSkill();
         assertThat(home.resolve("skills.mv.db")).exists();
     }
@@ -259,7 +228,7 @@ class SkillServiceTest {
         createHeapSkill();
         context.close();
 
-        context = start(home, Map.of());
+        context = SkillTestSupport.start(home);
         SkillService again = context.getBean(SkillService.class);
         assertThat(again.view("wildfly-heap-leak", null)).contains("1. jvm_heap zweimal vergleichen");
         assertThat(again.countText()).startsWith("1 eigene Skill(s) von " + USER);
@@ -269,25 +238,21 @@ class SkillServiceTest {
     void configuredJdbcUrlIsUsed() {
         context.close();
         Path other = home.resolve("anderswo");
-        context = start(home, Map.of(SkillsModule.JDBC_URL, "jdbc:h2:file:" + other.resolve("db")));
+        context = SkillTestSupport.start(home, "jdbc:h2:file:" + other.resolve("db"), USER, false, null);
         context.getBean(SkillService.class).create("x", "d", "c", null, null, 5_000);
         assertThat(other.resolve("db.mv.db")).exists();
         // Die Standard-Datei aus setUp() bleibt leer – der Skill landete in der konfigurierten Datenbank.
-        // (settings.json im selben Ordner behält die URL, deshalb die Standard-URL explizit zurücksetzen.)
         context.close();
-        context = start(home, Map.of(SkillsModule.JDBC_URL, SkillsModule.defaultJdbcUrl(home.toAbsolutePath())));
+        context = SkillTestSupport.start(home);
         assertThat(context.getBean(SkillService.class).countText()).startsWith("0 eigene Skill(s)");
     }
 
     @Test
-    void unreachableDatabaseDoesNotPreventStartup() {
+    void unreachableDatabaseFailsTheStart() {
         context.close();
-        context = start(home, Map.of(SkillsModule.JDBC_URL, "jdbc:gibtsnicht:x"));
-        SkillsPersistenceConfig.Status status = context.getBean(SkillsPersistenceConfig.Status.class);
-        assertThat(status.available()).isFalse();
-        assertThat(status.configured().jdbcUrl()).isEqualTo("jdbc:gibtsnicht:x");
-        assertThat(status.effective().jdbcUrl()).isEqualTo(SkillsPersistenceConfig.UNAVAILABLE_URL);
-        assertThat(status.error()).isNotBlank();
+        context = null;
+        assertThatThrownBy(() -> SkillTestSupport.start(home, "jdbc:gibtsnicht:x", USER, false, null))
+                .hasStackTraceContaining("jdbc:gibtsnicht:x");
     }
 
     @Test

@@ -80,7 +80,7 @@ public class BackendGraphQlController {
 
     @QueryMapping
     public SettingsSnapshot settings(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
-        return profiles.snapshot(require(user).id());
+        return snapshot(require(user));
     }
 
     @QueryMapping
@@ -96,7 +96,7 @@ public class BackendGraphQlController {
                                             @Argument long profileId) {
         UserAccount u = require(user);
         profiles.activate(u.id(), profileId);
-        return profiles.snapshot(u.id());
+        return snapshot(u);
     }
 
     @MutationMapping
@@ -113,7 +113,13 @@ public class BackendGraphQlController {
         } else {
             profiles.saveOverrides(u.id(), level, levelId(u, level), moduleId, o);
         }
-        return profiles.snapshot(u.id());
+        return snapshot(u);
+    }
+
+    /** Stand mit Revision; der Zähler wird vor dem Lesen genommen, der Stand ist also mindestens so neu. */
+    private SettingsSnapshot snapshot(UserAccount u) {
+        long revision = bus.revision();
+        return profiles.snapshot(u.id()).withRevision(revision);
     }
 
     private long levelId(UserAccount u, Overrides.Level level) {
@@ -257,7 +263,7 @@ public class BackendGraphQlController {
     public Flux<SettingsSnapshot> settingsChanged(
             @ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
         UserAccount u = require(user);
-        return stream(bus.changes(BackendChanged.Topic.SETTINGS, u.id()), () -> profiles.snapshot(u.id()));
+        return stream(bus.changes(BackendChanged.Topic.SETTINGS, u.id()), () -> snapshot(u));
     }
 
     @SubscriptionMapping

@@ -16,7 +16,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 
 /**
- * Schützt den MCP-Endpunkt optional per Bearer-Token (Einstellungen → Zugriffstoken).
+ * Schützt den MCP-Endpunkt optional per Bearer-Token (Einstellungen → Zugriffstoken). Die GraphQL-API des
+ * eingebetteten Backends prüft ihre eigenen Tokens und ist hier ausgenommen.
  * Das Token wird bei jeder Anfrage aus dem {@link SettingsStore} gelesen – Änderungen wirken sofort.
  */
 @Component
@@ -27,6 +28,11 @@ public class BearerTokenFilter extends OncePerRequestFilter {
 
     public BearerTokenFilter(SettingsStore store) {
         this.store = store;
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return !request.getRequestURI().startsWith(request.getContextPath() + "/mcp");
     }
 
     @Override

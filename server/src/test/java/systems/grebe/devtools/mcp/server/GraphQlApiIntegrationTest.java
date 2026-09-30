@@ -137,7 +137,7 @@ class GraphQlApiIntegrationTest {
 
     private static final String SETTINGS = """
             { settings { profileId profileName modules { moduleId enabled tools { name enabled }
-              values { key value } locked } } }""";
+              values { key value } locked } revision } }""";
 
     private SettingsSnapshot settings(String jwt) {
         return client(jwt).document(SETTINGS).retrieveSync("settings").toEntity(SettingsSnapshot.class);
@@ -247,7 +247,7 @@ class GraphQlApiIntegrationTest {
 
         SettingsSnapshot s = client(jwt).document("""
                         mutation($id: Int!) { activateProfile(profileId: $id) { profileId profileName
-                          modules { moduleId enabled tools { name enabled } values { key value } locked } } }""")
+                          modules { moduleId enabled tools { name enabled } values { key value } locked } revision } }""")
                 .variable("id", homeProfile.id()).retrieveSync("activateProfile").toEntity(SettingsSnapshot.class);
         assertThat(s.profileName()).isEqualTo("Home");
         assertThat(s.module("git").enabled()).isFalse();
@@ -319,7 +319,7 @@ class GraphQlApiIntegrationTest {
                 }).build();
         try {
             StepVerifier.create(ws.document("subscription { settingsChanged { profileId profileName modules { moduleId "
-                                    + "values { key value } } } }")
+                                    + "values { key value } } revision } }")
                             .retrieveSubscription("settingsChanged").toEntity(SettingsSnapshot.class))
                     .assertNext(s -> assertThat(s.module("sonar").valueMap()).doesNotContainKey("organization"))
                     .then(() -> profiles.saveOverrides(u.id(), Overrides.Level.USER, u.id(), "sonar",

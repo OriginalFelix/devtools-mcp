@@ -15,21 +15,21 @@ import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolBeans;
 import systems.grebe.devtools.mcp.core.ToolHints;
 import systems.grebe.devtools.mcp.core.ToolModule;
-import systems.grebe.devtools.mcp.remote.TeamServer;
+import systems.grebe.devtools.mcp.remote.BackendConnection;
 
 /**
- * Projekte vom Team-Server: {@code projects_list} zeigt dem LLM die eigenen und freigegebenen Projekte samt Zugriff,
- * lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt. Verwaltet werden Projekte in der Web-UI des Servers; das
- * Verzeichnis ordnet jeder in seiner Desktop-App zu (Server → Projekte).
+ * Projekte aus dem Backend: {@code projects_list} zeigt dem LLM die eigenen und freigegebenen Projekte samt Zugriff,
+ * lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt. Angelegt werden Projekte im Tab „Backend“ bzw. in der Web-UI
+ * des Team-Servers; das Verzeichnis ordnet jeder in seiner Desktop-App zu.
  */
 @Component
 public class ProjectsModule implements ToolModule {
 
     public static final String ID = "projects";
 
-    private final TeamServer team;
+    private final BackendConnection team;
 
-    public ProjectsModule(TeamServer team) {
+    public ProjectsModule(BackendConnection team) {
         this.team = team;
     }
 
@@ -45,8 +45,8 @@ public class ProjectsModule implements ToolModule {
 
     @Override
     public String description() {
-        return "Eigene und freigegebene Projekte vom Team-Server. Git, Build und Code-Graph bekommen die Projekte, "
-                + "denen hier ein lokales Verzeichnis zugeordnet ist; Verwaltung und Freigaben in der Web-UI.";
+        return "Eigene und freigegebene Projekte aus dem Backend. Git, Build und Code-Graph bekommen die Projekte, "
+                + "denen hier ein lokales Verzeichnis zugeordnet ist; Freigaben in der Web-UI des Team-Servers.";
     }
 
     @Override
@@ -77,31 +77,28 @@ public class ProjectsModule implements ToolModule {
     @ToolHints(readOnly = true, openWorld = false)
     public static class ProjectTools {
 
-        private final TeamServer team;
+        private final BackendConnection team;
 
-        ProjectTools(TeamServer team) {
+        ProjectTools(BackendConnection team) {
             this.team = team;
         }
 
-        @Tool(name = "list", description = "Listet deine Projekte vom Team-Server und die dir freigegebenen mit Zugriff "
+        @Tool(name = "list", description = "Listet deine Projekte und die dir freigegebenen mit Zugriff "
                 + "(Eigentümer, lesen + schreiben, nur lesen), lokalem Verzeichnis, Sonar-Schlüssel, Ticket-Projekt und "
                 + "was darin erkannt wurde (Git, Gradle/Maven)." + ShellHints.PROJECTS)
         public String list() {
-            if (!team.settingsOfConnection().configured()) {
-                return "Kein Team-Server verbunden: Verzeichnisse stehen in den Modulen Git, Build und Code-Graph – "
-                        + "git_list_repositories bzw. build_list_projects verwenden.";
-            }
             List<ProjectInfo> projects = team.projects();
             if (projects.isEmpty()) {
-                return "Keine Projekte. Projekte legst du in der Web-UI des Team-Servers unter „Projekte“ an oder "
-                        + "lässt sie dir freigeben.";
+                return "Keine Projekte. Verzeichnisse stehen in den Modulen Git, Build und Code-Graph – "
+                        + "git_list_repositories bzw. build_list_projects verwenden. Projekte legst du in der App unter "
+                        + "„Backend“ bzw. in der Web-UI des Team-Servers an.";
             }
             StringBuilder sb = new StringBuilder();
             for (ProjectInfo p : projects) {
                 Optional<Path> dir = team.projectPath(p.id());
                 sb.append(p.toolName()).append("  [").append(label(p)).append("]  ")
                         .append(dir.map(Path::toString).orElse("(kein lokales Verzeichnis zugeordnet – in der "
-                                + "Desktop-App unter Server → Projekte wählen)"));
+                                + "Desktop-App unter Backend → Projekte wählen)"));
                 dir.map(ProjectTools::detect).filter(f -> !f.isEmpty())
                         .ifPresent(found -> sb.append("  (").append(String.join(", ", found)).append(')'));
                 sb.append('\n');

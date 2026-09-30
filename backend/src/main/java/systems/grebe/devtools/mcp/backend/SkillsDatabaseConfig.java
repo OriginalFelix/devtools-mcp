@@ -41,7 +41,8 @@ public class SkillsDatabaseConfig {
     HikariDataSource dataSource(BackendHome home,
                                 @Value("${devtools.skills.datasource.url:}") String url,
                                 @Value("${devtools.skills.datasource.username:sa}") String username,
-                                @Value("${devtools.skills.datasource.password:}") String password) {
+                                @Value("${devtools.skills.datasource.password:}") String password,
+                                @Value("${devtools.skills.legacy-owner:}") String legacyOwner) {
         String jdbcUrl = url.isBlank()
                 ? "jdbc:h2:file:" + home.resolve("skills").toString().replace('\\', '/') : url;
         LOG.info("Skill-Datenbank: {}", jdbcUrl);
@@ -51,8 +52,9 @@ public class SkillsDatabaseConfig {
         ds.setMaximumPoolSize(8);
         ds.setMinimumIdle(0);
         try (Connection con = ds.getConnection()) {
-            // ältere Skill-Datenbanken ohne Eigentümer-Spalte anheben (siehe SkillSchemaMigration)
-            SkillSchemaMigration.migrate(con, Optional::empty);
+            // ältere Skill-Datenbanken ohne Eigentümer-Spalte anheben (siehe SkillSchemaMigration); vorhandene Skills
+            // gehören dann legacyOwner (eingebettet in der Desktop-App: der lokale Benutzer)
+            SkillSchemaMigration.migrate(con, () -> Optional.of(legacyOwner).filter(o -> !o.isBlank()));
         } catch (SQLException e) {
             throw new IllegalStateException("Skill-Datenbank " + jdbcUrl + " nicht nutzbar: " + e.getMessage(), e);
         }
