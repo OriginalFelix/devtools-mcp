@@ -156,7 +156,7 @@ class McpServerIntegrationTest {
                 .contains("Tools `build_*`", "Tools `container_*`", "Tools `sonar_*`", "Tools `jvm_*`",
                         "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`", "Tools `graph_*`",
                         "`graph_report`", "`graph_neighbors`", "Tools `ticket_*`", "`ticket_get`", "`ticket_board`",
-                        "## Skills – Tools `skills_*`", "`skills_list`", "`skills_create`", "`skills_patch`")
+                        "## Skills – Tools `skills_*`", "`skills_list`", "Tools `maven_*`", "`maven_breaking_changes`", "`skills_create`", "`skills_patch`")
                 .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
         // Reihenfolge wie in der Modulliste: order, dann Anzeigename – Skills zuerst, damit sie vor jeder Aufgabe greifen
         assertThat(instructions.indexOf("Tools `skills_*`")).isLessThan(instructions.indexOf("Tools `git_*`"));
@@ -187,9 +187,9 @@ class McpServerIntegrationTest {
                     Map.entry("asprof_", ShellHints.ASPROF), Map.entry("visualvm_", ShellHints.VISUALVM),
                     Map.entry("debug_", ShellHints.DEBUG), Map.entry("skills_", ShellHints.SKILLS),
                     Map.entry("graph_", ShellHints.GRAPH), Map.entry("ticket_", ShellHints.TICKET),
-                    Map.entry("projects_", ShellHints.PROJECTS));
+                    Map.entry("projects_", ShellHints.PROJECTS), Map.entry("maven_", ShellHints.MAVEN));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(121); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(124); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
