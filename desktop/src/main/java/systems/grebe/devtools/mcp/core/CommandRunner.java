@@ -51,15 +51,33 @@ public final class CommandRunner {
 
     /** Wie {@link #run(List, Duration, Charset)}, mit Arbeitsverzeichnis ({@code null} = aktuelles). */
     public static Result run(List<String> command, Duration timeout, Charset charset, java.nio.file.Path workDir) {
+        return run(command, timeout, charset, workDir, java.util.Map.of());
+    }
+
+    /**
+     * Wie {@link #run(List, Duration, Charset, java.nio.file.Path)}, mit zusätzlichen Umgebungsvariablen. Sind welche
+     * gesetzt, wird außerdem die Standardeingabe sofort geschlossen, damit Rückfragen (z.B. nach einem Passwort) nicht
+     * bis zum Timeout hängen.
+     */
+    public static Result run(List<String> command, Duration timeout, Charset charset, java.nio.file.Path workDir,
+                             java.util.Map<String, String> env) {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         if (workDir != null) {
             pb.directory(workDir.toFile());
         }
+        pb.environment().putAll(env);
         Process p;
         try {
             p = pb.start();
         } catch (IOException e) {
             throw new IllegalStateException("Programm nicht startbar: " + command.getFirst() + " (" + e.getMessage() + ")", e);
+        }
+        if (!env.isEmpty()) {
+            try {
+                p.getOutputStream().close();
+            } catch (IOException ignored) {
+                // Prozess liest nicht – egal
+            }
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Thread reader = Thread.ofVirtual().start(() -> copy(p.getInputStream(), out));

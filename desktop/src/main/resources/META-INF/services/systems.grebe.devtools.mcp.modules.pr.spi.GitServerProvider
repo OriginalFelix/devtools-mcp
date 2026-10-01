@@ -1,0 +1,3 @@
+systems.grebe.devtools.mcp.modules.pr.github.GitHubServerProvider
+systems.grebe.devtools.mcp.modules.pr.gitlab.GitLabServerProvider
+systems.grebe.devtools.mcp.modules.pr.bitbucket.BitbucketServerProvider
