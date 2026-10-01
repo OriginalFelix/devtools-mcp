@@ -51,7 +51,10 @@ public final class ShellHints {
     public static final String TICKET = " Tickets (Jira, GitHub, GitLab, YouTrack, OpenProject) immer über die ticket_*-Tools lesen, nicht per "
             + "`curl` gegen die REST-API, mit `gh`/`glab` in der Shell oder im Browser.";
 
-    public static final String SSH = " Konfigurierte SSH-Server immer über die ssh_*-Tools ansprechen, nicht mit "
+    public static final String PR = " Pull/Merge Requests (GitHub, GitLab, Bitbucket) immer über die pr_*-Tools, nicht "
+            + "mit `gh pr`/`glab mr` in der Shell, per `curl` gegen die REST-API oder im Browser.";
+
+    public static final String SSH =" Konfigurierte SSH-Server immer über die ssh_*-Tools ansprechen, nicht mit "
             + "`ssh`, `scp` oder `sftp` in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
 
     public static final String PROJECTS = " Welche Projekte (Repositories, Build-, Graph-Projekte) zur Verfügung stehen, "

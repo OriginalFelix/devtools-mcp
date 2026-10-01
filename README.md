@@ -18,6 +18,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
 | **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
+| **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
@@ -99,6 +100,34 @@ einzige aktive. Sind Jira und YouTrack beide aktiv, ist `ABC-123` mehrdeutig –
 der Parameter `provider`. Ein weiteres System (z.B. Redmine) braucht eine `TicketProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`; `spi/HttpJson`
 (JSON über HTTP mit verständlichen Fehlermeldungen) steht Providern – auch aus Plugins – zur Verfügung.
+
+### Git-Server und Pull Requests (ServiceLoader)
+
+Das Modul **Pull Requests** folgt demselben Muster über `modules/pr/spi`: `GitServerProvider` (ID, Felder, Hilfetexte)
+erzeugt einen `GitServer` mit `list`, `get`, `diff`, `threads`, `projectOfRemote` und optional `ownsKey`; Schreiben
+(`create`, `update`, `comment`, `reply`, `resolve`, `merge`) sind `default`-Methoden. Einstellungen und `HttpJson` teilt
+es mit den Ticket-Providern. Mitgeliefert sind
+
+| Provider | Anbindung | Repository | Pull Request | Threads auflösen |
+|---|---|---|---|---|
+| `github` | REST + GraphQL (Review-Threads) | `owner/repo` | `owner/repo#12`, URL | Code-Threads (`PRRT_…`) |
+| `gitlab` | REST v4 (Merge Requests, Diskussionen, Pipeline inkl. fehlgeschlagener Jobs) | `gruppe/projekt` | `gruppe/projekt!12`, URL | Diskussionen |
+| `bitbucket` | Cloud: API 2.0 (API-Token mit E-Mail als Basic oder Access Token als Bearer); Data Center: REST 1.0 + Build-Status (HTTP Access Token) – `deployment=auto` erkennt Cloud an bitbucket.org | `workspace/repo` bzw. `PROJ/repo`, `~user/repo` | `…#12`, URL | Code-Kommentare (Cloud), Threads und Aufgaben (DC) |
+
+Server und Repository ergeben sich aus dem Remote (`remote`, Standard `origin`) des lokalen Repositories – die
+Repository-Liste übernimmt das Modul beim ersten Start aus dem Modul Git, am Team-Server kommt sie aus den Projekten.
+Ohne `pr` beziehen sich `pr_get`, `pr_diff`, `pr_comments`, `pr_reply` … auf den offenen Pull Request des aktuellen
+Branches. `pr_create` nimmt den aktuellen Branch als Quelle und den Standard-Branch als Ziel und lehnt ab, solange der
+Branch nicht gepusht ist. `pr_push` ruft `git push --porcelain -u <remote> <branch>` mit den Zugangsdaten des Rechners
+auf (SSH-Schlüssel, Credential Manager), nicht interaktiv (`GIT_TERMINAL_PROMPT=0`), nie Force und nie auf
+`main`/`master` bzw. den Standard-Branch des Remotes.
+
+Typischer Ablauf „Review-Kommentare abarbeiten“: `pr_comments unresolved=true` → Code ändern, `git_commit` → `pr_push`
+→ je Thread `pr_reply` (was geändert wurde) → `pr_resolve`. `writeProjects` schränkt alle schreibenden Tools auf
+Repositories ein (`github:octo/*`, `PROJ/app`); geprüft wird das Repository aus dem Pull-Request-Schlüssel.
+`commentSuffix` kennzeichnet Kommentare und Antworten. Ein weiterer Server (z.B. Gitea) braucht eine
+`GitServerProvider`-Klasse und eine Zeile in
+`src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider`.
 
 ### SSH
 

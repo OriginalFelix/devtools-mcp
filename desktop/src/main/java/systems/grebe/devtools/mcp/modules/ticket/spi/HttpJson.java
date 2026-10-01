@@ -19,8 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Kleiner JSON-über-HTTP-Client für Ticket-Provider: feste Kopfzeilen (Anmeldung), Timeout und HTTP-Fehler als
- * verständliche {@link IllegalStateException}. Öffentlich, damit auch Provider aus Plugins ihn verwenden können.
+ * Kleiner JSON-über-HTTP-Client für Ticket- und Git-Server-Provider: feste Kopfzeilen (Anmeldung), Timeout und
+ * HTTP-Fehler als verständliche {@link IllegalStateException}. Öffentlich, damit auch Provider aus Plugins ihn verwenden können.
  */
 public final class HttpJson {
 
@@ -51,6 +51,7 @@ public final class HttpJson {
     private final String baseUrl;
     private final Map<String, String> headers;
     private final Duration timeout;
+    private final String module;
     private final HttpClient http;
 
     /**
@@ -59,6 +60,14 @@ public final class HttpJson {
      * @param headers feste Kopfzeilen, z.B. {@code Authorization}
      */
     public HttpJson(String system, String baseUrl, Map<String, String> headers, Duration timeout) {
+        this(system, baseUrl, headers, timeout, "Tickets");
+    }
+
+    /**
+     * @param module Anzeigename des Moduls, in dem der Nutzer das Token pflegt (für Fehlermeldungen), z.B. „Tickets“
+     */
+    public HttpJson(String system, String baseUrl, Map<String, String> headers, Duration timeout, String module) {
+        this.module = module;
         this.system = system;
         this.baseUrl = stripSlash(baseUrl);
         this.headers = Map.copyOf(headers);
@@ -138,6 +147,18 @@ public final class HttpJson {
         return send(HttpRequest.newBuilder(uri(pathOrUrl)).DELETE(), pathOrUrl);
     }
 
+    /** Beliebige Methode mit JSON-Body (z.B. DELETE mit Body); {@code body == null} = ohne Body. */
+    public Response request(String method, String pathOrUrl, JsonNode body) {
+        return body == null
+                ? send(HttpRequest.newBuilder(uri(pathOrUrl)).method(method, HttpRequest.BodyPublishers.noBody()), pathOrUrl)
+                : withBody(method, pathOrUrl, body);
+    }
+
+    /** GET mit Textantwort (z.B. Unified Diff); Fehler wie bei den JSON-Methoden. */
+    public String getText(String pathOrUrl) {
+        return exchange(HttpRequest.newBuilder(uri(pathOrUrl)).GET(), pathOrUrl, "text/plain").body();
+    }
+
     private Response withBody(String method, String pathOrUrl, JsonNode body) {
         return send(HttpRequest.newBuilder(uri(pathOrUrl))
                 .header("Content-Type", "application/json")
@@ -154,8 +175,8 @@ public final class HttpJson {
         }
     }
 
-    private Response send(HttpRequest.Builder req, String path) {
-        req.timeout(timeout).header("Accept", "application/json");
+    private HttpResponse<String> exchange(HttpRequest.Builder req, String path, String accept) {
+        req.timeout(timeout).header("Accept", accept);
         headers.forEach(req::header);
         HttpResponse<String> res;
         try {
@@ -170,7 +191,7 @@ public final class HttpJson {
         String body = res.body() == null ? "" : res.body();
         if (code == 401) {
             throw new StatusException(code, system + ": nicht angemeldet (401) – Token in der DevTools-App prüfen "
-                    + "(Modul Tickets)." + suffix(errorMessage(body)));
+                    + "(Modul " + module + ")." + suffix(errorMessage(body)));
         }
         if (code == 403) {
             String limit = res.headers().firstValue("X-RateLimit-Remaining").orElse(null);
@@ -185,6 +206,12 @@ public final class HttpJson {
         if (code >= 400) {
             throw new StatusException(code, system + "-Fehler " + code + " bei " + shortPath(path) + ": " + errorMessage(body));
         }
+        return res;
+    }
+
+    private Response send(HttpRequest.Builder req, String path) {
+        HttpResponse<String> res = exchange(req, path, "application/json");
+        String body = res.body() == null ? "" : res.body();
         JsonNode node;
         try {
             node = body.isBlank() ? JSON.missingNode() : JSON.readTree(body);
@@ -192,7 +219,7 @@ public final class HttpJson {
             throw new IllegalStateException("Unerwartete Antwort von " + system + " (" + shortPath(path) + "): "
                     + abbreviate(body), e);
         }
-        return new Response(code, node, res.headers());
+        return new Response(res.statusCode(), node, res.headers());
     }
 
     private static String suffix(String msg) {
