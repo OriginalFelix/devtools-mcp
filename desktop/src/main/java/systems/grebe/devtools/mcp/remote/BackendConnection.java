@@ -73,6 +73,8 @@ public class BackendConnection {
 
     private static final Logger LOG = LoggerFactory.getLogger(BackendConnection.class);
     private static final String IMPORT_MARKER = "backend-import.done";
+    /** Ping auf der Subscription-Verbindung, deutlich unter dem Idle-Timeout von Jetty (30 s) und Reverse-Proxys. */
+    private static final Duration WS_KEEP_ALIVE = Duration.ofSeconds(15);
 
     static final String ME = "{ me { id username displayName email admin profiles { id name description } "
             + "activeProfileId } }";
@@ -174,7 +176,8 @@ public class BackendConnection {
                     .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token).build()).build();
             WebSocketGraphQlClient previous = ws;
             ws = WebSocketGraphQlClient.builder(URI.create(url.replaceFirst("^http", "ws") + "/graphql"),
-                    new StandardWebSocketClient()).interceptor(new WebSocketGraphQlClientInterceptor() {
+                    new StandardWebSocketClient()).keepAlive(WS_KEEP_ALIVE)
+                    .interceptor(new WebSocketGraphQlClientInterceptor() {
                         @Override
                         public Mono<Object> connectionInitPayload() {
                             return Mono.just(Map.of(HttpHeaders.AUTHORIZATION, "Bearer " + token));
