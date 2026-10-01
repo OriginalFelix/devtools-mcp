@@ -48,6 +48,9 @@ dependencies {
     implementation("org.yaml:snakeyaml")
     implementation("org.apache.maven.resolver:maven-resolver-supplier-mvn3:2.0.23")
 
+    // Decompiler-Modul: Vineflower (gepflegter Fernflower-Fork, versteht aktuelle Java-Features, ohne Abhängigkeiten)
+    implementation("org.vineflower:vineflower:1.12.0")
+
     // SSH-Modul: Befehle und SFTP über JSch (gepflegter Fork mit aktuellen Algorithmen, ohne weitere Abhängigkeiten)
     implementation("com.github.mwiede:jsch:2.27.2")
 

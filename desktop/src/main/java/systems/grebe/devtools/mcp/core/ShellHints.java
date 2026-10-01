@@ -37,6 +37,9 @@ public final class ShellHints {
     public static final String VISUALVM = " Heap-Dumps und CPU-Sampling über die visualvm_*-Tools, statt Dateien selbst "
             + "zu parsen oder Analysewerkzeuge in der Shell zu starten.";
 
+    public static final String DECOMPILE = " Klassen ohne Quelltext (JDK, Bibliotheks-JARs, kompilierte Klassen) über die "
+            + "decompile_*-Tools dekompilieren, nicht mit `javap`, `unzip` oder einem Decompiler in der Shell.";
+
     public static final String DEBUG = " Breakpoint-Debugging immer über die debug_*-Tools, nicht mit `jdb` in der Shell.";
 
     public static final String SKILLS = " Skills (wiederverwendbare Abläufe) immer über die skills_*-Tools lesen und "
