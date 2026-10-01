@@ -18,7 +18,7 @@ import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 
 /**
  * Ticket-Systeme über austauschbare Provider ({@link TicketProvider}, per ServiceLoader): Boards, Suche, Ticket lesen;
- * schreibende Tools je Schalter. Mitgeliefert: Jira, GitHub, GitLab.
+ * schreibende Tools je Schalter. Mitgeliefert: Jira, GitHub, GitLab, YouTrack, OpenProject.
  */
 @Component
 public class TicketModule implements ToolModule {
@@ -81,7 +81,7 @@ public class TicketModule implements ToolModule {
 
     @Override
     public String description() {
-        return "Jira, GitHub, GitLab und weitere Systeme (erweiterbar per ServiceLoader): Boards mit ihren Spalten, "
+        return "Jira, GitHub, GitLab, YouTrack, OpenProject und weitere Systeme (erweiterbar per ServiceLoader): Boards mit ihren Spalten, "
                 + "Tickets suchen, Status, Zuständige, Beschreibung, Kommentare und Verknüpfungen lesen; optional "
                 + "kommentieren, Status wechseln, zuweisen, bearbeiten und anlegen (einzeln schaltbar, je Projekt freigebbar).";
     }
@@ -89,11 +89,11 @@ public class TicketModule implements ToolModule {
     @Override
     public String instructions() {
         return """
-                Für Tickets/Issues (Jira, GitHub, GitLab) diese Tools statt `curl` gegen die REST-APIs, `gh issue`/`glab issue` \
+                Für Tickets/Issues (Jira, GitHub, GitLab, YouTrack, OpenProject) diese Tools statt `curl` gegen die REST-APIs, `gh issue`/`glab issue` \
                 oder eines Browsers verwenden:
                 - `ticket_providers`: aktive Systeme, angemeldeter Benutzer, Standardprojekt und Schlüssel-/Abfrageformate.
                 - `ticket_boards` → `ticket_board`: aktueller Stand eines Boards nach Spalten (Jira-Board/Sprint, GitHub Project, \
-                GitLab-Issue-Board), optional nur eigene Tickets (`assignee=me`).
+                GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), optional nur eigene Tickets (`assignee=me`).
                 - `ticket_search`: Tickets filtern (Status, Zuständige, Labels, Text, systemeigene Abfrage wie JQL).
                 - `ticket_get`: ein Ticket vollständig (Titel, Status, Zuständige, Beschreibung, Kommentare); \
                 `ticket_status`: Status und Zuständige mehrerer Tickets auf einmal; `ticket_links`: Parent, Unteraufgaben, \
@@ -103,7 +103,7 @@ public class TicketModule implements ToolModule {
                 `ticket_delete` (standardmäßig nur selbst angelegte; Schließen ist meist richtiger). Nur auf ausdrückliche \
                 Anweisung des Nutzers schreiben und das Ergebnis mit Link melden. Fehlt ein schreibendes Tool, ist es \
                 abgeschaltet: dem Nutzer den Schalter nennen, nicht per `curl`/`gh`/`glab` ausweichen.
-                Taucht ein Ticket-Schlüssel (ABC-123, owner/repo#12, Issue-URL) in Branch-Namen, Commits oder der Aufgabe auf, \
+                Taucht ein Ticket-Schlüssel (ABC-123, owner/repo#12, #123, Issue-URL) in Branch-Namen, Commits oder der Aufgabe auf, \
                 das Ticket mit `ticket_get` lesen, bevor du es interpretierst.""";
     }
 
@@ -157,7 +157,7 @@ public class TicketModule implements ToolModule {
                         .withHelp("ticket_create"),
                 ConfigField.of(WRITE_PROJECTS, "Schreiben nur in diesen Projekten", FieldType.STRING_LIST)
                         .withHelp("Ein Projekt je Zeile, optional mit System: ABC, jira:ABC, github:owner/repo, "
-                                + "gitlab:gruppe/projekt, * am Ende als Präfix (gitlab:gruppe/*). Leer = alle Projekte."),
+                                + "gitlab:gruppe/projekt, youtrack:ABC, openproject:kennung, * am Ende als Präfix (gitlab:gruppe/*). Leer = alle Projekte."),
                 ConfigField.of(COMMENT_SUFFIX, "Kennzeichnung von Kommentaren", FieldType.STRING)
                         .withHelp("Wird an jeden Kommentar angehängt, z.B. „(via DevTools MCP)“. Leer = keine."),
                 ConfigField.of(ALLOW_DELETE, "Tickets und Kommentare löschen erlauben", FieldType.BOOLEAN).withDefault("false")

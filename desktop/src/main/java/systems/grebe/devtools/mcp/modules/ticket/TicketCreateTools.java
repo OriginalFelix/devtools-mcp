@@ -24,11 +24,11 @@ public class TicketCreateTools {
             + "Anweisung des Nutzers." + ShellHints.TICKET)
     public String create(
             @ToolParam(description = "Titel") String title,
-            @ToolParam(required = false, description = "Beschreibung (Jira: Wiki-Markup, GitHub/GitLab: Markdown)") String description,
+            @ToolParam(required = false, description = "Beschreibung (Jira: Wiki-Markup, sonst Markdown)") String description,
             @ToolParam(required = false, description = PROJECT) String project,
             @ToolParam(required = false, description = "Typ: Jira-Issue-Typ (Standard Task), GitHub-Issue-Typ der "
-                    + "Organisation, GitLab issue/incident/task") String type,
-            @ToolParam(required = false, description = "Labels") List<String> labels,
+                    + "Organisation, GitLab issue/incident/task, YouTrack-Feld Type, OpenProject-Typ") String type,
+            @ToolParam(required = false, description = "Labels (YouTrack: Tags; OpenProject kennt keine)") List<String> labels,
             @ToolParam(required = false, description = "Zuständige (me, Benutzernamen)") List<String> assignees,
             @ToolParam(required = false, description = PROVIDER) String provider) {
         if (title == null || title.isBlank()) {

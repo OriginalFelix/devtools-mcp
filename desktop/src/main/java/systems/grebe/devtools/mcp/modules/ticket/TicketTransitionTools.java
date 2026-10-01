@@ -20,7 +20,8 @@ public class TicketTransitionTools {
     }
 
     @Tool(name = "transition", description = "Wechselt den Status eines Tickets: Jira-Workflow-Übergang, Schließen oder "
-            + "Wiedereröffnen, GitHub-Project-Spalte, GitLab-Board-Liste. Ziel per ID, Name oder Zielstatus aus "
+            + "Wiedereröffnen, GitHub-Project-Spalte, GitLab-Board-Liste, YouTrack-State, "
+            + "OpenProject-Status nach Workflow. Ziel per ID, Name oder Zielstatus aus "
             + "ticket_transitions. Nur auf ausdrückliche Anweisung des Nutzers." + ShellHints.TICKET)
     public String transition(
             @ToolParam(description = "Ticket-Schlüssel oder URL") String key,

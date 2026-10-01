@@ -5,7 +5,7 @@ import java.util.List;
 import systems.grebe.devtools.mcp.core.ConfigField;
 
 /**
- * Service-Provider-Schnittstelle für Ticket-Systeme (Jira, GitHub, GitLab, …).
+ * Service-Provider-Schnittstelle für Ticket-Systeme (Jira, GitHub, GitLab, YouTrack, OpenProject, …).
  *
  * <p>Implementierungen werden über {@link java.util.ServiceLoader} gefunden. Ein neues System benötigt nur eine Klasse
  * mit öffentlichem No-Arg-Konstruktor und einen Eintrag in

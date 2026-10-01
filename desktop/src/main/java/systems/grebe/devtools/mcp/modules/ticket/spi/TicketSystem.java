@@ -27,7 +27,7 @@ public interface TicketSystem {
         return false;
     }
 
-    /** Boards eines Projekts (Jira-Board, GitHub Project, GitLab-Issue-Board). */
+    /** Boards eines Projekts (Jira-Board, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board). */
     List<Board> boards(String project);
 
     /**
@@ -49,8 +49,9 @@ public interface TicketSystem {
 
     /**
      * Projekt, zu dem ein Ticket gehört (Jira-Projektschlüssel, GitHub {@code owner/repo}, GitLab-Projektpfad) – für
-     * die Schreibfreigabe je Projekt. Muss ohne Netzwerkzugriff aus dem Schlüssel ableitbar sein. {@code null} =
-     * unbekannt; das Modul lässt Schreibzugriffe dann nur zu, wenn keine Projektfreigabe eingeschränkt ist.
+     * die Schreibfreigabe je Projekt. Soll ohne Netzwerkzugriff aus dem Schlüssel ableitbar sein; Systeme mit
+     * instanzweiten Nummern (OpenProject {@code #123}) dürfen das Ticket dafür lesen. {@code null} = unbekannt; das
+     * Modul lässt Schreibzugriffe dann nur zu, wenn keine Projektfreigabe eingeschränkt ist.
      */
     default String projectOf(String key, String project) {
         return null;

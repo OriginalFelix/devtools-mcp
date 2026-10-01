@@ -19,11 +19,12 @@ public class TicketAssignTools {
     }
 
     @Tool(name = "assign", description = "Setzt die Zuständigen eines Tickets (ersetzt die bisherigen). me = angemeldeter "
-            + "Benutzer, leere Liste oder none = niemand. Jira erlaubt genau einen Zuständigen. Nur auf ausdrückliche "
+            + "Benutzer, leere Liste oder none = niemand. Jira und OpenProject erlauben genau einen Zuständigen. Nur auf ausdrückliche "
             + "Anweisung des Nutzers." + ShellHints.TICKET)
     public String assign(
             @ToolParam(description = "Ticket-Schlüssel oder URL") String key,
-            @ToolParam(description = "Benutzernamen (GitHub-Login, GitLab-Username, Jira-Benutzer/E-Mail/Anzeigename), "
+            @ToolParam(description = "Benutzernamen (GitHub-Login, GitLab-Username, Jira-/YouTrack-/OpenProject-Login, E-Mail oder "
+                    + "Anzeigename), "
                     + "me oder none; leer = Zuweisung entfernen") List<String> assignees,
             @ToolParam(required = false, description = PROJECT) String project,
             @ToolParam(required = false, description = PROVIDER) String provider) {

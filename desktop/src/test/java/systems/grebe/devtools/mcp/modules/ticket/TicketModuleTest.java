@@ -26,11 +26,14 @@ class TicketModuleTest {
 
     @Test
     void serviceLoaderFindsBuiltInProvidersInPriorityOrder() {
-        assertThat(providers.providers()).extracting(TicketProvider::id).containsExactly("jira", "github", "gitlab");
+        assertThat(providers.providers()).extracting(TicketProvider::id).containsExactly("jira", "github", "gitlab", "youtrack",
+                "openproject");
         assertThat(module.configSchema()).extracting(ConfigField::key)
                 .contains("defaultProvider", "jira.enabled", "jira.baseUrl", "jira.user", "jira.token", "jira.deployment",
-                        "jira.defaultProject", "github.token", "github.statusField", "gitlab.baseUrl", "gitlab.defaultProject");
-        assertThat(module.configSchema().getFirst().options()).containsExactly("auto", "jira", "github", "gitlab");
+                        "jira.defaultProject", "github.token", "github.statusField", "gitlab.baseUrl", "gitlab.defaultProject",
+                        "youtrack.baseUrl", "youtrack.token", "openproject.baseUrl", "openproject.token");
+        assertThat(module.configSchema().getFirst().options()).containsExactly("auto", "jira", "github", "gitlab", "youtrack",
+                "openproject");
         assertThat(module.configSchema()).filteredOn(f -> f.key().equals("github.token"))
                 .extracting(ConfigField::label).containsExactly("GitHub: Token");
         // Systeme sind standardmäßig aus – erst Token/Server eintragen
@@ -59,7 +62,7 @@ class TicketModuleTest {
         // mehrdeutig und kein Standard gesetzt: das LLM soll wählen
         assertThatThrownBy(() -> env.resolve(null, "#12")).hasMessageContaining("Mehrere Ticket-Systeme aktiv")
                 .hasMessageContaining("provider");
-        assertThatThrownBy(() -> env.resolve("youtrack", null)).hasMessageContaining("nicht aktiviert")
+        assertThatThrownBy(() -> env.resolve("redmine", null)).hasMessageContaining("nicht aktiviert")
                 .hasMessageContaining("ticket_providers");
 
         v.put("defaultProvider", "gitlab");
@@ -67,6 +70,22 @@ class TicketModuleTest {
         assertThat(env(v).resolve(null, "ABC-1").provider().id()).isEqualTo("jira"); // Schlüssel schlägt Standard
 
         assertThatThrownBy(() -> env(Map.of()).resolve(null, null)).hasMessageContaining("Kein Ticket-System aktiviert");
+    }
+
+    @Test
+    void youTrackSharesJiraKeysButOwnsItsUrlsAndOpenProjectOwnsItsUrls() {
+        Map<String, String> v = new HashMap<>(Map.of("jira.enabled", "true", "jira.baseUrl", "https://jira.example.com",
+                "youtrack.enabled", "true", "youtrack.baseUrl", "https://yt.example.com/",
+                "openproject.enabled", "true", "openproject.baseUrl", "https://op.example.com/api/v3"));
+        TicketEnvironment env = env(v);
+
+        assertThat(env.resolve(null, "https://yt.example.com/issue/ABC-1/titel").provider().id()).isEqualTo("youtrack");
+        assertThat(env.resolve(null, "https://op.example.com/projects/demo/work_packages/42/activity").provider().id())
+                .isEqualTo("openproject");
+        // ABC-1 passt zu Jira und YouTrack: ohne Standard-System muss das LLM wählen
+        assertThatThrownBy(() -> env.resolve(null, "ABC-1")).hasMessageContaining("Mehrere Ticket-Systeme aktiv");
+        v.put("defaultProvider", "youtrack");
+        assertThat(env(v).resolve(null, "ABC-1").provider().id()).isEqualTo("youtrack");
     }
 
     @Test

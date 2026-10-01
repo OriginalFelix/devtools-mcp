@@ -22,8 +22,9 @@ import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem.TicketQuery;
 /** Lesende Ticket-Tools. Ausgaben kompakt, eine Zeile je Ticket. */
 public class TicketTools {
 
-    static final String PROVIDER = "Ticket-System (jira, github, gitlab …). Leer = aus dem Schlüssel erkannt bzw. Standard-System.";
-    static final String PROJECT = "Projekt (Jira-Schlüssel ABC, GitHub owner/repo bzw. owner, GitLab gruppe/projekt). "
+    static final String PROVIDER = "Ticket-System (jira, github, gitlab, youtrack, openproject …). Leer = aus dem Schlüssel erkannt bzw. Standard-System.";
+    static final String PROJECT = "Projekt (Jira-/YouTrack-Schlüssel ABC, GitHub owner/repo bzw. owner, GitLab gruppe/projekt, "
+            + "OpenProject-Kennung). "
             + "Leer = Standardprojekt des Systems.";
     static final String ASSIGNEE = "Zuständige: me (angemeldeter Benutzer), none (nicht zugewiesen) oder Benutzername";
 
@@ -66,7 +67,7 @@ public class TicketTools {
     }
 
     @Tool(name = "boards", description = "Listet die Boards eines Projekts: Jira-Boards (Scrum/Kanban), GitHub Projects "
-            + "(owner oder owner/repo), GitLab-Issue-Boards (Projekt oder Gruppe). Liefert ID und Namen für ticket_board."
+            + "(owner oder owner/repo), GitLab-Issue-Boards (Projekt oder Gruppe), YouTrack-Agile-Boards, OpenProject-Boards. Liefert ID und Namen für ticket_board."
             + ShellHints.TICKET)
     public String boards(
             @ToolParam(required = false, description = PROJECT) String project,
@@ -97,7 +98,7 @@ public class TicketTools {
 
     @Tool(name = "board", description = "Aktueller Stand eines Boards nach Spalten: Tickets mit Status, Zuständigen und "
             + "Titel. Jira: aktiver Sprint bzw. offene Kanban-Tickets; GitHub: Project nach Feld 'Status'; GitLab: Board-"
-            + "Listen. Mit assignee=me nur eigene Tickets." + ShellHints.TICKET)
+            + "Listen; YouTrack: aktueller Sprint nach Board-Spalten; OpenProject: Spalten-Abfragen. Mit assignee=me nur eigene Tickets." + ShellHints.TICKET)
     public String board(
             @ToolParam(required = false, description = "Board-ID oder Name aus ticket_boards. Leer = das einzige Board des Projekts.") String board,
             @ToolParam(required = false, description = PROJECT) String project,
@@ -136,7 +137,7 @@ public class TicketTools {
     }
 
     @Tool(name = "search", description = "Sucht Tickets nach Status, Zuständigen, Labels, Freitext und optional einer "
-            + "systemeigenen Abfrage (Jira: JQL). Eine Zeile je Ticket mit Schlüssel, Status, Zuständigen und Titel."
+            + "systemeigenen Abfrage (Jira: JQL, YouTrack: Suchsprache). Eine Zeile je Ticket mit Schlüssel, Status, Zuständigen und Titel."
             + ShellHints.TICKET)
     public String search(
             @ToolParam(required = false, description = PROJECT) String project,
@@ -145,7 +146,7 @@ public class TicketTools {
             @ToolParam(required = false, description = ASSIGNEE) String assignee,
             @ToolParam(required = false, description = "Labels, die alle gesetzt sein müssen") List<String> labels,
             @ToolParam(required = false, description = "Systemeigene Abfrage, UND-verknüpft: Jira JQL, GitHub Suchsyntax, "
-                    + "GitLab API-Parameter a=b&c=d (siehe ticket_providers)") String query,
+                    + "GitLab API-Parameter a=b&c=d, YouTrack-Suchsprache, OpenProject-Filter als JSON (siehe ticket_providers)") String query,
             @ToolParam(required = false, description = "Anzahl Treffer (Standard 30, max. 100)") Integer limit,
             @ToolParam(required = false, description = "Fortsetzung: 'cursor' aus der vorigen Ausgabe") String cursor,
             @ToolParam(required = false, description = PROVIDER) String provider) {
@@ -173,7 +174,7 @@ public class TicketTools {
     }
 
     @Tool(name = "get", description = "Liest ein Ticket vollständig: Titel, Status, Typ, Priorität, Zuständige, Autor, "
-            + "Labels, Beschreibung und die neuesten Kommentare. Schlüssel: ABC-123, owner/repo#12, gruppe/projekt#12 oder URL."
+            + "Labels, Beschreibung und die neuesten Kommentare. Schlüssel: ABC-123, owner/repo#12, gruppe/projekt#12, #123 oder URL."
             + ShellHints.TICKET)
     public String get(
             @ToolParam(description = "Ticket-Schlüssel oder URL; #12 bzw. 12 zusammen mit 'project'") String key,
@@ -261,7 +262,8 @@ public class TicketTools {
     }
 
     @Tool(name = "transitions", description = "Mögliche Statuswechsel eines Tickets mit ID, Name und Zielstatus: "
-            + "Jira-Workflow-Übergänge, Schließen/Wiedereröffnen, GitHub-Project-Spalten, GitLab-Board-Listen. "
+            + "Jira-Workflow-Übergänge, Schließen/Wiedereröffnen, GitHub-Project-Spalten, GitLab-Board-Listen, YouTrack-State, "
+            + "OpenProject-Status. "
             + "Die ID ist das Ziel für ticket_transition." + ShellHints.TICKET)
     public String transitions(
             @ToolParam(description = "Ticket-Schlüssel oder URL") String key,
