@@ -1,3 +1,5 @@
 systems.grebe.devtools.mcp.modules.ticket.jira.JiraTicketProvider
 systems.grebe.devtools.mcp.modules.ticket.github.GitHubTicketProvider
 systems.grebe.devtools.mcp.modules.ticket.gitlab.GitLabTicketProvider
+systems.grebe.devtools.mcp.modules.ticket.youtrack.YouTrackTicketProvider
+systems.grebe.devtools.mcp.modules.ticket.openproject.OpenProjectTicketProvider
