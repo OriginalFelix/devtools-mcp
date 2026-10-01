@@ -11,7 +11,8 @@ package systems.grebe.devtools.mcp.core;
 public final class ShellHints {
 
     public static final String GIT = " Für freigegebene Repositories gilt: Git immer über die git_*-Tools, "
-            + "`git` in der Shell nur für Befehle ohne passendes Tool (push, pull, fetch, merge, rebase, stash …).";
+            + "`git` in der Shell nur für Befehle ohne passendes Tool (submodule, bisect, interaktiver Rebase …). Fehlt "
+            + "ein Tool, ist sein Schalter in der DevTools-App aus – nachfragen statt per Shell auszuweichen.";
 
     public static final String BUILD = " Für freigegebene Projekte gilt: Builds und Tests immer über die build_*-Tools, "
             + "nicht mit `./gradlew`, `gradle` oder `mvn` in der Shell.";
