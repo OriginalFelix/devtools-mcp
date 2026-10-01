@@ -22,6 +22,9 @@ public final class ShellHints {
     public static final String SONAR = " SonarQube immer über die sonar_*-Tools abfragen, nicht per `curl` gegen die "
             + "Web-API oder im Browser.";
 
+    public static final String MAVEN = " Maven-Artefakte (Versionen, POM-Metadaten, Breaking Changes) immer über die "
+            + "maven_*-Tools abfragen, nicht per `curl` gegen Maven Central, mit `mvn` in der Shell oder im Browser.";
+
     public static final String JVM = " Laufende JVMs immer über die jvm_*-Tools untersuchen, nicht mit `jps`, `jcmd`, "
             + "`jstack`, `jmap` oder `jinfo` in der Shell.";
 
