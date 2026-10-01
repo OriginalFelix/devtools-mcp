@@ -16,8 +16,8 @@ public class TicketCommentTools {
         this.env = env;
     }
 
-    @Tool(name = "comment", description = "Fügt einem Ticket einen Kommentar hinzu (Jira: Wiki-Markup, GitHub/GitLab: "
-            + "Markdown). Nur auf ausdrückliche Anweisung des Nutzers." + ShellHints.TICKET)
+    @Tool(name = "comment", description = "Fügt einem Ticket einen Kommentar hinzu (Jira: Wiki-Markup, GitHub/GitLab/"
+            + "YouTrack/OpenProject: Markdown). Nur auf ausdrückliche Anweisung des Nutzers." + ShellHints.TICKET)
     public String comment(
             @ToolParam(description = "Ticket-Schlüssel oder URL") String key,
             @ToolParam(description = "Kommentartext") String body,
