@@ -61,11 +61,11 @@ class GitToolsTest {
 
     @Test
     void logListsCommitsNewestFirstAndFilters() {
-        String log = read.log(null, null, null, null, null, null);
+        String log = read.log(null, null, null, null, null, null, null);
         assertThat(log.lines().toList()).hasSize(2);
         assertThat(log.lines().findFirst().orElseThrow()).contains("Wert geändert");
-        assertThat(read.log(null, null, null, "erster", null, null)).contains("Erster Commit").doesNotContain("Wert");
-        assertThat(read.log(null, null, "App.java", null, 1, null).lines().count()).isEqualTo(1);
+        assertThat(read.log(null, null, null, "erster", null, null, null)).contains("Erster Commit").doesNotContain("Wert");
+        assertThat(read.log(null, null, "App.java", null, 1, null, null).lines().count()).isEqualTo(1);
     }
 
     @Test
@@ -100,7 +100,7 @@ class GitToolsTest {
         assertThatThrownBy(() -> write.commit(null, "leer", false)).hasMessageContaining("Nichts zu committen");
         assertThat(write.stage(null, List.of("Neu.txt"))).contains("Im Index: 1");
         assertThat(write.commit(null, "Neue Datei", false)).contains("auf feature/x");
-        assertThat(read.log(null, null, null, null, 1, null)).contains("Neue Datei");
+        assertThat(read.log(null, null, null, null, 1, null, null)).contains("Neue Datei");
         assertThat(write.checkout(null, "main")).contains("main");
     }
 

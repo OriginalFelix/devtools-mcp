@@ -1,10 +1,13 @@
 package systems.grebe.devtools.mcp.modules.git;
 
 import java.util.List;
+import java.util.Locale;
 
 import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.Status;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.springframework.ai.tool.annotation.Tool;
@@ -12,7 +15,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.core.ShellHints;
 
-/** Schreibende Git-Tools (nur registriert, wenn in der Konfiguration erlaubt). Push wird bewusst nicht angeboten. */
+/** Schreibende Git-Tools (Schalter {@code allowWrite}). Remote-Abgleich, Integrieren und Verwerfen haben eigene Klassen. */
 public class GitWriteTools {
 
     private static final String REPO_PARAM = "Repository-Name (Ordnername) oder Pfad; leer = Standard-Repository";
@@ -112,6 +115,111 @@ public class GitWriteTools {
             }
             RevCommit c = g.commit().setMessage(message.strip()).setAll(commitAll).call();
             return "Commit " + GitSupport.shortId(c) + " auf " + g.getRepository().getBranch() + ": " + c.getShortMessage();
+        });
+    }
+
+    @Tool(name = "rename_branch", description = "Benennt einen lokalen Branch um (Standard: den aktuellen)."
+            + " Statt `git branch -m` in der Shell verwenden." + ShellHints.GIT)
+    public String renameBranch(
+            @ToolParam(required = false, description = REPO_PARAM) String repository,
+            @ToolParam(required = false, description = "Bisheriger Name; leer = aktueller Branch") String from,
+            @ToolParam(description = "Neuer Name") String to) {
+        if (to == null || to.isBlank()) {
+            throw new IllegalArgumentException("Neuer Name fehlt ('to').");
+        }
+        return git.withWrite(repository, (g, root) -> {
+            String old = from == null || from.isBlank() ? g.getRepository().getBranch() : from.trim();
+            g.branchRename().setOldName(old).setNewName(to.trim()).call();
+            return "Branch '" + old + "' in '" + to.trim() + "' umbenannt.";
+        });
+    }
+
+    @Tool(name = "stash", description = "Stash-Operationen: push (lokale Änderungen beiseitelegen, optional mit "
+            + "unversionierten Dateien), apply (wieder anwenden, Stash bleibt), pop (anwenden und entfernen). "
+            + "Liste: git_stash_list. Statt `git stash`/`git stash pop` in der Shell verwenden." + ShellHints.GIT)
+    public String stash(
+            @ToolParam(required = false, description = REPO_PARAM) String repository,
+            @ToolParam(description = "push, apply oder pop") String action,
+            @ToolParam(required = false, description = "push: Nachricht") String message,
+            @ToolParam(required = false, description = "push: auch unversionierte Dateien") Boolean includeUntracked,
+            @ToolParam(required = false, description = "apply/pop: Index n aus stash@{n} (Standard 0)") Integer index) {
+        String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        return git.withWrite(repository, (g, root) -> switch (a) {
+            case "push", "save" -> {
+                var cmd = g.stashCreate().setIncludeUntracked(Boolean.TRUE.equals(includeUntracked));
+                if (message != null && !message.isBlank()) {
+                    cmd.setWorkingDirectoryMessage(message.strip());
+                }
+                RevCommit c = cmd.call();
+                yield c == null ? "Nichts zu stashen – keine lokalen Änderungen."
+                        : "Gestasht als stash@{0}: " + c.getShortMessage();
+            }
+            case "apply", "pop" -> {
+                int n = index == null || index < 0 ? 0 : index;
+                g.stashApply().setStashRef("stash@{" + n + "}").call();
+                if ("pop".equals(a)) {
+                    g.stashDrop().setStashRef(n).call();
+                    yield "stash@{" + n + "} angewendet und entfernt.";
+                }
+                yield "stash@{" + n + "} angewendet (bleibt erhalten).";
+            }
+            default -> throw new IllegalArgumentException("Unbekannte Aktion '" + action + "' – erlaubt: push, apply, pop. "
+                    + "Löschen: git_stash_drop.");
+        });
+    }
+
+    @Tool(name = "tag", description = "Legt einen Tag an – mit Nachricht annotiert, sonst leichtgewichtig – auf HEAD oder "
+            + "einer Revision. Kein Push (dafür git_push mit tags=true). Statt `git tag` in der Shell verwenden."
+            + ShellHints.GIT)
+    public String tag(
+            @ToolParam(required = false, description = REPO_PARAM) String repository,
+            @ToolParam(description = "Tag-Name, z.B. 'v1.2.0'") String name,
+            @ToolParam(required = false, description = "Revision; Standard HEAD") String revision,
+            @ToolParam(required = false, description = "Nachricht – macht den Tag annotiert") String message) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Tag-Name fehlt ('name').");
+        }
+        return git.withWrite(repository, (g, root) -> {
+            Repository repo = g.getRepository();
+            RevCommit c = GitSupport.commit(repo, revision);
+            boolean annotated = message != null && !message.isBlank();
+            var cmd = g.tag().setName(name.trim()).setObjectId(c).setAnnotated(annotated);
+            if (annotated) {
+                cmd.setMessage(message.strip());
+            }
+            cmd.call();
+            return (annotated ? "Annotierter Tag '" : "Tag '") + name.trim() + "' auf " + GitSupport.shortId(c) + " ("
+                    + c.getShortMessage() + ") angelegt.";
+        });
+    }
+
+    @Tool(name = "reset", description = "Setzt den aktuellen Branch auf eine Revision zurück: soft (Änderungen bleiben "
+            + "gestaged), mixed (Standard; Änderungen bleiben im Arbeitsverzeichnis), hard (verwirft alle lokalen "
+            + "Änderungen – nur mit Schalter 'Verwerfen'). Commits bleiben über git_reflog auffindbar."
+            + " Statt `git reset` in der Shell verwenden." + ShellHints.GIT)
+    public String reset(
+            @ToolParam(required = false, description = REPO_PARAM) String repository,
+            @ToolParam(description = "Ziel, z.B. 'HEAD~1', 'origin/main' oder ein Commit") String revision,
+            @ToolParam(required = false, description = "soft, mixed (Standard) oder hard") String mode) {
+        String m = mode == null || mode.isBlank() ? "mixed" : mode.trim().toLowerCase(Locale.ROOT);
+        ResetCommand.ResetType type = switch (m) {
+            case "soft" -> ResetCommand.ResetType.SOFT;
+            case "mixed" -> ResetCommand.ResetType.MIXED;
+            case "hard" -> ResetCommand.ResetType.HARD;
+            default -> throw new IllegalArgumentException("Unbekannter Modus '" + mode + "' – erlaubt: soft, mixed, hard.");
+        };
+        if (type == ResetCommand.ResetType.HARD && !git.allowDiscard()) {
+            throw new IllegalStateException("reset mode=hard verwirft lokale Änderungen und ist nur mit dem Schalter "
+                    + "'Verwerfen und Löschen erlauben' (Modul Git) möglich – soft/mixed verwenden oder den Nutzer fragen.");
+        }
+        return git.withWrite(repository, (g, root) -> {
+            Repository repo = g.getRepository();
+            ObjectId before = repo.resolve(Constants.HEAD);
+            RevCommit target = GitSupport.commit(repo, revision);
+            g.reset().setMode(type).setRef(target.getName()).call();
+            return repo.getBranch() + " zurückgesetzt (" + m + ") von " + GitSupport.shortId(before) + " auf "
+                    + GitSupport.shortId(target) + " – " + target.getShortMessage()
+                    + "\nVorheriger Stand: " + GitSupport.shortId(before) + " (git_reflog)";
         });
     }
 }

@@ -4,10 +4,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -16,6 +23,7 @@ import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.RepositoryState;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
@@ -27,17 +35,30 @@ import systems.grebe.devtools.mcp.core.Workspaces;
 /** Gemeinsame Infrastruktur der Git-Tools. */
 final class GitSupport {
 
-
     static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
+
+    /**
+     * Verknüpfter Worktree eines freigegebenen Repositories ({@code git worktree add}).
+     *
+     * @param name {@code <repository>/<ordner>}, so in git_*-Tools anzugeben
+     * @param main Arbeitsverzeichnis des Haupt-Repositories – maßgeblich für die Schreibfreigabe
+     */
+    record Worktree(String name, Path dir, Path main) { }
 
     private final Workspaces repositories;
     private final String defaultRepository;
     private final int maxLines;
+    private final Duration networkTimeout;
+    private final List<String> protectedBranches;
+    private final boolean allowDiscard;
 
     GitSupport(ModuleConfig config) {
         this.repositories = new Workspaces(config.getList(GitModule.REPOSITORIES), GitModule::isRepository, "Git-Repositories");
         this.defaultRepository = config.getString(GitModule.DEFAULT_REPOSITORY, null);
         this.maxLines = Math.max(50, config.getInt(GitModule.MAX_LINES, 1500));
+        this.networkTimeout = Duration.ofSeconds(Math.max(10, config.getInt(GitModule.NETWORK_TIMEOUT, 120)));
+        this.protectedBranches = config.getList(GitModule.PROTECTED_BRANCHES);
+        this.allowDiscard = config.getBoolean(GitModule.ALLOW_DISCARD);
     }
 
     Workspaces repositories() {
@@ -48,8 +69,83 @@ final class GitSupport {
         return maxLines;
     }
 
+    Duration networkTimeout() {
+        return networkTimeout;
+    }
+
+    /** Branches, auf die git_push nie pusht (Vergleich ohne Groß-/Kleinschreibung). */
+    boolean isProtected(String branch) {
+        return protectedBranches.stream().anyMatch(b -> b.trim().equalsIgnoreCase(branch));
+    }
+
+    /** Ob verwerfende Aktionen (reset --hard, Branch löschen …) erlaubt sind. */
+    boolean allowDiscard() {
+        return allowDiscard;
+    }
+
+    /**
+     * Repository-Name, Pfad oder Worktree ({@code <repository>/<ordner>} bzw. ein Pfad darin) auflösen. Worktrees
+     * freigegebener Repositories gelten als freigegeben – auch wenn sie innerhalb des Haupt-Repositories liegen.
+     */
     Path resolve(String repo) {
+        if (repo != null && !repo.isBlank()) {
+            Worktree w = worktree(repo.trim());
+            if (w != null) {
+                return w.dir();
+            }
+        }
         return repositories.resolve(repo, defaultRepository);
+    }
+
+    /** Haupt-Repository eines aufgelösten Verzeichnisses (für Worktrees das Repository, zu dem sie gehören). */
+    Path mainRoot(Path root) {
+        return worktrees().stream().filter(w -> w.dir().equals(root)).map(Worktree::main).findFirst().orElse(root);
+    }
+
+    private Worktree worktree(String wanted) {
+        List<Worktree> all = worktrees();
+        for (Worktree w : all) {
+            if (w.name().equalsIgnoreCase(wanted)) {
+                return w;
+            }
+        }
+        Path p;
+        try {
+            p = Path.of(wanted).toAbsolutePath().normalize();
+        } catch (InvalidPathException e) {
+            return null;
+        }
+        // der speziellste Worktree gewinnt (Worktrees liegen oft im Haupt-Repository, z.B. .claude/worktrees)
+        return all.stream().filter(w -> p.startsWith(w.dir()))
+                .max(Comparator.comparingInt(w -> w.dir().getNameCount())).orElse(null);
+    }
+
+    /** Verknüpfte Worktrees aller freigegebenen Repositories (aus {@code .git/worktrees/*}/gitdir). */
+    List<Worktree> worktrees() {
+        List<Worktree> out = new ArrayList<>();
+        for (Map.Entry<String, Path> e : repositories.all().entrySet()) {
+            Path meta = e.getValue().resolve(".git").resolve("worktrees");
+            if (!Files.isDirectory(meta)) {
+                continue;
+            }
+            try (Stream<Path> dirs = Files.list(meta)) {
+                for (Path d : dirs.sorted().toList()) {
+                    Path gitdir = d.resolve("gitdir");
+                    if (!Files.isRegularFile(gitdir)) {
+                        continue;
+                    }
+                    Path dotGit = Path.of(Files.readString(gitdir).strip());
+                    Path dir = (dotGit.isAbsolute() ? dotGit : d.resolve(dotGit)).normalize().getParent();
+                    if (dir != null && Files.isDirectory(dir)) {
+                        out.add(new Worktree(e.getKey() + "/" + dir.getFileName(), dir.toAbsolutePath().normalize(),
+                                e.getValue()));
+                    }
+                }
+            } catch (IOException | InvalidPathException ex) {
+                // nicht lesbar -> ohne Worktrees
+            }
+        }
+        return out;
     }
 
     @FunctionalInterface
@@ -71,7 +167,7 @@ final class GitSupport {
 
     /** Wie {@link #with}, aber nur, wenn der Benutzer im Repository schreiben darf. */
     <T> T withWrite(String repo, GitAction<T> action) {
-        Workspaces.requireWritable(resolve(repo));
+        Workspaces.requireWritable(mainRoot(resolve(repo)));
         return with(repo, action);
     }
 
@@ -129,6 +225,23 @@ final class GitSupport {
             case DELETE -> e.getOldPath();
             case RENAME, COPY -> e.getOldPath() + " -> " + e.getNewPath();
             default -> e.getNewPath();
+        };
+    }
+
+    /** Laufende Operation verständlich (JGit liefert nur „Conflicts“, „Merged“ …). */
+    static String describe(RepositoryState state) {
+        return switch (state) {
+            case SAFE -> "keine laufende Operation";
+            case MERGING -> "Merge mit Konflikten";
+            case MERGING_RESOLVED -> "Merge (Konflikte gelöst, git_continue)";
+            case CHERRY_PICKING -> "Cherry-Pick mit Konflikten";
+            case CHERRY_PICKING_RESOLVED -> "Cherry-Pick (Konflikte gelöst, git_continue)";
+            case REVERTING -> "Revert mit Konflikten";
+            case REVERTING_RESOLVED -> "Revert (Konflikte gelöst, git_continue)";
+            case REBASING, REBASING_REBASING, REBASING_MERGE, REBASING_INTERACTIVE -> "Rebase angehalten";
+            case APPLY -> "git am/apply angehalten";
+            case BISECTING -> "Bisect";
+            default -> state.name();
         };
     }
 

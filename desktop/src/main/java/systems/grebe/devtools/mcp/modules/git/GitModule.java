@@ -22,6 +22,11 @@ public class GitModule implements ToolModule {
     static final String REPOSITORIES = "repositories";
     static final String DEFAULT_REPOSITORY = "defaultRepository";
     static final String ALLOW_WRITE = "allowWrite";
+    static final String ALLOW_SYNC = "allowSync";
+    static final String ALLOW_INTEGRATE = "allowIntegrate";
+    static final String ALLOW_DISCARD = "allowDiscard";
+    static final String PROTECTED_BRANCHES = "protectedBranches";
+    static final String NETWORK_TIMEOUT = "networkTimeoutSeconds";
     static final String MAX_LINES = "maxOutputLines";
 
     @Override
@@ -36,8 +41,9 @@ public class GitModule implements ToolModule {
 
     @Override
     public String description() {
-        return "Status, Log, Diffs, Blame und Dateistände aus lokalen Git-Repositories; optional Branches anlegen, "
-                + "stagen und committen.";
+        return "Status, Log, Diffs, Blame, Suche, Tags, Stashes, Reflog und Branch-Vergleiche aus lokalen Git-Repositories "
+                + "(inkl. Worktrees); je Schalter Branches, Stage/Commit, Stash und Tags, Fetch/Pull/Push, Merge/Rebase/"
+                + "Cherry-Pick/Revert sowie Verwerfen und Löschen.";
     }
 
     @Override
@@ -49,27 +55,40 @@ public class GitModule implements ToolModule {
 
                 | Aufgabe | Tool statt Shell |
                 |---|---|
-                | Repositories/aktueller Branch | `git_list_repositories` (statt `git branch --show-current`, `git rev-parse`) |
-                | Arbeitsstand | `git_status` (statt `git status`) |
-                | Historie | `git_log` (statt `git log`) |
+                | Repositories, Worktrees, aktueller Branch | `git_list_repositories` (statt `git branch --show-current`, `git worktree list`) |
+                | Arbeitsstand, laufender Merge/Rebase | `git_status` (statt `git status`) |
+                | Historie, wann kam Code hinein | `git_log` (statt `git log`, `git log -S`) |
                 | Änderungen | `git_diff` (statt `git diff`, `git diff --staged`, `git diff a..b`) |
                 | Commit ansehen | `git_show_commit` (statt `git show`) |
-                | Branches | `git_branches` (statt `git branch -a`) |
-                | Zeilenherkunft | `git_blame` (statt `git blame`) |
-                | Datei in Revision | `git_file_at_revision` (statt `git show rev:pfad`) |
-                | Branch anlegen/wechseln | `git_create_branch`, `git_checkout` (statt `git checkout -b`, `git switch`) |
-                | Stagen/Unstagen | `git_stage`, `git_unstage` (statt `git add`, `git reset --`) |
+                | Branches, Tags, Remotes | `git_branches`, `git_tags`, `git_remotes` (statt `git branch -a`, `git tag`, `git remote -v`) |
+                | Stashes, Reflog | `git_stash_list`, `git_reflog` (statt `git stash list`, `git reflog`) |
+                | Branches vergleichen | `git_compare` (statt `git log a..b`, `git merge-base`, `git rev-list --count`) |
+                | Code durchsuchen | `git_grep` (statt `git grep`, `grep -r`) |
+                | Zeilenherkunft, Datei in Revision | `git_blame`, `git_file_at_revision` (statt `git blame`, `git show rev:pfad`) |
+                | Branch anlegen/wechseln/umbenennen | `git_create_branch`, `git_checkout`, `git_rename_branch` (statt `git checkout -b`, `git switch`, `git branch -m`) |
+                | Stagen/Unstagen | `git_stage`, `git_unstage` (statt `git add`, `git reset -- pfad`) |
                 | Committen | `git_commit` (statt `git commit`) |
+                | Zurücksetzen | `git_reset` (statt `git reset --soft/--mixed/--hard`) |
+                | Stash, Tag | `git_stash`, `git_tag` (statt `git stash push/apply/pop`, `git tag`) |
+                | Remote abgleichen | `git_fetch`, `git_pull`, `git_push` (statt `git fetch`, `git pull`, `git push`) |
+                | Integrieren | `git_merge`, `git_rebase`, `git_cherry_pick`, `git_revert` (statt `git merge`, `git rebase`, `git cherry-pick`, `git revert`) |
+                | Konflikte fortsetzen/abbrechen | `git_continue`, `git_abort` (statt `git … --continue`, `git … --abort`) |
+                | Verwerfen/Löschen | `git_restore`, `git_delete_branch`, `git_delete_tag`, `git_stash_drop` (statt `git restore`, `git clean`, `git branch -d`, `git tag -d`, `git stash drop`) |
 
                 Vorgehen:
                 - Unklar, welches Repository gemeint ist? Zuerst `git_list_repositories` aufrufen und den \
-                Ordnernamen als `repository` übergeben. Nur dort aufgeführte Repositories sind freigegeben.
+                Namen als `repository` übergeben. Worktrees heißen `<repository>/<ordner>`; ein Pfad darin wird \
+                ebenfalls erkannt. Nur dort aufgeführte Repositories sind freigegeben.
                 - Liegt ein Repository nicht in dieser Liste („nicht freigegeben“), dem Nutzer das sagen und ihm \
                 anbieten, es in der DevTools-App freizugeben; erst auf seinen Wunsch die Shell verwenden.
-                - Schreibende Tools (`git_create_branch`, `git_checkout`, `git_stage`, `git_unstage`, `git_commit`) \
-                fehlen, wenn „Schreibende Operationen erlauben“ aus ist – dann nachfragen statt per Shell schreiben.
-                - Nur für das, was hier fehlt, darf `git` in der Shell verwendet werden: push, pull, fetch, merge, \
-                rebase, stash, tag, cherry-pick, reset auf Commits, remote. Push nie ohne ausdrücklichen Auftrag.""";
+                - Fehlt ein schreibendes Tool, ist sein Schalter in der App aus (Schreiben, Remote-Abgleich, Integrieren, \
+                Verwerfen) – dann nachfragen statt per Shell auszuweichen.
+                - Konflikte nach Merge/Rebase/Cherry-Pick: `git_status` zeigt Dateien und Zustand; Dateien bereinigen, \
+                `git_stage`, dann `git_continue` – oder `git_abort` für den Ausgangszustand.
+                - `git_push` und Verwerfendes (`git_restore`, `git_reset mode=hard`, Löschen) nur auf ausdrücklichen \
+                Auftrag. Force-Push gibt es nicht.
+                - Shell-`git` nur für das, was hier fehlt (z.B. submodule, bisect, interaktiver Rebase).""";
+
     }
 
     @Override
@@ -86,7 +105,19 @@ public class GitModule implements ToolModule {
                 ConfigField.of(DEFAULT_REPOSITORY, "Standard-Repository", FieldType.STRING)
                         .withHelp("Name (Ordnername) des Repositories, das ohne Angabe verwendet wird."),
                 ConfigField.of(ALLOW_WRITE, "Schreibende Operationen erlauben", FieldType.BOOLEAN).withDefault("true")
-                        .withHelp("Branch anlegen, Checkout, Stage/Unstage und Commit. Push wird nie angeboten."),
+                        .withHelp("Branch anlegen/umbenennen, Checkout, Stage/Unstage, Commit, Reset (soft/mixed), "
+                                + "Stash (push/apply/pop) und Tags anlegen."),
+                ConfigField.of(ALLOW_SYNC, "Remote-Abgleich erlauben (fetch, pull, push)", FieldType.BOOLEAN)
+                        .withDefault("false").withHelp("Über das installierte git mit den Zugangsdaten des Rechners. "
+                                + "Nie Force-Push."),
+                ConfigField.of(PROTECTED_BRANCHES, "Nie pushen auf", FieldType.STRING_LIST).withDefault("main\nmaster")
+                        .withHelp("Branches, die git_push ablehnt (ein Name je Zeile)."),
+                ConfigField.of(NETWORK_TIMEOUT, "Timeout Remote-Abgleich (Sekunden)", FieldType.INT).withDefault("120"),
+                ConfigField.of(ALLOW_INTEGRATE, "Integrieren erlauben (merge, rebase, cherry-pick, revert)", FieldType.BOOLEAN)
+                        .withDefault("false").withHelp("Inklusive git_continue/git_abort bei Konflikten."),
+                ConfigField.of(ALLOW_DISCARD, "Verwerfen und Löschen erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("git_restore (lokale Änderungen verwerfen), git_reset mode=hard, Branches/Tags/Stashes "
+                                + "löschen – nicht rückgängig zu machen."),
                 ConfigField.of(MAX_LINES, "Max. Ausgabezeilen", FieldType.INT).withDefault("1500")
                         .withHelp("Längere Diffs/Dateien werden gekürzt, um den Kontext des LLM zu schonen."));
     }
@@ -98,6 +129,15 @@ public class GitModule implements ToolModule {
         if (config.getBoolean(ALLOW_WRITE)) {
             tools.addAll(List.of(ToolCallbacks.from(new GitWriteTools(git))));
         }
+        if (config.getBoolean(ALLOW_SYNC)) {
+            tools.addAll(List.of(ToolCallbacks.from(new GitSyncTools(git))));
+        }
+        if (config.getBoolean(ALLOW_INTEGRATE)) {
+            tools.addAll(List.of(ToolCallbacks.from(new GitIntegrateTools(git))));
+        }
+        if (config.getBoolean(ALLOW_DISCARD)) {
+            tools.addAll(List.of(ToolCallbacks.from(new GitDiscardTools(git))));
+        }
         return tools;
     }
 
@@ -107,12 +147,14 @@ public class GitModule implements ToolModule {
         if (!errors.isEmpty()) {
             return ConnectionTestResult.failed(String.join("\n", errors));
         }
-        Workspaces repos = new GitSupport(config).repositories();
+        GitSupport git = new GitSupport(config);
+        Workspaces repos = git.repositories();
         if (repos.isEmpty()) {
             return ConnectionTestResult.failed("In den angegebenen Verzeichnissen wurde kein Git-Repository gefunden.");
         }
-        return ConnectionTestResult.ok(repos.all().size() + " Repository(s) gefunden:\n"
-                + String.join("\n", repos.describe()));
+        List<String> lines = new ArrayList<>(repos.describe());
+        git.worktrees().forEach(w -> lines.add(w.name() + " -> " + w.dir() + " (Worktree)"));
+        return ConnectionTestResult.ok(repos.all().size() + " Repository(s) gefunden:\n" + String.join("\n", lines));
     }
 
     static boolean isRepository(Path dir) {
