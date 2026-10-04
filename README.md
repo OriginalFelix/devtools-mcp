@@ -215,6 +215,9 @@ Konto des Nutzers schreibt, und Matrix auch ohne eigenes Bot-Konto.
 Von sich aus in eine laufende Sitzung schreiben (Push) kann der Server nicht: Die *Channels* von Claude Code
 (`notifications/claude/channel`) gibt es nur für per stdio gestartete MCP-Server, DevTools MCP spricht Streamable HTTP.
 
+In der UI wählt „Aktiv“ (Mehrfachauswahl) die Systeme; darunter stehen die Felder und die Standard-Unterhaltung des
+gerade gewählten aktiven Systems, ein Umschalter wechselt zwischen ihnen.
+
 Freigaben je System:
 
 * **Nur diese Räume/Chats**: Senden, Lesen und Einladungen nur dort; leer = alle des Kontos.

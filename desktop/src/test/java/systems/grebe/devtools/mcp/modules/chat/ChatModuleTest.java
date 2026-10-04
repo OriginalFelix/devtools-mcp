@@ -9,6 +9,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
@@ -129,6 +130,14 @@ class ChatModuleTest {
                 "messagePrefix", "readReceipts", "askWaitSeconds", "maxWaitSeconds");
         assertThat(module.configSchema()).filteredOn(f -> f.key().equals("defaultProvider"))
                 .flatExtracting(ConfigField::options).containsExactly("auto", "matrix", "teams");
+        // Provider-Felder als Gruppe (UI: Mehrfachauswahl + Umschalter), gemeinsame Felder ohne
+        ConfigGroup teams = new ConfigGroup("teams", "Microsoft Teams");
+        assertThat(module.configSchema()).filteredOn(f -> teams.equals(f.group())).extracting(ConfigField::key)
+                .contains("teams.enabled", "teams.clientId", "teams.defaultConversation");
+        assertThat(module.configSchema()).filteredOn(f -> f.key().equals("teams.defaultConversation"))
+                .extracting(ConfigField::label).containsExactly("Microsoft Teams: Standard-Unterhaltung");
+        assertThat(module.configSchema()).filteredOn(f -> !f.key().contains("."))
+                .allSatisfy(f -> assertThat(f.group()).isNull());
         // Geheimnisse der Provider werden verschlüsselt gespeichert
         assertThat(module.configSchema()).filteredOn(ConfigField::secret).extracting(ConfigField::key)
                 .containsExactlyInAnyOrder("matrix.accessToken", "matrix.password");

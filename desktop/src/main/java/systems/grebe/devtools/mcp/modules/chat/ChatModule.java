@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleAction;
@@ -146,13 +147,10 @@ public class ChatModule implements ToolModule {
                 .withHelp("Für Aufrufe ohne 'provider', deren Unterhaltung keinem System eindeutig gehört. "
                         + "'auto' = das einzige aktive System."));
         for (ChatProvider p : providers.providers()) {
-            fields.add(ConfigField.of(enabledKey(p.id()), p.displayName() + ": aktiv", FieldType.BOOLEAN).withDefault("false"));
-            for (ConfigField f : p.configFields()) {
-                fields.add(new ConfigField(key(p.id(), f.key()), p.displayName() + ": " + f.label(), f.type(),
-                        f.required(), f.defaultValue(), f.help(), f.options()));
-            }
-            fields.add(ConfigField.of(key(p.id(), DEFAULT_CONVERSATION), p.displayName() + ": Standard-Unterhaltung",
-                    FieldType.STRING).withHelp(p.conversationHelp() + ". Für Aufrufe ohne 'conversation'."));
+            List<ConfigField> own = new ArrayList<>(p.configFields());
+            own.add(ConfigField.of(DEFAULT_CONVERSATION, "Standard-Unterhaltung", FieldType.STRING)
+                    .withHelp(p.conversationHelp() + ". Für Aufrufe ohne 'conversation'."));
+            fields.addAll(new ConfigGroup(p.id(), p.displayName()).fields(false, own));
         }
         fields.addAll(List.of(
                 ConfigField.of(PREFIX, "Kennzeichnung eigener Nachrichten", FieldType.STRING)
