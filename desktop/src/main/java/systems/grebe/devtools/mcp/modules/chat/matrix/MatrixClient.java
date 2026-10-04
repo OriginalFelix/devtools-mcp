@@ -1,4 +1,4 @@
-package systems.grebe.devtools.mcp.modules.matrix;
+package systems.grebe.devtools.mcp.modules.chat.matrix;
 
 import java.io.IOException;
 import java.net.URI;
@@ -96,7 +96,7 @@ public class MatrixClient {
     public synchronized Login login() {
         if (password == null || user == null || user.isBlank()) {
             throw new IllegalStateException("Matrix: weder Zugangstoken noch Benutzer und Passwort konfiguriert – in der "
-                    + "DevTools-App unter Module → Matrix eintragen.");
+                    + "DevTools-App unter Module → Chat → Matrix eintragen.");
         }
         ObjectNode body = JSON.createObjectNode();
         body.put("type", "m.login.password");
@@ -284,7 +284,7 @@ public class MatrixClient {
         String text = switch (errcode) {
             case "M_UNKNOWN_TOKEN", "M_MISSING_TOKEN" ->
                     "Matrix: Zugangstoken ungültig oder abgelaufen (" + errcode + ") – in der DevTools-App unter "
-                            + "Module → Matrix ein neues Token eintragen oder Benutzer/Passwort hinterlegen.";
+                            + "Module → Chat → Matrix ein neues Token eintragen oder Benutzer/Passwort hinterlegen.";
             case "M_FORBIDDEN" -> "Matrix: keine Berechtigung (" + message + ") bei " + where;
             case "M_LIMIT_EXCEEDED" -> "Matrix: Ratenbegrenzung des Homeservers – später erneut versuchen.";
             default -> "Matrix-Fehler " + code + (errcode.isEmpty() ? "" : " " + errcode) + " bei " + where + ": "

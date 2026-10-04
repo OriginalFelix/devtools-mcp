@@ -20,7 +20,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
 | **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
-| **Matrix** (Client-Server-API) | `matrix_rooms`, `matrix_send` (Markdown, Antwort/Thread), `matrix_ask` (Frage stellen und auf die Antwort warten), `matrix_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend), `matrix_history`, `matrix_react` – über ein Bot-Konto, beschränkbar auf Räume und freigegebene Absender, ohne Ende-zu-Ende-Verschlüsselung (Modul Standard: aus) |
+| **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
@@ -171,49 +171,81 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
   und lehnt einen geänderten ab; `strict` akzeptiert nur Hosts, die schon in der Datei stehen. *Verbindung testen*
   verbindet sich mit jeder Verbindung und zeigt Server-Version und Fingerprint.
 
-### Matrix
+### Chat-Systeme (ServiceLoader)
 
-Das LLM schreibt dem Nutzer über [Matrix](https://matrix.org) und bekommt von dort Antworten und Anweisungen – etwa
-Rückfragen und Freigaben, während der Nutzer nicht am Rechner sitzt, oder „fertig“-Meldungen nach langen Aufgaben.
-Angebunden wird ein (am besten eigenes) Konto über die Client-Server-API (`/_matrix/client/v3`) mit **Zugangstoken**
-oder **Benutzer + Passwort** (Gerät „DevTools MCP“ mit fester ID, damit wiederholte Anmeldungen kein neues Gerät
-anlegen; läuft ein Token ab, meldet sich das Modul mit dem Passwort neu an).
+Das LLM schreibt dem Nutzer über einen Chat und bekommt von dort Antworten und Anweisungen – etwa Rückfragen und
+Freigaben, während der Nutzer nicht am Rechner sitzt, oder „fertig“-Meldungen nach langen Aufgaben. Das Modul **Chat**
+folgt dem Muster der Tickets über `modules/chat/spi`: `ChatProvider` (ID, Felder, Hilfetexte) erzeugt ein `ChatSystem`
+mit `account`, `conversations`, `resolve`, `send`, `poll`, `history` und optional `react`, `markRead`, `login`.
+Eingang, Warten auf Antworten, Markdown und Ausgabe übernimmt das Modul. Mitgeliefert sind
 
-* `matrix_send` schickt Markdown; Formatierung geht als HTML (`formatted_body`, commonmark mit GFM-Tabellen und
-  Durchstreichen) mit, rohes HTML im Text wird maskiert. `replyTo` antwortet auf eine Nachricht, `thread=true` im
-  Thread dieser Nachricht. „Kennzeichnung eigener Nachrichten“ stellt z.B. „🤖“ voran.
-* `matrix_ask` stellt eine Frage und wartet bis `waitSeconds` (Standard „Wartezeit auf Antworten“, höchstens
+| Provider | Anbindung | Unterhaltung | Anmeldung | Warten auf Antworten |
+|---|---|---|---|---|
+| `matrix` | Client-Server-API `/_matrix/client/v3`, `/sync` mit Long-Polling | Raum: `!id:server`, `#alias:server` oder Name | Zugangstoken oder Benutzer + Passwort (Gerät „DevTools MCP“ mit fester ID; läuft ein Token ab, meldet sich das Modul mit dem Passwort neu an) | ja |
+| `teams` | Microsoft Graph v1.0, delegiert – schreibt unter dem Konto des Nutzers | Chat (1:1, Gruppe, Besprechung): `19:…`, Thema oder Name/E-Mail des Gegenübers | im Browser per Device Code (App-Aktion „Anmelden“ oder `chat_login`), Refresh-Token verschlüsselt in `chat-state.json` | nur mit „Warten durch Abfragen“ (Standard aus, siehe unten) |
+
+* `chat_send` schickt Markdown; Formatierung geht als HTML mit (commonmark mit GFM-Tabellen und Durchstreichen; Matrix
+  `formatted_body`, Teams Nachrichtentext), rohes HTML im Text wird maskiert. `replyTo` antwortet auf eine Nachricht
+  (Teams: `replyWithQuote`), `thread=true` im Matrix-Thread dieser Nachricht. „Kennzeichnung eigener Nachrichten“ stellt
+  z.B. „🤖“ voran.
+* `chat_ask` stellt eine Frage und wartet bis `waitSeconds` (Standard „Wartezeit auf Antworten“, höchstens
   „Max. Wartezeit“) auf die Antwort: bevorzugt eine Antwort bzw. Thread-Nachricht auf die Frage, sonst die erste
-  Nachricht eines freigegebenen Absenders im Raum danach – samt direkt folgender Nachrichten desselben Absenders. Was
-  vor der Frage einging, zählt nicht als Antwort und bleibt für `matrix_receive` liegen. Während des Wartens meldet das
-  Tool den Stand als `notifications/progress`.
-* `matrix_receive` liefert jede neue Nachricht genau einmal (optional nur aus einem Raum) und wartet mit `waitSeconds`,
-  bis etwas eingeht. Für „hör auf Matrix“ ruft das LLM es in einer Schleife auf. Abgeholte Nachrichten werden als
-  gelesen markiert (abschaltbar) – der Nutzer sieht so, dass sie angekommen sind; `matrix_react` setzt z.B. 👀/✅.
-* `matrix_history` zeigt den Verlauf (auch eigene Nachrichten) und ändert nichts am Eingang; `matrix_rooms` nennt
-  Konto, Standardraum, Räume (verschlüsselt?) und offene Einladungen.
+  Nachricht eines freigegebenen Absenders danach – samt direkt folgender Nachrichten desselben Absenders. Was vor der
+  Frage einging, zählt nicht als Antwort und bleibt für `chat_receive` liegen. Während des Wartens meldet das Tool den
+  Stand als `notifications/progress`.
+* `chat_receive` liefert jede neue Nachricht genau einmal – aus allen aktiven Systemen (mit Präfix `[matrix]`/`[teams]`)
+  oder einem – und wartet mit `waitSeconds`, bis etwas eingeht. Für „hör auf den Chat“ ruft das LLM es in einer Schleife
+  auf. Abgeholte Nachrichten werden als gelesen markiert (abschaltbar), `chat_react` setzt z.B. 👀/✅.
+* `chat_history` zeigt den Verlauf (auch eigene Nachrichten) und ändert nichts am Eingang; `chat_conversations` nennt je
+  System Konto, Standard-Unterhaltung, freigegebene Absender, Unterhaltungen und offene Einladungen.
+* Ohne `provider` wählt das Modul das System an der Unterhaltung bzw. Nachricht (`!…`/`$…` = Matrix, `19:…`/Zahlen =
+  Teams), sonst das Standard-System bzw. das einzige aktive.
 
-Empfangen ohne Hintergrund-Thread: Die Tools rufen `/sync` mit dem letzten `next_batch` auf, was dazwischen einging,
-puffert der Homeserver. Der Stand liegt je Konto in `~/.devtools-mcp/matrix-sync.json` und übersteht so einen Neustart;
-beim allerersten Abruf gelten die Nachrichten als neu, die der Server für das Konto als ungelesen zählt. Mitgeholte, aber
-nicht abgefragte Nachrichten (anderer Raum, während `matrix_ask` wartet) bleiben im Speicher, bis `matrix_receive` sie
-abholt. Mehrere Clients am selben Profil teilen sich diesen Eingang.
+Empfangen ohne Hintergrund-Thread: Jeder Abruf setzt beim gespeicherten Stand des Kontos auf (Matrix `next_batch`,
+Teams je Chat der Zeitpunkt der letzten Nachricht), der in `~/.devtools-mcp/chat-state.json` einen Neustart übersteht.
+Beim allerersten Abruf gilt als neu, was der Nutzer noch nicht gelesen hat (Matrix `unread_notifications`, Teams
+`viewpoint.lastMessageReadDateTime`). Mitgeholte, aber nicht abgefragte Nachrichten bleiben im Speicher, bis
+`chat_receive` sie abholt; mehrere Clients am selben Profil teilen sich diesen Eingang. Eigene Nachrichten erkennt das
+Modul an den gespeicherten IDs der zuletzt gesendeten (Matrix zusätzlich an der Transaktions-ID) – was unter demselben
+Konto **ohne** das Modul geschrieben wurde, gilt als Nachricht des Nutzers. So funktioniert Teams, wo das Modul unter dem
+Konto des Nutzers schreibt, und Matrix auch ohne eigenes Bot-Konto.
 
 Von sich aus in eine laufende Sitzung schreiben (Push) kann der Server nicht: Die *Channels* von Claude Code
 (`notifications/claude/channel`) gibt es nur für per stdio gestartete MCP-Server, DevTools MCP spricht Streamable HTTP.
 
-Freigaben:
+Freigaben je System:
 
-* **Nur diese Räume** (IDs oder Aliase): Senden, Lesen und Einladungen nur dort; leer = alle Räume des Kontos.
-* **Freigegebene Absender** (Matrix-IDs): nur deren Nachrichten erreichen das LLM – auch im Verlauf, Fremdes wird
-  ausgeblendet und gezählt. Leer = alle Raummitglieder; *Verbindung testen* warnt dann.
-* **Einladungen freigegebener Absender annehmen** (Standard an): das Konto tritt Räumen bei, in die ein freigegebener
-  Absender es einlädt – ohne Absenderliste nie, sonst könnte jeder den Bot in einen Raum holen und dort Anweisungen
-  geben.
+* **Nur diese Räume/Chats**: Senden, Lesen und Einladungen nur dort; leer = alle des Kontos.
+* **Freigegebene Absender** (Matrix-IDs bzw. E-Mail/Benutzer-ID): nur deren Nachrichten erreichen das LLM – auch im
+  Verlauf, Fremdes wird ausgeblendet und gezählt. Das eigene Konto ist immer freigegeben. Leer = alle Mitglieder;
+  *Verbindung testen* warnt dann.
+* Matrix **Einladungen freigegebener Absender annehmen** (Standard an): das Konto tritt Räumen bei, in die ein
+  freigegebener Absender es einlädt – ohne Absenderliste nie, sonst könnte jeder den Bot in einen Raum holen und dort
+  Anweisungen geben.
 
-Ende-zu-Ende-verschlüsselte Räume kann das Modul nicht lesen; Nachrichten dort erscheinen als Hinweis, gesendet wird
-unverschlüsselt (mit Warnung). Für verschlüsselte Räume den Homeserver über
+**Matrix:** Ende-zu-Ende-verschlüsselte Räume kann das Modul nicht lesen; Nachrichten dort erscheinen als Hinweis,
+gesendet wird unverschlüsselt (mit Warnung). Für verschlüsselte Räume den Homeserver über
 [Pantalaimon](https://github.com/matrix-org/pantalaimon) anbinden (dessen Adresse als Homeserver-URL).
+
+**Teams einrichten:** In Entra ID eine App-Registrierung anlegen, unter *Authentifizierung* „Öffentliche Clientflows
+zulassen“ = Ja, delegierte Berechtigungen `User.Read`, `Chat.ReadWrite`, `ChatMessage.Send` (keine Admin-Zustimmung
+nötig, sofern der Tenant Benutzerzustimmung erlaubt). Client-ID (und ggf. Tenant) eintragen, speichern, *Anmelden*
+ausführen: die App zeigt Adresse und Code und öffnet den Browser. Im Headless-Betrieb liefert `chat_login` beides an das
+LLM, die Anmeldung läuft im Hintergrund weiter. Selbst-Chats („Notizen“) bietet Graph nicht an – für den Austausch
+einen eigenen Gruppenchat anlegen.
+
+**Teams und Polling:** Microsoft erlaubt in den Nutzungsbedingungen der Teams-APIs kein regelmäßiges Abfragen auf
+Änderungen (Change Notifications bräuchten einen öffentlichen HTTPS-Endpunkt). Deshalb ruft das Modul je Tool-Aufruf
+standardmäßig **genau einmal** ab: `chat_ask` sendet die Frage und kehrt zurück, die Antwort holt später
+`chat_receive`. „Warten durch Abfragen alle … Sekunden“ (mind. 10) schaltet das Warten ein – nur, wenn das für die
+eigene App-Registrierung in Ordnung ist. Ein Abruf kostet eine Anfrage für die Chat-Liste plus eine je Chat mit Neuem.
+
+Die Einstellungen des früheren Moduls **Matrix** übernimmt das Chat-Modul beim ersten Start (als `matrix.*`, Matrix
+aktiv); das Modul selbst ist danach in der App einzuschalten.
+
+Ein weiteres System (z.B. Slack, Mattermost) braucht eine `ChatProvider`-Klasse und eine Zeile in
+`src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider`; Anmeldedaten, die zur
+Laufzeit entstehen, legt es über `ChatSettings.vault()` verschlüsselt ab.
 
 ### Maven-Artefakte
 
@@ -317,10 +349,10 @@ eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen au
 * SSH: Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; Host-Key-Prüfung gegen eine eigene
   known_hosts-Datei (geänderte Schlüssel werden immer abgelehnt). `ssh_exec` läuft mit den vollen Rechten des
   hinterlegten Benutzers – dafür einen eingeschränkten Benutzer anlegen oder den Schalter abschalten.
-* Matrix: Token und Passwort verschlüsselt und nie in Tool-Ausgaben. Nachrichten aus Matrix sind Eingaben, die das LLM
-  wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Raummitglied Anweisungen geben)
-  und ein eigenes Bot-Konto statt des persönlichen verwenden. Einladungen nimmt das Modul nur von freigegebenen
-  Absendern an.
+* Chat: Token, Passwörter und das Teams-Refresh-Token verschlüsselt und nie in Tool-Ausgaben. Chat-Nachrichten sind
+  Eingaben, die das LLM wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Mitglied
+  einer freigegebenen Unterhaltung Anweisungen geben), für Matrix ein eigenes Bot-Konto verwenden und Unterhaltungen
+  einschränken. Einladungen nimmt das Modul nur von freigegebenen Absendern an.
 
 ### Backend und Team-Server
 
@@ -634,7 +666,7 @@ MCP-Tool-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `open
 Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die Callbacks mit
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
-zerstörerisch. Bisher annotiert: SSH, Matrix. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
+zerstörerisch. Bisher annotiert: SSH, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
 
 ## Plugins
 
