@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
@@ -130,13 +131,10 @@ public class TicketModule implements ToolModule {
                 .withHelp("Für Aufrufe ohne 'provider', deren Schlüssel keinem System eindeutig gehört. "
                         + "'auto' = das einzige aktive System."));
         for (TicketProvider p : providers.providers()) {
-            fields.add(ConfigField.of(enabledKey(p.id()), p.displayName() + ": aktiv", FieldType.BOOLEAN).withDefault("false"));
-            for (ConfigField f : p.configFields()) {
-                fields.add(new ConfigField(key(p.id(), f.key()), p.displayName() + ": " + f.label(), f.type(),
-                        f.required(), f.defaultValue(), f.help(), f.options()));
-            }
-            fields.add(ConfigField.of(key(p.id(), DEFAULT_PROJECT), p.displayName() + ": Standardprojekt", FieldType.STRING)
+            List<ConfigField> own = new ArrayList<>(p.configFields());
+            own.add(ConfigField.of(DEFAULT_PROJECT, "Standardprojekt", FieldType.STRING)
                     .withHelp(p.projectHelp() + ". Wird verwendet, wenn das LLM kein Projekt angibt."));
+            fields.addAll(new ConfigGroup(p.id(), p.displayName()).fields(false, own));
         }
         fields.addAll(List.of(
                 ConfigField.of(COMMENTS, "Kommentare je Ticket", FieldType.INT).withDefault("5")

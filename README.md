@@ -49,8 +49,9 @@ public class NerdctlRuntimeProvider implements ContainerRuntimeProvider {
 ```
 
 und eine Zeile in `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider`.
-Die UI zeigt dann automatisch „nerdctl (containerd): aktiv / Programm“, die Laufzeit erscheint in `container_runtimes`
-und ist über den Parameter `runtime` in allen `container_*`-Tools wählbar. Laufzeiten ohne CLI implementieren
+Die UI bietet „nerdctl (containerd)“ dann automatisch in der Auswahl „Aktiv“ an und zeigt, solange die Laufzeit aktiv
+ist, ihr Feld „Programm“; die Laufzeit erscheint in `container_runtimes` und ist über den Parameter `runtime` in allen
+`container_*`-Tools wählbar. Laufzeiten ohne CLI implementieren
 `ContainerRuntime` direkt (z.B. über eine REST-API).
 
 ### Ticket-Systeme erweitern (ServiceLoader)
@@ -95,7 +96,8 @@ Provider implementieren Schreiben über `default`-Methoden von `TicketSystem` (`
 `create`, `links`, `transitions`) – was ein Provider nicht kann, meldet das Tool als „nicht unterstützt“; bestehende
 Plugin-Provider kompilieren unverändert.
 
-Jedes System hat in der UI „aktiv“, seine Felder und ein Standardprojekt. Ohne `provider` wählt das Modul das System, das
+In der UI wählt „Aktiv“ (Mehrfachauswahl) die Systeme; darunter stehen die Felder und das Standardprojekt des gerade
+gewählten aktiven Systems, ein Umschalter wechselt zwischen ihnen. Ohne `provider` wählt das Modul das System, das
 den Schlüssel als seinen erkennt (Jira-/YouTrack-Schlüssel, URL seines Hosts), sonst das Standard-System bzw. das
 einzige aktive. Sind Jira und YouTrack beide aktiv, ist `ABC-123` mehrdeutig – dann entscheidet das Standard-System oder
 der Parameter `provider`. Ein weiteres System (z.B. Redmine) braucht eine `TicketProvider`-Klasse und eine Zeile in
@@ -661,6 +663,12 @@ Feldtypen: `STRING`, `SECRET`, `INT`, `BOOLEAN`, `URL`, `DIRECTORY`, `DIRECTORY_
 `ConfigField.records("connections", "Verbindungen", ConfigField.of("name", …), …)` – die UI zeigt eine Tabelle mit
 Hinzufügen/Bearbeiten/Entfernen (Dialog aus denselben Feldern), gelesen wird mit `config.getRecords("connections")`.
 Gespeichert wird ein JSON-Array; enthält ein Feld ein `SECRET`, wird der ganze Wert verschlüsselt.
+
+Austauschbare Provider eines Moduls (wie die Ticket-Systeme) beschreibt `ConfigGroup`:
+`new ConfigGroup("jira", "Jira").fields(false, felder)` liefert den Schalter `jira.enabled` und die Felder unter
+`jira.<feld>` (Beschriftung „Jira: …“). Statt aller Felder untereinander zeigt die UI dann eine Mehrfachauswahl „Aktiv“
+und darunter die Einstellungen eines aktiven Providers mit einem Umschalter zwischen ihnen. Felder inaktiver Provider
+prüft `validate()` nicht. Die Gruppe ist nur für die Desktop-UI; der Team-Server sieht die Felder wie bisher einzeln.
 
 MCP-Tool-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) setzt `@ToolHints` an der
 Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die Callbacks mit

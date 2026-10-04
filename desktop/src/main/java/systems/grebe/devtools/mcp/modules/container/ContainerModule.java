@@ -10,6 +10,7 @@ import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
@@ -118,11 +119,7 @@ public class ContainerModule implements ToolModule {
                 .withOptions(runtimeOptions.toArray(String[]::new))
                 .withHelp("Wird verwendet, wenn ein Tool ohne 'runtime' aufgerufen wird. 'auto' = erste erreichbare."));
         for (ContainerRuntimeProvider p : runtimes.providers()) {
-            fields.add(ConfigField.of(enabledKey(p.id()), p.displayName() + ": aktiv", FieldType.BOOLEAN).withDefault("true"));
-            for (ConfigField f : p.configFields()) {
-                fields.add(new ConfigField(key(p.id(), f.key()), p.displayName() + ": " + f.label(), f.type(),
-                        f.required(), f.defaultValue(), f.help(), f.options()));
-            }
+            fields.addAll(new ConfigGroup(p.id(), p.displayName()).fields(true, p.configFields()));
         }
         fields.addAll(List.of(
                 ConfigField.of(ALLOWED_CONTAINERS, "Erlaubte Container", FieldType.STRING).withDefault(".*")

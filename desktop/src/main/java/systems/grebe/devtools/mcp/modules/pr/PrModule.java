@@ -10,6 +10,7 @@ import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
@@ -121,11 +122,7 @@ public class PrModule implements ToolModule {
                 .withOptions(options.toArray(String[]::new))
                 .withHelp("Für Aufrufe, bei denen weder Remote noch URL den Server bestimmen. 'auto' = der einzige aktive."));
         for (GitServerProvider p : providers.providers()) {
-            fields.add(ConfigField.of(enabledKey(p.id()), p.displayName() + ": aktiv", FieldType.BOOLEAN).withDefault("false"));
-            for (ConfigField f : p.configFields()) {
-                fields.add(new ConfigField(key(p.id(), f.key()), p.displayName() + ": " + f.label(), f.type(),
-                        f.required(), f.defaultValue(), f.help(), f.options()));
-            }
+            fields.addAll(new ConfigGroup(p.id(), p.displayName()).fields(false, p.configFields()));
         }
         fields.addAll(List.of(
                 ConfigField.of(TIMEOUT, "Timeout (Sekunden)", FieldType.INT).withDefault("30"),
