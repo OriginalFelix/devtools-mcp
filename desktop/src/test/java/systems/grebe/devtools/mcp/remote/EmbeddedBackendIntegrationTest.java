@@ -128,8 +128,11 @@ class EmbeddedBackendIntegrationTest {
         Files.createDirectories(repo.resolve(".git"));
         ProjectInfo shop = backend.createProject("shop", "Webshop");
         backend.setProjectPath(shop.id(), repo.toString());
-        assertThat(registry.settings("git").values().get("repositories"))
-                .contains("shop=" + repo.toAbsolutePath().normalize());
+        // Die Projektliste kommt zusätzlich per Subscription: eine ältere Nachricht (ohne „shop“) kann die Antwort von
+        // createProject kurz überholen, bis die zur Anlage gehörende Nachricht eintrifft
+        String shopRepo = "shop=" + repo.toAbsolutePath().normalize();
+        await(() -> String.valueOf(registry.settings("git").values().get("repositories")).contains(shopRepo),
+                "Projekt in den Git-Einstellungen");
         assertThat(ToolScope.LOCAL.canWrite(repo)).isTrue();
 
         // Skills gehören dem lokalen Benutzer

@@ -129,6 +129,30 @@ class ModuleActionPanelTest {
         waitFor(() -> labels(pane.get()).stream().anyMatch(t -> t.startsWith("Graph ist aktuell")), "zweiter Lauf");
     }
 
+    /** Aktion ohne Ziele (unveränderliche leere Liste) und ohne Auswahl – öffnete früher mit NullPointerException. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void actionWithoutTargetsOpensAndPreselectsOnceAvailable() throws Exception {
+        Assumptions.assumeTrue(toolkit, "kein JavaFX-Toolkit verfügbar");
+        ToolModule chat = registry.modules().stream().filter(m -> m.id().equals("chat")).findFirst().orElseThrow();
+        AtomicReference<ModuleDetailPane> pane = new AtomicReference<>();
+        onFx(() -> pane.set(new ModuleDetailPane(registry, chat)));
+
+        ModuleActionPanel panel = (ModuleActionPanel) find(pane.get(), ModuleActionPanel.class, null);
+        ComboBox<String> target = (ComboBox<String>) find(panel, ComboBox.class, null);
+        Button login = (Button) find(panel, Button.class, "Anmelden");
+        onFx(() -> { });
+        assertThat(target.getItems()).isEmpty();
+        assertThat(target.getPromptText()).startsWith("Nichts auswählbar");
+        assertThat(login.isDisabled()).isTrue();
+
+        registry.updateConfig("chat", Map.of("teams.enabled", "true", "teams.clientId", "client-1"));
+        onFx(panel::refreshTargets);
+        assertThat(target.getItems()).containsExactly("Microsoft Teams");
+        assertThat(target.getValue()).isEqualTo("Microsoft Teams");
+        assertThat(login.isDisabled()).isFalse();
+    }
+
     // ------------------------------------------------------------------ Hilfen
 
     private static List<String> labels(Node root) {

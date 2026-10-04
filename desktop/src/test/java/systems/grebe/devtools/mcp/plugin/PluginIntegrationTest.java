@@ -21,6 +21,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.annotation.DirtiesContext;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
@@ -31,9 +32,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Plugins end-to-end über einen echten MCP-Client: ein Plugin aus dem Ordner ist ab Start da (Tools und
  * Instructions), eine Installation zur Laufzeit erscheint sofort in {@code tools/list}, Deaktivieren und Entfernen
  * nehmen die Tools wieder weg – ohne Neustart.
+ *
+ * <p>{@code @DirtiesContext}: Der Kontext muss nach der Klasse geschlossen werden (dabei gibt der {@code PluginManager}
+ * die Jars frei), bevor JUnit das statische {@code @TempDir} löscht – sonst bliebe er im Test-Cache offen und Windows
+ * verweigerte das Löschen von {@code plugins/startup.jar}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "devtools.local-user.email=plugin@example.com")
+@DirtiesContext
 class PluginIntegrationTest {
 
     @TempDir
