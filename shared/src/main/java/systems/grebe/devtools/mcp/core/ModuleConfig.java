@@ -93,10 +93,16 @@ public final class ModuleConfig {
         return values;
     }
 
-    /** Prüft Pflichtfelder und Formate. Liefert deutschsprachige Fehlermeldungen. */
+    /**
+     * Prüft Pflichtfelder und Formate. Liefert deutschsprachige Fehlermeldungen. Felder inaktiver
+     * {@link ConfigGroup Gruppen} werden nicht verwendet und daher nicht geprüft.
+     */
     public List<String> validate() {
         List<String> errors = new ArrayList<>();
         for (ConfigField f : schema.values()) {
+            if (f.group() != null && !getBoolean(f.group().enabledKey())) {
+                continue;
+            }
             Optional<String> value = get(f.key());
             if (value.isEmpty()) {
                 if (f.required()) {

@@ -68,6 +68,68 @@
 }
 .toggle-button.switch:selected { -fx-background-color: #38a169; -fx-text-fill: white; }
 
+/* Mehrfachauswahl (MultiSelectComboBox): Feld wie ein Textfeld, gewählte Einträge als Chips */
+.multi-select {
+    -fx-background-color: -fx-text-box-border, -fx-control-inner-background;
+    -fx-background-insets: 0, 1;
+    -fx-background-radius: 3, 2;
+    -fx-padding: 2 4 2 3;
+    -fx-min-height: 26;
+    -fx-cursor: hand;
+}
+.multi-select:focused, .multi-select:showing {
+    -fx-background-color: -fx-focus-color, -fx-control-inner-background, -fx-faint-focus-color, -fx-control-inner-background;
+    -fx-background-insets: -0.2, 1, -1.4, 3;
+    -fx-background-radius: 3, 2, 4, 0;
+}
+.multi-select .label.prompt { -fx-text-fill: #a0aec0; -fx-padding: 0 0 0 4; }
+.multi-select > .arrow-button { -fx-padding: 0 4 0 8; }
+.multi-select > .arrow-button > .arrow {
+    -fx-background-color: -fx-mark-highlight-color, -fx-mark-color;
+    -fx-background-insets: 0 0 -1 0, 0;
+    -fx-padding: 0.166667em 0.333333em;
+    -fx-shape: "M 0 0 h 7 l -3.5 4 z";
+}
+.multi-select .chip {
+    -fx-background-color: #e2ecf7;
+    -fx-background-radius: 10;
+    -fx-padding: 1 3 1 9;
+}
+.multi-select .chip > .label { -fx-text-fill: #2c5282; -fx-font-size: 12px; }
+.multi-select .chip-remove { -fx-padding: 4; -fx-background-radius: 8; }
+.multi-select .chip-remove:hover { -fx-background-color: #c3d5ea; }
+.multi-select .chip-remove-icon {
+    -fx-background-color: #2c5282;
+    -fx-shape: "M1.4 0 L4 2.6 L6.6 0 L8 1.4 L5.4 4 L8 6.6 L6.6 8 L4 5.4 L1.4 8 L0 6.6 L2.6 4 L0 1.4 Z";
+    -fx-min-width: 7; -fx-pref-width: 7; -fx-max-width: 7;
+    -fx-min-height: 7; -fx-pref-height: 7; -fx-max-height: 7;
+}
+.multi-select-popup .check-box { -fx-padding: 2 0 2 0; }
+
+/* Provider-Gruppen: Kasten mit Umschalter zwischen den aktiven Gruppen */
+.group-panel {
+    -fx-background-color: #f7f9fb;
+    -fx-border-color: #e2e8f0;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 10 12 12 0;
+}
+.segmented > .toggle-button {
+    -fx-background-color: #cbd5e0, #ffffff;
+    -fx-background-insets: 0, 1 1 1 0;
+    -fx-background-radius: 0;
+    -fx-text-fill: #2d3748;
+    -fx-padding: 4 14 4 14;
+    -fx-cursor: hand;
+}
+.segmented > .toggle-button.first { -fx-background-insets: 0, 1; -fx-background-radius: 4 0 0 4, 3 0 0 3; }
+.segmented > .toggle-button.last { -fx-background-radius: 0 4 4 0, 0 3 3 0; }
+.segmented > .toggle-button.first.last { -fx-background-radius: 4, 3; }
+.segmented > .toggle-button:hover { -fx-background-color: #cbd5e0, #edf2f7; }
+.segmented > .toggle-button:selected { -fx-background-color: -accent, -accent; -fx-text-fill: white; -fx-cursor: default; }
+.segmented > .toggle-button:focused { -fx-background-color: -fx-focus-color, #ffffff; }
+.segmented > .toggle-button:selected:focused { -fx-background-color: -fx-focus-color, -accent; }
+
 .tool-row { -fx-padding: 6 8 6 8; -fx-background-color: #f7f9fb; -fx-background-radius: 4; }
 .tool-name { -fx-font-family: "Consolas", "Menlo", monospace; -fx-font-weight: bold; }
 .tool-description { -fx-font-size: 11px; -fx-text-fill: #4a5568; -fx-padding: 0 0 0 24; }

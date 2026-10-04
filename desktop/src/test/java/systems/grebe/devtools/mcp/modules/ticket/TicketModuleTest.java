@@ -7,9 +7,11 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
+import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,6 +40,32 @@ class TicketModuleTest {
                 .extracting(ConfigField::label).containsExactly("GitHub: Token");
         // Systeme sind standardmäßig aus – erst Token/Server eintragen
         assertThat(env(Map.of()).entries()).isEmpty();
+    }
+
+    @Test
+    void providerFieldsFormGroupsThatAreOnlyValidatedWhenActiveAndStayOffTheWire() {
+        ConfigField url = module.configSchema().stream().filter(f -> f.key().equals("jira.baseUrl")).findFirst().orElseThrow();
+        ConfigGroup jira = new ConfigGroup("jira", "Jira");
+        assertThat(url.group()).isEqualTo(jira);
+        assertThat(jira.shortLabel(url)).isEqualTo("Server-URL");
+        assertThat(module.configSchema()).filteredOn(f -> jira.equals(f.group())).extracting(ConfigField::key)
+                .containsExactly("jira.enabled", "jira.baseUrl", "jira.user", "jira.token", "jira.deployment",
+                        "jira.defaultProject");
+        assertThat(module.configSchema()).filteredOn(f -> f.key().equals("defaultProvider"))
+                .allSatisfy(f -> assertThat(f.group()).isNull());
+
+        // Felder eines inaktiven Systems werden nicht verwendet und blockieren das Speichern nicht
+        assertThat(ModuleConfig.of(module.configSchema(), Map.of("jira.baseUrl", "kein-url")).validate()).isEmpty();
+        assertThat(ModuleConfig.of(module.configSchema(), Map.of("jira.enabled", "true", "jira.baseUrl", "kein-url"))
+                .validate()).containsExactly("'Jira: Server-URL' muss eine http(s)-URL sein.");
+
+        // Die Gruppe ist nur für die Desktop-UI: der Modulkatalog für den Server bleibt unverändert
+        JsonMapper json = JsonMapper.builder().build();
+        String serialized = json.writeValueAsString(url);
+        assertThat(serialized).doesNotContain("group").contains("\"key\":\"jira.baseUrl\"");
+        ConfigField read = json.readValue(serialized, ConfigField.class);
+        assertThat(read.group()).isNull();
+        assertThat(read.label()).isEqualTo("Jira: Server-URL");
     }
 
     @Test

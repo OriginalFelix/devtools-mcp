@@ -1,6 +1,7 @@
 package systems.grebe.devtools.mcp.ui;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,8 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
@@ -34,57 +37,191 @@ import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Window;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 
 /**
  * Erzeugt aus einem {@link ConfigField}-Schema ein Formular. Neue Module brauchen dadurch keinen eigenen UI-Code.
+ *
+ * <p>Felder von {@link ConfigGroup Provider-Gruppen} erscheinen nicht untereinander: An der Stelle der ersten Gruppe
+ * steht eine Mehrfachauswahl der aktiven Gruppen (sie setzt deren Schalter), darunter die Einstellungen einer aktiven
+ * Gruppe mit einem Umschalter zwischen ihnen.
  */
 public class ConfigForm {
+
+    private static final double LABEL_WIDTH = 200;
 
     private final GridPane grid = new GridPane();
     private final Map<String, Supplier<String>> getters = new LinkedHashMap<>();
     private final List<ConfigField> schema;
     private Runnable onChange = () -> { };
+    private MultiSelectComboBox<ConfigGroup> activeGroups;
+    private final ToggleGroup groupSwitch = new ToggleGroup();
 
     public ConfigForm(List<ConfigField> schema, Map<String, String> values) {
         this.schema = schema;
         grid.getStyleClass().add("config-form");
+        columns(grid);
+
+        int row = 0;
+        boolean groups = false;
+        for (ConfigField f : schema) {
+            if (f.group() == null) {
+                grid.getChildren().addAll(row(f, f.label(), values, row++));
+            } else if (!groups) {
+                row = addGroups(values, row);
+                groups = true;
+            }
+        }
+        if (schema.isEmpty()) {
+            grid.add(new Label("Dieses Modul benötigt keine Konfiguration."), 0, 0, 2, 1);
+        }
+    }
+
+    private static void columns(GridPane grid) {
         grid.setHgap(12);
         grid.setVgap(10);
         ColumnConstraints labels = new ColumnConstraints();
-        labels.setMinWidth(200);
-        labels.setPrefWidth(200);
-        labels.setMaxWidth(200);
+        labels.setMinWidth(LABEL_WIDTH);
+        labels.setPrefWidth(LABEL_WIDTH);
+        labels.setMaxWidth(LABEL_WIDTH);
         labels.setHalignment(HPos.RIGHT);
         ColumnConstraints editors = new ColumnConstraints();
         editors.setHgrow(Priority.ALWAYS);
         editors.setFillWidth(true);
         grid.getColumnConstraints().addAll(labels, editors);
+    }
 
-        int row = 0;
+    /** Beschriftung und Editor (mit Hilfetext) eines Feldes in der angegebenen Zeile, noch in keinem Raster. */
+    private List<Node> row(ConfigField f, String text, Map<String, String> values, int row) {
+        String value = values.getOrDefault(f.key(), f.defaultValue() == null ? "" : f.defaultValue());
+        Label label = formLabel(text + (f.required() ? " *" : ""));
+        VBox cell = new VBox(3, editor(f, value));
+        if (f.help() != null) {
+            Label help = new Label(f.help());
+            help.getStyleClass().add("form-help");
+            help.setWrapText(true);
+            cell.getChildren().add(help);
+        }
+        GridPane.setConstraints(label, 0, row);
+        GridPane.setConstraints(cell, 1, row);
+        return List.of(label, cell);
+    }
+
+    private static Label formLabel(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("form-label");
+        label.setWrapText(true);
+        label.setTextAlignment(javafx.scene.text.TextAlignment.RIGHT);
+        GridPane.setValignment(label, VPos.TOP);
+        label.setPadding(new Insets(5, 0, 0, 0));
+        return label;
+    }
+
+    /**
+     * Alle Provider-Gruppen des Schemas: Zeile „Aktiv“ mit der Mehrfachauswahl, darunter ein Kasten mit dem Umschalter
+     * zwischen den aktiven Gruppen und den Einstellungen der gewählten. Die Zeilen jeder Gruppe werden einmal erzeugt
+     * und beim Umschalten nur getauscht – Eingaben bleiben so erhalten, auch die abgewählter Gruppen.
+     *
+     * @return nächste freie Zeile
+     */
+    private int addGroups(Map<String, String> values, int row) {
+        Map<ConfigGroup, List<ConfigField>> fields = new LinkedHashMap<>();
+        Map<ConfigGroup, Boolean> enabled = new LinkedHashMap<>();
         for (ConfigField f : schema) {
-            String value = values.getOrDefault(f.key(), f.defaultValue() == null ? "" : f.defaultValue());
-            Label label = new Label(f.label() + (f.required() ? " *" : ""));
-            label.getStyleClass().add("form-label");
-            label.setWrapText(true);
-            label.setTextAlignment(javafx.scene.text.TextAlignment.RIGHT);
-            GridPane.setValignment(label, VPos.TOP);
-            label.setPadding(new Insets(5, 0, 0, 0));
-            Node editor = editor(f, value);
-            VBox cell = new VBox(3, editor);
-            if (f.help() != null) {
-                Label help = new Label(f.help());
-                help.getStyleClass().add("form-help");
-                help.setWrapText(true);
-                cell.getChildren().add(help);
+            if (f.group() == null) {
+                continue;
             }
-            grid.add(label, 0, row);
-            grid.add(cell, 1, row);
-            row++;
+            List<ConfigField> own = fields.computeIfAbsent(f.group(), g -> new ArrayList<>());
+            if (f.key().equals(f.group().enabledKey())) {
+                String v = values.get(f.key());
+                enabled.put(f.group(), Boolean.parseBoolean(v == null || v.isBlank() ? f.defaultValue() : v));
+            } else {
+                own.add(f);
+            }
         }
-        if (schema.isEmpty()) {
-            grid.add(new Label("Dieses Modul benötigt keine Konfiguration."), 0, 0, 2, 1);
-        }
+        List<ConfigGroup> groups = List.copyOf(fields.keySet());
+        activeGroups = new MultiSelectComboBox<>(groups, ConfigGroup::label);
+        activeGroups.setPromptText("keine – auswählen, um die Einstellungen zu sehen");
+        activeGroups.setSelected(groups.stream().filter(g -> enabled.getOrDefault(g, false)).toList());
+        groups.forEach(g -> getters.put(g.enabledKey(), () -> String.valueOf(activeGroups.isSelected(g))));
+        grid.add(formLabel("Aktiv"), 0, row);
+        grid.add(activeGroups, 1, row);
+
+        GridPane panel = new GridPane();
+        panel.getStyleClass().add("group-panel");
+        columns(panel);
+        Map<ConfigGroup, List<Node>> pages = new LinkedHashMap<>();
+        fields.forEach((g, own) -> {
+            List<Node> nodes = new ArrayList<>();
+            for (int i = 0; i < own.size(); i++) {
+                nodes.addAll(row(own.get(i), g.shortLabel(own.get(i)), values, i + 1));
+            }
+            if (own.isEmpty()) {
+                Label none = new Label("Keine weiteren Einstellungen.");
+                none.getStyleClass().add("form-help");
+                GridPane.setConstraints(none, 1, 1);
+                nodes.add(none);
+            }
+            pages.put(g, nodes);
+        });
+        HBox switcher = new HBox();
+        switcher.getStyleClass().add("segmented");
+        panel.add(formLabel("Einstellungen für"), 0, 0);
+        panel.add(switcher, 1, 0);
+        groupSwitch.selectedToggleProperty().addListener((obs, o, n) -> {
+            panel.getChildren().removeIf(node -> GridPane.getRowIndex(node) != null && GridPane.getRowIndex(node) > 0);
+            if (n != null) {
+                panel.getChildren().addAll(pages.get((ConfigGroup) n.getUserData()));
+            }
+        });
+
+        List<ConfigGroup> before = new ArrayList<>();
+        Runnable update = () -> {
+            List<ConfigGroup> now = List.copyOf(activeGroups.getSelected());
+            // eine neu aktivierte Gruppe gleich zeigen, sonst die bisherige, solange sie aktiv bleibt
+            ConfigGroup current = shownGroup();
+            ConfigGroup show = now.stream().filter(g -> !before.contains(g)).findFirst()
+                    .orElse(current != null && now.contains(current) ? current : now.isEmpty() ? null : now.getFirst());
+            before.clear();
+            before.addAll(now);
+            groupSwitch.getToggles().clear();
+            switcher.getChildren().setAll(now.stream().map(this::switchButton).toList());
+            if (!now.isEmpty()) {
+                switcher.getChildren().getFirst().getStyleClass().add("first");
+                switcher.getChildren().getLast().getStyleClass().add("last");
+            }
+            groupSwitch.getToggles().stream().filter(t -> t.getUserData().equals(show)).findFirst()
+                    .ifPresent(t -> t.setSelected(true));
+            panel.setVisible(!now.isEmpty());
+            panel.setManaged(!now.isEmpty());
+        };
+        update.run();
+        activeGroups.getSelected().addListener((javafx.collections.ListChangeListener<ConfigGroup>) c -> {
+            update.run();
+            onChange.run();
+        });
+        grid.add(panel, 0, row + 1, 2, 1);
+        return row + 2;
+    }
+
+    private ToggleButton switchButton(ConfigGroup g) {
+        ToggleButton b = new ToggleButton(g.label()) {
+            @Override
+            public void fire() {
+                if (!isSelected()) { // erneutes Klicken lässt die gezeigte Gruppe gewählt
+                    super.fire();
+                }
+            }
+        };
+        b.setUserData(g);
+        b.setToggleGroup(groupSwitch);
+        return b;
+    }
+
+    /** Gruppe, deren Einstellungen gerade zu sehen sind, sonst {@code null}. */
+    private ConfigGroup shownGroup() {
+        return groupSwitch.getSelectedToggle() == null ? null : (ConfigGroup) groupSwitch.getSelectedToggle().getUserData();
     }
 
     public Node node() {
