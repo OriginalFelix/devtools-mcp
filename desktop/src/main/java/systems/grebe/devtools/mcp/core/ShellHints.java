@@ -58,6 +58,9 @@ public final class ShellHints {
     public static final String SSH =" Konfigurierte SSH-Server immer über die ssh_*-Tools ansprechen, nicht mit "
             + "`ssh`, `scp` oder `sftp` in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
 
+    public static final String MATRIX = " Matrix-Nachrichten immer über die matrix_*-Tools senden und lesen, nicht per "
+            + "`curl` gegen die Client-Server-API – die Zugangsdaten liegen nur in der DevTools-App.";
+
     public static final String PROJECTS = " Welche Projekte (Repositories, Build-, Graph-Projekte) zur Verfügung stehen, "
             + "immer über projects_list ermitteln, nicht durch Durchsuchen des Dateisystems in der Shell.";
 

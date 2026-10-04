@@ -54,6 +54,12 @@ dependencies {
     // SSH-Modul: Befehle und SFTP über JSch (gepflegter Fork mit aktuellen Algorithmen, ohne weitere Abhängigkeiten)
     implementation("com.github.mwiede:jsch:2.27.2")
 
+    // Matrix-Modul: Markdown der Nachrichten als HTML (formatted_body), mit Tabellen und Durchstreichen wie GFM
+    val commonmarkVersion = "0.30.0"
+    implementation("org.commonmark:commonmark:$commonmarkVersion")
+    implementation("org.commonmark:commonmark-ext-gfm-tables:$commonmarkVersion")
+    implementation("org.commonmark:commonmark-ext-gfm-strikethrough:$commonmarkVersion")
+
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
     }
