@@ -97,11 +97,12 @@ final class ModuleActionPanel extends VBox {
             target.setValue(selected);
         } else if (targets.size() == 1) {
             target.setValue(targets.getFirst());
-        } else if (!targets.contains(selected)) {
+        } else {
+            // keine oder ungültig gewordene Auswahl – contains(null) wirft bei List.of(…)
             target.setValue(null);
         }
-        target.setPromptText(hasTargets ? "Projekt wählen"
-                : "Keine Projekte – in der Konfiguration eintragen und speichern");
+        target.setPromptText(hasTargets ? "Auswählen"
+                : "Nichts auswählbar – Konfiguration ausfüllen und speichern");
         updateButtons();
         updateTargetInfo();
     }
