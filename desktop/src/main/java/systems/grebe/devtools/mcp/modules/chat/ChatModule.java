@@ -4,12 +4,15 @@ import java.awt.Desktop;
 import java.awt.GraphicsEnvironment;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -165,6 +168,37 @@ public class ChatModule implements ToolModule {
                 ConfigField.of(TIMEOUT, "Timeout (Sekunden)", FieldType.INT).withDefault("30"),
                 ConfigField.of(MAX_LINES, "Max. Ausgabezeilen", FieldType.INT).withDefault("400")));
         return fields;
+    }
+
+    /**
+     * Übernimmt beim ersten Start die Einstellungen des früheren Moduls {@code matrix} (vor der Provider-Aufteilung):
+     * Verbindung und Freigaben als {@code matrix.*}, gemeinsame Werte unverändert, Matrix aktiv.
+     */
+    @Override
+    public Map<String, String> initialValues(Function<String, Map<String, String>> savedValues) {
+        Map<String, String> old = savedValues.apply("matrix");
+        if (old == null || old.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String k : List.of("homeserverUrl", "accessToken", "user", "password", "rooms", "trustedSenders", "autoJoin")) {
+            copy(old, k, out, key("matrix", k));
+        }
+        copy(old, "defaultRoom", out, key("matrix", DEFAULT_CONVERSATION));
+        for (String k : List.of(PREFIX, READ_RECEIPTS, ASK_WAIT, MAX_WAIT, TIMEOUT, MAX_LINES)) {
+            copy(old, k, out, k);
+        }
+        if (out.containsKey(key("matrix", "homeserverUrl"))) {
+            out.put(enabledKey("matrix"), "true");
+        }
+        return out;
+    }
+
+    private static void copy(Map<String, String> from, String fromKey, Map<String, String> to, String toKey) {
+        String v = from.get(fromKey);
+        if (v != null && !v.isBlank()) {
+            to.put(toKey, v);
+        }
     }
 
     @Override

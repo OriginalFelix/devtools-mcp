@@ -150,6 +150,21 @@ class ChatModuleTest {
     }
 
     @Test
+    void takesSettingsOfFormerMatrixModuleOnFirstStart() {
+        ChatModule module = new ChatModule(new ChatProviders());
+        Map<String, String> init = module.initialValues(id -> "matrix".equals(id)
+                ? Map.of("homeserverUrl", "https://matrix.example.org", "accessToken", "tok", "defaultRoom", "!r:x",
+                "trustedSenders", "@felix:x", "messagePrefix", "🤖", "askWaitSeconds", "120")
+                : Map.of());
+        assertThat(init).containsEntry("matrix.enabled", "true")
+                .containsEntry("matrix.homeserverUrl", "https://matrix.example.org")
+                .containsEntry("matrix.accessToken", "tok").containsEntry("matrix.defaultConversation", "!r:x")
+                .containsEntry("matrix.trustedSenders", "@felix:x").containsEntry("messagePrefix", "🤖")
+                .containsEntry("askWaitSeconds", "120");
+        assertThat(module.initialValues(id -> Map.of())).isEmpty();
+    }
+
+    @Test
     void withoutActiveSystemSaysHowToEnableOne() {
         FakeProvider alpha = new FakeProvider("alpha");
         ChatModule module = new ChatModule(new ChatProviders(List.of(alpha)));

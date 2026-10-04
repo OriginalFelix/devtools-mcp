@@ -240,6 +240,9 @@ standardmäßig **genau einmal** ab: `chat_ask` sendet die Frage und kehrt zurü
 `chat_receive`. „Warten durch Abfragen alle … Sekunden“ (mind. 10) schaltet das Warten ein – nur, wenn das für die
 eigene App-Registrierung in Ordnung ist. Ein Abruf kostet eine Anfrage für die Chat-Liste plus eine je Chat mit Neuem.
 
+Die Einstellungen des früheren Moduls **Matrix** übernimmt das Chat-Modul beim ersten Start (als `matrix.*`, Matrix
+aktiv); das Modul selbst ist danach in der App einzuschalten.
+
 Ein weiteres System (z.B. Slack, Mattermost) braucht eine `ChatProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider`; Anmeldedaten, die zur
 Laufzeit entstehen, legt es über `ChatSettings.vault()` verschlüsselt ab.
