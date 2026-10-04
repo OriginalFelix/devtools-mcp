@@ -20,6 +20,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
 | **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
+| **Matrix** (Client-Server-API) | `matrix_rooms`, `matrix_send` (Markdown, Antwort/Thread), `matrix_ask` (Frage stellen und auf die Antwort warten), `matrix_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend), `matrix_history`, `matrix_react` – über ein Bot-Konto, beschränkbar auf Räume und freigegebene Absender, ohne Ende-zu-Ende-Verschlüsselung (Modul Standard: aus) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
@@ -170,6 +171,50 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
   und lehnt einen geänderten ab; `strict` akzeptiert nur Hosts, die schon in der Datei stehen. *Verbindung testen*
   verbindet sich mit jeder Verbindung und zeigt Server-Version und Fingerprint.
 
+### Matrix
+
+Das LLM schreibt dem Nutzer über [Matrix](https://matrix.org) und bekommt von dort Antworten und Anweisungen – etwa
+Rückfragen und Freigaben, während der Nutzer nicht am Rechner sitzt, oder „fertig“-Meldungen nach langen Aufgaben.
+Angebunden wird ein (am besten eigenes) Konto über die Client-Server-API (`/_matrix/client/v3`) mit **Zugangstoken**
+oder **Benutzer + Passwort** (Gerät „DevTools MCP“ mit fester ID, damit wiederholte Anmeldungen kein neues Gerät
+anlegen; läuft ein Token ab, meldet sich das Modul mit dem Passwort neu an).
+
+* `matrix_send` schickt Markdown; Formatierung geht als HTML (`formatted_body`, commonmark mit GFM-Tabellen und
+  Durchstreichen) mit, rohes HTML im Text wird maskiert. `replyTo` antwortet auf eine Nachricht, `thread=true` im
+  Thread dieser Nachricht. „Kennzeichnung eigener Nachrichten“ stellt z.B. „🤖“ voran.
+* `matrix_ask` stellt eine Frage und wartet bis `waitSeconds` (Standard „Wartezeit auf Antworten“, höchstens
+  „Max. Wartezeit“) auf die Antwort: bevorzugt eine Antwort bzw. Thread-Nachricht auf die Frage, sonst die erste
+  Nachricht eines freigegebenen Absenders im Raum danach – samt direkt folgender Nachrichten desselben Absenders. Was
+  vor der Frage einging, zählt nicht als Antwort und bleibt für `matrix_receive` liegen. Während des Wartens meldet das
+  Tool den Stand als `notifications/progress`.
+* `matrix_receive` liefert jede neue Nachricht genau einmal (optional nur aus einem Raum) und wartet mit `waitSeconds`,
+  bis etwas eingeht. Für „hör auf Matrix“ ruft das LLM es in einer Schleife auf. Abgeholte Nachrichten werden als
+  gelesen markiert (abschaltbar) – der Nutzer sieht so, dass sie angekommen sind; `matrix_react` setzt z.B. 👀/✅.
+* `matrix_history` zeigt den Verlauf (auch eigene Nachrichten) und ändert nichts am Eingang; `matrix_rooms` nennt
+  Konto, Standardraum, Räume (verschlüsselt?) und offene Einladungen.
+
+Empfangen ohne Hintergrund-Thread: Die Tools rufen `/sync` mit dem letzten `next_batch` auf, was dazwischen einging,
+puffert der Homeserver. Der Stand liegt je Konto in `~/.devtools-mcp/matrix-sync.json` und übersteht so einen Neustart;
+beim allerersten Abruf gelten die Nachrichten als neu, die der Server für das Konto als ungelesen zählt. Mitgeholte, aber
+nicht abgefragte Nachrichten (anderer Raum, während `matrix_ask` wartet) bleiben im Speicher, bis `matrix_receive` sie
+abholt. Mehrere Clients am selben Profil teilen sich diesen Eingang.
+
+Von sich aus in eine laufende Sitzung schreiben (Push) kann der Server nicht: Die *Channels* von Claude Code
+(`notifications/claude/channel`) gibt es nur für per stdio gestartete MCP-Server, DevTools MCP spricht Streamable HTTP.
+
+Freigaben:
+
+* **Nur diese Räume** (IDs oder Aliase): Senden, Lesen und Einladungen nur dort; leer = alle Räume des Kontos.
+* **Freigegebene Absender** (Matrix-IDs): nur deren Nachrichten erreichen das LLM – auch im Verlauf, Fremdes wird
+  ausgeblendet und gezählt. Leer = alle Raummitglieder; *Verbindung testen* warnt dann.
+* **Einladungen freigegebener Absender annehmen** (Standard an): das Konto tritt Räumen bei, in die ein freigegebener
+  Absender es einlädt – ohne Absenderliste nie, sonst könnte jeder den Bot in einen Raum holen und dort Anweisungen
+  geben.
+
+Ende-zu-Ende-verschlüsselte Räume kann das Modul nicht lesen; Nachrichten dort erscheinen als Hinweis, gesendet wird
+unverschlüsselt (mit Warnung). Für verschlüsselte Räume den Homeserver über
+[Pantalaimon](https://github.com/matrix-org/pantalaimon) anbinden (dessen Adresse als Homeserver-URL).
+
 ### Maven-Artefakte
 
 Liest aus einem Maven-Repository im Standard-Layout (Standard: Maven Central, sonst Nexus/Artifactory mit optionaler
@@ -272,6 +317,10 @@ eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen au
 * SSH: Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; Host-Key-Prüfung gegen eine eigene
   known_hosts-Datei (geänderte Schlüssel werden immer abgelehnt). `ssh_exec` läuft mit den vollen Rechten des
   hinterlegten Benutzers – dafür einen eingeschränkten Benutzer anlegen oder den Schalter abschalten.
+* Matrix: Token und Passwort verschlüsselt und nie in Tool-Ausgaben. Nachrichten aus Matrix sind Eingaben, die das LLM
+  wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Raummitglied Anweisungen geben)
+  und ein eigenes Bot-Konto statt des persönlichen verwenden. Einladungen nimmt das Modul nur von freigegebenen
+  Absendern an.
 
 ### Backend und Team-Server
 
@@ -585,7 +634,7 @@ MCP-Tool-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `open
 Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die Callbacks mit
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
-zerstörerisch. Bisher annotiert: SSH. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
+zerstörerisch. Bisher annotiert: SSH, Matrix. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
 
 ## Plugins
 
