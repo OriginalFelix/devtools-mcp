@@ -1,40 +1,40 @@
-package systems.grebe.devtools.mcp.modules.matrix;
+package systems.grebe.devtools.mcp.modules.chat.matrix;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.function.Predicate;
 
+import systems.grebe.devtools.mcp.modules.chat.spi.ChatSystem;
 import tools.jackson.databind.JsonNode;
 
-/**
- * Eine Nachricht aus einem Raum, aufbereitet für das LLM.
- *
- * @param seq        Reihenfolge im Eingang (steigt mit jedem verarbeiteten Ereignis)
- * @param replyTo    Ereignis, auf das geantwortet wird, oder {@code null}
- * @param threadRoot Wurzel des Threads oder {@code null}
- * @param editOf     bei Bearbeitungen das ursprüngliche Ereignis, sonst {@code null}
- */
-record MatrixMessage(long seq, String roomId, String eventId, String sender, long timestamp, String body,
-                     String replyTo, String threadRoot, String editOf, boolean encrypted) {
+/** Timeline-Ereignisse ({@code m.room.message}, {@code m.room.encrypted}) → {@link ChatSystem.Message}. */
+final class MatrixEvents {
+
+    /** Präfix der Transaktions-IDs des Moduls – der Homeserver liefert sie dem sendenden Gerät zurück. */
+    static final String TXN_PREFIX = "dtmcp-";
 
     static final String ENCRYPTED_TEXT = "[Ende-zu-Ende-verschlüsselt – nicht lesbar. Das Matrix-Modul unterstützt "
             + "keine Verschlüsselung: einen unverschlüsselten Raum verwenden oder den Homeserver über Pantalaimon anbinden.]";
 
-    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-            .withZone(ZoneId.systemDefault());
+    private MatrixEvents() {
+    }
 
     /**
-     * Aus einem Timeline-Ereignis ({@code m.room.message} oder {@code m.room.encrypted}); {@code null} für andere Typen
-     * und entfernte (redigierte) Nachrichten.
+     * Nachricht aus einem Timeline-Ereignis; {@code null} für andere Typen und entfernte (redigierte) Nachrichten.
+     *
+     * @param me      eigene Matrix-ID
+     * @param trusted ob ein (fremder) Absender freigegeben ist
      */
-    static MatrixMessage of(long seq, String roomId, JsonNode event) {
+    static ChatSystem.Message message(String roomId, JsonNode event, String me, Predicate<String> trusted) {
         String type = event.path("type").asString("");
         String eventId = event.path("event_id").asString("");
         String sender = event.path("sender").asString("");
         long ts = event.path("origin_server_ts").asLong(0);
+        boolean fromMe = sender.equals(me);
+        boolean own = event.path("unsigned").path("transaction_id").asString("").startsWith(TXN_PREFIX);
+        boolean ok = fromMe || trusted.test(sender);
         if ("m.room.encrypted".equals(type)) {
-            return new MatrixMessage(seq, roomId, eventId, sender, ts, ENCRYPTED_TEXT, null, null, null, true);
+            return new ChatSystem.Message(eventId, roomId, sender, null, ts, ENCRYPTED_TEXT, null, null, null, own,
+                    fromMe, ok);
         }
         if (!"m.room.message".equals(type)) {
             return null;
@@ -57,7 +57,7 @@ record MatrixMessage(long seq, String roomId, String eventId, String sender, lon
         if (replyTo != null) {
             body = stripReplyFallback(body);
         }
-        return new MatrixMessage(seq, roomId, eventId, sender, ts, body, replyTo, threadRoot, editOf, false);
+        return new ChatSystem.Message(eventId, roomId, sender, null, ts, body, replyTo, threadRoot, editOf, own, fromMe, ok);
     }
 
     /** Text der Nachricht; Dateien, Bilder und Orte als Platzhalter mit Name und Adresse. */
@@ -104,40 +104,5 @@ record MatrixMessage(long seq, String roomId, String eventId, String sender, lon
     private static String text(JsonNode n) {
         String s = n.isString() ? n.asString() : null;
         return s == null || s.isBlank() ? null : s;
-    }
-
-    String time() {
-        return timestamp <= 0 ? "?" : TIME.format(Instant.ofEpochMilli(timestamp));
-    }
-
-    /**
-     * Kopfzeile und Text, z.B. {@code [2026-10-04 17:22:05] @felix:example.org in „DevTools“ (event $abc, Antwort auf $xyz):}.
-     *
-     * @param roomLabel Anzeigename des Raums oder {@code null}, wenn er nicht genannt werden soll
-     */
-    String format(String roomLabel, boolean own) {
-        StringBuilder sb = new StringBuilder("[").append(time()).append("] ").append(sender);
-        if (own) {
-            sb.append(" (ich)");
-        }
-        if (roomLabel != null) {
-            sb.append(" in ").append(roomLabel);
-        }
-        sb.append(" (event ").append(eventId);
-        if (replyTo != null) {
-            sb.append(", Antwort auf ").append(replyTo);
-        }
-        if (threadRoot != null) {
-            sb.append(", Thread ").append(threadRoot);
-        }
-        if (editOf != null) {
-            sb.append(", bearbeitet ").append(editOf);
-        }
-        return sb.append("):\n").append(body.strip()).toString();
-    }
-
-    /** Ob die Nachricht auf {@code eventId} antwortet (direkt oder im Thread dieses Ereignisses). */
-    boolean answers(String eventId) {
-        return eventId.equals(replyTo) || eventId.equals(threadRoot);
     }
 }

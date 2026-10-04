@@ -1,4 +1,4 @@
-package systems.grebe.devtools.mcp.modules.matrix;
+package systems.grebe.devtools.mcp.modules.chat;
 
 import java.util.List;
 
@@ -9,10 +9,10 @@ import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
 
 /**
- * Markdown des LLM → HTML für {@code formatted_body} ({@code org.matrix.custom.html}). Element und andere Clients zeigen
- * {@code body} sonst als reinen Text mit Sternchen und Backticks. Rohes HTML im Text wird maskiert, nicht übernommen.
+ * Markdown des LLM → HTML für Chat-Systeme (Matrix {@code formatted_body}, Teams-Nachrichtentext). Clients zeigen
+ * reinen Text sonst mit Sternchen und Backticks. Rohes HTML im Text wird maskiert, nicht übernommen.
  */
-final class MatrixMarkdown {
+final class ChatMarkdown {
 
     private static final List<Extension> EXTENSIONS = List.of(TablesExtension.create(), StrikethroughExtension.create());
     private static final Parser PARSER = Parser.builder().extensions(EXTENSIONS).build();
@@ -22,7 +22,7 @@ final class MatrixMarkdown {
             .softbreak("<br />")
             .build();
 
-    private MatrixMarkdown() {
+    private ChatMarkdown() {
     }
 
     /** HTML zum Text oder {@code null}, wenn der Text keine Formatierung enthält (dann genügt {@code body}). */
