@@ -24,7 +24,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
-| **Web-Abruf** (Jlama, lokales LLM) | `web_fetch` (Seite abrufen und in wenigen Sekunden lokal mit Llama 3.2 1B zusammenfassen, optional mit Fragestellung; dazu die wichtigsten Sätze wörtlich), `web_page` (lesbarer Text der Seite als Markdown, seitenweise) – Seiten und Zusammenfassungen im Cache (Standard 24 h), lokales Netz standardmäßig gesperrt (siehe [Web-Abruf](#web-abruf-mit-lokalem-llm); Modul Standard: aus) |
+| **Web-Abruf** (Jlama lokal, Claude Haiku für Fragen) | `web_fetch` (Seite abrufen und in wenigen Sekunden lokal mit Llama 3.2 1B zusammenfassen, Fragen beantwortet Claude Haiku mit dem ganzen Seitentext; dazu die wichtigsten Sätze wörtlich), `web_page` (lesbarer Text der Seite als Markdown, seitenweise) – Seiten und Antworten im Cache (Dauer aus den HTTP-Headern, ohne Angabe dauerhaft), lokales Netz standardmäßig gesperrt (siehe [Web-Abruf](#web-abruf-mit-lokalem-llm); Modul Standard: aus) |
 | **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 | **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` |
 | **Skripte** (Groovy 5 oder Java per `javac`) | `scripts_list`, `scripts_view` (Quelltext, Historie, ohne Namen die Referenz) · je Schalter (Standard aus): `scripts_save`, `scripts_delete` – jedes Skript wird zur Laufzeit ein eigenes Modul mit Tools `<skript>_*`, gespeichert im Backend (siehe [Skripte](#skripte--eigene-tools-zur-laufzeit)) |
@@ -328,6 +328,15 @@ ganzen Seite nur eine kompakte Zusammenfassung in seinen Kontext. Mit `prompt` l
 Breaking Changes gibt es?“). Für Vollständigkeit oder den genauen Wortlaut liefert `web_page` den extrahierten Text
 seitenweise.
 
+* **Fragen über Claude Haiku:** Fragen (`prompt`) beantwortet standardmäßig `claude-haiku-4-5` über die Claude API –
+  mit dem **ganzen** Seitentext (Standard bis 200 000 Zeichen, längere Seiten gekürzt und so gekennzeichnet) statt des
+  Auszugs. In einem Vergleich mit 8 Seiten und Fragen lag das lokale 1B-Modell bei 2 von 8 richtigen Antworten, das
+  eingebaute WebFetch von Claude Code (gehostetes Modell, ganze Seite) bei 8 von 8. Kostenpflichtig (Haiku: $1 je Mio. Token Eingabe, eine lange
+  Seite ~5 Cent); der Seitentext steht als eigener Block im Prompt-Cache, weitere Fragen zur selben Seite innerhalb von
+  fünf Minuten kosten nur einen Bruchteil. API-Key in den Moduleinstellungen oder aus `ANTHROPIC_API_KEY` bzw.
+  `ant auth login`. Fehlt der Key oder scheitert der Aufruf, antwortet das lokale Modell (mit Hinweis in der Ausgabe).
+  *Fragen beantwortet: local* hält alles auf dem Rechner. Zusammenfassungen ohne `prompt` laufen immer lokal.
+
 * **Schnell statt vollständig:** Jlama verarbeitet auf einer Notebook-CPU etwa 100–140 Tokens Eingabe und 30 Tokens
   Ausgabe pro Sekunde – eine ganze Seite würde Minuten dauern. Deshalb wählt `web_fetch` zuerst ohne LLM die
   relevantesten Sätze aus (mit Fragestellung nach BM25 auf deren Begriffe, sonst nach Zentralität, Position und
@@ -338,9 +347,14 @@ seitenweise.
   am schwächsten bewerteten Sätze weg und beendet die Antwort zur Frist an einer Satzgrenze. Der Prozess startet schon,
   während die Seite lädt. Wiederholungsschleifen, in die kleine Modelle geraten, werden beim Generieren erkannt und
   abgebrochen; Floskeln („Here is a summary …“) entfernt.
-* **Cache:** Seiten und Zusammenfassungen liegen als JSON unter `~/.devtools-mcp/web-cache` (Standard 24 Stunden,
-  0 = aus). Zusammenfassungen gelten je URL, Modell und Fragestellung; eine neue Fragestellung zur selben Seite lädt die
-  Seite nicht erneut. `refresh=true` übergeht den Cache, die Aktion *Cache leeren* löscht ihn.
+* **Cache:** Seiten und Antworten liegen als JSON unter `~/.devtools-mcp/web-cache`. Eine Seite gilt so lange, wie
+  ihre HTTP-Header sagen (`Cache-Control: max-age` abzüglich `Age`, sonst `Expires`; `no-cache` = jedes Mal prüfen,
+  `no-store` = nie speichern); abgelaufene Seiten mit `ETag`/`Last-Modified` werden per bedingter Anfrage geprüft
+  (304 = unverändert). **Ohne solche Header gilt eine Seite dauerhaft** – bis `refresh="force"`. Antworten gelten je
+  URL, Modell und Fragestellung, solange sich der Seitentext nicht ändert; eine neue Fragestellung zur selben Seite lädt
+  die Seite nicht erneut. Die Ausgabe nennt, bis wann die Seite gilt und woher das kommt. Schalter in den
+  Einstellungen: *Cache* (an/aus) und *Cache-Dauer aus HTTP-Headern* (aus = alles dauerhaft); die Aktion
+  *Cache leeren* löscht ihn.
 * **Modell:** wird beim ersten Aufruf oder über die Aktion *Modell laden* von Hugging Face nach
   `~/.devtools-mcp/models` geladen (~750 MB). Jedes Jlama-kompatible Instruct-Modell geht (z.B. die größeren
   `tjake/*-JQ4`); größere Modelle fassen genauer zusammen, brauchen aber mehr Speicher und Zeit.

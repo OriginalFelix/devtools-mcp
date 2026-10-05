@@ -22,8 +22,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Dateiablage für abgerufene Seiten und ihre Zusammenfassungen, je Eintrag eine JSON-Datei unter {@code pages/} bzw.
- * {@code summaries/}. Einträge gelten {@code ttl} lang; eine Dauer von 0 schaltet den Cache ab. Abgelaufenes wird beim
- * Schreiben gelegentlich aufgeräumt.
+ * {@code summaries/}. Wie lange eine Seite gilt, steht in der Seite selbst ({@link PageFetcher.Page#expiresAt()}, aus
+ * den HTTP-Headern oder unbegrenzt); abgelaufene Seiten bleiben liegen, damit sie sich per bedingter Anfrage bestätigen
+ * lassen. Eine Zusammenfassung gilt, solange der Text der Seite derselbe ist ({@link Summary#pageHash()}). Verwaiste
+ * Zusammenfassungen werden beim Schreiben gelegentlich aufgeräumt.
  */
 final class WebCache {
 
@@ -34,95 +36,99 @@ final class WebCache {
     /**
      * Zusammenfassung einer Seite für eine Fragestellung ({@code focus}, leer = allgemein).
      *
+     * @param via          wo das Modell lief: „lokal“ oder „Claude API“
      * @param keyPoints    wichtigste Sätze der Seite, wörtlich
      * @param focusMatched ob Sätze zur Fragestellung gefunden wurden
      * @param truncated    ob der Download am Größenlimit abgeschnitten wurde
      * @param millis       Laufzeit des Modells
+     * @param pageHash     Prüfsumme des Seitentextes, aus dem die Zusammenfassung entstand
+     * @param inputTokens  Verbrauch (nur Claude API), {@code -1} = unbekannt
+     * @param outputTokens Verbrauch (nur Claude API), {@code -1} = unbekannt
+     * @param contextChars so viele Zeichen der Seite hat das Modell gesehen, {@code -1} = Auszug (lokal)
      */
-    record Summary(String url, String finalUrl, String title, String model, String focus, String text,
+    record Summary(String url, String finalUrl, String title, String model, String via, String focus, String text,
                    List<String> keyPoints, boolean focusMatched, boolean truncated, long millis, Instant fetchedAt,
-                   Instant createdAt) {
+                   Instant createdAt, String pageHash, long inputTokens, long outputTokens, int contextChars) {
         Summary {
             keyPoints = keyPoints == null ? List.of() : List.copyOf(keyPoints);
         }
     }
 
     private final Path dir;
-    private final Duration ttl;
+    private final boolean enabled;
     private final Clock clock;
     private Instant lastPrune = Instant.EPOCH;
 
-    WebCache(Path dir, Duration ttl, Clock clock) {
+    WebCache(Path dir, boolean enabled, Clock clock) {
         this.dir = dir;
-        this.ttl = ttl;
+        this.enabled = enabled;
         this.clock = clock;
     }
 
     boolean enabled() {
-        return ttl.isPositive();
+        return enabled;
     }
 
     Path dir() {
         return dir;
     }
 
+    /** Gespeicherte Seite, auch abgelaufen – ob sie noch gilt, sagt {@link PageFetcher.Page#fresh(Instant)}. */
     Optional<PageFetcher.Page> page(String url) {
-        return read(pageFile(url), PageFetcher.Page.class)
-                .filter(p -> url.equals(p.url()) && fresh(p.fetchedAt()));
+        return read(pageFile(url), PageFetcher.Page.class).filter(p -> url.equals(p.url()));
     }
 
+    /** Speichert die Seite, außer der Server hat es mit {@code no-store} untersagt. */
     void putPage(PageFetcher.Page page) {
-        write(pageFile(page.url()), page);
+        if (!page.noStore()) {
+            write(pageFile(page.url()), page);
+        }
     }
 
-    Optional<Summary> summary(String url, String model, String focus) {
+    /** Zusammenfassung zu genau diesem Seitentext ({@code pageHash}). */
+    Optional<Summary> summary(String url, String model, String focus, String pageHash) {
         return read(summaryFile(url, model, focus), Summary.class)
-                .filter(s -> url.equals(s.url()) && fresh(s.createdAt()));
+                .filter(s -> url.equals(s.url()) && pageHash.equals(s.pageHash()));
     }
 
-    void putSummary(Summary summary) {
-        write(summaryFile(summary.url(), summary.model(), summary.focus()), summary);
+    /** Speichert die Zusammenfassung, außer die Seite selbst darf nicht gespeichert werden. */
+    void putSummary(Summary summary, PageFetcher.Page page) {
+        if (!page.noStore()) {
+            write(summaryFile(summary.url(), summary.model(), summary.focus()), summary);
+        }
     }
 
     /** Löscht alle Einträge; liefert ihre Anzahl. */
     int clear() {
         int n = 0;
         for (String sub : new String[] {"pages", "summaries"}) {
-            Path d = dir.resolve(sub);
-            if (!Files.isDirectory(d)) {
-                continue;
-            }
-            try (Stream<Path> files = Files.list(d)) {
-                for (Path f : files.filter(f -> f.toString().endsWith(".json")).toList()) {
+            for (Path f : files(sub)) {
+                try {
                     Files.deleteIfExists(f);
                     n++;
+                } catch (IOException e) {
+                    throw new IllegalStateException("Cache nicht löschbar: " + e.getMessage(), e);
                 }
-            } catch (IOException e) {
-                throw new IllegalStateException("Cache nicht löschbar: " + e.getMessage(), e);
             }
         }
         return n;
     }
 
-    /** Anzahl Seiten und Zusammenfassungen im Cache (auch abgelaufene, die noch nicht aufgeräumt sind). */
+    /** Anzahl Seiten und Zusammenfassungen im Cache. */
     int[] size() {
-        return new int[] {count("pages"), count("summaries")};
+        return new int[] {files("pages").size(), files("summaries").size()};
     }
 
-    private int count(String sub) {
+    private List<Path> files(String sub) {
         Path d = dir.resolve(sub);
         if (!Files.isDirectory(d)) {
-            return 0;
+            return List.of();
         }
         try (Stream<Path> files = Files.list(d)) {
-            return (int) files.filter(f -> f.toString().endsWith(".json")).count();
+            return files.filter(f -> f.toString().endsWith(".json")).toList();
         } catch (IOException e) {
-            return 0;
+            return List.of();
         }
-    }
-
-    private boolean fresh(Instant created) {
-        return enabled() && created != null && created.plus(ttl).isAfter(clock.instant());
     }
 
     private Path pageFile(String url) {
@@ -135,7 +141,7 @@ final class WebCache {
     }
 
     private <T> Optional<T> read(Path file, Class<T> type) {
-        if (!enabled() || !Files.isRegularFile(file)) {
+        if (!enabled || !Files.isRegularFile(file)) {
             return Optional.empty();
         }
         try {
@@ -147,7 +153,7 @@ final class WebCache {
     }
 
     private void write(Path file, Object value) {
-        if (!enabled()) {
+        if (!enabled) {
             return;
         }
         try {
@@ -168,23 +174,21 @@ final class WebCache {
             return;
         }
         lastPrune = now;
-        prune(now.minus(ttl));
+        prune();
     }
 
-    private void prune(Instant cutoff) {
-        for (String sub : new String[] {"pages", "summaries"}) {
-            Path d = dir.resolve(sub);
-            if (!Files.isDirectory(d)) {
-                continue;
-            }
-            try (Stream<Path> files = Files.list(d)) {
-                for (Path f : files.toList()) {
-                    if (Files.getLastModifiedTime(f).toInstant().isBefore(cutoff)) {
-                        Files.deleteIfExists(f);
-                    }
+    /** Entfernt Zusammenfassungen, deren Seite fehlt oder inzwischen einen anderen Text hat. */
+    private void prune() {
+        for (Path f : files("summaries")) {
+            Optional<Summary> s = read(f, Summary.class);
+            boolean orphan = s.isEmpty() || s.get().pageHash() == null
+                    || page(s.get().url()).map(p -> !p.contentHash().equals(s.get().pageHash())).orElse(true);
+            if (orphan) {
+                try {
+                    Files.deleteIfExists(f);
+                } catch (IOException e) {
+                    LOG.debug("Cache-Eintrag {} nicht aufgeräumt", f, e);
                 }
-            } catch (IOException e) {
-                LOG.debug("Cache {} nicht aufgeräumt", d, e);
             }
         }
     }
