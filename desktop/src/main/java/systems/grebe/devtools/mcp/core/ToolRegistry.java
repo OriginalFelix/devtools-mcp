@@ -224,6 +224,11 @@ public class ToolRegistry {
         return local.activeToolNames();
     }
 
+    /** Aktives Tool mit vollem Namen zum Aufrufen aus Skripten (siehe {@link McpRuntime#activeTool}). */
+    public Optional<ToolCallback> activeTool(String name) {
+        return local.activeTool(name);
+    }
+
     // ------------------------------------------------------------------ Ändern
 
     public void setModuleEnabled(String moduleId, boolean enabled) {

@@ -39,7 +39,7 @@ import systems.grebe.devtools.mcp.modules.scripts.ScriptsModule;
 
 /**
  * Groovy-Skripte bearbeiten: links die Skripte mit Herkunft und Zustand (aktiv, deaktiviert, Fehler), rechts Editor,
- * Historie und Referenz. Skripte sind Groovy oder Java (Auswahl neben dem Namen). Speichern prüft das Skript, legt es im Backend ab und lädt es sofort als Modul – die
+ * Historie und Referenz. Skripte sind Groovy, Java oder Gherkin (Auswahl neben dem Namen). Speichern prüft das Skript, legt es im Backend ab und lädt es sofort als Modul – die
  * Tools stehen den Clients ohne Neustart zur Verfügung. Ändert jemand anderes (das LLM, eine andere Desktop-App) ein
  * Skript, aktualisiert sich die Liste; ungespeicherte Änderungen im Editor bleiben dabei erhalten.
  */
@@ -131,8 +131,7 @@ public class ScriptsView extends BorderPane {
         table.setPlaceholder(new Label("Noch keine Skripte – „Neu“ legt eines an."));
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.getColumns().add(col("Name", 110, ScriptManager.Status::name));
-        table.getColumns().add(col("Sprache", 60, s -> s.summary().language() == ScriptViews.Language.JAVA ? "Java"
-                : "Groovy"));
+        table.getColumns().add(col("Sprache", 60, s -> s.summary().language().label()));
         table.getColumns().add(col("Herkunft", 70, s -> scopeLabel(s.summary())));
         table.getColumns().add(col("Rev.", 40, s -> String.valueOf(s.summary().revision())));
         table.getColumns().add(col("Zustand", 140, ScriptsView::stateLabel));
@@ -167,7 +166,7 @@ public class ScriptsView extends BorderPane {
         language.setConverter(new javafx.util.StringConverter<>() {
             @Override
             public String toString(ScriptViews.Language l) {
-                return l == null ? "" : l == ScriptViews.Language.JAVA ? "Java" : "Groovy";
+                return l == null ? "" : l.label();
             }
 
             @Override
@@ -259,7 +258,7 @@ public class ScriptsView extends BorderPane {
         revisions.getItems().clear();
         revisionContent.clear();
         historyTab.setText("Historie");
-        setStatus("Name eintragen, Quelltext anpassen, „Speichern“. Groovy oder Java – die Referenz steht im dritten Reiter.", null);
+        setStatus("Name eintragen, Quelltext anpassen, „Speichern“. Groovy, Java oder Gherkin – die Referenz steht im dritten Reiter.", null);
         updateActions(null);
     }
 

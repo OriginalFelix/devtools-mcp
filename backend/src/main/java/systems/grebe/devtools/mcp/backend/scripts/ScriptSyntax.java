@@ -53,6 +53,9 @@ import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
  *   <li><b>Java:</b> nur parsen ({@code JavacTask#parse}, ohne Klassenpfad, ohne Annotation-Processing); Typfehler
  *       meldet erst die Desktop-App. Die Beschreibung kommt aus {@code description()} mit {@code return "…";}. Läuft
  *       das Backend ohne JDK, entfällt die Java-Prüfung.</li>
+ *   <li><b>Gherkin:</b> parsen und die Regeln für Skripte prüfen ({@link GherkinScripts}); ob jeder Schritt zu einem
+ *       bekannten Schritt passt, prüft erst die Desktop-App. Die Beschreibung ist der Freitext unter der
+ *       {@code Funktionalität}.</li>
  * </ul>
  */
 public final class ScriptSyntax {
@@ -70,8 +73,13 @@ public final class ScriptSyntax {
      * @throws IllegalArgumentException bei Syntaxfehlern (mit Zeile und Spalte)
      */
     public static Optional<String> check(ScriptViews.Language language, String scriptName, String source) {
-        return language == ScriptViews.Language.JAVA ? checkJava(source)
-                : check("script_" + scriptName + ".groovy", source);
+        if (language == ScriptViews.Language.JAVA) {
+            return checkJava(source);
+        }
+        if (language == ScriptViews.Language.GHERKIN) {
+            return Optional.of(GherkinScripts.parse(scriptName, source).description());
+        }
+        return check("script_" + scriptName + ".groovy", source);
     }
 
     /** Java: nur parsen; ohne JDK im Backend keine Prüfung. */

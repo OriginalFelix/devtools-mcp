@@ -33,7 +33,7 @@ import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
 import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
 
 /**
- * Skripte (Groovy oder Java) des Benutzers und globale Vorlagen: ansehen, bearbeiten (mit Syntaxprüfung, ohne Ausführung),
+ * Skripte (Groovy, Java oder Gherkin) des Benutzers und globale Vorlagen: ansehen, bearbeiten (mit Syntaxprüfung, ohne Ausführung),
  * Historie, löschen; Administratoren veröffentlichen und ziehen Vorlagen zurück. Ausgeführt werden Skripte nur in den
  * Desktop-Apps – die übernehmen Änderungen sofort (Subscription {@code scriptsChanged}) und melden dort, ob das
  * Skript lädt.
@@ -87,7 +87,7 @@ public class ScriptsView extends VerticalLayout {
         split.setSplitterPosition(40);
         split.setSizeFull();
 
-        add(new H2("Skripte"), new Paragraph("Skripte (Groovy oder Java) ergänzen deine Desktop-Apps zur Laufzeit um eigene "
+        add(new H2("Skripte"), new Paragraph("Skripte (Groovy, Java oder Gherkin) ergänzen deine Desktop-Apps zur Laufzeit um eigene "
                 + "Module mit Tools (Präfix = Skriptname). Hier prüft der Server nur die Syntax – ob ein Skript lädt "
                 + "und welche Tools entstehen, zeigt die Desktop-App (Tab „Skripte“), die Änderungen sofort "
                 + "übernimmt." + (admin ? " Globale Vorlagen laufen in den Desktop-Apps aller Benutzer." : "")),
@@ -178,7 +178,8 @@ public class ScriptsView extends VerticalLayout {
         language.setItems(ScriptViews.Language.values());
         language.setItemLabelGenerator(ScriptsView::label);
         language.setValue(ScriptViews.Language.GROOVY);
-        language.setHelperText("Java braucht ein JDK auf den Rechnern mit der Desktop-App");
+        language.setHelperText("Java braucht ein JDK auf den Rechnern mit der Desktop-App; Gherkin ruft vorhandene "
+                + "Tools auf");
         d.add(new VerticalLayout(name, language));
         Button ok = new Button("Anlegen", e -> {
             String n = name.getValue().strip();
@@ -226,7 +227,7 @@ public class ScriptsView extends VerticalLayout {
     }
 
     static String label(ScriptViews.Language l) {
-        return l == ScriptViews.Language.JAVA ? "Java" : "Groovy";
+        return l == null ? ScriptViews.Language.GROOVY.label() : l.label();
     }
 
     /** Skripte gehören der Konto-E-Mail – wie bei den Desktop-Apps über GraphQL. */

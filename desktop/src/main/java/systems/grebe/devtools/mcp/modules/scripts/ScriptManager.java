@@ -24,7 +24,7 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 
 /**
- * Hält die Module aus den Groovy-Skripten des Backends aktuell: Bei jeder Änderung (Subscription
+ * Hält die Module aus den Skripten (Groovy, Java, Gherkin) des Backends aktuell: Bei jeder Änderung (Subscription
  * {@code scriptsChanged}, auch von anderen Desktop-Apps oder der Web-UI) wird die Liste abgeglichen – neue oder
  * geänderte Skripte werden übersetzt und als Modul registriert, gelöschte entfernt. Verbundene MCP-Clients bekommen
  * dabei {@code tools/list_changed}.
@@ -66,6 +66,7 @@ public class ScriptManager {
     private final ObjectProvider<ScriptCache> cache;
     private final ScriptCompiler compiler = new ScriptCompiler();
     private final JavaScriptCompiler javaCompiler = new JavaScriptCompiler();
+    private final GherkinScriptCompiler gherkinCompiler;
     private final Map<String, Entry> loaded = new LinkedHashMap<>();
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
@@ -79,6 +80,7 @@ public class ScriptManager {
         this.backend = backend;
         this.registry = registry;
         this.cache = cache;
+        this.gherkinCompiler = new GherkinScriptCompiler(new RegistryToolCaller(registry::getObject));
     }
 
     /** Nach der Registrierung der eingebauten Module; den ersten Stand liefert die Subscription bzw. dieser Abgleich. */
@@ -164,7 +166,7 @@ public class ScriptManager {
         String n = requireName(name);
         requireFreeId(n);
         try (CompiledScript c = compile(n, languageOf(n, language), content)) {
-            return "Skript '" + n + "' ist gültig: " + describe(n, c);
+            return "Skript '" + n + "' ist gültig: " + describe(n, c) + warnings(c.warnings());
         }
     }
 
@@ -179,18 +181,29 @@ public class ScriptManager {
         requireFreeId(n);
         ScriptViews.Language lang = languageOf(n, language);
         String description;
+        List<String> warnings;
         try (CompiledScript c = compile(n, lang, content)) {
             description = c.description();
+            warnings = c.warnings();
         }
         String msg = backend.save(n, lang, description, content, note, expectedRevision);
         reload();
-        return msg + " " + statusLine(n);
+        return msg + " " + statusLine(n) + warnings(warnings);
     }
 
     /** Übersetzt je nach Sprache; Fehler als {@link IllegalArgumentException} mit Zeile. */
     CompiledScript compile(String name, ScriptViews.Language language, String content) {
-        return language == ScriptViews.Language.JAVA ? javaCompiler.compile(name, content)
-                : compiler.compile(name, content);
+        if (language == ScriptViews.Language.JAVA) {
+            return javaCompiler.compile(name, content);
+        }
+        if (language == ScriptViews.Language.GHERKIN) {
+            return gherkinCompiler.compile(name, content);
+        }
+        return compiler.compile(name, content);
+    }
+
+    private static String warnings(List<String> warnings) {
+        return warnings.isEmpty() ? "" : "\nHinweise:\n- " + String.join("\n- ", warnings);
     }
 
     private synchronized ScriptViews.Language languageOf(String name, ScriptViews.Language requested) {

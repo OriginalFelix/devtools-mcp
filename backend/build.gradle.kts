@@ -21,6 +21,8 @@ dependencies {
     runtimeOnly("com.h2database:h2")
     // Groovy-Skripte: nur Syntaxprüfung (Parsen ohne Ausführung), ausgeführt wird in der Desktop-App
     implementation("org.apache.groovy:groovy")
+    // Gherkin-Skripte: ebenfalls nur parsen
+    implementation("io.cucumber:gherkin:42.0.1")
 
     testImplementation("org.springframework.graphql:spring-graphql-test")
     // SkillTestSupport: schlanker Skill-Kontext, auch für die UI-Tests der Desktop-App

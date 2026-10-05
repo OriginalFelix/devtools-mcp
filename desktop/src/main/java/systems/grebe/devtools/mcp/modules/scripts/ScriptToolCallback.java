@@ -47,7 +47,7 @@ final class ScriptToolCallback implements ToolCallback {
 
     @Override
     public String call(String toolInput) {
-        Map<String, Object> args = arguments(toolInput);
+        Map<String, Object> args = arguments(tool.params(), toolInput);
         Closure<?> body = tool.body();
         Object result = ScriptTimeout.run("Tool '" + tool.name() + "' (Skript '" + scriptName + "')", timeout.get(),
                 () -> {
@@ -98,13 +98,14 @@ final class ScriptToolCallback implements ToolCallback {
         return JSON.writeValueAsString(schema);
     }
 
-    private Map<String, Object> arguments(String toolInput) {
+    /** Argumente des Aufrufs nach den Parametern: Pflicht prüfen, Typen angleichen, erlaubte Werte prüfen. */
+    static Map<String, Object> arguments(List<ScriptDefinition.Param> params, String toolInput) {
         Map<String, Object> raw = toolInput == null || toolInput.isBlank() ? Map.of()
                 : JSON.readValue(toolInput, JSON.getTypeFactory().constructMapType(Map.class, String.class,
                 Object.class));
         Map<String, Object> args = new LinkedHashMap<>();
         List<String> missing = new ArrayList<>();
-        for (ScriptDefinition.Param p : tool.params()) {
+        for (ScriptDefinition.Param p : params) {
             Object v = raw.get(p.name());
             if (v == null || v instanceof String s && s.isEmpty() && !"string".equals(p.jsonType())) {
                 if (p.required()) {

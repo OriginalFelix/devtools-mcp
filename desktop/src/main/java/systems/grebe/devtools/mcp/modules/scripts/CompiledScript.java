@@ -9,9 +9,9 @@ import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 
 /**
- * Ein übersetztes Skript – Groovy ({@link ScriptCompiler}) oder Java ({@link JavaScriptCompiler}) – aus Sicht von
- * {@link ScriptToolModule}: Modul-Angaben und Tools. Hält den ClassLoader des Skripts, bis {@link #close()} ihn
- * freigibt.
+ * Ein übersetztes Skript – Groovy ({@link ScriptCompiler}), Java ({@link JavaScriptCompiler}) oder Gherkin
+ * ({@link GherkinScriptCompiler}) – aus Sicht von {@link ScriptToolModule}: Modul-Angaben und Tools. Hält den
+ * ClassLoader des Skripts, bis {@link #close()} ihn freigibt.
  */
 public interface CompiledScript extends AutoCloseable {
 
@@ -31,6 +31,11 @@ public interface CompiledScript extends AutoCloseable {
 
     /** Tools für die Konfiguration; jeder Aufruf läuft unter dem Zeitlimit {@code timeout}. */
     List<ToolCallback> tools(ModuleConfig config, Supplier<Duration> timeout);
+
+    /** Hinweise beim Prüfen und Speichern, die das Laden nicht verhindern (z.B. gerade nicht aktive Tools). */
+    default List<String> warnings() {
+        return List.of();
+    }
 
     @Override
     void close();

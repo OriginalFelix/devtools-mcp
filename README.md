@@ -705,8 +705,9 @@ misstrauen. Abgeschaltete Module bzw. Lese-Tools liefern keine Hinweise.
 
 ### Skripte – eigene Tools zur Laufzeit
 
-Eigene Tools lassen sich ohne Build und ohne Neustart als **Skript in Groovy oder Java** ergänzen: Jedes Skript wird
-ein Modul mit Tools, Einstellungsformular und optionalen Instructions. Speichern lädt es sofort, Löschen entfernt seine
+Eigene Tools lassen sich ohne Build und ohne Neustart als **Skript in Groovy, Java oder Gherkin** ergänzen: Jedes
+Skript wird ein Modul mit Tools, Einstellungsformular und optionalen Instructions. Gherkin beschreibt Abläufe aus
+vorhandenen Tools ganz ohne Programmcode. Speichern lädt es sofort, Löschen entfernt seine
 Tools – verbundene Clients bekommen `tools/list_changed`. In der Modulliste erscheint es wie ein eingebautes Modul
 („· Skript“), mit Schalter, Tool-Schaltern, Formular und Aufrufprotokoll.
 
@@ -799,14 +800,70 @@ public class Jira implements ToolModule {
 * **Zeitlimit:** Java-Code wird nicht instrumentiert – lange Schleifen sollten `Thread.interrupted()` prüfen; ein
   Ergebnis nach Ablauf des Zeitlimits wird verworfen.
 
-#### Für beide Sprachen
+#### Gherkin
+
+Feste Abläufe aus vorhandenen Tools – aufrufen, Ergebnis prüfen, Werte weitergeben – ohne Programmcode, in der
+Sprache von Cucumber. Die `Funktionalität` ist das Modul, jedes `Szenario` ein Tool:
+
+```gherkin
+# language: de
+Funktionalität: Schnellcheck
+  Prüft ein Repository lokal.
+
+  @readOnly
+  Szenario: Branch prüfen
+    Prüft Arbeitsverzeichnis und Unit-Tests.
+    <repo>: Repository-Name, z.B. web-core
+
+    Wenn ich das Tool "git_status" aufrufe:
+      | repository | <repo> |
+    Dann enthält das Ergebnis "Arbeitsverzeichnis sauber"
+    Wenn ich das Tool "build_test" aufrufe:
+      | project | <repo> |
+    Dann enthält das Ergebnis "BUILD ERFOLGREICH"
+    Und ich merke mir "Tests: (\d+) gesamt" aus dem Ergebnis als tests
+    Und ich gebe "<repo>: ${tests} Tests, alle grün." aus
+```
+
+→ Tool `schnellcheck_branch_pruefen(repo)` (Skriptname `schnellcheck`).
+
+* **Abbildung:** Name der Funktionalität = Anzeigename, Freitext darunter = Beschreibung des Moduls. Aus dem
+  Szenario-Namen wird der Tool-Name („Branch prüfen“ → `branch_pruefen`), der Freitext darunter ist die
+  Tool-Beschreibung. **Platzhalter** `<name>` in Schritten, Tabellen und DocStrings werden Tool-Parameter (Text,
+  Pflicht); eine Zeile `<name>: Beschreibung` unter dem Szenario beschreibt sie, `<name>: optional – …` macht sie
+  optional. Tags `@readOnly`, `@destructive`, `@idempotent` (an Funktionalität, Regel oder Szenario) werden
+  MCP-Hinweise. `Grundlage` (Background) läuft vor jedem Szenario, auch in einer `Regel`; Szenariogrundrisse mit
+  `Beispiele` gibt es nicht – die Werte kommen als Parameter. Ohne `# language: …` gilt Deutsch.
+* **Eingebaute Schritte** (nach `Angenommen`/`Wenn`/`Dann`/`Und`/`Aber`, als Cucumber Expressions): Tool aufrufen
+  (`ich rufe das Tool "…" auf` / `ich das Tool "…" aufrufe`, auch wiederholt `… alle 30 Sekunden …, bis das Ergebnis
+  "…" enthält`), das Ergebnis prüfen (`enthält das Ergebnis "…"`, `… nicht`, `passt das Ergebnis zu "regex"`,
+  `ist das Ergebnis "…"` – jeweils auch als `das Ergebnis enthält …`), Variablen (`ich merke mir das Ergebnis als x`,
+  `ich merke mir "regex" aus dem Ergebnis als x` – Gruppe 1, `ich setze x auf "…"`, verwendet als `${x}`), Ausgaben
+  (`ich gebe "…" aus`, `ich gebe das Ergebnis aus`) und `ich warte 10 Sekunden`. Die vollständige Liste mit
+  Beispielen steht in der Referenz (`scripts_view` ohne Namen).
+* **Tool-Argumente** als Tabelle `| parameter | wert |` ohne Kopfzeile oder als DocString mit einem JSON-Objekt.
+  Text-Werte werden nach dem Eingabeschema des Ziel-Tools umgewandelt (`"5"` → 5, `"ja"` → true, `"a, b"` → Liste),
+  ein leerer Wert lässt den Parameter weg, unbekannte Parameter werden abgelehnt. Platzhalter und Variablen stehen in
+  Anführungszeichen, Tabellen oder DocStrings; in regulären Ausdrücken zählen ihre Werte als Text.
+* **Beim Speichern** (`GherkinScriptCompiler`) wird jeder Schritt einem eingebauten Schritt zugeordnet – unbekannte
+  oder mehrdeutige Schritte, ungesetzte Variablen, Ergebnis-Prüfungen ohne vorherigen Tool-Aufruf, ungültige reguläre
+  Ausdrücke, Tabellen ohne zwei Spalten und DocStrings ohne JSON-Objekt fallen mit Zeile auf. Tools, die gerade nicht
+  aktiv sind, ergeben nur einen **Hinweis** in der Meldung (sie können später kommen, etwa aus einem anderen Skript).
+* **Beim Aufruf** laufen die Schritte nacheinander im Thread des Aufrufers: Aufgerufen werden nur **aktive** Tools
+  (Modul- und Tool-Schalter), mit denselben Freigaben wie direkt und mit Eintrag im Aufrufprotokoll – aber ohne die
+  Skill-/Memory-Hinweise, die gelten dem äußeren Aufruf (`ToolRegistry#activeTool`). Das Ergebnis enthält die
+  Ausgaben und den Ablauf mit den (gekürzten) Ergebnissen der aufgerufenen Tools; schlägt ein Schritt fehl, kommt
+  derselbe Ablauf bis dahin als Fehler mit Zeile. Skripte, die sich gegenseitig aufrufen, brechen nach fünf Ebenen ab.
+
+#### Für alle Sprachen
 
 * **Ablauf:** Vor dem Speichern übersetzt die Desktop-App das Skript und wertet die Definition aus (Groovy: Code auf
-  oberster Ebene, Java: Konstruktor; Zeitlimit 10 s) – Fehler kommen mit Zeile zurück, gespeichert wird dann nichts.
-  Das Backend prüft zusätzlich die **Syntax**, ohne etwas auszuführen (Groovy: nur Parsen bis zum AST, `@Grab`
-  abgeschaltet) – so landet auch aus der Web-UI kein unübersetzbares Skript in der Ablage. Ein Skript mit Fehler in
-  der Definition steht mit seinem Fehler in der Modulliste. Die Sprache gehört zum Skript (`scripts_save` mit
-  `language: java`; ohne Angabe bleibt sie, neue Skripte sind Groovy).
+  oberster Ebene, Java: Konstruktor; Zeitlimit 10 s; Gherkin: Schritte zuordnen) – Fehler kommen mit Zeile zurück,
+  gespeichert wird dann nichts. Das Backend prüft zusätzlich die **Syntax**, ohne etwas auszuführen (Groovy: nur
+  Parsen bis zum AST, `@Grab` abgeschaltet; Gherkin: Parsen samt der Regeln oben, nicht die Schritte) – so landet
+  auch aus der Web-UI kein unübersetzbares Skript in der Ablage. Ein Skript mit Fehler in der Definition steht mit
+  seinem Fehler in der Modulliste. Die Sprache gehört zum Skript (`scripts_save` mit `language: java` bzw.
+  `gherkin`; ohne Angabe bleibt sie, neue Skripte sind Groovy).
 * **Ablage im Backend** (eingebettet oder Team-Server, Tabellen `script`/`script_revision` in der Skill-Datenbank):
   Quelltext, Beschreibung und **Historie** je Änderung. Eigentümer wie bei den Skills: eigene Skripte je
   Konto-E-Mail, dazu **globale Vorlagen**, die Administratoren im Tab **Skripte** veröffentlichen und zurückziehen – sie
@@ -818,8 +875,8 @@ public class Jira implements ToolModule {
 * **Bearbeiten in der App:** Tab **Skripte** – links die Skripte mit Sprache, Herkunft, Revision und Zustand, rechts
   Name und Sprache, Editor (*Prüfen*, *Speichern*), Historie (früheren Stand in den Editor übernehmen) und Referenz.
   Ungespeicherte Änderungen bleiben erhalten, wenn ein Skript woanders geändert wird.
-* **Web-UI des Team-Servers:** Seite **Skripte** – eigene Skripte und globale Vorlagen ansehen, anlegen (Groovy oder
-  Java), bearbeiten (mit Syntaxprüfung), Historie, löschen; Administratoren veröffentlichen und ziehen Vorlagen zurück.
+* **Web-UI des Team-Servers:** Seite **Skripte** – eigene Skripte und globale Vorlagen ansehen, anlegen (Groovy, Java
+  oder Gherkin), bearbeiten (mit Syntaxprüfung), Historie, löschen; Administratoren veröffentlichen und ziehen Vorlagen zurück.
   Ohne Ausführung ermittelt der Server die Beschreibung aus dem Quelltext (fester Text, sonst bleibt die bisherige).
   Ob ein Skript lädt und welche Tools entstehen, zeigt die Desktop-App, die Änderungen sofort übernimmt.
 * **Ohne erreichbaren Team-Server:** Nach jedem Abgleich speichert die App den Stand verschlüsselt in
@@ -829,11 +886,14 @@ public class Jira implements ToolModule {
   Bibliotheken der App). Deshalb darf das LLM Skripte nur mit den Schaltern *LLM darf Skripte anlegen und ändern* bzw.
   *… löschen* (Standard aus) schreiben; Lesen (`scripts_list`, `scripts_view`) ist immer dabei. Auf einem Team-Server
   bedeutet eine globale Vorlage Code auf allen angebundenen Rechnern – nur Administratoren veröffentlichen.
+  Gherkin-Skripte führen keinen eigenen Code aus, können aber jedes aktive Tool aufrufen – also auch schreibende wie
+  `container_rm` oder `git_reset`, soweit sie eingeschaltet sind.
 * **Zeitlimit** je Tool-Aufruf (Modul *Skripte*, Standard 300 s): danach wird der Aufruf unterbrochen. Groovy-Skripte
   werden mit `@ThreadInterrupt` übersetzt, damit auch Endlosschleifen abbrechen; blockierendes I/O ohne
   Interrupt-Unterstützung bricht das nicht ab.
-* Jedes Skript hat einen eigenen ClassLoader (Elternteil: die App), der beim Entfernen freigegeben wird. Aufrufe
-  können parallel laufen – Zustand zwischen Aufrufen nicht in Skript-Variablen oder Feldern halten.
+* Jedes Groovy- und Java-Skript hat einen eigenen ClassLoader (Elternteil: die App), der beim Entfernen freigegeben
+  wird. Aufrufe können parallel laufen – Zustand zwischen Aufrufen nicht in Skript-Variablen oder Feldern halten
+  (Gherkin-Variablen gelten ohnehin nur für einen Aufruf).
 
 ### Instructions für das LLM
 
@@ -1052,7 +1112,8 @@ desktop/
   modules/{git,sonar,build,graph,skills,memories,…} ── skills/RecallHints: Hinweise auf Skills und Memories
   modules/scripts/        ── Skripte: ScriptManager (Abgleich mit dem Backend, Registrierung zur Laufzeit),
                              ScriptCompiler + DevToolsScript (Groovy-DSL), JavaScriptCompiler + JavaClasspath (javac),
-                             ScriptToolModule/ScriptToolCallback, ScriptsModule
+                             GherkinScriptCompiler + GherkinSteps + ScenarioRun (Gherkin, Tools über
+                             RegistryToolCaller), ScriptToolModule/ScriptToolCallback, ScriptsModule
   plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
   plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
   ui/                     ── MainView, ModuleDetailPane, ConfigForm, InvocationLogView, PluginsView, BackendView, Dialoge
@@ -1060,7 +1121,8 @@ backend/
   backend/BackendConfig   ── Einstieg (Component-Scan des Backends)
   backend/BackendGraphQlController, GraphQlAuth, GraphQlErrors, ChangeBus ── GraphQL-API, Token, Fehler, Subscriptions
   backend/{account,profile,project,catalog,skills,memories,scripts} ── Benutzer + Tokens, Profile + Ebenen, Projekte,
-                             Katalog, Skills, Memories, Skripte (Ablage + Syntaxprüfung ohne Ausführung)
+                             Katalog, Skills, Memories, Skripte (Ablage + Syntaxprüfung ohne Ausführung,
+                             GherkinScripts liest Gherkin auch für die Desktop-App)
 server/
   DevToolsServerApplication ── Spring Boot (Jetty) · WildFlyInitializer (WAR)
   server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI

@@ -11,7 +11,7 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 
 /**
- * Modul aus einem Skript (Groovy oder Java), zur Laufzeit von {@link ScriptManager} in der {@code ToolRegistry}
+ * Modul aus einem Skript (Groovy, Java oder Gherkin), zur Laufzeit von {@link ScriptManager} in der {@code ToolRegistry}
  * registriert. In der App erscheint es wie jedes andere Modul (Schalter, Tool-Liste, Formular für die Einstellungen),
  * gekennzeichnet mit „· Skript“. Ein Skript, das sich nicht übersetzen lässt, wird trotzdem registriert: Es zeigt dann
  * seinen Fehler statt Tools an. Die Modul-ID ist immer der Skriptname.

@@ -23,7 +23,7 @@ public class ScriptReadTools {
         this.scripts = scripts;
     }
 
-    @Tool(name = "list", description = "Listet die Skripte (Groovy/Java), die diesen Server um eigene Tools erweitern: "
+    @Tool(name = "list", description = "Listet die Skripte (Groovy/Java/Gherkin), die diesen Server um eigene Tools erweitern: "
             + "Name, Sprache, Herkunft (eigen/global), Revision, Zustand (aktiv, deaktiviert, Fehler) und ihre Tools."
             + ShellHints.SCRIPTS)
     public String list() {
@@ -53,7 +53,7 @@ public class ScriptReadTools {
     }
 
     @Tool(name = "view", description = "Zeigt den Quelltext eines Skripts (optional einen früheren Stand aus der "
-            + "Historie) – ohne Namen die Referenz zum Schreiben eigener Skripte in Groovy oder Java." + ShellHints.SCRIPTS)
+            + "Historie) – ohne Namen die Referenz zum Schreiben eigener Skripte in Groovy, Java oder Gherkin." + ShellHints.SCRIPTS)
     public String view(
             @ToolParam(required = false, description = NAME + "; leer = Referenz") String name,
             @ToolParam(required = false, description = "Optional: frühere Revision statt des aktuellen Stands") Integer revision) {

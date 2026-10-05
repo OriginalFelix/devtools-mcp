@@ -54,7 +54,7 @@ public class Script {
     @Column(nullable = false, length = CONTENT_COLUMN)
     private String content;
 
-    /** GROOVY oder JAVA; leer bei Skripten von vor der Java-Unterstützung (= Groovy). */
+    /** GROOVY, JAVA oder GHERKIN; leer bei Skripten von vor der Java-Unterstützung (= Groovy). */
     @Column(length = 10)
     private String language;
 

@@ -81,7 +81,26 @@ public final class ScriptTemplates {
             }
             """.formatted(PLACEHOLDER_DESCRIPTION);
 
+    public static final String GHERKIN = """
+            # language: de
+            Funktionalität: Beispiel
+              %s
+
+              @readOnly
+              Szenario: Skript suchen
+                Prüft, ob es ein Skript gibt.
+                <name>: Name des Skripts
+
+                Wenn ich das Tool "scripts_list" aufrufe
+                Dann enthält das Ergebnis "<name>"
+                Und ich gebe "Skript <name> ist vorhanden." aus
+            """.formatted(PLACEHOLDER_DESCRIPTION);
+
     public static String of(ScriptViews.Language language) {
-        return language == ScriptViews.Language.JAVA ? JAVA : GROOVY;
+        return language == null ? GROOVY : switch (language) {
+            case JAVA -> JAVA;
+            case GHERKIN -> GHERKIN;
+            case GROOVY -> GROOVY;
+        };
     }
 }

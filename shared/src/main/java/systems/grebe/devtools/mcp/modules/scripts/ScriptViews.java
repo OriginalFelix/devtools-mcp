@@ -20,9 +20,22 @@ public final class ScriptViews {
     /** Sprache des Quelltexts. */
     public enum Language {
         /** Groovy-DSL ({@code module { … }}, {@code tool('…') { … }}). */
-        GROOVY,
+        GROOVY("Groovy"),
         /** Java-Quelldatei mit einer {@code public class}, die {@code ToolModule} implementiert (braucht ein JDK). */
-        JAVA
+        JAVA("Java"),
+        /** Gherkin ({@code Funktionalität:}/{@code Szenario:}): jedes Szenario ein Tool aus vorhandenen Tools. */
+        GHERKIN("Gherkin");
+
+        private final String label;
+
+        Language(String label) {
+            this.label = label;
+        }
+
+        /** Anzeigename in den Oberflächen. */
+        public String label() {
+            return label;
+        }
     }
 
     /** Zeile der Übersicht; {@code revision} steigt mit jeder Änderung (Grundlage für das Neuladen in der App). */
