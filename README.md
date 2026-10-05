@@ -25,6 +25,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
+| **Skripte** (Groovy 5) | `scripts_list`, `scripts_view` (Quelltext, Historie, ohne Namen die DSL-Referenz) · je Schalter (Standard aus): `scripts_save`, `scripts_delete` – jedes Skript wird zur Laufzeit ein eigenes Modul mit Tools `<skript>_*`, gespeichert im Backend (siehe [Groovy-Skripte](#groovy-skripte--eigene-tools-zur-laufzeit)) |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
 und JMX-Ziele für alle Performance-Module. Container-Laufzeit und freigegebene Container kommen aus dem
@@ -330,7 +331,7 @@ Gradle-Multiprojekt:
 | Projekt | Inhalt | Artefakt |
 |---|---|---|
 | `desktop` | Desktop-App: MCP-Server, alle Module, Plugins, JavaFX-Oberfläche; Backend eingebettet oder Anbindung an einen Team-Server | `desktop/build/libs/devtools-mcp-<version>.jar` |
-| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
+| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Groovy-Skripte mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
 | `shared` | Gemeinsam: Einstellungs-Modell, Datenklassen der GraphQL-API (`api`) | – |
 
@@ -638,6 +639,65 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
 * Die H2-Datei ist exklusiv gesperrt, solange die App läuft. Wer parallel mit IntelliJ o.ä. hineinschauen will,
   hängt `;AUTO_SERVER=TRUE` an die JDBC-URL.
 
+### Groovy-Skripte – eigene Tools zur Laufzeit
+
+Eigene Tools lassen sich ohne Build und ohne Neustart als **Groovy-Skript** ergänzen: Jedes Skript wird ein Modul
+mit Tools, Einstellungsformular und optionalen Instructions. Speichern lädt es sofort, Löschen entfernt seine Tools –
+verbundene Clients bekommen `tools/list_changed`. In der Modulliste erscheint es wie ein eingebautes Modul
+(„· Skript“), mit Schalter, Tool-Schaltern, Formular und Aufrufprotokoll.
+
+```groovy
+module {
+    name 'Jira-Helfer'                       // Anzeigename (optional, Standard: Skriptname)
+    description 'Eigene Jira-Abfragen'       // Pflicht
+    instructions 'Für Jira-Fragen im Team X diese Tools verwenden.'
+    setting 'baseUrl', 'Basis-URL', URL, required: true
+    setting 'token', 'API-Token', SECRET     // verschlüsselt gespeichert, wie bei eingebauten Modulen
+}
+
+tool('open_issues') {                        // → jira_open_issues (Skriptname = Modul-ID = Präfix)
+    description 'Offene Issues eines Projekts'
+    param 'project', String, 'Projektschlüssel'
+    param 'limit', Integer, 'Höchstens so viele', required: false
+    readOnly true                            // MCP-Hinweise: readOnly, destructive, idempotent, openWorld
+    run { args, cfg ->
+        progress "Frage ${cfg.baseUrl} ab …"
+        def json = new groovy.json.JsonSlurper().parse("${cfg.baseUrl}/rest/api/2/search?jql=project=${args.project}".toURL())
+        json.issues.collect { [key: it.key, summary: it.fields.summary] }   // Text bleibt Text, sonst JSON
+    }
+}
+```
+
+* **DSL:** `module { … }` (Name, Beschreibung, Instructions, `setting key, label, TYP` mit `required`,
+  `defaultValue`, `help`, `options`), `tool('name') { … }` mit `description`, `param name, Typ, Beschreibung`
+  (`String`, `Integer`, `Long`, `Double`, `Boolean`, `List`, `Map`; `required: false`, `options: [...]`), MCP-Hinweisen
+  und `run { args -> … }` bzw. `run { args, cfg -> … }`. In `run` stehen `progress "…"` (MCP-Progress) und `log` zur
+  Verfügung. Die vollständige Referenz liefert `scripts_view` ohne Namen bzw. der Reiter *DSL-Referenz* in der App.
+* **Ablauf:** Der Code auf oberster Ebene läuft beim Laden einmal (Zeitlimit 10 s) und beschreibt das Modul; `run`
+  läuft bei jedem Aufruf. Vor dem Speichern wird das Skript übersetzt und ausgewertet – Fehler kommen mit Zeile
+  zurück, gespeichert wird dann nichts. Ein Skript, das (z.B. nach einem Update der App) nicht mehr übersetzt, steht
+  mit seinem Fehler in der Modulliste.
+* **Ablage im Backend** (eingebettet oder Team-Server, Tabellen `script`/`script_revision` in der Skill-Datenbank):
+  Quelltext, Beschreibung und **Historie** je Änderung. Eigentümer wie bei den Skills: eigene Skripte je
+  Konto-E-Mail, dazu **globale Vorlagen**, die Administratoren im Tab **Skripte** veröffentlichen und zurückziehen – sie
+  laufen danach in den Desktop-Apps *aller* Benutzer. Ein eigenes Skript verdeckt die Vorlage gleichen Namens. Das
+  Backend übersetzt nichts; ausgeführt wird nur in der Desktop-App. Änderungen (auch aus anderen Desktop-Apps) meldet die
+  Subscription `scriptsChanged`, die App lädt dann nur geänderte Skripte neu.
+* **Namen:** 2–32 Kleinbuchstaben/Ziffern (`jira`, `deploy2`) – der Name ist Modul-ID und Tool-Präfix und darf
+  keinem eingebauten Modul oder Plugin gehören.
+* **Bearbeiten in der App:** Tab **Skripte** – links die Skripte mit Herkunft, Revision und Zustand, rechts Editor
+  (*Prüfen*, *Speichern*), Historie (früheren Stand in den Editor übernehmen) und DSL-Referenz. Ungespeicherte
+  Änderungen bleiben erhalten, wenn ein Skript woanders geändert wird.
+* **Sicherheit:** Skripte laufen ohne Sandbox mit allen Rechten der App (Dateisystem, Netz, Prozesse, alle
+  Bibliotheken der App). Deshalb darf das LLM Skripte nur mit den Schaltern *LLM darf Skripte anlegen und ändern* bzw.
+  *… löschen* (Standard aus) schreiben; Lesen (`scripts_list`, `scripts_view`) ist immer dabei. Auf einem Team-Server
+  bedeutet eine globale Vorlage Code auf allen angebundenen Rechnern – nur Administratoren veröffentlichen.
+* **Zeitlimit** je Tool-Aufruf (Modul *Skripte*, Standard 300 s): danach wird der Aufruf unterbrochen. Jedes Skript
+  wird mit `@ThreadInterrupt` übersetzt, damit auch Endlosschleifen abbrechen; blockierendes I/O ohne
+  Interrupt-Unterstützung bricht das nicht ab.
+* Jedes Skript hat einen eigenen `GroovyClassLoader` (Elternteil: die App), der beim Entfernen freigegeben wird.
+  Aufrufe können parallel laufen – Zustand zwischen Aufrufen nicht in Skript-Variablen halten.
+
 ### Instructions für das LLM
 
 Beim `initialize` schickt der Server MCP-`instructions`, die Clients wie Claude Code in den System-Prompt übernehmen.
@@ -650,10 +710,11 @@ Text aus einem allgemeinen Vorrang-Hinweis, dem optionalen `spring.ai.mcp.server
 Die Instructions werden bei **jedem `initialize`** neu gebaut: Das MCP-SDK friert den Text beim Serveraufbau ein,
 deshalb liegt um den WebFlux-Transport eine Hülle (`core/LiveInstructionsTransport`), die im Session-Aufbau das
 `InitializeResult` mit dem aktuellen Text ersetzt. Installierte, aktivierte oder entfernte Plugins sind so für jede
-**neue** Client-Session sofort berücksichtigt. Eine bestehende Session behält den Text ihres `initialize` – MCP kennt
-keine Änderungsbenachrichtigung für Instructions; der Client muss neu verbinden. Abgeschaltete eingebaute Module sind
-enthalten, die Texte sind bedingt formuliert („wenn angeboten“), die aktuell verfügbaren Tools liefert weiterhin
-`tools/list`. Codeänderungen an eingebauten Texten brauchen natürlich einen Neustart der App.
+**neue** Client-Session sofort berücksichtigt; dasselbe gilt für die `instructions` von Groovy-Skripten. Eine
+bestehende Session behält den Text ihres `initialize` – MCP kennt keine Änderungsbenachrichtigung für Instructions;
+der Client muss neu verbinden. Abgeschaltete eingebaute Module sind enthalten, die Texte sind bedingt formuliert
+(„wenn angeboten“), die aktuell verfügbaren Tools liefert weiterhin `tools/list`. Codeänderungen an eingebauten Texten
+brauchen natürlich einen Neustart der App.
 
 Nicht jeder Client übernimmt die Instructions (Hermes z.B. wertet nur die Tool-Beschreibungen aus). Deshalb endet
 zusätzlich **jede** Tool-Beschreibung mit der Grundregel ihres Moduls (`core/ShellHints`) und nennt, wo es einen
@@ -727,7 +788,8 @@ Neue Module lassen sich auch **ohne Änderung an der App** ergänzen – als Plu
 in `~/.devtools-mcp/plugins/` (Tab **Plugins** → *Ordner öffnen*), werden beim Start geladen und lassen sich zur
 Laufzeit installieren, aktualisieren, an-/abschalten und entfernen; verbundene Clients erhalten sofort
 `tools/list_changed`. Die Module eines Plugins erscheinen in der Modulliste wie eingebaute (mit „· Plugin *name*“),
-inkl. Formular, Schaltern, Aktionen und Protokoll.
+inkl. Formular, Schaltern, Aktionen und Protokoll. Für kleine Erweiterungen ohne Build und Jar gibt es
+[Groovy-Skripte](#groovy-skripte--eigene-tools-zur-laufzeit).
 
 ### Plugin schreiben
 
@@ -849,21 +911,25 @@ desktop/
   config/SettingsStore    ── settings.json (App-Einstellungen), SecretCipher (AES-GCM)
   server/BearerTokenFilter── optionaler Token-Schutz für /mcp
   remote/                 ── EmbeddedBackend + LocalUser, BackendConnection (GraphQL-Client, Subscriptions, Cache),
-                             BackendSettingsResolver, BackendSkills
+                             BackendSettingsResolver, BackendSkills, BackendScripts
   modules/{git,sonar,build,graph,skills,…}
+  modules/scripts/        ── Groovy-Skripte: ScriptManager (Abgleich mit dem Backend, Registrierung zur Laufzeit),
+                             ScriptCompiler + DevToolsScript (DSL), ScriptToolModule/ScriptToolCallback, ScriptsModule
   plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
   plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
   ui/                     ── MainView, ModuleDetailPane, ConfigForm, InvocationLogView, PluginsView, BackendView, Dialoge
 backend/
   backend/BackendConfig   ── Einstieg (Component-Scan des Backends)
   backend/BackendGraphQlController, GraphQlAuth, GraphQlErrors, ChangeBus ── GraphQL-API, Token, Fehler, Subscriptions
-  backend/{account,profile,project,catalog,skills} ── Benutzer + Tokens, Profile + Ebenen, Projekte, Katalog, Skills
+  backend/{account,profile,project,catalog,skills,scripts} ── Benutzer + Tokens, Profile + Ebenen, Projekte, Katalog,
+                             Skills, Groovy-Skripte (nur Ablage)
 server/
   DevToolsServerApplication ── Spring Boot (Jetty) · WildFlyInitializer (WAR)
   server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI
 shared/
   api/                    ── Datenklassen der GraphQL-API
-  core/ConfigField, config/ModuleSettings, profile/Overrides, modules/skills/{SkillBackend,SkillViews}
+  core/ConfigField, config/ModuleSettings, profile/Overrides, modules/skills/{SkillBackend,SkillViews},
+  modules/scripts/{ScriptBackend,ScriptViews}
 ```
 
 MCP-Server: Spring AI `spring-ai-starter-mcp-server-webflux` 2.0.1 (MCP Java SDK 2.0.0), Protokoll `STREAMABLE`.

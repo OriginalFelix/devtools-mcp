@@ -17,9 +17,10 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
 import systems.grebe.devtools.mcp.backend.BackendHome;
 import systems.grebe.devtools.mcp.backend.SkillsDatabaseConfig;
+import systems.grebe.devtools.mcp.backend.scripts.ScriptService;
 
 /**
- * Schlanker Spring-Kontext für die Skill-Ablage: genau die Persistenz-Konfiguration des Backends
+ * Schlanker Spring-Kontext für die Skill- und Skript-Ablage: genau die Persistenz-Konfiguration des Backends
  * ({@link SkillsDatabaseConfig}) gegen eine echte H2-Datei, ohne Test-Transaktion – Commit, Rollback und Bulk-Updates
  * wirken wie im Betrieb. Eigentümer ist ein fester Testbenutzer statt des GraphQL-Aufrufers.
  */
@@ -34,7 +35,7 @@ public final class SkillTestSupport {
     @SpringBootConfiguration
     @ImportAutoConfiguration({HibernateJpaAutoConfiguration.class, DataJpaRepositoriesAutoConfiguration.class,
             TransactionAutoConfiguration.class})
-    @Import({BackendHome.class, SkillsDatabaseConfig.class, SkillService.class})
+    @Import({BackendHome.class, SkillsDatabaseConfig.class, SkillService.class, ScriptService.class})
     static class SkillsOnly {
     }
 

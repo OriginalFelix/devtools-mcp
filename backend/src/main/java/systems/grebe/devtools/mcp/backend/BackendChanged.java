@@ -17,7 +17,9 @@ public record BackendChanged(Topic topic, Set<Long> userIds) {
         /** Projekte oder Freigaben. */
         PROJECTS,
         /** Skills. */
-        SKILLS
+        SKILLS,
+        /** Groovy-Skripte. */
+        SCRIPTS
     }
 
     public static BackendChanged all(Topic topic) {

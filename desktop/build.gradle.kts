@@ -60,6 +60,9 @@ dependencies {
     implementation("org.commonmark:commonmark-ext-gfm-tables:$commonmarkVersion")
     implementation("org.commonmark:commonmark-ext-gfm-strikethrough:$commonmarkVersion")
 
+    // Skripte: eigene Module mit Tools als Groovy-Skripte (Version aus der Boot-BOM), zur Laufzeit übersetzt
+    implementation("org.apache.groovy:groovy")
+
     // Ticket-Klassifizierung: Einschätzung der Komplexität über die Claude API (offizielles Java-SDK)
     implementation("com.anthropic:anthropic-java:2.68.0")
 

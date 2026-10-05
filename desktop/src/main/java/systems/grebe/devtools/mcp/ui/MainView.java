@@ -29,6 +29,7 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptToolModule;
 import systems.grebe.devtools.mcp.plugin.PluginToolModule;
 
 /** Hauptfenster: Kopfzeile mit Serverstatus, Tabs „Module“ und „Aufrufe“. */
@@ -133,7 +134,7 @@ public class MainView extends BorderPane {
     }
 
     /**
-     * Plugins fügen Module zur Laufzeit hinzu oder entfernen sie: Liste abgleichen, Auswahl über die ID halten und
+     * Plugins und Skripte fügen Module zur Laufzeit hinzu oder entfernen sie: Liste abgleichen, Auswahl über die ID halten und
      * Detailansichten entfernter Module verwerfen (sie halten das Modul und damit den ClassLoader des Plugins fest).
      */
     private void syncModules() {
@@ -181,7 +182,10 @@ public class MainView extends BorderPane {
             name.getStyleClass().add("module-name");
             String state = !m.hasTools() ? "Einstellungen" : error ? "Fehler"
                     : enabled ? active + " von " + total + " Tools aktiv" : "deaktiviert";
-            Label sub = new Label(PluginToolModule.pluginOf(m).map(p -> state + " · Plugin " + p).orElse(state));
+            Label sub = new Label(PluginToolModule.pluginOf(m).map(p -> state + " · Plugin " + p)
+                    .or(() -> ScriptToolModule.scriptOf(m).map(s -> state + (s.summary().global() ? " · globales Skript"
+                            : " · Skript")))
+                    .orElse(state));
             sub.getStyleClass().add("module-sub");
             HBox row = new HBox(10, dot, new VBox(1, name, sub));
             row.setAlignment(Pos.CENTER_LEFT);

@@ -181,6 +181,7 @@ class McpServerIntegrationTest {
                 "allowCreate", "true", "allowRemove", "true", "allowCompose", "true",
                 "composeProjects", composeDir.toString()));
         registry.updateConfig("skills", Map.of("allowDelete", "true"));
+        registry.updateConfig("scripts", Map.of("allowWrite", "true", "allowDelete", "true"));
         registry.updateConfig("ticket", Map.of("allowComment", "true", "allowTransition", "true", "allowAssign", "true",
                 "allowEdit", "true", "allowCreate", "true", "allowDelete", "true"));
         try {
@@ -192,9 +193,10 @@ class McpServerIntegrationTest {
                     Map.entry("debug_", ShellHints.DEBUG), Map.entry("skills_", ShellHints.SKILLS),
                     Map.entry("graph_", ShellHints.GRAPH), Map.entry("ticket_", ShellHints.TICKET),
                     Map.entry("projects_", ShellHints.PROJECTS), Map.entry("maven_", ShellHints.MAVEN),
-                    Map.entry("decompile_", ShellHints.DECOMPILE), Map.entry("pr_", ShellHints.PR));
+                    Map.entry("decompile_", ShellHints.DECOMPILE), Map.entry("pr_", ShellHints.PR),
+                    Map.entry("scripts_", ShellHints.SCRIPTS));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(162); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(166); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -211,6 +213,7 @@ class McpServerIntegrationTest {
             registry.updateConfig("pr", Map.of());
             registry.updateConfig("container", Map.of());
             registry.updateConfig("skills", Map.of());
+            registry.updateConfig("scripts", Map.of());
             registry.updateConfig("ticket", Map.of());
         }
     }

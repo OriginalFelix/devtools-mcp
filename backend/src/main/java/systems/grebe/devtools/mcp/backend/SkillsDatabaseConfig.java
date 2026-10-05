@@ -16,12 +16,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import systems.grebe.devtools.mcp.backend.scripts.Script;
+import systems.grebe.devtools.mcp.backend.scripts.ScriptRepository;
 import systems.grebe.devtools.mcp.backend.skills.Skill;
 import systems.grebe.devtools.mcp.backend.skills.SkillRepository;
 import systems.grebe.devtools.mcp.backend.skills.SkillSchemaMigration;
 
 /**
- * Skill-Datenbank des Servers (Spring Data JPA): Standard ist die H2-Datei {@code skills.mv.db} im
+ * Skill-Datenbank des Servers (Spring Data JPA, auch für die Groovy-Skripte): Standard ist die H2-Datei {@code skills.mv.db} im
  * {@link BackendHome Server-Verzeichnis}; für PostgreSQL o.ä. {@code devtools.skills.datasource.url/username/password}
  * setzen. Eine bisher von den Desktop-Apps gemeinsam genutzte Skill-Datenbank lässt sich so direkt übernehmen – das
  * Schema ist dasselbe.
@@ -30,8 +32,8 @@ import systems.grebe.devtools.mcp.backend.skills.SkillSchemaMigration;
  * ({@code CoreDatabaseConfig}) läuft daneben über {@code JdbcClient}.
  */
 @Configuration(proxyBeanMethods = false)
-@EntityScan(basePackageClasses = Skill.class)
-@EnableJpaRepositories(basePackageClasses = SkillRepository.class)
+@EntityScan(basePackageClasses = {Skill.class, Script.class})
+@EnableJpaRepositories(basePackageClasses = {SkillRepository.class, ScriptRepository.class})
 public class SkillsDatabaseConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(SkillsDatabaseConfig.class);

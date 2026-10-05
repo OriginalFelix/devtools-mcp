@@ -23,6 +23,10 @@ type Query {
     skillList(query: String, category: String): String!
     skillView(name: String!, filePath: String): String!
     skillHistory(name: String!, revision: Int): String!
+
+    "Sichtbare Groovy-Skripte (eigene und nicht verdeckte globale Vorlagen)."
+    scripts: [ScriptSummary!]!
+    script(name: String!): ScriptDetails
 }
 
 type Mutation {
@@ -44,6 +48,12 @@ type Mutation {
     deleteSkill(name: String!): String!
     publishSkill(name: String!): String!
     unpublishSkill(name: String!): String!
+
+    "Legt ein eigenes Skript an oder ändert es; die Desktop-App prüft den Quelltext vorher und liefert die Beschreibung."
+    saveScript(name: String!, description: String!, content: String!, note: String, expectedRevision: Int): String!
+    deleteScript(name: String!): String!
+    publishScript(name: String!): String!
+    unpublishScript(name: String!): String!
 }
 
 type Subscription {
@@ -53,6 +63,8 @@ type Subscription {
     projectsChanged: [Project!]!
     "Meldet Änderungen an Skills (Anzahl sichtbarer Skills)."
     skillsChanged: Int!
+    "Meldet Änderungen an Skripten (Anzahl sichtbarer Skripte)."
+    scriptsChanged: Int!
 }
 
 enum Level { GLOBAL USER PROFILE }
@@ -223,4 +235,31 @@ type SkillDetails {
     createdAt: String
     files: [SkillFile!]!
     revisions: [SkillRevision!]!
+}
+
+enum ScriptScope { OWN GLOBAL }
+
+type ScriptSummary {
+    name: String!
+    description: String
+    scope: ScriptScope!
+    revision: Int!
+    updatedAt: String
+    updatedBy: String
+}
+
+type ScriptRevision {
+    revision: Int!
+    action: String
+    note: String
+    changedBy: String
+    changedAt: String
+    content: String
+}
+
+type ScriptDetails {
+    summary: ScriptSummary!
+    content: String
+    createdAt: String
+    revisions: [ScriptRevision!]!
 }
