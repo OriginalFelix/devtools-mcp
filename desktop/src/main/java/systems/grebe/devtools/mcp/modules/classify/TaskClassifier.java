@@ -23,6 +23,10 @@ import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.OutputConfig;
 import com.anthropic.models.messages.StopReason;
+import io.modelcontextprotocol.server.McpSyncServerExchange;
+import io.modelcontextprotocol.spec.McpSchema;
+import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.mcp.McpToolUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -31,8 +35,10 @@ import tools.jackson.databind.json.JsonMapper;
  * mit Claude Opus 5.5 ein und empfiehlt daraus das Modell für die Umsetzung (einfach → Haiku, normal → Sonnet,
  * komplex → Opus; Zuordnung aus den Einstellungen).
  *
- * <p>Die Einschätzung läuft immer auf {@link #MODEL}, unabhängig vom empfohlenen Modell. Die Antwort ist per Structured
- * Output auf ein festes JSON-Schema beschränkt; das Modell ergibt sich aus der Stufe, nicht aus der Antwort.
+ * <p>Ausgeführt wird die Einschätzung je nach {@link Mode}: über das LLM des aufrufenden MCP-Clients (Sampling,
+ * {@code sampling/createMessage} – kein eigener API-Key nötig, {@link #MODEL} wird als Modellwunsch mitgeschickt, die
+ * Wahl trifft der Client) oder direkt über die Claude API mit {@link #MODEL} und Structured Output. Das empfohlene Modell
+ * ergibt sich in beiden Fällen aus der Stufe, nicht aus der Antwort.
  */
 public final class TaskClassifier {
 
@@ -43,6 +49,33 @@ public final class TaskClassifier {
     public static final String DEFAULT_NORMAL = "claude-sonnet-4-5";
     public static final String DEFAULT_COMPLEX = "claude-opus-5-5";
     public static final List<String> EFFORTS = List.of("low", "medium", "high", "xhigh", "max");
+
+    /** Wo die Einschätzung läuft. */
+    public enum Mode {
+        /** Über das LLM des aufrufenden Clients (MCP-Sampling), kein API-Key. */
+        CLIENT,
+        /** Sampling, wenn der Client es anbietet, sonst Claude API. */
+        AUTO,
+        /** Immer direkt über die Claude API mit eigenem Key. */
+        API;
+
+        public String wire() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+
+        static Mode parse(String s) {
+            for (Mode m : values()) {
+                if (m.wire().equalsIgnoreCase(s == null ? "" : s.trim())) {
+                    return m;
+                }
+            }
+            return CLIENT;
+        }
+    }
+
+    public static final List<String> MODES = List.of("client", "auto", "api");
+    /** Antwortlänge beim Sampling – Denken findet beim Client statt, die Antwort selbst ist kurz. */
+    private static final int SAMPLING_MAX_TOKENS = 8_000;
 
     private static final long MAX_TOKENS = 16_000;
     /** Opus denkt bei hohem Effort auch mal länger – großzügiger als die Timeouts der übrigen Module. */
@@ -80,14 +113,17 @@ public final class TaskClassifier {
     }
 
     /**
-     * @param apiKey  Claude-API-Key; leer = aus der Umgebung ({@code ANTHROPIC_API_KEY}, {@code ant auth login})
+     * @param mode    Sampling über den Client oder Claude API
+     * @param apiKey  Claude-API-Key (nur Modus api/auto); leer = aus der Umgebung ({@code ANTHROPIC_API_KEY}, {@code ant auth login})
      * @param baseUrl leer = https://api.anthropic.com
      * @param effort  low … max
      * @param models  empfohlenes Modell je Stufe
      * @param rules   zusätzliche Regeln des Teams, z.B. „Änderungen am Lohnmodul sind immer komplex“
      */
-    public record Settings(String apiKey, String baseUrl, String effort, Map<Complexity, String> models, List<String> rules) {
+    public record Settings(Mode mode, String apiKey, String baseUrl, String effort, Map<Complexity, String> models,
+                           List<String> rules) {
         public Settings {
+            mode = mode == null ? Mode.CLIENT : mode;
             models = models == null ? Map.of() : Map.copyOf(models);
             rules = rules == null ? List.of() : List.copyOf(rules);
             effort = effort == null || !EFFORTS.contains(effort.trim().toLowerCase(Locale.ROOT)) ? "high"
@@ -145,8 +181,14 @@ public final class TaskClassifier {
         }
     }
 
+    /**
+     * @param usedModel   Modell, das tatsächlich eingeschätzt hat (beim Sampling vom Client gemeldet)
+     * @param via         „Client …“ (Sampling) bzw. „Claude API“
+     * @param inputTokens Verbrauch, {@code -1} = unbekannt (Sampling)
+     */
     public record Result(Complexity complexity, String confidence, String model, String summary, List<String> factors,
-                         List<String> risks, List<String> openQuestions, String effort, long inputTokens, long outputTokens) {
+                         List<String> risks, List<String> openQuestions, String usedModel, String via, String effort,
+                         long inputTokens, long outputTokens) {
     }
 
     private final Settings settings;
@@ -159,10 +201,113 @@ public final class TaskClassifier {
         return settings;
     }
 
-    public Result classify(Input in) {
+    /** MCP-Exchange des laufenden Tool-Aufrufs ({@code null} außerhalb von MCP, z.B. in Tests ohne Client). */
+    public static McpSyncServerExchange exchange(ToolContext toolContext) {
+        Object e = toolContext == null ? null : toolContext.getContext().get(McpToolUtils.TOOL_CONTEXT_MCP_EXCHANGE_KEY);
+        return e instanceof McpSyncServerExchange x ? x : null;
+    }
+
+    /**
+     * Schätzt die Aufgabe ein – je nach Modus über das LLM des Clients ({@code exchange}) oder die Claude API.
+     *
+     * @param exchange MCP-Exchange des laufenden Aufrufs; {@code null} = kein Client erreichbar
+     */
+    public Result classify(Input in, McpSyncServerExchange exchange) {
         if (blank(in.title()) && blank(in.description())) {
             throw new IllegalArgumentException("Keine Aufgabe angegeben – Titel oder Beschreibung übergeben.");
         }
+        boolean sampling = canSample(exchange);
+        return switch (settings.mode()) {
+            case API -> viaApi(in);
+            case AUTO -> sampling ? viaClient(in, exchange) : viaApi(in);
+            case CLIENT -> {
+                if (!sampling) {
+                    throw new IllegalStateException("Der MCP-Client " + clientName(exchange) + " bietet kein Sampling an "
+                            + "(sampling/createMessage) – die Einschätzung kann nicht über sein LLM laufen.");
+                }
+                yield viaClient(in, exchange);
+            }
+        };
+    }
+
+    /** Ob der Client {@code sampling/createMessage} anbietet. */
+    public static boolean canSample(McpSyncServerExchange exchange) {
+        return exchange != null && exchange.getClientCapabilities() != null
+                && exchange.getClientCapabilities().sampling() != null;
+    }
+
+    /**
+     * Einschätzung als Text für das Tool. Im Modus {@link Mode#CLIENT} ohne Sampling-fähigen Client (z.B. Claude Code)
+     * geht der fertige Classifier-Prompt an das aufrufende LLM zurück, das die Einschätzung selbst durchführt – ebenfalls
+     * ohne eigenen API-Key.
+     */
+    public String run(Input in, McpSyncServerExchange exchange, String heading) {
+        if (settings.mode() == Mode.CLIENT && !canSample(exchange)) {
+            if (blank(in.title()) && blank(in.description())) {
+                throw new IllegalArgumentException("Keine Aufgabe angegeben – Titel oder Beschreibung übergeben.");
+            }
+            return delegate(in, exchange, heading);
+        }
+        return format(heading, classify(in, exchange), settings);
+    }
+
+    /** Prompt zum Selbst-Ausführen, wenn der Client kein Sampling kann. */
+    String delegate(Input in, McpSyncServerExchange exchange, String heading) {
+        return heading + "\n"
+                + "Der MCP-Client " + clientName(exchange) + " bietet kein Sampling an, deshalb führst du die Einschätzung "
+                + "selbst durch – ohne API-Key des Servers. Am besten mit einem Subagenten auf " + MODEL + " (in Claude Code: "
+                + "Agent mit model \"opus\"), dem du System-Prompt und Anfrage unten unverändert übergibst; sonst selbst nach "
+                + "diesen Vorgaben. Die Antwort ist ein JSON-Objekt. Danach das Modell für die Umsetzung nach der Stufe wählen: "
+                + settings.mapping() + ". Dem Nutzer Stufe, Begründung und gewähltes Modell nennen.\n\n"
+                + "<system-prompt>\n" + systemPrompt(settings.rules()) + JSON_ANSWER + "\n</system-prompt>\n\n"
+                + "<anfrage>\n" + userPrompt(in) + "</anfrage>";
+    }
+
+    private static String clientName(McpSyncServerExchange exchange) {
+        McpSchema.Implementation info = exchange == null ? null : exchange.getClientInfo();
+        return info == null || blank(info.name()) ? "(unbekannt)" : "„" + info.name() + "“";
+    }
+
+    /** Sampling: der Client beantwortet die Anfrage mit seinem LLM; {@link #MODEL} ist nur ein Wunsch. */
+    private Result viaClient(Input in, McpSyncServerExchange exchange) {
+        McpSchema.CreateMessageRequest request = McpSchema.CreateMessageRequest.builder()
+                .systemPrompt(systemPrompt(settings.rules()) + JSON_ANSWER)
+                .messages(List.of(new McpSchema.SamplingMessage(McpSchema.Role.USER, new McpSchema.TextContent(userPrompt(in)))))
+                .modelPreferences(McpSchema.ModelPreferences.builder()
+                        .addHint(MODEL).addHint("claude-opus").addHint("opus")
+                        .intelligencePriority(1.0).speedPriority(0.0).costPriority(0.0)
+                        .build())
+                .includeContext(McpSchema.CreateMessageRequest.ContextInclusionStrategy.NONE)
+                .maxTokens(SAMPLING_MAX_TOKENS)
+                .build();
+        McpSchema.CreateMessageResult r;
+        try {
+            r = exchange.createMessage(request);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Sampling über den MCP-Client " + clientName(exchange) + " fehlgeschlagen: "
+                    + e.getMessage(), e);
+        }
+        if (!(r.content() instanceof McpSchema.TextContent text)) {
+            throw new IllegalStateException("Der MCP-Client hat keine Textantwort geliefert ("
+                    + (r.content() == null ? "leer" : r.content().getClass().getSimpleName()) + ").");
+        }
+        String via = "Client " + clientName(exchange).replace("„", "").replace("“", "");
+        return parse(text.text(), blank(r.model()) ? "(vom Client nicht gemeldet)" : r.model(), via, "Client", -1, -1);
+    }
+
+    /** Antwortformat beim Sampling – ohne Structured Output muss das Schema im Prompt stehen. */
+    static final String JSON_ANSWER = """
+
+
+            Antwortformat: Antworte ausschließlich mit einem einzigen JSON-Objekt – kein Text davor oder danach, kein             Markdown-Codeblock – mit genau diesen Feldern:
+            {"complexity": "simple" | "normal" | "complex",
+             "confidence": "low" | "medium" | "high",
+             "summary": "Begründung in 1–3 Sätzen",
+             "factors": ["ausschlaggebender Faktor", …],
+             "risks": ["Risiko der Umsetzung", …],
+             "openQuestions": ["vor der Umsetzung zu klären", …]}""";
+
+    private Result viaApi(Input in) {
         MessageCreateParams params = MessageCreateParams.builder()
                 .model(MODEL)
                 .maxTokens(MAX_TOKENS)
@@ -175,7 +320,7 @@ public final class TaskClassifier {
                 .build();
         AnthropicClient client = client();
         try {
-            return result(client.messages().create(params));
+            return apiResult(client.messages().create(params));
         } catch (RuntimeException e) {
             throw translate(e);
         } finally {
@@ -239,7 +384,7 @@ public final class TaskClassifier {
                 + "„Claude API-Key“ eintragen oder ANTHROPIC_API_KEY setzen.");
     }
 
-    private Result result(Message m) {
+    private Result apiResult(Message m) {
         StopReason stop = m.stopReason().orElse(null);
         if (StopReason.REFUSAL.equals(stop)) {
             String why = m.stopDetails().flatMap(d -> d.explanation()).orElse("ohne Begründung");
@@ -249,16 +394,27 @@ public final class TaskClassifier {
             throw new IllegalStateException("Claude-Antwort abgeschnitten (max_tokens) – Gründlichkeit in den Einstellungen senken.");
         }
         String text = String.join("", m.content().stream().flatMap(b -> b.text().stream()).map(t -> t.text()).toList());
+        return parse(text, MODEL, "Claude API", settings.effort(), m.usage().inputTokens(), m.usage().outputTokens());
+    }
+
+    /** Liest die JSON-Antwort; beim Sampling auch mit Codeblock oder Text drumherum. */
+    private Result parse(String text, String usedModel, String via, String effort, long in, long out) {
+        String json = text == null ? "" : text.strip();
+        int from = json.indexOf('{');
+        int to = json.lastIndexOf('}');
+        if (from >= 0 && to > from) {
+            json = json.substring(from, to + 1);
+        }
         JsonNode n;
         try {
-            n = JSON.readTree(text);
+            n = JSON.readTree(json);
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Claude-Antwort ist kein gültiges JSON: " + abbreviate(text, 300), e);
+            throw new IllegalStateException("Antwort ist kein gültiges JSON: " + abbreviate(text == null ? "" : text, 300), e);
         }
         Complexity c = Complexity.parse(n.path("complexity").asString(null));
         return new Result(c, n.path("confidence").asString("medium"), settings.model(c), n.path("summary").asString(""),
-                strings(n.path("factors")), strings(n.path("risks")), strings(n.path("openQuestions")), settings.effort(),
-                m.usage().inputTokens(), m.usage().outputTokens());
+                strings(n.path("factors")), strings(n.path("risks")), strings(n.path("openQuestions")), usedModel, via,
+                effort, in, out);
     }
 
     private static List<String> strings(JsonNode array) {
@@ -287,9 +443,17 @@ public final class TaskClassifier {
         list(sb, "Faktoren", r.factors());
         list(sb, "Risiken", r.risks());
         list(sb, "Offene Fragen", r.openQuestions());
-        sb.append("\nEingeschätzt mit ").append(MODEL).append(" (effort ").append(r.effort())
-                .append(", ").append(r.inputTokens()).append(" Token ein / ").append(r.outputTokens()).append(" aus). ")
-                .append("Zuordnung: ").append(s.mapping()).append('.');
+        sb.append("\nEingeschätzt von ").append(r.usedModel()).append(" über ").append(r.via());
+        if (r.inputTokens() >= 0) {
+            sb.append(" (effort ").append(r.effort()).append(", ").append(r.inputTokens()).append(" Token ein / ")
+                    .append(r.outputTokens()).append(" aus)");
+        }
+        sb.append(". Zuordnung: ").append(s.mapping()).append('.');
+        if (!r.usedModel().contains(MODEL)) {
+            sb.append("\nHinweis: Gewünscht war ").append(MODEL).append(", der Client hat ein anderes Modell gewählt – beim "
+                    + "Sampling entscheidet der Client. Für eine Einschätzung garantiert mit ").append(MODEL)
+                    .append(" in der App unter Modellwahl den Modus „api“ wählen.");
+        }
         return sb.toString();
     }
 

@@ -462,4 +462,45 @@ class McpServerIntegrationTest {
         assertThat(ok.listTools().tools()).isNotEmpty();
         ok.closeGracefully();
     }
+
+    @Test
+    void classifierAsksTheCallingClientsLlmViaSamplingAndFallsBackToPrompt() {
+        registry.setModuleEnabled("classify", true);
+        try {
+            // Client mit Sampling: der Server fragt dessen LLM mitten im Tool-Aufruf an (sampling/createMessage)
+            List<McpSchema.CreateMessageRequest> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+            var transport = HttpClientStreamableHttpTransport.builder("http://127.0.0.1:" + port).endpoint("/mcp").build();
+            McpSyncClient sampling = McpClient.sync(transport).requestTimeout(java.time.Duration.ofSeconds(30))
+                    .clientInfo(new McpSchema.Implementation("test-client", "1.0"))
+                    .capabilities(McpSchema.ClientCapabilities.builder().sampling().build())
+                    .sampling(req -> {
+                        asked.add(req);
+                        return McpSchema.CreateMessageResult.builder().role(McpSchema.Role.ASSISTANT).model("claude-opus-5-5")
+                                .content(new McpSchema.TextContent("{\"complexity\":\"normal\",\"confidence\":\"high\","
+                                        + "\"summary\":\"Ein Modul.\",\"factors\":[],\"risks\":[],\"openQuestions\":[]}"))
+                                .build();
+                    })
+                    .build();
+            try {
+                sampling.initialize();
+                McpSchema.CallToolResult r = sampling.callTool(callRequest("classify_task",
+                        Map.of("task", "CSV-Export für Berichte ergänzen", "title", "CSV-Export")));
+                String text = ((McpSchema.TextContent) r.content().getFirst()).text();
+                assertThat(r.isError()).isNotEqualTo(Boolean.TRUE);
+                assertThat(text).contains("Komplexität: normal", "Empfohlenes Modell: claude-sonnet-4-5",
+                        "über Client test-client");
+                assertThat(asked).hasSize(1);
+                assertThat(asked.getFirst().modelPreferences().hints().getFirst().name()).isEqualTo("claude-opus-5-5");
+            } finally {
+                sampling.closeGracefully();
+            }
+
+            // Client ohne Sampling (wie Claude Code): der Classifier-Prompt geht an das aufrufende LLM zurück
+            McpSchema.CallToolResult r = client.callTool(callRequest("classify_task", Map.of("task", "CSV-Export")));
+            assertThat(((McpSchema.TextContent) r.content().getFirst()).text())
+                    .contains("bietet kein Sampling an", "<system-prompt>", "<anfrage>");
+        } finally {
+            registry.setModuleEnabled("classify", false);
+        }
+    }
 }

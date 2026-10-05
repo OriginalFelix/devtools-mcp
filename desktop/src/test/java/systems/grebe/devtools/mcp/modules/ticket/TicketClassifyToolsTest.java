@@ -37,7 +37,7 @@ class TicketClassifyToolsTest {
     }
 
     private TicketClassifyTools tools(Map<String, String> classify) {
-        Map<String, String> c = new HashMap<>(Map.of("apiKey", "sk-ant-test", "baseUrl", stub.url()));
+        Map<String, String> c = new HashMap<>(Map.of("mode", "api", "apiKey", "sk-ant-test", "baseUrl", stub.url()));
         c.putAll(classify);
         TaskClassifier.Settings settings = ClassifyModule.settings(ModuleConfig.of(new ClassifyModule().configSchema(), c));
         ModuleConfig ticket = ModuleConfig.of(module.configSchema(), Map.of("jira.enabled", "true", "jira.baseUrl",
@@ -72,14 +72,14 @@ class TicketClassifyToolsTest {
         stub.on("/v1/messages", message("end_turn", COMPLEX));
 
         String out = tools(Map.of()).classify("ABC-7", null, null, null, null,
-                "Spring-Boot-Monolith, Module abrechnung und lohn, JPA mit Flyway", null);
+                "Spring-Boot-Monolith, Module abrechnung und lohn, JPA mit Flyway", null, null);
 
         assertThat(out).startsWith("ABC-7: Abrechnung auf neue Tarife umstellen")
                 .contains("Komplexität: komplex (Sicherheit: hoch)")
                 .contains("Empfohlenes Modell: claude-opus-5-5")
                 .contains("- Migration der Tabelle Abrechnung", "Risiken:\n- Datenverlust")
                 .doesNotContain("Offene Fragen")
-                .contains("Eingeschätzt mit claude-opus-5-5 (effort high, 1234 Token ein / 321 aus)")
+                .contains("Eingeschätzt von claude-opus-5-5 über Claude API (effort high, 1234 Token ein / 321 aus)")
                 .contains("einfach → claude-haiku-4-5, normal → claude-sonnet-4-5, komplex → claude-opus-5-5");
 
         StubServer.Request r = stub.last("/v1/messages");
@@ -112,7 +112,7 @@ class TicketClassifyToolsTest {
 
         String out = tools(Map.of("modelNormal", "claude-sonnet-5-5", "effort", "medium",
                 "rules", "Export-Tickets sind mindestens normal"))
-                .classify(null, null, "CSV-Export für Berichte", "Berichte als CSV exportieren", "3", null, null);
+                .classify(null, null, "CSV-Export für Berichte", "Berichte als CSV exportieren", "3", null, null, null);
 
         assertThat(out).startsWith("Aufgabe: CSV-Export für Berichte")
                 .contains("Komplexität: normal (Sicherheit: niedrig)", "Empfohlenes Modell: claude-sonnet-5-5",
@@ -130,15 +130,15 @@ class TicketClassifyToolsTest {
     @Test
     void reportsRefusalAuthErrorsAndMissingInput() {
         stub.on("/v1/messages", message("refusal", ""));
-        assertThatThrownBy(() -> tools(Map.of()).classify(null, null, "x", null, null, null, null))
+        assertThatThrownBy(() -> tools(Map.of()).classify(null, null, "x", null, null, null, null, null))
                 .hasMessageContaining("abgelehnt");
 
         stub.on("/v1/messages", r -> new StubServer.Reply(401,
                 "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}", Map.of()));
-        assertThatThrownBy(() -> tools(Map.of()).classify(null, null, "x", null, null, null, null))
+        assertThatThrownBy(() -> tools(Map.of()).classify(null, null, "x", null, null, null, null, null))
                 .hasMessageContaining("Zugriff verweigert (401)").hasMessageContaining("Modellwahl → „Claude API-Key“");
 
-        assertThatThrownBy(() -> tools(Map.of()).classify(null, null, null, "nur Beschreibung", null, null, null))
+        assertThatThrownBy(() -> tools(Map.of()).classify(null, null, null, "nur Beschreibung", null, null, null, null))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("'title'");
     }
 

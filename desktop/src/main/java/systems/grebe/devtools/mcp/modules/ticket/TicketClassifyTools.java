@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
@@ -33,10 +34,12 @@ class TicketClassifyTools {
 
     @Tool(name = "classify", description = "Pre-Classifier vor der Umsetzung eines Tickets: schätzt die Komplexität "
             + "(Titel, Beschreibung, Typ, Priorität, Story Points, Labels, Kommentare, Verknüpfungen, Projekt und "
-            + "Architektur-Kontext) immer mit Claude Opus 5.5 ein und empfiehlt das Modell für die Umsetzung: einfach → "
-            + "Haiku, normal → Sonnet, komplex → Opus (Zuordnung im Modul Modellwahl einstellbar). Mit dem empfohlenen "
-            + "Modell den Subagenten bzw. die Sitzung für die Umsetzung wählen. Ohne 'key' für Aufgaben außerhalb eines "
-            + "Ticket-Systems: 'title' und 'description' angeben. Sendet die Ticket-Inhalte an die Claude API."
+            + "Architektur-Kontext) ein und empfiehlt das Modell für die Umsetzung: einfach → Haiku, normal → Sonnet, "
+            + "komplex → Opus (Zuordnung im Modul Modellwahl einstellbar) – über das LLM des Clients (Sampling, Wunsch "
+            + "Claude Opus 5.5) oder die Claude API. Kann der Client kein Sampling, kommt ein Classifier-Prompt zurück: "
+            + "die Einschätzung damit selbst durchführen, am besten per Subagent auf Opus. Mit dem empfohlenen Modell den "
+            + "Subagenten bzw. die Sitzung für die Umsetzung wählen. Ohne 'key' für Aufgaben außerhalb eines "
+            + "Ticket-Systems: 'title' und 'description' angeben."
             + ShellHints.TICKET)
     public String classify(
             @ToolParam(required = false, description = "Ticket-Schlüssel oder URL (ABC-123, owner/repo#12, #123). "
@@ -50,7 +53,8 @@ class TicketClassifyTools {
             @ToolParam(required = false, description = "Architektur- und Projektkontext aus dem Code: betroffene Module, "
                     + "Schichten, Schnittstellen, Technologien, Größe des Repositories, bekannte Fallstricke. Je genauer, "
                     + "desto besser die Einschätzung (z.B. aus graph_report oder dem Lesen des Codes).") String context,
-            @ToolParam(required = false, description = TicketTools.PROVIDER) String provider) {
+            @ToolParam(required = false, description = TicketTools.PROVIDER) String provider,
+            ToolContext toolContext) {
         TaskClassifier.Input in;
         String heading;
         if (blank(key)) {
@@ -67,8 +71,7 @@ class TicketClassifyTools {
             in = fromTicket(key.trim(), project, description, storyPoints, context, provider);
             heading = in.attributes().get("Ticket") + ": " + in.title();
         }
-        TaskClassifier c = classifier.get();
-        return TaskClassifier.format(heading, c.classify(in), c.settings());
+        return classifier.get().run(in, TaskClassifier.exchange(toolContext), heading);
     }
 
     private TaskClassifier.Input fromTicket(String key, String project, String description, String storyPoints,
