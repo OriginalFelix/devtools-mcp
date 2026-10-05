@@ -69,12 +69,12 @@ class TicketProviderWriteTest {
         new TicketAssignTools(env).assign("ABC-1", List.of(), null, null);
         assertThat(stub.last("/rest/api/2/issue/ABC-1/assignee").body()).isEqualTo("{\"name\":null}");
 
-        assertThat(new TicketEditTools(env).update("ABC-1", "Neu", null, List.of("needs review"), null, null))
+        assertThat(new TicketEditTools(env).update("ABC-1", "Neu", null, List.of("needs review"), null, null, null))
                 .contains("geändert: Titel, Labels [needs review]");
         assertThat(stub.last("/rest/api/2/issue/ABC-1").method()).isEqualTo("PUT");
         assertThat(stub.last("/rest/api/2/issue/ABC-1").body())
                 .isEqualTo("{\"fields\":{\"summary\":\"Neu\",\"labels\":[\"needs_review\"]}}");
-        assertThatThrownBy(() -> new TicketEditTools(env).update("ABC-1", " ", null, null, null, null))
+        assertThatThrownBy(() -> new TicketEditTools(env).update("ABC-1", " ", null, null, null, null, null))
                 .hasMessageContaining("Nichts zu ändern");
 
         assertThat(new TicketCreateTools(env).create("Neues Ticket", "h2. Ziel", null, "Bug", List.of("x"), null, null))
@@ -97,6 +97,92 @@ class TicketProviderWriteTest {
         assertThat(stub.last("/rest/api/2/issue/ABC-1/assignee").body()).isEqualTo("{\"accountId\":\"5b10ac\"}");
         assertThatThrownBy(() -> new TicketCreateTools(env).create("T", null, null, "Bugg", null, null, null))
                 .hasMessageContaining("valid issue type").hasMessageContaining("gültige Typen: Task, Story");
+
+        stub.on("/rest/api/2/issue/ABC-1/editmeta", EDITMETA);
+        stub.on("/rest/api/2/issue/ABC-1", r -> new StubServer.Reply(204, "", Map.of()));
+        new TicketEditTools(env).update("ABC-1", null, null, null, Map.of("Tester", "me"), null, null);
+        assertThat(stub.last("/rest/api/2/issue/ABC-1").body()).isEqualTo("{\"fields\":{\"customfield_10368\":{\"accountId\":\"5b10ac\"}}}");
+    }
+
+    private static final String EDITMETA = """
+            {"fields":{
+             "customfield_10368":{"name":"Tester","schema":{"type":"user","custom":"com.atlassian.jira.plugin.system.customfieldtypes:userpicker"}},
+             "fixVersions":{"name":"Lösungsversionen","schema":{"type":"array","items":"version","system":"fixVersions"},
+               "allowedValues":[{"id":"1","name":"43.1"},{"id":"2","name":"42.6"}]},
+             "customfield_10016":{"name":"Story Points","schema":{"type":"number"}},
+             "customfield_10500":{"name":"Umgebung","schema":{"type":"option"},"allowedValues":[{"value":"Produktion"},{"value":"Test"}]},
+             "customfield_10600":{"name":"Notiz","schema":{"type":"string"}},
+             "customfield_10601":{"name":"Notiz","schema":{"type":"string"}},
+             "customfield_10700":{"name":"Kaskade","schema":{"type":"option-with-child"}}}}""";
+
+    @Test
+    void jiraUpdateFieldsResolvesNamesAndConvertsByFieldType() {
+        stub.on("/rest/api/2/issue/ABC-1/editmeta", EDITMETA);
+        stub.on("/rest/api/2/issue/ABC-1", r -> new StubServer.Reply(204, "", Map.of()));
+        stub.on("/rest/api/2/user/assignable/search", "[{\"name\":\"fgrebe\",\"displayName\":\"Felix Grebe\",\"emailAddress\":\"felix@example.com\"}]");
+        TicketEditTools tools = new TicketEditTools(env(jira()));
+
+        Map<String, String> fields = new java.util.LinkedHashMap<>();
+        fields.put("Tester", "");
+        fields.put("lösungsversionen", "43.1, 42.6");
+        fields.put("customfield_10016", "5,5");
+        fields.put("Umgebung", "test");
+        assertThat(tools.update("ABC-1", null, null, null, fields, null, null))
+                .startsWith("ABC-1: Felder geändert: Tester geleert, Lösungsversionen = 43.1, 42.6, Story Points = 5,5, Umgebung = test");
+        assertThat(stub.last("/rest/api/2/issue/ABC-1").method()).isEqualTo("PUT");
+        assertThat(stub.last("/rest/api/2/issue/ABC-1").body()).isEqualTo("{\"fields\":{\"customfield_10368\":null,"
+                + "\"fixVersions\":[{\"name\":\"43.1\"},{\"name\":\"42.6\"}],\"customfield_10016\":5.5,"
+                + "\"customfield_10500\":{\"value\":\"Test\"}}}");
+
+        // Data Center: Benutzer über die zuweisbaren Benutzer; Titel und Felder in einem Aufruf
+        assertThat(tools.update("ABC-1", "Neu", null, null, Map.of("Tester", "felix@example.com"), null, null))
+                .contains("geändert: Titel", "Felder geändert: Tester = felix@example.com");
+        assertThat(stub.last("/rest/api/2/issue/ABC-1").body()).isEqualTo("{\"fields\":{\"customfield_10368\":{\"name\":\"fgrebe\"}}}");
+        // Rohes JSON für Feldtypen ohne eigene Umwandlung
+        tools.update("ABC-1", null, null, null, Map.of("Kaskade", "{\"value\":\"a\",\"child\":{\"value\":\"b\"}}"), null, null);
+        assertThat(stub.last("/rest/api/2/issue/ABC-1").body())
+                .isEqualTo("{\"fields\":{\"customfield_10700\":{\"value\":\"a\",\"child\":{\"value\":\"b\"}}}}");
+
+        int before = stub.requests.size();
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of("Bearbeiter", "x"), null, null))
+                .hasMessageContaining("Feld 'Bearbeiter' ist für ABC-1 unbekannt oder nicht bearbeitbar")
+                .hasMessageContaining("Tester (customfield_10368)");
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of("Notiz", "x"), null, null))
+                .hasMessageContaining("mehrdeutig").hasMessageContaining("Notiz (customfield_10601)");
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of("Umgebung", "Staging"), null, null))
+                .hasMessageContaining("'Staging' ist für Umgebung nicht erlaubt – erlaubt: Produktion, Test");
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of("Story Points", "viel"), null, null))
+                .hasMessageContaining("Story Points erwartet eine Zahl");
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of("Kaskade", "a"), null, null))
+                .hasMessageContaining("Feldtyp 'option-with-child'").hasMessageContaining("als JSON angeben");
+        // abgelehnt, bevor geschrieben wurde
+        assertThat(stub.requests.subList(before, stub.requests.size())).noneMatch(r -> "PUT".equals(r.method()));
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of(), null, null))
+                .hasMessageContaining("title, description, labels oder fields");
+    }
+
+    @Test
+    void jiraTransitionWithCommentFallsBackWhenTheTransitionTakesNoComment() {
+        stub.on("/rest/api/2/issue/ABC-1/transitions", r -> !"POST".equals(r.method())
+                ? StubServer.Reply.json("{\"transitions\":[{\"id\":\"31\",\"name\":\"Erledigt\",\"to\":{\"name\":\"Done\"}}]}")
+                : r.body().contains("update") ? new StubServer.Reply(400, "{\"errorMessages\":[],\"errors\":{\"comment\":"
+                        + "\"Field 'comment' cannot be set. It is not on the appropriate screen, or unknown.\"}}", Map.of())
+                : new StubServer.Reply(204, "", Map.of()));
+        stub.on("/rest/api/2/issue/ABC-1/comment", "{\"id\":\"1003\"}");
+
+        assertThat(new TicketTransitionTools(env(jira()), true).transition("ABC-1", "Done", "fertig", null, null))
+                .contains("Status → Done ('Erledigt'); Kommentar 1003 hinzugefügt");
+        assertThat(stub.requests).filteredOn(r -> "POST".equals(r.method()) && r.path().endsWith("/transitions"))
+                .extracting(StubServer.Request::body).containsExactly(
+                        "{\"transition\":{\"id\":\"31\"},\"update\":{\"comment\":[{\"add\":{\"body\":\"fertig\"}}]}}",
+                        "{\"transition\":{\"id\":\"31\"}}");
+        assertThat(stub.last("/rest/api/2/issue/ABC-1/comment").body()).isEqualTo("{\"body\":\"fertig\"}");
+    }
+
+    @Test
+    void updateFieldsIsReportedAsUnsupportedWhereTheSystemHasNoSuchFields() {
+        assertThatThrownBy(() -> new TicketEditTools(env(github())).update("#12", null, null, null, Map.of("Tester", ""), null, null))
+                .hasMessageContaining("Felder ändern wird vom Ticket-System 'github' nicht unterstützt");
     }
 
     // ------------------------------------------------------------------ GitHub

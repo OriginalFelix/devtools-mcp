@@ -91,10 +91,34 @@ public interface TicketSystem {
 
     /**
      * Führt einen Statuswechsel aus, den {@link #transitions(String, String)} geliefert hat (Auswahl per
-     * {@link #pickTransition}). Ein Kommentar zum Wechsel geht über {@link #comment} und braucht dessen Freigabe.
+     * {@link #pickTransition}). Mit Kommentar: {@link #transition(String, String, Transition, String)}.
      */
     default WriteResult transition(String key, String project, Transition transition) {
         throw unsupported("Statuswechsel");
+    }
+
+    /**
+     * Statuswechsel mit Kommentar. Systeme, deren Workflow beim Wechsel einen Kommentar verlangen kann
+     * (Jira-Validatoren wie „Beschreibe deine Tätigkeiten“), überschreiben das und schicken beides in einem Aufruf.
+     * Der Default wechselt und kommentiert danach; schlägt nur der Kommentar fehl, meldet das Ergebnis den gelungenen
+     * Wechsel samt Fehler. {@link WriteResult#id()} ist die ID des Kommentars, sofern bekannt.
+     *
+     * @param comment Kommentar ({@link #markup()} als Format); leer = wie {@link #transition(String, String, Transition)}
+     */
+    default WriteResult transition(String key, String project, Transition transition, String comment) {
+        WriteResult moved = transition(key, project, transition);
+        if (comment == null || comment.isBlank()) {
+            return moved;
+        }
+        try {
+            WriteResult c = comment(key, project, comment);
+            return new WriteResult(moved.key(), moved.message() + "; " + c.message(),
+                    c.url() != null ? c.url() : moved.url(), c.id());
+        } catch (RuntimeException e) {
+            // der Wechsel ist bereits erfolgt – nicht als Fehlschlag des ganzen Aufrufs melden
+            return new WriteResult(moved.key(), moved.message() + "; Status gewechselt, aber Kommentar fehlgeschlagen: "
+                    + e.getMessage(), moved.url());
+        }
     }
 
     /**
@@ -108,6 +132,17 @@ public interface TicketSystem {
     /** Ändert Titel, Beschreibung und Labels; {@code null}-Felder bleiben unverändert. */
     default WriteResult update(String key, String project, TicketUpdate update) {
         throw unsupported("Bearbeiten");
+    }
+
+    /**
+     * Setzt weitere Felder eines Tickets (Jira: Custom Fields wie „Tester“, Lösungsversionen, Komponenten …).
+     *
+     * @param fields Feld-ID oder Anzeigename → Wert als Text; {@code null} oder leer leert das Feld, Listenfelder nehmen
+     *               eine Kommaliste. Der Provider wandelt den Text passend zum Feldtyp um (Benutzer, Option, Version …)
+     *               und nennt bei unbekannten oder nicht bearbeitbaren Feldern die bearbeitbaren.
+     */
+    default WriteResult updateFields(String key, String project, Map<String, String> fields) {
+        throw unsupported("Felder ändern");
     }
 
     /** Legt ein Ticket im Projekt an. */
