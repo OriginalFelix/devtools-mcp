@@ -35,6 +35,10 @@ type Query {
     memoryReferences: [String!]!
     "Neueste Memories mit einem der Bezüge oder zu einem Skill (ohne Inhalt)."
     relatedMemories(references: [String!], skill: String, limit: Int): [MemoryEntry!]!
+
+    "Sichtbare Skripte, Groovy oder Java (eigene und nicht verdeckte globale Vorlagen)."
+    scripts: [ScriptSummary!]!
+    script(name: String!): ScriptDetails
 }
 
 type Mutation {
@@ -64,6 +68,13 @@ type Mutation {
     updateMemory(id: Int!, title: String, content: String, append: String, project: String, skill: String,
                  reference: String, tags: [String!], maxContentChars: Int): String!
     deleteMemory(id: Int!): String!
+
+    "Legt ein eigenes Skript an oder ändert es. Das Backend prüft die Syntax (ohne Ausführung); ohne description gilt der feste Text aus dem Quelltext, ohne language die bisherige Sprache (neu: GROOVY)."
+    saveScript(name: String!, language: ScriptLanguage, description: String, content: String!, note: String,
+               expectedRevision: Int): String!
+    deleteScript(name: String!): String!
+    publishScript(name: String!): String!
+    unpublishScript(name: String!): String!
 }
 
 type Subscription {
@@ -75,6 +86,8 @@ type Subscription {
     skillsChanged: Int!
     "Meldet Änderungen an Memories (Anzahl eigener Memories)."
     memoriesChanged: Int!
+    "Meldet Änderungen an Skripten (Anzahl sichtbarer Skripte)."
+    scriptsChanged: Int!
 }
 
 enum Level { GLOBAL USER PROFILE }
@@ -246,6 +259,36 @@ type SkillDetails {
     createdAt: String
     files: [SkillFile!]!
     revisions: [SkillRevision!]!
+}
+
+enum ScriptScope { OWN GLOBAL }
+
+enum ScriptLanguage { GROOVY JAVA }
+
+type ScriptSummary {
+    name: String!
+    description: String
+    scope: ScriptScope!
+    language: ScriptLanguage!
+    revision: Int!
+    updatedAt: String
+    updatedBy: String
+}
+
+type ScriptRevision {
+    revision: Int!
+    action: String
+    note: String
+    changedBy: String
+    changedAt: String
+    content: String
+}
+
+type ScriptDetails {
+    summary: ScriptSummary!
+    content: String
+    createdAt: String
+    revisions: [ScriptRevision!]!
 }
 
 "Eine frühere Aktion des Benutzers (was passiert ist), optional mit Bezug auf Projekt, Skill und Ticket/PR."

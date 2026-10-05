@@ -36,6 +36,14 @@ public final class ToolBeans {
         return out;
     }
 
+    /**
+     * Versieht einen Callback mit MCP-Tool-Annotations – für Tools ohne {@code @Tool}-Methode (z.B. aus Skripten).
+     * {@code null} lässt den Callback unverändert.
+     */
+    public static ToolCallback withAnnotations(ToolCallback cb, McpSchema.ToolAnnotations annotations) {
+        return annotations == null ? cb : new Hinted(cb, annotations);
+    }
+
     /** Annotations eines Callbacks (auch durch Dekoratoren wie {@link ManagedToolCallback} hindurch) oder {@code null}. */
     public static McpSchema.ToolAnnotations annotations(ToolCallback cb) {
         if (cb instanceof Hinted h) {

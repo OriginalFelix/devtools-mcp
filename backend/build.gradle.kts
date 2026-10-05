@@ -19,6 +19,8 @@ dependencies {
     implementation("org.springframework.security:spring-security-crypto")
     implementation("com.nimbusds:nimbus-jose-jwt:10.3.1")
     runtimeOnly("com.h2database:h2")
+    // Groovy-Skripte: nur Syntaxprüfung (Parsen ohne Ausführung), ausgeführt wird in der Desktop-App
+    implementation("org.apache.groovy:groovy")
 
     testImplementation("org.springframework.graphql:spring-graphql-test")
     // SkillTestSupport: schlanker Skill-Kontext, auch für die UI-Tests der Desktop-App

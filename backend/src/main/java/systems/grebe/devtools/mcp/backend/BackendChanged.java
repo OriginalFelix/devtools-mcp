@@ -18,6 +18,8 @@ public record BackendChanged(Topic topic, Set<Long> userIds) {
         PROJECTS,
         /** Skills. */
         SKILLS,
+        /** Groovy-Skripte. */
+        SCRIPTS,
         /** Memories. */
         MEMORIES
     }

@@ -135,7 +135,7 @@
 .tool-description { -fx-font-size: 11px; -fx-text-fill: #4a5568; -fx-padding: 0 0 0 24; }
 
 /* Protokoll */
-.mono, .mono .content { -fx-font-family: "Consolas", "Menlo", monospace; -fx-font-size: 12px; }
+.mono, .mono .content { -fx-font-family: "Monospaced"; -fx-font-size: 12px; } /* JavaFX kennt keine Ausweichliste */
 .table-cell.ok { -fx-text-fill: #38a169; -fx-alignment: center; }
 .table-cell.error { -fx-text-fill: #e53e3e; -fx-alignment: center; }
 

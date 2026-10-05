@@ -22,8 +22,10 @@ import systems.grebe.devtools.mcp.api.SettingsSnapshot;
 import systems.grebe.devtools.mcp.backend.catalog.ModuleCatalog;
 import systems.grebe.devtools.mcp.backend.memories.Memory;
 import systems.grebe.devtools.mcp.backend.memories.MemoryService;
+import systems.grebe.devtools.mcp.backend.scripts.ScriptService;
 import systems.grebe.devtools.mcp.backend.skills.SkillService;
 import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 import systems.grebe.devtools.mcp.profile.Overrides;
 import systems.grebe.devtools.mcp.backend.profile.ProfileService;
@@ -32,7 +34,7 @@ import systems.grebe.devtools.mcp.backend.project.ProjectService;
 
 /**
  * GraphQL-API ({@code schema.graphqls}) für die Desktop-Apps: Benutzer und Profile, Modul-Katalog,
- * Einstellungs-Vorgaben, Projekte, Skills und Memories. Jede Operation braucht einen angemeldeten Benutzer
+ * Einstellungs-Vorgaben, Projekte, Skills, Memories und Skripte. Jede Operation braucht einen angemeldeten Benutzer
  * ({@link GraphQlAuth}); Subscriptions liefern sofort den aktuellen Stand und danach jede Änderung ({@link ChangeBus}).
  */
 @Controller
@@ -48,15 +50,18 @@ public class BackendGraphQlController {
     private final ModuleCatalog catalog;
     private final SkillService skills;
     private final MemoryService memories;
+    private final ScriptService scripts;
     private final ChangeBus bus;
 
     public BackendGraphQlController(ProfileService profiles, ProjectService projects, ModuleCatalog catalog,
-                                    SkillService skills, MemoryService memories, ChangeBus bus) {
+                                    SkillService skills, MemoryService memories, ScriptService scripts,
+                                    ChangeBus bus) {
         this.profiles = profiles;
         this.projects = projects;
         this.catalog = catalog;
         this.skills = skills;
         this.memories = memories;
+        this.scripts = scripts;
         this.bus = bus;
     }
 
@@ -334,6 +339,45 @@ public class BackendGraphQlController {
                 : Math.min(requested, Memory.CONTENT_COLUMN);
     }
 
+    // ---------------------------------------------------------------- Skripte (Groovy, Java)
+
+    @QueryMapping
+    public List<ScriptViews.Summary> scripts(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
+        return as(user, scripts::overview);
+    }
+
+    @QueryMapping
+    public ScriptViews.Details script(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                      @Argument String name) {
+        return as(user, () -> scripts.details(name).orElse(null));
+    }
+
+    @MutationMapping
+    public String saveScript(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                             @Argument String name, @Argument ScriptViews.Language language,
+                             @Argument String description, @Argument String content, @Argument String note,
+                             @Argument Integer expectedRevision) {
+        return as(user, () -> scripts.save(name, language, description, content, note, expectedRevision));
+    }
+
+    @MutationMapping
+    public String deleteScript(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                               @Argument String name) {
+        return as(user, () -> scripts.delete(name));
+    }
+
+    @MutationMapping
+    public String publishScript(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                @Argument String name) {
+        return as(user, () -> scripts.publish(name));
+    }
+
+    @MutationMapping
+    public String unpublishScript(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                  @Argument String name) {
+        return as(user, () -> scripts.unpublish(name));
+    }
+
     private static <T> T as(UserAccount user, Supplier<T> body) {
         return SkillCaller.as(require(user), body);
     }
@@ -369,6 +413,13 @@ public class BackendGraphQlController {
     public Flux<Integer> memoriesChanged(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
         UserAccount u = require(user);
         return stream(bus.changes(BackendChanged.Topic.MEMORIES, u.id()), () -> SkillCaller.as(u, memories::count));
+    }
+
+    @SubscriptionMapping
+    public Flux<Integer> scriptsChanged(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
+        UserAccount u = require(user);
+        return stream(bus.changes(BackendChanged.Topic.SCRIPTS, u.id()),
+                () -> SkillCaller.as(u, () -> scripts.overview().size()));
     }
 
     /** Aktueller Stand, danach bei jedem Ereignis neu gelesen (Datenbankzugriffe außerhalb der Event-Threads). */
