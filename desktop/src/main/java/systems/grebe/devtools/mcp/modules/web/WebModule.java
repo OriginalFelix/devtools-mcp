@@ -25,9 +25,8 @@ import systems.grebe.devtools.mcp.core.ToolProgress;
 
 /**
  * Web-Abruf: Webseiten laden und von einem lokalen LLM (Jlama, Llama 3.2 1B Instruct in 4-Bit) zusammenfassen lassen,
- * damit der Client nicht den ganzen Seiteninhalt in seinen Kontext laden muss. Fragen zu einer Seite beantwortet,
- * sofern eingestellt, Claude Haiku über die Claude API mit dem ganzen Seitentext. Seiten und Antworten werden
- * zwischengespeichert, so lange die HTTP-Header der Seite es erlauben, ohne Angabe dauerhaft.
+ * damit der Client nicht den ganzen Seiteninhalt in seinen Kontext laden muss. Seiten und Zusammenfassungen werden
+ * zwischengespeichert.
  */
 @Component
 public class WebModule implements ToolModule {
@@ -38,15 +37,7 @@ public class WebModule implements ToolModule {
     static final String MODEL = "model";
     static final String MODEL_DIR = "modelDirectory";
     static final String LANGUAGE = "language";
-    static final String QUESTIONS = "questions";
-    static final String CLAUDE_MODEL = "claudeModel";
-    static final String API_KEY = "apiKey";
-    static final String BASE_URL = "baseUrl";
-    static final String CLAUDE_CONTEXT_CHARS = "claudeContextChars";
-    static final String CACHE_ENABLED = "cacheEnabled";
-    static final String HTTP_CACHING = "httpCaching";
-    static final String QUESTIONS_CLAUDE = "claude";
-    static final String QUESTIONS_LOCAL = "local";
+    static final String CACHE_HOURS = "cacheHours";
     static final String BUDGET_SECONDS = "budgetSeconds";
     static final String CONTEXT_CHARS = "contextChars";
     static final String MAX_SUMMARY_TOKENS = "maxSummaryTokens";
@@ -80,27 +71,23 @@ public class WebModule implements ToolModule {
 
     @Override
     public String displayName() {
-        return "Web-Abruf";
+        return "Web-Abruf (lokales LLM)";
     }
 
     @Override
     public String description() {
-        return "Ruft Webseiten ab. Zusammenfassungen erstellt ein lokales LLM (Jlama, Llama 3.2 1B Instruct, 4-Bit) "
-                + "ohne API-Key; das Modell (~750 MB) wird beim ersten Aufruf von Hugging Face geladen. Fragen zu einer "
-                + "Seite beantwortet Claude Haiku über die Claude API mit dem ganzen Seitentext (abschaltbar, "
-                + "kostenpflichtig). Seiten und Antworten werden zwischengespeichert, so lange die HTTP-Header es "
-                + "erlauben, ohne Angabe dauerhaft.";
+        return "Ruft Webseiten ab und fasst sie mit einem lokalen LLM zusammen (Jlama, Llama 3.2 1B Instruct, 4-Bit) – "
+                + "ohne API-Key, die Seite verlässt den Rechner nicht. Seiten und Zusammenfassungen werden "
+                + "zwischengespeichert. Das Modell (~750 MB) wird beim ersten Aufruf von Hugging Face geladen.";
     }
 
     @Override
     public String instructions() {
         return """
                 Wenn `web_fetch` angeboten wird: Webseiten (Dokumentation, Release Notes, Artikel, Issues) damit lesen, \
-                statt den vollständigen Inhalt zu laden – das spart Kontext. Für konkrete Fakten immer mit `prompt` \
-                fragen: Fragen beantwortet Claude Haiku mit dem ganzen Seitentext, ohne `prompt` fasst nur ein kleines \
-                lokales Modell einen Auszug zusammen. Für exakten Wortlaut (Code, Konfiguration, Zitate) `web_page` \
-                verwenden. Ergebnisse sind zwischengespeichert, solange die Seite laut HTTP-Headern gilt (ohne Angabe \
-                dauerhaft); `refresh="force"` lädt neu.""";
+                statt den vollständigen Inhalt zu laden – die Zusammenfassung entsteht lokal und spart Kontext. Mit \
+                `prompt` gezielt fragen. Das Modell ist klein: für exakten Wortlaut (Code, Konfiguration, Zitate, Zahlen) \
+                `web_page` verwenden. Ergebnisse sind zwischengespeichert, `refresh=true` lädt neu.""";
     }
 
     @Override
@@ -120,33 +107,9 @@ public class WebModule implements ToolModule {
                 ConfigField.of(LANGUAGE, "Sprache der Zusammenfassung", FieldType.STRING)
                         .withHelp("Leer = Sprache der Seite; z.B. „German“ oder „English“ (das Modell versteht englische "
                                 + "Angaben am besten)."),
-                ConfigField.of(QUESTIONS, "Fragen beantwortet", FieldType.ENUM).withDefault(QUESTIONS_CLAUDE)
-                        .withOptions(QUESTIONS_CLAUDE, QUESTIONS_LOCAL)
-                        .withHelp("claude = Fragen (web_fetch mit prompt) gehen mit dem ganzen Seitentext an die Claude "
-                                + "API – deutlich zuverlässiger als das lokale 1B-Modell, aber kostenpflichtig (Haiku: "
-                                + "$1 je Mio. Token Eingabe, eine lange Seite ~5 Cent). Ohne API-Key oder bei einem "
-                                + "Fehler antwortet das lokale Modell. local = alles lokal, nichts verlässt den Rechner. "
-                                + "Zusammenfassungen ohne prompt laufen immer lokal."),
-                ConfigField.of(CLAUDE_MODEL, "Claude-Modell für Fragen", FieldType.STRING)
-                        .withDefault(ClaudeAnswerer.DEFAULT_MODEL)
-                        .withHelp("Kleines, schnelles Modell reicht – z.B. claude-haiku-4-5."),
-                ConfigField.of(API_KEY, "Claude API-Key", FieldType.SECRET)
-                        .withHelp("console.anthropic.com → API Keys. Leer = ANTHROPIC_API_KEY bzw. Anmeldung per "
-                                + "`ant auth login`. Wird verschlüsselt gespeichert."),
-                ConfigField.of(BASE_URL, "Claude API-URL", FieldType.URL)
-                        .withHelp("Leer = https://api.anthropic.com. Nur für ein Gateway/Proxy der Firma."),
-                ConfigField.of(CLAUDE_CONTEXT_CHARS, "Seitentext für Claude (Zeichen)", FieldType.INT)
-                        .withDefault("200000")
-                        .withHelp("Höchstens so viel vom Seitentext geht an Claude (~4 Zeichen je Token; 200.000 ≈ "
-                                + "50.000 Token). Längere Seiten werden gekürzt, die Antwort sagt das dazu."),
-                ConfigField.of(CACHE_ENABLED, "Cache", FieldType.BOOLEAN).withDefault("true")
-                        .withHelp("Abgerufene Seiten und Antworten zwischenspeichern, abgelegt unter "
-                                + home.resolve("web-cache") + ". refresh=\"force\" übergeht den Cache für einen Aufruf."),
-                ConfigField.of(HTTP_CACHING, "Cache-Dauer aus HTTP-Headern", FieldType.BOOLEAN).withDefault("true")
-                        .withHelp("Eine Seite gilt so lange, wie Cache-Control (max-age, no-cache, no-store) bzw. "
-                                + "Expires sagen; abgelaufene Seiten mit ETag/Last-Modified werden per bedingter Anfrage "
-                                + "geprüft. Ohne solche Header – oder wenn ausgeschaltet – gilt eine Seite dauerhaft bis "
-                                + "refresh=\"force\". Antworten gelten, solange sich der Seitentext nicht ändert."),
+                ConfigField.of(CACHE_HOURS, "Cache-Dauer (Stunden)", FieldType.INT).withDefault("24")
+                        .withHelp("So lange gelten abgerufene Seiten und Zusammenfassungen; 0 = kein Cache. Abgelegt unter "
+                                + home.resolve("web-cache") + "."),
                 ConfigField.of(BUDGET_SECONDS, "Zeitbudget je Aufruf (Sekunden)", FieldType.INT).withDefault("8")
                         .withHelp("So lange darf web_fetch ohne Cache-Treffer dauern (Abruf plus Modell). Passt der "
                                 + "Auszug nicht hinein, bekommt das Modell weniger Sätze; die Antwort endet spätestens "
@@ -196,32 +159,18 @@ public class WebModule implements ToolModule {
     }
 
     WebTools tools(ModuleConfig config, PageSummarizer.Llm model, Clock clock) {
-        return tools(config, model, remote(config), clock);
-    }
-
-    /** @param remote Modell für Fragen über die API, {@code null} = Fragen beantwortet das lokale Modell */
-    WebTools tools(ModuleConfig config, PageSummarizer.Llm model, PageSummarizer.Remote remote, Clock clock) {
-        PageFetcher fetcher = new PageFetcher(config.getBoolean(ALLOW_PRIVATE), config.getBoolean(HTTP_CACHING),
+        PageFetcher fetcher = new PageFetcher(config.getBoolean(ALLOW_PRIVATE),
                 Math.max(64, config.getInt(MAX_DOWNLOAD_KB, 5120)) * 1024,
                 Duration.ofSeconds(Math.max(1, config.getInt(TIMEOUT_SECONDS, 10))), clock);
-        PageSummarizer summarizer = new PageSummarizer(model, modelName(config), remote,
-                config.getInt(CLAUDE_CONTEXT_CHARS, 200_000), config.getInt(CONTEXT_CHARS, 2400),
+        PageSummarizer summarizer = new PageSummarizer(model, config.getInt(CONTEXT_CHARS, 2400),
                 config.getInt(MAX_SUMMARY_TOKENS, 160), config.getInt(KEY_POINTS, 6), config.getString(LANGUAGE, ""));
-        return new WebTools(fetcher, cache(config, clock), summarizer,
+        return new WebTools(fetcher, cache(config, clock), summarizer, modelName(config),
                 Duration.ofSeconds(Math.max(2, config.getInt(BUDGET_SECONDS, 8))), clock);
     }
 
-    /** Claude für Fragen, sofern eingestellt; sonst {@code null}. */
-    static PageSummarizer.Remote remote(ModuleConfig config) {
-        if (!QUESTIONS_CLAUDE.equals(config.getString(QUESTIONS, QUESTIONS_CLAUDE).strip())) {
-            return null;
-        }
-        return new ClaudeAnswerer(new ClaudeAnswerer.Settings(config.get(API_KEY).orElse(null),
-                config.get(BASE_URL).orElse(null), config.getString(CLAUDE_MODEL, ClaudeAnswerer.DEFAULT_MODEL)));
-    }
-
     WebCache cache(ModuleConfig config, Clock clock) {
-        return new WebCache(home.resolve("web-cache"), config.getBoolean(CACHE_ENABLED), clock);
+        return new WebCache(home.resolve("web-cache"), Duration.ofHours(Math.max(0, config.getInt(CACHE_HOURS, 24))),
+                clock);
     }
 
     LocalLlm.Options options(ModuleConfig config) {
@@ -263,10 +212,6 @@ public class WebModule implements ToolModule {
                     + "Aktion „Modell laden“ nach ").append(dir);
         }
         sb.append("\nLLM-Prozess: ").append(llm.running() ? "läuft" : "nicht gestartet");
-        PageSummarizer.Remote remote = remote(config);
-        sb.append("\nFragen: ").append(remote == null ? "lokales Modell"
-                : "Claude API (" + remote.model() + "), Key " + (config.get(API_KEY).isPresent()
-                        ? "aus den Einstellungen" : "aus der Umgebung (ANTHROPIC_API_KEY / ant auth login)"));
         WebCache cache = cache(config, Clock.systemDefaultZone());
         int[] size = cache.size();
         sb.append("\nCache: ").append(cache.enabled() ? size[0] + " Seite(n), " + size[1] + " Zusammenfassung(en)"
