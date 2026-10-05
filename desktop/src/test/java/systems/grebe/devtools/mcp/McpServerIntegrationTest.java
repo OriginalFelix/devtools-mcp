@@ -25,6 +25,7 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.core.UserConfirmation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -58,6 +59,9 @@ class McpServerIntegrationTest {
 
     @Autowired
     ToolInvocationLog log;
+
+    @Autowired
+    UserConfirmation confirmation;
 
     @TempDir
     Path repoDir;
@@ -157,7 +161,8 @@ class McpServerIntegrationTest {
                         "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`", "Tools `graph_*`",
                         "`graph_report`", "`graph_neighbors`", "Tools `ticket_*`", "`ticket_get`", "`ticket_board`",
                         "## Skills – Tools `skills_*`", "`skills_list`", "Tools `maven_*`", "`maven_breaking_changes`", "`skills_create`", "`skills_patch`",
-                        "## Memories – Tools `memories_*`", "`memories_search`", "`memories_save`")
+                        "## Memories – Tools `memories_*`", "`memories_search`", "`memories_save`",
+                        "## Berechtigungen – Tools `permissions_*`", "`permissions_request`")
                 .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
         // Reihenfolge wie in der Modulliste: order, dann Anzeigename – Skills zuerst, damit sie vor jeder Aufgabe greifen
         assertThat(instructions.indexOf("Tools `skills_*`")).isLessThan(instructions.indexOf("Tools `memories_*`"));
@@ -198,9 +203,9 @@ class McpServerIntegrationTest {
                     Map.entry("graph_", ShellHints.GRAPH), Map.entry("ticket_", ShellHints.TICKET),
                     Map.entry("projects_", ShellHints.PROJECTS), Map.entry("maven_", ShellHints.MAVEN),
                     Map.entry("decompile_", ShellHints.DECOMPILE), Map.entry("pr_", ShellHints.PR),
-                    Map.entry("scripts_", ShellHints.SCRIPTS));
+                    Map.entry("scripts_", ShellHints.SCRIPTS), Map.entry("permissions_", ShellHints.PERMISSIONS));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(172); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(175); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -613,6 +618,88 @@ class McpServerIntegrationTest {
                     .contains("bietet kein Sampling an", "<system-prompt>", "<anfrage>");
         } finally {
             registry.setModuleEnabled("classify", false);
+        }
+    }
+    @Test
+    void permissionsShowWhatIsMissingAndOnlyTheUserGrantsIt() throws Exception {
+        McpSchema.CallToolRequest pushRequest = callRequest("permissions_request",
+                Map.of("tool", "git_push", "reason", "Feature-Branch pushen"));
+        // nur lesend: zeigt, was fehlt, ohne etwas zu ändern
+        assertThat(toolNames()).contains("permissions_overview", "permissions_check", "permissions_request")
+                .doesNotContain("git_push");
+        assertThat(text(client.callTool(callRequest("permissions_overview", Map.of()))))
+                .contains("git – Git [an]", "Remote-Abgleich erlauben (fetch, pull, push) = aus");
+        assertThat(text(client.callTool(callRequest("permissions_overview", Map.of("module", "git")))))
+                .contains("(allowSync): aus – würde freischalten: git_fetch, git_pull, git_push",
+                        "(allowWrite): an – bietet: ", "Repositories (repositories): ");
+        assertThat(text(client.callTool(callRequest("permissions_check",
+                Map.of("tool", "git_push", "path", repoDir.toString())))))
+                .contains("git_push: nicht verfügbar", "den Schalter „Remote-Abgleich erlauben (fetch, pull, push)“ "
+                        + "(allowSync) einschalten", "Freigegeben in:", "Git – Repositories");
+
+        // Client ohne Rückfrage und keine Oberfläche: nichts wird geändert
+        assertThat(text(client.callTool(pushRequest))).contains("Keine Rückfrage möglich");
+        assertThat(toolNames()).doesNotContain("git_push");
+
+        // Client mit Elicitation: der Nutzer entscheidet
+        List<McpSchema.ElicitFormRequest> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.atomic.AtomicBoolean grant = new java.util.concurrent.atomic.AtomicBoolean();
+        var transport = HttpClientStreamableHttpTransport.builder("http://127.0.0.1:" + port).endpoint("/mcp").build();
+        McpSyncClient eliciting = McpClient.sync(transport).requestTimeout(java.time.Duration.ofSeconds(30))
+                .clientInfo(new McpSchema.Implementation("test-client", "1.0"))
+                .capabilities(McpSchema.ClientCapabilities.builder().elicitation().build())
+                .elicitation(req -> {
+                    asked.add(req);
+                    return new McpSchema.ElicitResult(McpSchema.ElicitResult.Action.ACCEPT, Map.of("grant", grant.get()));
+                })
+                .build();
+        Path shared = Files.createTempDirectory("freigabe");
+        try {
+            eliciting.initialize();
+            assertThat(text(eliciting.callTool(pushRequest))).contains("Vom Nutzer abgelehnt (test-client)");
+            assertThat(asked.getFirst().message()).contains("„Remote-Abgleich erlauben (fetch, pull, push)“",
+                    "Begründung: Feature-Branch pushen");
+            assertThat(toolNames()).doesNotContain("git_push");
+
+            grant.set(true);
+            assertThat(text(eliciting.callTool(pushRequest)))
+                    .contains("Vom Nutzer erteilt (test-client)", "Neu verfügbar: git_fetch, git_pull, git_push");
+            assertThat(toolNames()).contains("git_push");
+            assertThat(text(eliciting.callTool(pushRequest))).contains("Bereits erlaubt");
+
+            // Rückfrage über die App (Einstellung „Rückfrage über“ = app): Verzeichnis unter „Freigaben“
+            registry.updateValues("permissions", v -> {
+                v.put("promptVia", "app");
+                return v;
+            });
+            List<String> dialogs = new java.util.concurrent.CopyOnWriteArrayList<>();
+            confirmation.setDesktopHandler((title, message) -> {
+                dialogs.add(message);
+                return java.util.concurrent.CompletableFuture.completedFuture(true);
+            });
+            assertThat(text(eliciting.callTool(callRequest("permissions_request",
+                    Map.of("path", shared.toString(), "reason", "Projekt bauen")))))
+                    .contains("Vom Nutzer erteilt (DevTools-App)", "unter „Freigaben“ für alle Tools freigeben");
+            assertThat(dialogs).singleElement().asString().contains(shared.toString(), "Projekt bauen");
+            assertThat(asked).hasSize(2); // nicht im Client gefragt
+            assertThat(registry.config("access").getList("directories")).contains(shared.toString());
+            assertThat(text(client.callTool(callRequest("permissions_check", Map.of("path", shared.toString())))))
+                    .contains("Freigaben – Für alle Tools freigegeben");
+        } finally {
+            eliciting.closeGracefully();
+            confirmation.setDesktopHandler(null);
+            registry.updateValues("permissions", v -> {
+                v.remove("promptVia");
+                return v;
+            });
+            registry.updateValues("access", v -> {
+                v.remove("directories");
+                return v;
+            });
+            registry.updateValues("git", v -> {
+                v.remove("allowSync");
+                return v;
+            });
         }
     }
 }
