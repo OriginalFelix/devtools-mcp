@@ -63,6 +63,10 @@ dependencies {
     // Skripte: eigene Module mit Tools als Groovy-Skripte (Version aus der Boot-BOM), zur Laufzeit übersetzt
     implementation("org.apache.groovy:groovy")
     implementation("org.apache.groovy:groovy-json") // JsonSlurper/JsonOutput in Skripten
+    // Skripte in Gherkin: Parser (Funktionalität → Szenarien) und Cucumber Expressions für die Schritte – ohne die
+    // Cucumber-Runtime, ausgeführt wird von der App selbst (GherkinScriptCompiler)
+    implementation("io.cucumber:gherkin:42.0.1")
+    implementation("io.cucumber:cucumber-expressions:20.1.0")
 
     // Ticket-Klassifizierung: Einschätzung der Komplexität über die Claude API (offizielles Java-SDK)
     implementation("com.anthropic:anthropic-java:2.68.0")

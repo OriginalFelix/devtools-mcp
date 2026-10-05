@@ -70,6 +70,25 @@ public final class McpRuntime implements AutoCloseable {
         return modules.values().stream().flatMap(m -> m.registered.stream()).sorted().toList();
     }
 
+    /**
+     * Ein aktives Tool (Modul an, Tool nicht abgeschaltet) mit vollem Namen, z.B. {@code git_status} – für Aufrufe aus
+     * Skripten. Der Aufruf landet im Aufrufprotokoll, aber ohne die {@link ToolCallListener}: deren Hinweise gelten
+     * dem LLM und kommen schon beim äußeren Aufruf.
+     */
+    public synchronized Optional<ToolCallback> activeTool(String name) {
+        for (Map.Entry<String, ModuleTools> e : modules.entrySet()) {
+            if (!e.getValue().registered.contains(name)) {
+                continue;
+            }
+            for (ManagedToolCallback cb : e.getValue().tools) {
+                if (cb.getToolDefinition().name().equals(name)) {
+                    return Optional.of(new ManagedToolCallback(e.getKey(), cb.delegate(), invocationLog));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
     /** Erzeugt die Tools des Moduls neu und gleicht die Registrierung am Server ab. */
     public synchronized void rebuild(ToolModule module, ModuleSettings settings, List<ToolCallListener> listeners) {
         List<ManagedToolCallback> tools = new ArrayList<>();

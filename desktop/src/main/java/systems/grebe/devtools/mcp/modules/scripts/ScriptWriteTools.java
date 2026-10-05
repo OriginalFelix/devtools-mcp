@@ -15,17 +15,18 @@ public class ScriptWriteTools {
         this.scripts = scripts;
     }
 
-    @Tool(name = "save", description = "Legt ein Skript (Groovy oder Java) an oder ersetzt es und lädt es sofort als "
+    @Tool(name = "save", description = "Legt ein Skript (Groovy, Java oder Gherkin) an oder ersetzt es und lädt es sofort als "
             + "Modul mit eigenen Tools (<name>_<tool>). Vorher die Referenz mit scripts_view ohne Namen lesen. Das Skript wird vor "
             + "dem Speichern übersetzt und ausgewertet; Fehler kommen mit Zeilenangabe zurück, gespeichert wird dann "
             + "nichts. Nur auf ausdrücklichen Wunsch des Nutzers – Skripte laufen mit allen Rechten der App."
             + ShellHints.SCRIPTS)
     public String save(
             @ToolParam(description = ScriptReadTools.NAME) String name,
-            @ToolParam(description = "Vollständiger Quelltext: Groovy mit module { … } und tool(…) { … } bzw. Java mit "
-                    + "einer public class, die ToolModule implementiert") String content,
-            @ToolParam(required = false, description = "'groovy' oder 'java'; leer = Sprache des vorhandenen Skripts, "
-                    + "neu: groovy") String language,
+            @ToolParam(description = "Vollständiger Quelltext: Groovy mit module { … } und tool(…) { … }, Java mit "
+                    + "einer public class, die ToolModule implementiert, bzw. Gherkin mit Funktionalität und Szenarien")
+            String content,
+            @ToolParam(required = false, description = "'groovy', 'java' oder 'gherkin'; leer = Sprache des "
+                    + "vorhandenen Skripts, neu: groovy") String language,
             @ToolParam(required = false, description = "Kurz, warum geändert wurde (erscheint in der Historie)") String note,
             @ToolParam(required = false, description = "Optional: Revision, auf der die Änderung beruht (aus "
                     + "scripts_view) – weicht sie ab, wird abgelehnt statt fremde Änderungen zu überschreiben") Integer expected_revision) {

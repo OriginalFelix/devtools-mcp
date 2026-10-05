@@ -12,7 +12,7 @@ import systems.grebe.devtools.mcp.core.ToolBeans;
 import systems.grebe.devtools.mcp.core.ToolModule;
 
 /**
- * Skripte (Groovy oder Java), die zur Laufzeit eigene Module mit Tools ergänzen ({@link ScriptManager}). Die Skripte liegen im
+ * Skripte (Groovy, Java oder Gherkin), die zur Laufzeit eigene Module mit Tools ergänzen ({@link ScriptManager}). Die Skripte liegen im
  * Backend (eingebettet oder Team-Server) je Benutzerkonto, plus globale Vorlagen der Administratoren. Dieses Modul
  * bietet dem LLM Lesen und – per Schalter, Standard aus – Anlegen/Ändern und Löschen an; in der App (Tab „Skripte“)
  * geht das immer.
@@ -28,10 +28,11 @@ public class ScriptsModule implements ToolModule {
 
     /** Kurzreferenz für Skripte – für {@code scripts_view} ohne Namen und den Reiter „Referenz“ in der App. */
     public static final String REFERENCE = """
-            # Skripte für DevTools MCP – Groovy oder Java
+            # Skripte für DevTools MCP – Groovy, Java oder Gherkin
 
             Ein Skript wird zu einem Modul; sein Name (2–32 Kleinbuchstaben/Ziffern, z.B. `jira`) ist Modul-ID und \
-            Tool-Präfix (`jira_open_issues`). Sprache: Groovy (Standard) oder Java (`language: java`, braucht ein JDK).
+            Tool-Präfix (`jira_open_issues`). Sprache: Groovy (Standard), Java (`language: java`, braucht ein JDK) \
+            oder Gherkin (`language: gherkin`, Abläufe aus vorhandenen Tools ohne Programmcode).
 
             ## Groovy-DSL
 
@@ -113,7 +114,50 @@ public class ScriptsModule implements ToolModule {
             }
             ```
 
-            ## Für beide
+            ## Gherkin
+
+            Abläufe aus vorhandenen Tools, ohne Programmcode. Die `Funktionalität` ist das Modul (Freitext darunter \
+            = Beschreibung), jedes `Szenario` ein Tool: Aus dem Namen wird der Tool-Name („Branch prüfen“ → \
+            `<skript>_branch_pruefen`), der Freitext darunter ist die Tool-Beschreibung. Platzhalter `<name>` werden \
+            Parameter (Text); eine Zeile `<name>: Beschreibung` unter dem Szenario beschreibt sie, \
+            `<name>: optional – …` macht sie optional (fehlt der Wert, ist er leer). Tags `@readOnly`, \
+            `@destructive`, `@idempotent` setzen die MCP-Hinweise. Eine `Grundlage` läuft vor jedem Szenario. \
+            Ohne `# language: …` gilt Deutsch.
+
+            ```gherkin
+            # language: de
+            Funktionalität: Schnellcheck
+              Prüft ein Repository lokal.
+
+              @readOnly
+              Szenario: Branch prüfen
+                Prüft Arbeitsverzeichnis und Unit-Tests.
+                <repo>: Repository-Name, z.B. web-core
+
+                Wenn ich das Tool "git_status" aufrufe:
+                  | repository | <repo> |
+                Dann enthält das Ergebnis "Arbeitsverzeichnis sauber"
+                Wenn ich das Tool "build_test" aufrufe:
+                  | project | <repo> |
+                Dann enthält das Ergebnis "BUILD ERFOLGREICH"
+                Und ich merke mir "Tests: (\\d+) gesamt" aus dem Ergebnis als tests
+                Und ich gebe "<repo>: ${tests} Tests, alle grün." aus
+            ```
+
+            Eingebaute Schritte (nach Angenommen/Wenn/Dann/Und/Aber; `(…)` = optional):
+
+            """ + GherkinSteps.reference() + """
+
+            Tool-Argumente als Tabelle `| parameter | wert |` ohne Kopfzeile (Werte werden nach dem Schema des Tools \
+            umgewandelt, ein leerer Wert lässt den Parameter weg) oder als DocString mit einem JSON-Objekt. \
+            Platzhalter `<name>` und Variablen `${name}` stehen in Anführungszeichen, Tabellen oder DocStrings. \
+            Beim Speichern wird jeder Schritt zugeordnet: Unbekannte Schritte, ungesetzte Variablen und Prüfungen \
+            ohne vorherigen Tool-Aufruf fallen mit Zeile auf, gerade nicht aktive Tools ergeben einen Hinweis. Das \
+            Tool liefert die Ausgaben und den Ablauf mit den Ergebnissen der aufgerufenen Tools; schlägt ein Schritt \
+            fehl, kommt der Ablauf bis dahin als Fehler. Aufgerufen werden nur aktive Tools, mit denselben Freigaben \
+            wie direkt; das Zeitlimit des Moduls „Skripte“ gilt für das ganze Szenario.
+
+            ## Groovy und Java
 
             JSON: `groovy.json.JsonSlurper`/`JsonOutput` (Groovy) oder Jackson (`tools.jackson.databind.json.\
             JsonMapper`), HTTP: `java.net.http.HttpClient`. \
@@ -130,7 +174,9 @@ public class ScriptsModule implements ToolModule {
         return switch (value.strip().toLowerCase(java.util.Locale.ROOT)) {
             case "groovy" -> ScriptViews.Language.GROOVY;
             case "java" -> ScriptViews.Language.JAVA;
-            default -> throw new IllegalArgumentException("Unbekannte Sprache '" + value + "' – 'groovy' oder 'java'.");
+            case "gherkin", "feature" -> ScriptViews.Language.GHERKIN;
+            default -> throw new IllegalArgumentException("Unbekannte Sprache '" + value + "' – 'groovy', 'java' oder "
+                    + "'gherkin'.");
         };
     }
 
@@ -152,8 +198,8 @@ public class ScriptsModule implements ToolModule {
 
     @Override
     public String description() {
-        return "Eigene Tools als Skripte (Groovy oder Java): Jedes Skript wird zur Laufzeit ein Modul mit Tools und "
-                + "Einstellungen. "
+        return "Eigene Tools als Skripte (Groovy, Java oder Gherkin): Jedes Skript wird zur Laufzeit ein Modul mit "
+                + "Tools und Einstellungen. "
                 + "Gespeichert im Backend (eingebettet oder Team-Server) je Benutzerkonto, plus globale Vorlagen. "
                 + "Bearbeiten im Tab „Skripte“; dem LLM per Schalter.";
     }
@@ -161,9 +207,11 @@ public class ScriptsModule implements ToolModule {
     @Override
     public String instructions() {
         return """
-                Skripte (Groovy oder Java) ergänzen diesen Server zur Laufzeit um eigene Module (Tools \
+                Skripte (Groovy, Java oder Gherkin) ergänzen diesen Server zur Laufzeit um eigene Module (Tools \
                 `<skriptname>_*`). `scripts_list` zeigt die vorhandenen Skripte, ihren Zustand und ihre Tools; \
-                `scripts_view` den Quelltext, ohne Namen die Referenz für beide Sprachen.
+                `scripts_view` den Quelltext, ohne Namen die Referenz für alle Sprachen. Ein fester Ablauf aus \
+                vorhandenen Tools (aufrufen, Ergebnis prüfen, Werte weitergeben) geht ohne Programmcode als \
+                Gherkin-Skript (`language: gherkin`).
 
                 Wenn `scripts_save` angeboten wird und der Nutzer ein wiederkehrendes Werkzeug möchte, das es noch \
                 nicht gibt (eigene REST-Abfrage, Auswertung, Konvertierung …): erst mit `scripts_view` (ohne Namen) \

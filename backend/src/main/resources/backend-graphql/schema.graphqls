@@ -263,7 +263,7 @@ type SkillDetails {
 
 enum ScriptScope { OWN GLOBAL }
 
-enum ScriptLanguage { GROOVY JAVA }
+enum ScriptLanguage { GROOVY JAVA GHERKIN }
 
 type ScriptSummary {
     name: String!

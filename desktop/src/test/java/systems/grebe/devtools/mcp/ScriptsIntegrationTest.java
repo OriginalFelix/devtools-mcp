@@ -230,6 +230,64 @@ class ScriptsIntegrationTest {
     }
 
     @Test
+    void gherkinScriptsCallOtherToolsAndCheckTheirResults() {
+        registry.updateConfig("scripts", Map.of("allowWrite", "true", "allowDelete", "true"));
+        assertThat(text(call("scripts_save", Map.of("name", "gruss", "content", DEMO)))).contains("gruss_hello");
+        String ablauf = """
+                # language: de
+                Funktionalität: Ablauf
+                  Begrüßt und prüft den Gruß.
+
+                  @readOnly
+                  Szenario: Begrüßen
+                    Begrüßt jemanden über das Groovy-Skript.
+                    <wer>: Wen begrüßen
+
+                    Wenn ich das Tool "gruss_hello" aufrufe:
+                      | who | <wer> |
+                    Dann enthält das Ergebnis "Hallo"
+                    Und ich merke mir das Ergebnis als gruss
+                    Und ich gebe "${gruss}!" aus
+                """;
+
+        // Speichern prüft und lädt; der Tool-Name kommt aus dem Szenario
+        McpSchema.CallToolResult saved = call("scripts_save", Map.of("name", "ablauf", "language", "gherkin",
+                "content", ablauf));
+        assertThat(saved.isError()).isNotEqualTo(Boolean.TRUE);
+        assertThat(text(saved)).contains("angelegt", "ablauf_begruessen").doesNotContain("Hinweise");
+        McpSchema.Tool tool = client.listTools().tools().stream().filter(t -> t.name().equals("ablauf_begruessen"))
+                .findFirst().orElseThrow();
+        assertThat(tool.description()).isEqualTo("Begrüßt jemanden über das Groovy-Skript.");
+        assertThat(tool.annotations().readOnlyHint()).isTrue();
+        assertThat(text(call("scripts_list", Map.of()))).contains("ablauf: Begrüßt und prüft den Gruß.", "[gherkin");
+
+        // Aufruf: ruft das Groovy-Tool über die Registry, prüft, gibt aus
+        String result = text(call("ablauf_begruessen", Map.of("wer", "Welt")));
+        assertThat(result).contains("erfolgreich", "Ausgabe:\nHallo Welt!", "→ gruss_hello: Hallo Welt");
+
+        // abgeschaltetes Tool: Fehler mit Zeile statt Aufruf
+        registry.setToolEnabled("gruss", "gruss_hello", false);
+        McpSchema.CallToolResult off = call("ablauf_begruessen", Map.of("wer", "Welt"));
+        assertThat(off.isError()).isTrue();
+        assertThat(text(off)).contains("Zeile 10", "abgeschaltet");
+        registry.setToolEnabled("gruss", "gruss_hello", true);
+
+        // unbekannter Schritt: nichts gespeichert; nicht aktives Tool: nur ein Hinweis
+        McpSchema.CallToolResult broken = call("scripts_save", Map.of("name", "ablauf",
+                "content", ablauf.replace("Dann enthält das Ergebnis", "Dann steht im Ergebnis")));
+        assertThat(broken.isError()).isTrue();
+        assertThat(text(broken)).contains("Zeile 12", "Unbekannter Schritt");
+        assertThat(text(call("scripts_save", Map.of("name", "ablauf", "content",
+                ablauf.replace("gruss_hello", "gibt_es_nicht")))))
+                .contains("Revision 2", "Hinweise:", "gibt_es_nicht");
+        assertThat(text(call("scripts_view", Map.of()))).contains("## Gherkin", "ich rufe das Tool {string} auf");
+
+        assertThat(text(call("scripts_delete", Map.of("name", "ablauf")))).contains("gelöscht");
+        assertThat(text(call("scripts_delete", Map.of("name", "gruss")))).contains("gelöscht");
+        assertThat(scripts.statuses()).isEmpty();
+    }
+
+    @Test
     void withoutBackendTheLastCachedStateIsLoadedAndConfirmedLater() throws Exception {
         // wie beim Start mit nicht erreichbarem Team-Server: Backend wirft, der Cache hat den letzten Stand
         ScriptViews.Summary summary = new ScriptViews.Summary("offline", "Aus dem Cache", ScriptViews.Scope.OWN, null, 4,
