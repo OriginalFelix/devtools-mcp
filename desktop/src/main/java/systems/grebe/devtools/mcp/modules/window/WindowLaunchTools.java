@@ -11,6 +11,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolHints;
 import systems.grebe.devtools.mcp.modules.window.platform.NativeWindow;
+import systems.grebe.devtools.mcp.modules.window.platform.ProgramLauncher;
 
 /**
  * Startet freigegebene Programme im Hintergrund und bindet sie (Schalter „Programme starten erlauben“). Das Fenster

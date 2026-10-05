@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 import systems.grebe.devtools.mcp.modules.window.platform.NativeWindow;
+import systems.grebe.devtools.mcp.modules.window.platform.ProgramLauncher;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

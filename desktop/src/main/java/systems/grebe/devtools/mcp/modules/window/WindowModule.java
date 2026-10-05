@@ -20,6 +20,7 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.modules.window.cursor.CursorProvider;
 import systems.grebe.devtools.mcp.modules.window.platform.NativeWindow;
+import systems.grebe.devtools.mcp.modules.window.platform.ProgramLauncher;
 import systems.grebe.devtools.mcp.modules.window.platform.ScreenMapper;
 import systems.grebe.devtools.mcp.modules.window.platform.WindowSystem;
 

@@ -71,6 +71,9 @@ und Tools ohne echten Bildschirm testbar sind.
 
 ## Zweiter Zeiger (`window.cursor`)
 
+Wie `window.platform` und `ProgramLauncher` im eigenen Gradle-Projekt `natives`; die Desktop-App nutzt nur die
+Schnittstellen.
+
 SPI per `ServiceLoader`: `CursorProvider` (`platform()` als `oshi.PlatformEnum`, `unsupportedReason()`,
 `controller()`), Auswahl über `CursorProvider.current()`. Der `CursorController` bietet `create`, `destroy`, `move`,
 `position`, `press`/`release`, `click` (1–3 Klicks), `clickAt`, `scroll`, `cursors`, `close`; Griffe sind

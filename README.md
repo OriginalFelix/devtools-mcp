@@ -328,6 +328,7 @@ Gradle-Multiprojekt:
 | `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
 | `shared` | Gemeinsam: Einstellungs-Modell, Datenklassen der GraphQL-API (`api`) | – |
+| `natives` | Zugriffe auf das Betriebssystem für die Fenstersteuerung: Fenstersysteme (FFM), zweiter KI-Zeiger mit eigener Maus und Tastatur (JNA), Programmstart im Hintergrund | – (Bibliothek) |
 
 MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
 im Team-Server, und in der Desktop-App eingebettet – außer dort ist ein Team-Server eingetragen, dann nutzt sie dessen
@@ -854,6 +855,9 @@ backend/
 server/
   DevToolsServerApplication ── Spring Boot (Jetty) · WildFlyInitializer (WAR)
   server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI
+natives/
+  modules/window/platform/ ── WindowSystem (Win32/macOS/X11 über FFM), ScreenMapper, ProgramLauncher
+  modules/window/cursor/   ── CursorProvider/CursorController (SPI): zweiter KI-Zeiger je Betriebssystem (JNA)
 shared/
   api/                    ── Datenklassen der GraphQL-API
   core/ConfigField, config/ModuleSettings, profile/Overrides, modules/skills/{SkillBackend,SkillViews}

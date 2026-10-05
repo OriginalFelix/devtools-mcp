@@ -1,4 +1,4 @@
-package systems.grebe.devtools.mcp.modules.window;
+package systems.grebe.devtools.mcp.modules.window.platform;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -20,12 +20,12 @@ import com.sun.jna.platform.win32.WinNT;
  *
  * <ul>
  *   <li>Windows: {@code ShellExecuteEx} mit {@code SW_SHOWNOACTIVATE} (findet auch Programme aus „App Paths“ wie
- *       {@code winword}); holt es sich trotzdem den Vordergrund, gibt ihn der {@link FocusGuard} zurück.</li>
+ *       {@code winword}); holt es sich trotzdem den Vordergrund, gibt ihn der Fokus-Wächter der Fenstersteuerung zurück.</li>
  *   <li>macOS: {@code open -g -a}.</li>
  *   <li>sonst: direkt gestartet – ob das Fenster den Fokus bekommt, entscheidet der Fenstermanager.</li>
  * </ul>
  */
-interface ProgramLauncher {
+public interface ProgramLauncher {
 
     /** Ein gestartetes Programm: PID (sofern bekannt) und Startzeit. */
     record Launched(long pid, Instant started) {
@@ -33,12 +33,12 @@ interface ProgramLauncher {
 
     Launched launch(String program, List<String> arguments);
 
-    /** Ob gerade eine Maustaste gedrückt ist – für den {@link FocusGuard}; ohne Abfrage {@code false}. */
+    /** Ob gerade eine Maustaste gedrückt ist – für den Fokus-Wächter der Fenstersteuerung; ohne Abfrage {@code false}. */
     default boolean mouseButtonDown() {
         return false;
     }
 
-    /** Ob nach dem Start ein {@link FocusGuard} nötig ist. */
+    /** Ob nach dem Start ein Fokus-Wächter der Fenstersteuerung nötig ist. */
     default boolean needsFocusGuard() {
         return false;
     }
@@ -59,10 +59,10 @@ interface ProgramLauncher {
      * eine laufende Instanz, {@code open}).
      */
     static Optional<Long> newestProcess(String program, Instant since) {
-        String wanted = ProcessFilter.name(Path.of(program).getFileName().toString()).toLowerCase(Locale.ROOT);
+        String wanted = programName(program);
         for (int i = 0; i < 50; i++) {
             Optional<Long> pid = ProcessHandle.allProcesses()
-                    .filter(p -> p.info().command().map(c -> ProcessFilter.name(c).toLowerCase(Locale.ROOT))
+                    .filter(p -> p.info().command().map(ProgramLauncher::programName)
                             .filter(wanted::equals).isPresent())
                     .filter(p -> p.info().startInstant().map(t -> !t.isBefore(since.minusSeconds(1))).orElse(false))
                     .max(Comparator.comparing(p -> p.info().startInstant().orElse(Instant.MIN)))
@@ -78,6 +78,12 @@ interface ProgramLauncher {
             }
         }
         return Optional.empty();
+    }
+
+    /** Dateiname ohne {@code .exe}/{@code .app}-Endung, klein geschrieben. */
+    private static String programName(String command) {
+        String n = Path.of(command).getFileName().toString().toLowerCase(Locale.ROOT);
+        return n.endsWith(".exe") || n.endsWith(".app") ? n.substring(0, n.length() - 4) : n;
     }
 
     final class Windows implements ProgramLauncher {
