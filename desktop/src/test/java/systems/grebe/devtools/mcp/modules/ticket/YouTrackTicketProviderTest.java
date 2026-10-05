@@ -198,7 +198,7 @@ class YouTrackTicketProviderTest {
         assertThat(yt.last("/api/issues/ABC-1").body()).contains("\"value\":null");
 
         int before = yt.requests.size();
-        assertThat(new TicketEditTools(env).update("ABC-1", "Neu", null, List.of("bleibt", "neu tag"), null, null))
+        assertThat(new TicketEditTools(env).update("ABC-1", "Neu", null, List.of("bleibt", "neu tag"), null, null, null))
                 .contains("geändert: Titel, Labels [bleibt, neu tag]");
         List<String> writes = yt.requests.subList(before, yt.requests.size()).stream()
                 .filter(r -> r.method().equals("POST")).map(StubServer.Request::body).toList();

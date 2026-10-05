@@ -121,7 +121,8 @@ public class TicketModule implements ToolModule {
                 verknüpfte Tickets und Pull/Merge Requests; `ticket_transitions`: mögliche Statuswechsel; `ticket_worklogs`: \
                 gebuchte Arbeitszeiten.
                 - Schreiben, nur wenn angeboten (einzeln in der App schaltbar): `ticket_comment`, `ticket_transition` \
-                (Ziel aus `ticket_transitions`), `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_log_time` (Zeit buchen; \
+                (Ziel aus `ticket_transitions`, optional mit Kommentar im selben Aufruf), `ticket_assign`, `ticket_update` (auch \
+                weitere Felder per `fields`, z.B. Jira-Custom-Fields), `ticket_create`, `ticket_log_time` (Zeit buchen; \
                 Dauer vom Nutzer, nicht geschätzt), `ticket_delete_comment`, \
                 `ticket_delete` (standardmäßig nur selbst angelegte; Schließen ist meist richtiger). Nur auf ausdrückliche \
                 Anweisung des Nutzers schreiben und das Ergebnis mit Link melden. Fehlt ein schreibendes Tool, ist es \
@@ -174,7 +175,7 @@ public class TicketModule implements ToolModule {
                         .withHelp("ticket_transition: Workflow-Übergang, Schließen/Öffnen, Board-Spalte."),
                 ConfigField.of(ALLOW_ASSIGN, "Zuweisen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("ticket_assign"),
-                ConfigField.of(ALLOW_EDIT, "Titel/Beschreibung/Labels ändern erlauben", FieldType.BOOLEAN).withDefault("false")
+                ConfigField.of(ALLOW_EDIT, "Titel/Beschreibung/Labels/Felder ändern erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("ticket_update"),
                 ConfigField.of(ALLOW_CREATE, "Tickets anlegen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("ticket_create"),

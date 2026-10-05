@@ -197,10 +197,10 @@ class OpenProjectTicketProviderTest {
         new TicketAssignTools(env).assign("#1", List.of(), null, null);
         assertThat(op.last("/api/v3/work_packages/1").body()).contains("\"assignee\":{\"href\":null}");
 
-        assertThat(new TicketEditTools(env).update("#1", "Neu", "Text", null, null, null)).contains("geändert: Titel, Beschreibung");
+        assertThat(new TicketEditTools(env).update("#1", "Neu", "Text", null, null, null, null)).contains("geändert: Titel, Beschreibung");
         assertThat(op.last("/api/v3/work_packages/1").body())
                 .isEqualTo("{\"lockVersion\":3,\"subject\":\"Neu\",\"description\":{\"raw\":\"Text\"}}");
-        assertThatThrownBy(() -> new TicketEditTools(env).update("#1", null, null, List.of("x"), null, null))
+        assertThatThrownBy(() -> new TicketEditTools(env).update("#1", null, null, List.of("x"), null, null, null))
                 .hasMessageContaining("kennt keine Labels");
 
         assertThat(new TicketCommentTools(env).comment("#1", "Hallo", null, null)).startsWith("#1: Kommentar 77 hinzugefügt");

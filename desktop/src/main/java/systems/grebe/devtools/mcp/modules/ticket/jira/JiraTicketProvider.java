@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.ticket.jira;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.format.DateTimeFormatter;
@@ -441,6 +442,45 @@ public class JiraTicketProvider implements TicketProvider {
                     http.baseUrl() + "/browse/" + k);
         }
 
+        /**
+         * Wechsel und Kommentar in einem Aufruf ({@code update.comment}) – Validatoren, die beim Übergang einen Kommentar
+         * verlangen, sehen ihn nur so. Nimmt die Instanz am Übergang keinen Kommentar an, nacheinander wie im Default.
+         */
+        @Override
+        public WriteResult transition(String key, String project, Transition transition, String comment) {
+            if (comment == null || comment.isBlank()) {
+                return transition(key, project, transition);
+            }
+            String k = issueKey(key);
+            var body = HttpJson.object();
+            body.putObject("transition").put("id", transition.id());
+            body.putObject("update").putArray("comment").addObject().putObject("add").put("body", comment);
+            try {
+                http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/transitions", body);
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 400 && e.getMessage().toLowerCase(Locale.ROOT).contains("comment")) {
+                    return TicketSystem.super.transition(key, project, transition, comment);
+                }
+                throw e;
+            }
+            String id = newestCommentId(k, comment);
+            return new WriteResult(k, "Status → " + transition.to() + " ('" + transition.name() + "') mit Kommentar"
+                    + (id == null ? "" : " " + id), http.baseUrl() + "/browse/" + k
+                    + (id == null ? "" : "?focusedCommentId=" + id), id);
+        }
+
+        /** ID des neuesten Kommentars, wenn er den gesendeten Text trägt – der Übergang selbst liefert sie nicht. */
+        private String newestCommentId(String k, String body) {
+            try {
+                JsonNode newest = http.getJson("/rest/api/2/issue/" + HttpJson.enc(k) + "/comment"
+                        + query("orderBy", "-created", "maxResults", 1)).path("comments").path(0);
+                String text = text(newest.path("body"));
+                return text != null && text.strip().equals(body.strip()) ? text(newest.path("id")) : null;
+            } catch (RuntimeException e) {
+                return null; // nur für die Liste selbst geschriebener Kommentare
+            }
+        }
+
         @Override
         public WriteResult comment(String key, String project, String body) {
             String k = issueKey(key);
@@ -521,6 +561,132 @@ public class JiraTicketProvider implements TicketProvider {
             body.set("fields", fields);
             http().put("/rest/api/2/issue/" + HttpJson.enc(k), body);
             return new WriteResult(k, "geändert: " + update.summary(), http.baseUrl() + "/browse/" + k);
+        }
+
+        /** Felder per ID oder Anzeigename aus der Editmeta des Tickets; der Text wird passend zum Feldtyp umgewandelt. */
+        @Override
+        public WriteResult updateFields(String key, String project, Map<String, String> values) {
+            String k = issueKey(key);
+            if (values == null || values.isEmpty()) {
+                throw new IllegalArgumentException("Jira: keine Felder angegeben.");
+            }
+            JsonNode editable = http().getJson("/rest/api/2/issue/" + HttpJson.enc(k) + "/editmeta").path("fields");
+            var fields = HttpJson.object();
+            List<String> done = new ArrayList<>();
+            values.forEach((ref, raw) -> {
+                Map.Entry<String, JsonNode> f = editableField(editable, ref, k);
+                String name = HttpJson.first(text(f.getValue().path("name")), f.getKey());
+                String value = raw == null ? "" : raw.strip();
+                JsonNode v = fieldValue(k, f.getValue(), name, value);
+                if (v == null) {
+                    fields.putNull(f.getKey());
+                } else {
+                    fields.set(f.getKey(), v);
+                }
+                done.add(value.isEmpty() ? name + " geleert" : name + " = " + value);
+            });
+            var body = HttpJson.object();
+            body.set("fields", fields);
+            http().put("/rest/api/2/issue/" + HttpJson.enc(k), body);
+            return new WriteResult(k, "Felder geändert: " + String.join(", ", done), http.baseUrl() + "/browse/" + k);
+        }
+
+        /** Bearbeitbares Feld per ID oder Anzeigename, beides ohne Groß-/Kleinschreibung. */
+        private static Map.Entry<String, JsonNode> editableField(JsonNode editable, String ref, String k) {
+            String r = ref == null ? "" : ref.strip();
+            List<Map.Entry<String, JsonNode>> all = new ArrayList<>(editable.properties());
+            for (Map.Entry<String, JsonNode> e : all) {
+                if (e.getKey().equalsIgnoreCase(r)) {
+                    return e;
+                }
+            }
+            List<Map.Entry<String, JsonNode>> byName = all.stream()
+                    .filter(e -> r.equalsIgnoreCase(text(e.getValue().path("name")))).toList();
+            if (byName.size() == 1) {
+                return byName.getFirst();
+            }
+            if (byName.size() > 1) {
+                throw new IllegalArgumentException("Jira: Feldname '" + r + "' ist mehrdeutig: " + fieldList(byName)
+                        + " – die Feld-ID angeben.");
+            }
+            throw new IllegalArgumentException("Jira: Feld '" + r + "' ist für " + k + " unbekannt oder nicht bearbeitbar. "
+                    + "Bearbeitbar: " + fieldList(all.stream().limit(40).toList()) + ".");
+        }
+
+        private static String fieldList(List<Map.Entry<String, JsonNode>> fields) {
+            return String.join(", ", fields.stream()
+                    .map(e -> HttpJson.first(text(e.getValue().path("name")), e.getKey()) + " (" + e.getKey() + ")").toList());
+        }
+
+        /**
+         * JSON-Wert für ein Feld; {@code null} = leeren. Text, der mit {@code {} oder {@code [} beginnt, geht unverändert
+         * als JSON hinaus – für Feldtypen ohne eigene Umwandlung.
+         */
+        private JsonNode fieldValue(String k, JsonNode field, String name, String value) {
+            JsonNode schema = field.path("schema");
+            boolean list = "array".equals(text(schema.path("type")));
+            if (value.isEmpty()) {
+                return list ? HttpJson.JSON.createArrayNode() : null;
+            }
+            if (value.startsWith("{") || value.startsWith("[")) {
+                try {
+                    return HttpJson.JSON.readTree(value);
+                } catch (RuntimeException e) {
+                    throw new IllegalArgumentException("Jira: Wert für " + name + " ist kein gültiges JSON: " + e.getMessage());
+                }
+            }
+            if (!list) {
+                return scalar(k, field, name, text(schema.path("type")), value);
+            }
+            var arr = HttpJson.JSON.createArrayNode();
+            for (String part : value.split(",")) {
+                if (!part.isBlank()) {
+                    arr.add(scalar(k, field, name, text(schema.path("items")), part.strip()));
+                }
+            }
+            return arr;
+        }
+
+        private JsonNode scalar(String k, JsonNode field, String name, String type, String v) {
+            Object value = switch (type == null ? "string" : type) {
+                case "string", "date", "datetime" -> v;
+                case "number" -> {
+                    try {
+                        yield new BigDecimal(v.replace(',', '.'));
+                    } catch (NumberFormatException e) {
+                        throw new IllegalArgumentException("Jira: " + name + " erwartet eine Zahl, erhalten: " + v);
+                    }
+                }
+                case "user" -> {
+                    JsonNode u = TicketSystem.isMe(v) ? http().getJson("/rest/api/2/myself") : assignableUser(k, v);
+                    yield cloud ? Map.of("accountId", text(u.path("accountId"))) : Map.of("name", text(u.path("name")));
+                }
+                case "option" -> Map.of("value", allowed(field, "value", name, v));
+                case "version", "component", "priority", "resolution", "group" -> Map.of("name", allowed(field, "name", name, v));
+                default -> throw new IllegalArgumentException("Jira: " + name + " hat den Feldtyp '" + type + "' – den Wert "
+                        + "als JSON angeben, z.B. {\"id\":\"10001\"}.");
+            };
+            return HttpJson.JSON.valueToTree(value);
+        }
+
+        /** Erlaubter Wert in der Schreibweise von Jira; ohne Werteliste in der Editmeta unverändert. */
+        private static String allowed(JsonNode field, String property, String name, String v) {
+            JsonNode values = field.path("allowedValues");
+            if (!values.isArray() || values.isEmpty()) {
+                return v;
+            }
+            List<String> names = new ArrayList<>();
+            for (JsonNode a : values) {
+                String s = text(a.path(property));
+                if (s != null && s.equalsIgnoreCase(v)) {
+                    return s;
+                }
+                if (s != null) {
+                    names.add(s);
+                }
+            }
+            throw new IllegalArgumentException("Jira: '" + v + "' ist für " + name + " nicht erlaubt – erlaubt: "
+                    + String.join(", ", names.stream().limit(30).toList()) + ".");
         }
 
         @Override
