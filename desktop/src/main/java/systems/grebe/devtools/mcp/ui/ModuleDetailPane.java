@@ -220,7 +220,7 @@ public class ModuleDetailPane extends ScrollPane {
         Alert a = new Alert(Alert.AlertType.WARNING, String.join("\n", warnings), anyway, cancel);
         a.setHeaderText("Freigaben heben Ausschlüsse auf");
         a.initOwner(getScene().getWindow());
-        a.getDialogPane().setMinWidth(560);
+        a.getDialogPane().setMinWidth(760);
         return a.showAndWait().filter(anyway::equals).isPresent();
     }
 

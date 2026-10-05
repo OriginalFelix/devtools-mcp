@@ -41,8 +41,6 @@ public class WindowModule implements ToolModule {
     /** Global freigegebene Ordner (Modul „Freigaben“), von der ToolRegistry eingefügt – nicht im Formular. */
     static final String SHARED = "sharedDirectories";
     private static final Pattern NAMED = Pattern.compile("([A-Za-z0-9._@ -]+)=(.+)");
-    /** So viele Programme nennt die Warnung beim Speichern, danach nur noch die Anzahl. */
-    private static final int MAX_LISTED = 20;
     static final String ALLOW_INPUT = "allowInput";
     static final String ALLOW_KEYBOARD = "allowKeyboard";
     static final String ALLOW_LAUNCH = "allowLaunch";
@@ -184,11 +182,15 @@ public class WindowModule implements ToolModule {
             return List.of();
         }
         List<String> out = new ArrayList<>();
-        out.add("Diese Programme fallen unter „Prozesse ausschließen“, liegen aber in global freigegebenen Ordnern "
-                + "(Freigaben) und dürfen deshalb trotzdem gesteuert werden:");
-        overridden.stream().limit(MAX_LISTED).forEach(p -> out.add("  " + p));
-        if (overridden.size() > MAX_LISTED) {
-            out.add("  … und " + (overridden.size() - MAX_LISTED) + " weitere");
+        out.add(overridden.size() == 1
+                ? "1 Programm fällt unter „Prozesse ausschließen“, liegt aber in einem global freigegebenen Ordner "
+                        + "(Freigaben) und darf deshalb trotzdem gesteuert werden:"
+                : overridden.size() + " Programme fallen unter „Prozesse ausschließen“, liegen aber in global "
+                        + "freigegebenen Ordnern (Freigaben) und dürfen deshalb trotzdem gesteuert werden:");
+        out.add("");
+        out.addAll(SharedProgramScan.describe(shared, overridden));
+        if (locked > 0 || !scan.complete()) {
+            out.add("");
         }
         if (locked > 0) {
             out.add(locked + " Programm(e) in den freigegebenen Ordnern bleiben gesperrt (Anmeldung, "

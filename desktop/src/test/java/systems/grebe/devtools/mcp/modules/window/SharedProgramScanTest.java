@@ -46,6 +46,46 @@ class SharedProgramScanTest {
     }
 
     @Test
+    void describesProgramsByFolderStructure(@TempDir Path root) {
+        Path other = root.resolveSibling(root.getFileName() + "-zweite");
+        List<Path> programs = List.of(
+                root.resolve("b").resolve("deep").resolve("Zeta.exe"),
+                root.resolve("Spotify.exe"),
+                root.resolve("crashpad_handler.exe"),
+                root.resolve("b").resolve("Alpha.exe"),
+                other.resolve("Tool.exe"));
+
+        List<String> lines = SharedProgramScan.describe(List.of(root, other), programs);
+
+        String sep = root.getFileSystem().getSeparator();
+        assertThat(lines).containsExactly(
+                root + " (4 Programme)",
+                "  crashpad_handler, Spotify",
+                "  b: Alpha",
+                "  b" + sep + "deep: Zeta",
+                other + " (1 Programm)",
+                "  Tool");
+    }
+
+    @Test
+    void summarizesLongFoldersAndManyFolders(@TempDir Path root) {
+        List<Path> programs = new java.util.ArrayList<>();
+        for (int i = 0; i < SharedProgramScan.NAMES_PER_LINE + 3; i++) {
+            programs.add(root.resolve("p" + (char) ('a' + i) + ".exe"));
+        }
+        for (int i = 0; i < SharedProgramScan.FOLDERS + 2; i++) {
+            programs.add(root.resolve("d" + (char) ('a' + i)).resolve("x.exe"));
+        }
+
+        List<String> lines = SharedProgramScan.describe(List.of(root), programs);
+
+        assertThat(lines.get(1)).endsWith(", … (+3)");
+        // Ordner: der Hauptordner selbst und FOLDERS + 2 Unterordner – FOLDERS werden gezeigt
+        assertThat(lines.getLast()).isEqualTo("  … und 3 weitere Ordner");
+        assertThat(lines).hasSize(1 + SharedProgramScan.FOLDERS + 1);
+    }
+
+    @Test
     void ignoresMissingDirectories(@TempDir Path root) {
         assertThat(SharedProgramScan.scan(List.of(root.resolve("fehlt"))).programs()).isEmpty();
     }

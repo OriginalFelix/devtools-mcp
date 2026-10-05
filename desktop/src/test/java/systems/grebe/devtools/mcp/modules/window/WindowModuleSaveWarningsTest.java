@@ -22,12 +22,13 @@ class WindowModuleSaveWarningsTest {
 
     @Test
     void warnsWhenSharedDirectoriesOverrideExclusions(@TempDir Path root) throws Exception {
-        Path foo = SharedProgramScanTest.program(root.resolve("sub"), "foo");
+        SharedProgramScanTest.program(root.resolve("sub"), "foo");
         Path keepass = SharedProgramScanTest.program(root, "KeePass");
 
         String w = String.join("\n", warnings(root, "foo|keepass"));
 
-        assertThat(w).contains("Prozesse ausschließen", foo.toString(), "1 Programm(e)", "bleiben gesperrt");
+        assertThat(w).contains("1 Programm fällt unter „Prozesse ausschließen“", root + " (1 Programm)", "  sub: foo",
+                "1 Programm(e)", "bleiben gesperrt");
         assertThat(w).doesNotContain(keepass.toString());
     }
 
