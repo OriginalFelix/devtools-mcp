@@ -112,6 +112,7 @@ public class WindowModule implements ToolModule {
                 - Meldet ein Tool, dass der Nutzer die Maus bewegt hat, NICHT sofort wiederholen: der Nutzer arbeitet \
                 gerade selbst. Fragen, ob du weitermachen sollst.
                 - Fokusverlust bricht ab: erst nachsehen (Screenshot), was sich geöffnet hat.
+                - Fertig? Immer `window_unbind` aufrufen – das blendet den Zeiger der KI, Rahmen und Hinweis aus.
                 - Keine Passwörter, Zugangsdaten oder Zahlungsdaten eintippen; nichts Unumkehrbares (Löschen, Senden, \
                 Bezahlen) ohne ausdrückliche Bestätigung des Nutzers.""";
     }

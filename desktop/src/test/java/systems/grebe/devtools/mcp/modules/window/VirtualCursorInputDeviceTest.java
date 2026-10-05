@@ -184,6 +184,21 @@ class VirtualCursorInputDeviceTest {
     }
 
     @Test
+    void pointerDisappearsByItselfWhenIdle() throws Exception {
+        VirtualCursorInputDevice d = new VirtualCursorInputDevice(desktop, () -> cursors, p -> p, desktop, true, true,
+                java.time.Duration.ofMillis(100));
+        d.target(app, Set.of(APP));
+        d.move(10, 10);
+
+        for (int i = 0; i < 50 && !cursors.log.contains("destroy"); i++) {
+            Thread.sleep(20);
+        }
+
+        assertThat(cursors.log).containsExactly("create 10,10", "destroy");
+        assertThat(d.pointer()).isNull();
+    }
+
+    @Test
     void releaseDestroysThePointer() {
         device.move(1, 1);
         device.release();

@@ -5,7 +5,12 @@ import java.awt.Rectangle;
 import java.awt.datatransfer.Transferable;
 import java.awt.event.InputEvent;
 import java.awt.image.BufferedImage;
+import java.time.Duration;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -26,7 +31,10 @@ import systems.grebe.devtools.mcp.modules.window.platform.WindowSystem;
  *
  * <p>Weil das Zielfenster mit eigenem Zeiger nicht nach vorn geholt wird, prüft jeder Klick (und Tastatur-Eingaben vor
  * dem ersten Klick), dass an der Stelle kein fremdes Fenster darüber liegt. Wechselt das Zielfenster, beginnt ein neuer
- * Zeiger (ohne den Fokus des alten Fensters).
+ * Zeiger (ohne den Fokus des alten Fensters). Nach {@link #IDLE} ohne Aktion verschwindet der Zeiger von selbst – auch
+ * wenn die KI vergisst, die Bindung aufzuheben.
+ *
+ * <p>Threadsicher (alle Methoden synchronisiert), weil das Ausblenden nach Leerlauf auf einem eigenen Thread läuft.
  */
 final class VirtualCursorInputDevice implements InputDevice {
 
@@ -37,6 +45,16 @@ final class VirtualCursorInputDevice implements InputDevice {
     private final boolean ownPointer;
     private final boolean ownKeyboard;
     private final long self = ProcessHandle.current().pid();
+    private final Duration idle;
+    private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "virtual-cursor-idle");
+        t.setDaemon(true);
+        return t;
+    });
+    private ScheduledFuture<?> idleTask;
+
+    /** Nach so langer Untätigkeit wird der eigene Zeiger zerstört. */
+    static final Duration IDLE = Duration.ofSeconds(60);
 
     // unter dem Eingabe-Lock von WindowSupport
     private VirtualCursor cursor;
@@ -54,6 +72,13 @@ final class VirtualCursorInputDevice implements InputDevice {
      */
     VirtualCursorInputDevice(InputDevice real, Supplier<CursorController> cursors, Function<Point, Point> toNative,
                              WindowSystem windows, boolean ownPointer, boolean ownKeyboard) {
+        this(real, cursors, toNative, windows, ownPointer, ownKeyboard, IDLE);
+    }
+
+    /** @param idle nach so langer Untätigkeit verschwindet der Zeiger */
+    VirtualCursorInputDevice(InputDevice real, Supplier<CursorController> cursors, Function<Point, Point> toNative,
+                             WindowSystem windows, boolean ownPointer, boolean ownKeyboard, Duration idle) {
+        this.idle = idle;
         this.real = real;
         this.cursors = cursors;
         this.toNative = toNative;
@@ -63,12 +88,12 @@ final class VirtualCursorInputDevice implements InputDevice {
     }
 
     @Override
-    public boolean independentPointer() {
+    public synchronized boolean independentPointer() {
         return ownPointer;
     }
 
     @Override
-    public boolean independentKeyboard() {
+    public synchronized boolean independentKeyboard() {
         return ownKeyboard;
     }
 
@@ -76,7 +101,7 @@ final class VirtualCursorInputDevice implements InputDevice {
 
     /** Mit eigener Maus deren Position – der Mauszeiger des Nutzers spielt dann keine Rolle. */
     @Override
-    public Point pointer() {
+    public synchronized Point pointer() {
         if (!ownPointer) {
             return real.pointer();
         }
@@ -84,7 +109,7 @@ final class VirtualCursorInputDevice implements InputDevice {
     }
 
     @Override
-    public void move(int x, int y) {
+    public synchronized void move(int x, int y) {
         if (ownPointer) {
             place(x, y);
         } else {
@@ -93,7 +118,7 @@ final class VirtualCursorInputDevice implements InputDevice {
     }
 
     @Override
-    public void press(int buttons) {
+    public synchronized void press(int buttons) {
         if (!ownPointer) {
             real.press(buttons);
             return;
@@ -101,10 +126,11 @@ final class VirtualCursorInputDevice implements InputDevice {
         requireUnobstructed();
         cursors.get().press(requireCursor(), button(buttons));
         clicked = true;
+        touch();
     }
 
     @Override
-    public void release(int buttons) {
+    public synchronized void release(int buttons) {
         if (ownPointer) {
             cursors.get().release(requireCursor(), button(buttons));
         } else {
@@ -113,7 +139,7 @@ final class VirtualCursorInputDevice implements InputDevice {
     }
 
     @Override
-    public void click(int buttons, int count) {
+    public synchronized void click(int buttons, int count) {
         if (!ownPointer) {
             real.click(buttons, count);
             return;
@@ -121,22 +147,24 @@ final class VirtualCursorInputDevice implements InputDevice {
         requireUnobstructed();
         cursors.get().click(requireCursor(), button(buttons), count);
         clicked = true;
+        touch();
     }
 
     @Override
-    public void wheel(int notches) {
+    public synchronized void wheel(int notches) {
         if (!ownPointer) {
             real.wheel(notches);
             return;
         }
         requireUnobstructed();
         cursors.get().scroll(requireCursor(), notches);
+        touch();
     }
 
     // --- Tastatur
 
     @Override
-    public void keyPress(int keyCode) {
+    public synchronized void keyPress(int keyCode) {
         if (ownKeyboard) {
             cursors.get().keyPress(keyboardCursor(), keyCode);
         } else {
@@ -145,7 +173,7 @@ final class VirtualCursorInputDevice implements InputDevice {
     }
 
     @Override
-    public void keyRelease(int keyCode) {
+    public synchronized void keyRelease(int keyCode) {
         if (!ownKeyboard) {
             real.keyRelease(keyCode);
             return;
@@ -157,12 +185,12 @@ final class VirtualCursorInputDevice implements InputDevice {
     }
 
     @Override
-    public boolean typesDirectly() {
+    public synchronized boolean typesDirectly() {
         return ownKeyboard || real.typesDirectly();
     }
 
     @Override
-    public void typeChar(char c) {
+    public synchronized void typeChar(char c) {
         if (ownKeyboard) {
             cursors.get().type(keyboardCursor(), String.valueOf(c));
         } else {
@@ -173,7 +201,7 @@ final class VirtualCursorInputDevice implements InputDevice {
     // --- Ziel und Kontrolle
 
     @Override
-    public void target(NativeWindow target, Set<Long> pids) {
+    public synchronized void target(NativeWindow target, Set<Long> pids) {
         if (window != null && window.id() != target.id() && cursor != null) {
             dropCursor(); // neues Fenster: der Fokus des alten gilt nicht mehr
         }
@@ -184,7 +212,7 @@ final class VirtualCursorInputDevice implements InputDevice {
 
     /** Zeiger zerstören – die KI gibt die Kontrolle ab. */
     @Override
-    public void release() {
+    public synchronized void release() {
         dropCursor();
         real.release();
     }
@@ -198,9 +226,26 @@ final class VirtualCursorInputDevice implements InputDevice {
             c.move(cursor, at.x, at.y);
         }
         position = new Point(x, y);
+        touch();
+    }
+
+    /** Leerlauf neu messen: jede Aktion mit dem Zeiger verschiebt sein Ausblenden. */
+    private void touch() {
+        if (idleTask != null) {
+            idleTask.cancel(false);
+        }
+        idleTask = timer.schedule(this::idleTimeout, idle.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    private synchronized void idleTimeout() {
+        dropCursor();
     }
 
     private void dropCursor() {
+        if (idleTask != null) {
+            idleTask.cancel(false);
+            idleTask = null;
+        }
         VirtualCursor c = cursor;
         cursor = null;
         position = null;
@@ -225,6 +270,7 @@ final class VirtualCursorInputDevice implements InputDevice {
         if (!clicked) {
             requireUnobstructed();
         }
+        touch();
         return cursor;
     }
 
@@ -270,27 +316,27 @@ final class VirtualCursorInputDevice implements InputDevice {
     // --- Bildschirm, Zwischenablage: immer das echte Gerät
 
     @Override
-    public void pause(int millis) {
+    public synchronized void pause(int millis) {
         real.pause(millis);
     }
 
     @Override
-    public BufferedImage capture(Rectangle bounds) {
+    public synchronized BufferedImage capture(Rectangle bounds) {
         return real.capture(bounds);
     }
 
     @Override
-    public BufferedImage capture(NativeWindow window) {
+    public synchronized BufferedImage capture(NativeWindow window) {
         return real.capture(window);
     }
 
     @Override
-    public Transferable clipboard() {
+    public synchronized Transferable clipboard() {
         return real.clipboard();
     }
 
     @Override
-    public void clipboard(Transferable content) {
+    public synchronized void clipboard(Transferable content) {
         real.clipboard(content);
     }
 }
