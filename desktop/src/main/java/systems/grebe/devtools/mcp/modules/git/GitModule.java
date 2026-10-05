@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
@@ -97,11 +98,17 @@ public class GitModule implements ToolModule {
     }
 
     @Override
+    public Set<String> sharedDirectoryFields() {
+        return Set.of(REPOSITORIES);
+    }
+
+    @Override
     public List<ConfigField> configSchema() {
         return List.of(
-                ConfigField.of(REPOSITORIES, "Repositories", FieldType.DIRECTORY_LIST).asRequired()
+                ConfigField.of(REPOSITORIES, "Repositories", FieldType.DIRECTORY_LIST)
                         .withHelp("Repository-Verzeichnisse oder Sammelordner (deren direkte Unterordner mit .git "
-                                + "werden übernommen). Nur diese sind für das LLM zugänglich."),
+                                + "werden übernommen). Nur diese und die unter „Freigaben“ global freigegebenen sind "
+                                + "für das LLM zugänglich."),
                 ConfigField.of(DEFAULT_REPOSITORY, "Standard-Repository", FieldType.STRING)
                         .withHelp("Name (Ordnername) des Repositories, das ohne Angabe verwendet wird."),
                 ConfigField.of(ALLOW_WRITE, "Schreibende Operationen erlauben", FieldType.BOOLEAN).withDefault("true")
@@ -150,7 +157,9 @@ public class GitModule implements ToolModule {
         GitSupport git = new GitSupport(config);
         Workspaces repos = git.repositories();
         if (repos.isEmpty()) {
-            return ConnectionTestResult.failed("In den angegebenen Verzeichnissen wurde kein Git-Repository gefunden.");
+            return Workspaces.unrestricted()
+                    ? ConnectionTestResult.ok("Keine Repositories eingetragen. " + repos.unrestrictedHint())
+                    : ConnectionTestResult.failed("In den angegebenen Verzeichnissen wurde kein Git-Repository gefunden.");
         }
         List<String> lines = new ArrayList<>(repos.describe());
         git.worktrees().forEach(w -> lines.add(w.name() + " -> " + w.dir() + " (Worktree)"));

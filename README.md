@@ -25,11 +25,18 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Fenstersteuerung** (Fenster per FFM: Windows user32, macOS CoreGraphics/AX, Linux X11; eigener KI-Zeiger per JNA) | `window_list` (Prozesse mit Fenstern, PID, UI-Thread nur Windows; UWP-Apps wie der Rechner unter ihrem eigenen Prozess), `window_bind` (Prozess inkl. Kindprozessen, nie der Elternprozess, Geschwister per Schalter; Bindung je Benutzer), `window_windows`, `window_screenshot` (PNG als Bild-Content, verkleinert auf max. 1280 px), `window_unbind` · Schalter „Programme starten erlauben“ (Standard aus): `window_launch` – startet ein Programm, das zu „Nur diese Prozesse“ passt, im Hintergrund und bindet es; das Fenster bekommt keinen Fokus, Eingaben des Nutzers landen erst dort, wenn er es anklickt (Windows: `ShellExecuteEx` mit `SW_SHOWNOACTIVATE`, holt es sich trotzdem den Vordergrund, wird er sofort zurückgegeben; macOS: `open -g`) · Schalter „Eingaben erlauben“ (Standard aus): `window_click`, `window_scroll`, `window_drag` · Schalter „Tastatur erlauben“ (Standard aus, nur zusammen mit Eingaben): `window_type` (Sonderzeichen über die Zwischenablage, wird wiederhergestellt), `window_key` (ohne Windows-/Super-Taste), Klicks mit gehaltenen Tasten · „Maus der KI“: `eigener-zeiger` (Standard) – Klicks, Ziehen und Scrollen mit einem zweiten Zeiger, die Maus des Nutzers bewegt sich nie und das Fenster wird nicht nach vorn geholt (Windows: Nachrichten an das Fenster, bei UWP/WinUI UI Automation bzw. Touch zum Ziehen; macOS: Ereignisse an den Prozess; X11: zweiter Master-Zeiger per XInput2), kein Klick, wenn ein fremdes Fenster darüber liegt; `maus` – echte Maus (Robot), Fenster wird aktiviert, Not-Aus bei Mausbewegung und Abkühlzeit · „Tastatur der KI“ (getrennt einstellbar): `eigene-tastatur` (Standard) – Text und Tasten gehen an das Element, das der Zeiger der KI zuletzt angeklickt hat (eigener Fokus, Strg/Umschalt/Alt nur im Ziel), die Tastatur des Nutzers bleibt unberührt (Windows: Nachrichten an das Element; macOS: Ereignisse an den Prozess; X11: eigene Master-Tastatur); `tastatur` – echte Tastatur (Robot), Fenster wird aktiviert. Während der Steuerung Rahmen und Hinweis um das Fenster; diese App, Anmelde-/Berechtigungsdialoge und Passwortmanager sind nie steuerbar; nicht im Headless-Betrieb (Modul Standard: aus) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
-| **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
+| **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
+| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
 und JMX-Ziele für alle Performance-Module. Container-Laufzeit und freigegebene Container kommen aus dem
 Container-Modul (ältere Einstellungen werden beim ersten Start übernommen).
+
+Das Modul **Freigaben** hat ebenfalls keine eigenen Tools. *Für alle Tools freigegeben* nimmt Verzeichnisse oder
+Sammelordner auf, die Git, Build, Code-Graph, Pull Requests und Compose zusätzlich zu ihren eigenen Listen bekommen –
+jedes Modul übernimmt, was zu ihm passt (Git-Repositories, Gradle-/Maven-Projekte …). Der Schalter *Beschränkung
+aufheben* lässt die Tools jeden absoluten Pfad verwenden (aufgelöst zum nächsten passenden Verzeichnis darüber, z.B.
+dem Repository); nur lesend freigegebene Projekte des Team-Servers und die Schalter der Module gelten weiter.
 
 ### Container-Laufzeiten erweitern (ServiceLoader)
 
@@ -325,7 +332,7 @@ Gradle-Multiprojekt:
 | Projekt | Inhalt | Artefakt |
 |---|---|---|
 | `desktop` | Desktop-App: MCP-Server, alle Module, Plugins, JavaFX-Oberfläche; Backend eingebettet oder Anbindung an einen Team-Server | `desktop/build/libs/devtools-mcp-<version>.jar` |
-| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
+| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
 | `shared` | Gemeinsam: Einstellungs-Modell, Datenklassen der GraphQL-API (`api`) | – |
 | `natives` | Zugriffe auf das Betriebssystem für die Fenstersteuerung: Fenstersysteme (FFM), zweiter KI-Zeiger mit eigener Maus und Tastatur (JNA), Programmstart im Hintergrund | – (Bibliothek) |
@@ -361,6 +368,7 @@ claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
 * **Tools**: jedes Tool einzeln abschaltbar.
 * **Aufrufe**: Live-Protokoll aller Tool-Aufrufe mit Argumenten, Ergebnis, Dauer und Fehlern.
 * **Skills**: Übersicht der gespeicherten Skills mit Inhalt, Zusatzdateien und Historie.
+* **Memories**: die vom LLM festgehaltenen früheren Aktionen mit Suche (wie `memories_search`) und Löschen.
 * **Backend**: eingebettet oder Team-Server, Status, aktives Profil, Projekte mit lokalem Verzeichnis (siehe unten).
 * **Einstellungen**: Port (nach Neustart), optionales Bearer-Token (sofort wirksam), Tray-Verhalten.
 * Fenster schließen → läuft im System-Tray weiter; *Beenden* über das Tray-Menü.
@@ -374,7 +382,8 @@ eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen au
 ### Sicherheit
 
 * Nur `127.0.0.1`; Clients auf demselben Rechner ohne Token oder mit dem Zugriffstoken aus den Einstellungen.
-* Git/Build arbeiten ausschließlich in den freigegebenen Verzeichnissen; Pfade außerhalb werden abgewiesen.
+* Git/Build arbeiten ausschließlich in den freigegebenen Verzeichnissen (im Modul oder global unter **Freigaben**);
+  Pfade außerhalb werden abgewiesen – außer die Beschränkung ist unter **Freigaben** bewusst aufgehoben.
 * Build: nur freigegebene Tasks/Goals, Argumente werden gegen eine Zeichen-Whitelist geprüft (kein Shell-Injection
   über `cmd.exe`), ein Build pro Projekt gleichzeitig, Timeout.
 * Git-Schreibtools lassen sich per Schalter „Schreibende Operationen erlauben“ komplett abschalten.
@@ -397,7 +406,7 @@ eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen au
 
 ### Backend und Team-Server
 
-Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte und Skills und bietet dafür eine
+Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills und Memories und bietet dafür eine
 **GraphQL-API** unter `/graphql` (Schema: `backend/src/main/resources/backend-graphql/schema.graphqls`; Queries/Mutations über
 HTTP, Subscriptions über WebSocket).
 
@@ -414,8 +423,8 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
 ```
 
 * **Abgleich:** Die App meldet dem Backend ihre Module samt Feldern und Tools (`reportCatalog`; daraus baut die Web-UI
-  die Formulare), lädt Benutzer, Vorgaben und Projekte und abonniert `settingsChanged`, `projectsChanged` und
-  `skillsChanged`. Änderungen – auch aus der Web-UI oder von einer anderen Desktop-App – kommen sofort an; die Tools
+  die Formulare), lädt Benutzer, Vorgaben und Projekte und abonniert `settingsChanged`, `projectsChanged`,
+  `skillsChanged` und `memoriesChanged`. Änderungen – auch aus der Web-UI oder von einer anderen Desktop-App – kommen sofort an; die Tools
   werden neu gebaut, MCP-Clients bekommen `tools/list_changed`. Bricht die Verbindung ab, verbinden sich die
   Subscriptions mit wachsendem Abstand neu; dazwischen gilt der letzte Stand (beim Team-Server auch über einen
   Neustart: verschlüsselte Cache-Datei `team-cache.json`). Überholte Stände erkennt die App am Änderungszähler
@@ -566,6 +575,10 @@ Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekunde
 
 ### Skills – prozedurales Gedächtnis des LLM
 
+Ein Skill registriert einen wiederkehrenden Aufgabentyp mit seinem erprobten Ablauf, z.B. `ticket-review`: wie ein
+Ticket geprüft wird (Schritte, Kriterien, Tool-Aufrufe, Vorlieben des Nutzers). Was bei einem einzelnen Durchlauf
+konkret passiert ist, gehört nicht in den Skill, sondern in eine [Memory](#memories--gedächtnis-für-frühere-aktionen).
+
 Angelehnt an das Skill-Management von Hermes: Das LLM sucht vor einer Aufgabe mit `skills_list` passende Skills und
 lädt sie mit `skills_view`. Nach einer schwierigen, mehrstufigen oder korrigierten Aufgabe legt es selbst einen Skill
 an (`skills_create`) oder verbessert einen bestehenden gezielt (`skills_patch`, `old_string` → `new_string`, muss
@@ -573,6 +586,12 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
 
 * **Aufbau** wie ein `SKILL.md`: Name (`a-z0-9._-`), ein Satz `description` („wann greift der Skill“), Kategorie,
   Tags, Markdown-Inhalt, dazu Zusatzdateien unter `references/`, `templates/`, `scripts/`, `assets/`.
+* **Registrierung (`triggers`):** Tool-Namen oder Präfixe (`ticket_get`, `pr_*`), für die der Skill gilt. Ruft das LLM
+  ein solches Tool auf, hängt der Server einmal je Session eine Zeile an das Ergebnis: „[DevTools] Registrierter Skill
+  für ticket_get: ticket-review – … (per skills_view ladbar)“. Ein bereits geladener Skill wird nicht mehr genannt.
+* **Sparsam ausgeliefert:** `skills_list` zeigt je Skill nur Name und gekürzte Beschreibung (ohne Tags); bei Suchtext
+  und genau einem Treffer kommt der Inhalt gleich mit (spart den zweiten Aufruf). `skills_view` hat statt Frontmatter
+  eine Kopfzeile (Name, Revision, Herkunft, Registrierung).
 * **Historie:** jede Änderung erzeugt eine Revision mit Aktion und Notiz (`skills_history`). Mit
   `expected_revision` lehnt ein Patch ab, wenn der Skill inzwischen woanders geändert wurde.
 * **Ablage im Backend:** Skills liegen im Backend (eingebettet oder Team-Server) und gehören der E-Mail des
@@ -632,6 +651,52 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
   „Löschen erlauben“ – der gilt nur für das LLM.
 * Die H2-Datei ist exklusiv gesperrt, solange die App läuft. Wer parallel mit IntelliJ o.ä. hineinschauen will,
   hängt `;AUTO_SERVER=TRUE` an die JDBC-URL.
+
+### Memories – Gedächtnis für frühere Aktionen
+
+Memories ergänzen die Skills: Ein Skill sagt, *wie* ein Aufgabentyp abläuft (`ticket-review`), eine Memory hält fest,
+*was* bei einem konkreten Durchlauf passiert ist – „Ticket ABC-123 reviewt: Akzeptanzkriterien fehlen, an PO zurück“.
+Hier gehören die Einmal-Details hinein, die ein Skill bewusst nicht enthält: Ticket-/PR-Nummern, Ergebnis,
+Entscheidungen, Datum.
+
+* **Anlegen:** Nach einer nennenswerten Aktion (Ticket reviewt, Fehler behoben, PR erstellt, Entscheidung mit dem
+  Nutzer) legt das LLM mit `memories_save` eine Memory an: `title` (eine Zeile), `content` (Markdown: Ausgangslage,
+  Vorgehen, Ergebnis, offene Punkte) und optional `project` (Name aus `projects_list`), `skill` (die
+  Skill-Registrierung, nach der gearbeitet wurde), `reference` (Ticket-Key, PR, Commit) und `tags`. Gibt es zum selben
+  Bezug schon Memories, nennt die Antwort sie und verweist auf `memories_update`.
+* **Nachtragen:** `memories_update` mit `append` hängt einen datierten Nachtrag an (z.B. Ergebnis nach Rückmeldung);
+  `content` ersetzt den Inhalt, die übrigen Felder lassen sich einzeln ändern (leerer Text entfernt sie).
+* **Suchen:** `memories_search` zerlegt den Suchtext in Begriffe und sucht in Titel, Inhalt, Tags, Bezug, Projekt und
+  Skill; Treffer werden nach Anzahl getroffener Begriffe gewichtet (Titel und Bezug doppelt), dann nach Datum. Filter:
+  `project`, `skill` (z.B. alle früheren Ticket-Reviews), `tag`, `days`, `limit` (Standard 5, max. 50). Ohne Suchtext
+  kommen die neuesten. `memories_view` lädt eine Memory vollständig.
+* **Ablage:** im Backend neben den Skills (Tabelle `memory` in derselben Datenbank, Spring Data JPA mit
+  `MemoryRepository`/`MemoryService`), je Benutzerkonto (E-Mail) – andere Benutzer sehen sie nicht, globale Memories
+  gibt es nicht. GraphQL: `memories`, `memory`, `memorySearch`, `memoryView`, `saveMemory`, `updateMemory`,
+  `deleteMemory`, Subscription `memoriesChanged`.
+* **Schalter:** „Anlegen und Nachtragen erlauben“ (Standard an), „Löschen erlauben“ (Standard aus, nur für das LLM –
+  im Tab **Memories** der App geht Löschen immer), „Max. Zeichen je Memory“ (Standard 20 000).
+* **Sparsam ausgeliefert:** Standard 5 Treffer mit einer Zeile plus kurzem Ausschnitt; bei genau einem Treffer kommt
+  die Memory direkt vollständig.
+
+### Hinweise des Servers: Skills und Memories finden das LLM
+
+Damit das LLM nicht ohne das vorhandene Wissen loslegt, hängt der Server (`RecallHints`) an Tool-Ergebnisse kurze
+Zeilen „[DevTools] …“ – nur bei einem Treffer, jeder Skill und jede Memory höchstens einmal je MCP-Session:
+
+| Auslöser | Hinweis |
+|---|---|
+| Tool, für das ein Skill registriert ist (`triggers`) | „Registrierter Skill für ticket_get: ticket-review – …“ |
+| Argument enthält einen Bezug einer Memory (z.B. `ABC-123`) | „Frühere Aktionen zu abc-123: #12 2026-10-01 …“ |
+| `skills_view` | frühere Durchläufe dieses Skills (Memories mit `skill`) |
+| `skills_list` mit Suchtext | passende Memories |
+| `memories_search` mit Suchtext | passende Skills |
+
+Registrierungen und Bezüge hält die App im Speicher und lädt sie bei jeder Änderung neu (eigene Schreib-Tools sofort,
+andere Apps über `skillsChanged`/`memoriesChanged`) – ein Tool-Aufruf ohne Treffer kostet keinen Backend-Zugriff.
+Zahlen in Argumenten zählen nur unter ID-artigen Namen (`id`, `number`, `pr`, `key` …), nicht etwa `limit`. Die
+Hinweise beschreiben nur den Zustand („per skills_view ladbar“), weil Clients Aufforderungen in Tool-Ergebnissen
+misstrauen. Abgeschaltete Module bzw. Lese-Tools liefern keine Hinweise.
 
 ### Instructions für das LLM
 
@@ -713,7 +778,8 @@ MCP-Tool-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `open
 Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die Callbacks mit
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
-zerstörerisch. Bisher annotiert: SSH, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
+zerstörerisch. Bisher annotiert: SSH, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
+Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`.
 
 ## Plugins
 
@@ -843,15 +909,16 @@ desktop/
   config/SettingsStore    ── settings.json (App-Einstellungen), SecretCipher (AES-GCM)
   server/BearerTokenFilter── optionaler Token-Schutz für /mcp
   remote/                 ── EmbeddedBackend + LocalUser, BackendConnection (GraphQL-Client, Subscriptions, Cache),
-                             BackendSettingsResolver, BackendSkills
-  modules/{git,sonar,build,graph,skills,…}
+                             BackendSettingsResolver, BackendSkills, BackendMemories
+  modules/{git,sonar,build,graph,skills,memories,…} ── skills/RecallHints: Hinweise auf Skills und Memories
   plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
   plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
   ui/                     ── MainView, ModuleDetailPane, ConfigForm, InvocationLogView, PluginsView, BackendView, Dialoge
 backend/
   backend/BackendConfig   ── Einstieg (Component-Scan des Backends)
   backend/BackendGraphQlController, GraphQlAuth, GraphQlErrors, ChangeBus ── GraphQL-API, Token, Fehler, Subscriptions
-  backend/{account,profile,project,catalog,skills} ── Benutzer + Tokens, Profile + Ebenen, Projekte, Katalog, Skills
+  backend/{account,profile,project,catalog,skills,memories} ── Benutzer + Tokens, Profile + Ebenen, Projekte,
+                             Katalog, Skills, Memories
 server/
   DevToolsServerApplication ── Spring Boot (Jetty) · WildFlyInitializer (WAR)
   server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI
@@ -860,7 +927,7 @@ natives/
   modules/window/cursor/   ── CursorProvider/CursorController (SPI): zweiter KI-Zeiger je Betriebssystem (JNA)
 shared/
   api/                    ── Datenklassen der GraphQL-API
-  core/ConfigField, config/ModuleSettings, profile/Overrides, modules/skills/{SkillBackend,SkillViews}
+  core/ConfigField, config/ModuleSettings, profile/Overrides, modules/{skills,memories}/{…Backend,…Views}
 ```
 
 MCP-Server: Spring AI `spring-ai-starter-mcp-server-webflux` 2.0.1 (MCP Java SDK 2.0.0), Protokoll `STREAMABLE`.

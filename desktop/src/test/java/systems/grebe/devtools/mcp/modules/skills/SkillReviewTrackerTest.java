@@ -72,7 +72,7 @@ class SkillReviewTrackerTest {
                 .contains("noch leer", "skills_create", "skills_patch");
         assertThat(call(t, "a", "git_status", "{}")).isEqualTo("ok");
         t.librarySize = 3;
-        assertThat(call(t, "b", "git_status", "{}")).contains("3 Skill(s), per skills_list durchsuchbar");
+        assertThat(call(t, "b", "git_status", "{}")).contains("3 Skill(s). Abläufe je Aufgabentyp findet skills_list");
     }
 
     @Test

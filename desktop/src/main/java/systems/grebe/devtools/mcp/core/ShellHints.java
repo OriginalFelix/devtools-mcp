@@ -43,8 +43,9 @@ public final class ShellHints {
 
     public static final String DEBUG = " Breakpoint-Debugging immer über die debug_*-Tools, nicht mit `jdb` in der Shell.";
 
-    public static final String SKILLS = " Skills (wiederverwendbare Abläufe) immer über die skills_*-Tools lesen und "
-            + "pflegen, nicht als SKILL.md-Dateien in der Shell oder im Dateisystem.";
+    public static final String SKILLS = " Skills nur über skills_*-Tools, nicht als SKILL.md-Dateien.";
+
+    public static final String MEMORIES = " Memories nur über memories_*-Tools, nicht als Notizdateien.";
 
     public static final String GRAPH = " Für freigegebene Java-Projekte gilt: Struktur, Aufrufer und Abhängigkeiten über "
             + "die graph_*-Tools ermitteln, nicht mit `grep`/`find` in der Shell.";

@@ -9,9 +9,10 @@ import systems.grebe.devtools.mcp.core.ShellHints;
 /** Schreibende Skill-Tools (nur registriert, wenn in der Konfiguration erlaubt). */
 public class SkillWriteTools {
 
-    private static final String NOTE = "Kurz, warum geändert wurde (erscheint in skills_history)";
-    private static final String EXPECTED = "Optional: Revision, auf der die Änderung beruht (aus skills_view). "
-            + "Weicht sie ab, wird abgelehnt statt fremde Änderungen zu überschreiben.";
+    private static final String NOTE = "Kurz, warum geändert (für skills_history)";
+    private static final String EXPECTED = "Revision aus skills_view; weicht sie ab, wird abgelehnt";
+    private static final String TRIGGERS = "Tools, bei deren Aufruf der Server auf den Skill hinweist, z.B. "
+            + "['ticket_get','pr_*']";
 
     private final SkillBackend service;
     private final int maxContentChars;
@@ -21,60 +22,56 @@ public class SkillWriteTools {
         this.maxContentChars = maxContentChars;
     }
 
-    @Tool(name = "create", description = "Speichert neu Gelerntes dauerhaft als Skill (Ablauf, Fix). Anlegen, wenn eine Aufgabe schwierig oder "
-            + "mehrstufig war, Fehlversuche nötig waren, der Nutzer korrigiert hat oder ein nicht offensichtlicher "
-            + "Ablauf gefunden wurde, der wiederkommen wird. Vorher mit skills_list prüfen, ob es schon einen "
-            + "passenden gibt – dann skills_patch. Inhalt als Markdown: wann verwenden, Schritte, konkrete "
-            + "Befehle/Tool-Aufrufe, Fallstricke, Prüfung. Lehren statt Protokoll, keine Geheimnisse."
-            + ShellHints.SKILLS)
+    @Tool(name = "create", description = "Speichert neu Gelerntes dauerhaft als Skill (Ablauf, Fix). Registriert "
+            + "einen Aufgabentyp (z.B. 'ticket-review'), keinen Einzelfall – der gehört in memories_save. Vorher "
+            + "skills_list; passt ein Skill, skills_patch. Inhalt (Markdown): wann, Schritte, Tool-Aufrufe, "
+            + "Fallstricke, Prüfung. Keine Geheimnisse." + ShellHints.SKILLS)
     public String create(
-            @ToolParam(description = SkillReadTools.NAME) String name,
-            @ToolParam(description = "Ein Satz, wann der Skill greift (max. 1024 Zeichen), z.B. 'Verwenden, wenn "
-                    + "ein WildFly-Heap wächst: Leck mit jvm_heap/visualvm_heap_analyze eingrenzen.'") String description,
-            @ToolParam(description = "Inhalt als Markdown (ohne Frontmatter)") String content,
-            @ToolParam(required = false, description = "Kategorie, z.B. 'software-development', 'devops'") String category,
-            @ToolParam(required = false, description = "Schlagwörter für die Suche, z.B. ['wildfly','heap']") List<String> tags) {
-        return service.create(name, description, content, category, tags, maxContentChars);
+            @ToolParam(description = "Name des Aufgabentyps, z.B. 'ticket-review' (a-z0-9._-)") String name,
+            @ToolParam(description = "Ein Satz, wann der Skill greift") String description,
+            @ToolParam(description = "Inhalt als Markdown") String content,
+            @ToolParam(required = false, description = "Kategorie, z.B. 'software-development'") String category,
+            @ToolParam(required = false, description = "Schlagwörter für die Suche") List<String> tags,
+            @ToolParam(required = false, description = TRIGGERS) List<String> triggers) {
+        return service.create(name, description, content, category, tags, triggers, maxContentChars);
     }
 
-    @Tool(name = "patch", description = "Ergänzt einen Skill um Korrekturen und Workarounds. Ersetzt gezielt eine Textstelle im Skill-Inhalt oder – mit file_path – in "
-            + "einer Zusatzdatei. Bevorzugter Weg für Ergänzungen und Korrekturen: old_string muss exakt und "
-            + "eindeutig vorkommen (sonst replace_all=true). Zum Anhängen den letzten Abschnitt als old_string "
-            + "nehmen und erweitert als new_string übergeben. Bei einer globalen Vorlage entsteht automatisch eine "
-            + "persönliche Kopie, die geändert wird." + ShellHints.SKILLS)
+    @Tool(name = "patch", description = "Ergänzt einen Skill um Korrekturen und Workarounds. Ersetzt old_string "
+            + "(exakt und eindeutig, sonst replace_all) durch new_string im Inhalt oder in file_path. Bei einer "
+            + "globalen Vorlage entsteht automatisch eine persönliche Kopie." + ShellHints.SKILLS)
     public String patch(
             @ToolParam(description = SkillReadTools.NAME) String name,
             @ToolParam(description = "Zu ersetzender Text, exakt wie in skills_view") String old_string,
-            @ToolParam(description = "Neuer Text; leer = Stelle löschen") String new_string,
-            @ToolParam(required = false, description = "true = alle Vorkommen ersetzen") Boolean replace_all,
-            @ToolParam(required = false, description = "Zusatzdatei, z.B. 'references/api.md'; leer = Hauptinhalt") String file_path,
+            @ToolParam(description = "Neuer Text; leer = löschen") String new_string,
+            @ToolParam(required = false, description = "true = alle Vorkommen") Boolean replace_all,
+            @ToolParam(required = false, description = SkillReadTools.FILE) String file_path,
             @ToolParam(required = false, description = NOTE) String note,
             @ToolParam(required = false, description = EXPECTED) Integer expected_revision) {
         return service.patch(name, old_string, new_string, replace_all, file_path, note, expected_revision,
                 maxContentChars);
     }
 
-    @Tool(name = "update", description = "Ersetzt Beschreibung, gesamten Inhalt, Kategorie und/oder Tags eines "
-            + "Skills; nicht angegebene Felder bleiben. Für einzelne Stellen skills_patch verwenden – update nur für "
-            + "grundlegende Überarbeitungen und nach vorherigem skills_view." + ShellHints.SKILLS)
+    @Tool(name = "update", description = "Ersetzt Beschreibung, Inhalt, Kategorie, Tags und/oder Trigger eines "
+            + "Skills; fehlende Felder bleiben. Für einzelne Stellen skills_patch." + ShellHints.SKILLS)
     public String update(
             @ToolParam(description = SkillReadTools.NAME) String name,
             @ToolParam(required = false, description = "Neue Beschreibung") String description,
-            @ToolParam(required = false, description = "Neuer vollständiger Inhalt (Markdown)") String content,
-            @ToolParam(required = false, description = "Neue Kategorie; leerer Text entfernt sie") String category,
-            @ToolParam(required = false, description = "Neue Tags (ersetzt alle); leere Liste entfernt sie") List<String> tags,
+            @ToolParam(required = false, description = "Neuer vollständiger Inhalt") String content,
+            @ToolParam(required = false, description = "Neue Kategorie; leer = entfernen") String category,
+            @ToolParam(required = false, description = "Neue Tags; leere Liste = entfernen") List<String> tags,
+            @ToolParam(required = false, description = TRIGGERS + "; leere Liste = entfernen") List<String> triggers,
             @ToolParam(required = false, description = NOTE) String note,
             @ToolParam(required = false, description = EXPECTED) Integer expected_revision) {
-        return service.update(name, description, content, category, tags, note, expected_revision, maxContentChars);
+        return service.update(name, description, content, category, tags, triggers, note, expected_revision,
+                maxContentChars);
     }
 
-    @Tool(name = "write_file", description = "Legt eine Zusatzdatei eines Skills an oder überschreibt sie – für "
-            + "längere Details, die nicht in jeden Aufruf gehören (API-Referenzen, Vorlagen, Skripte). Pfad beginnt "
-            + "mit references/, templates/, scripts/ oder assets/. Im Hauptinhalt kurz darauf verweisen."
+    @Tool(name = "write_file", description = "Legt eine Zusatzdatei eines Skills an oder überschreibt sie (unter "
+            + "references/, templates/, scripts/ oder assets/) – für lange Details; im Inhalt darauf verweisen."
             + ShellHints.SKILLS)
     public String writeFile(
             @ToolParam(description = SkillReadTools.NAME) String name,
-            @ToolParam(description = "Relativer Pfad, z.B. 'references/jdbc-urls.md'") String file_path,
+            @ToolParam(description = "Pfad, z.B. 'references/jdbc-urls.md'") String file_path,
             @ToolParam(description = "Dateiinhalt") String file_content,
             @ToolParam(required = false, description = NOTE) String note) {
         return service.writeFile(name, file_path, file_content, note, maxContentChars);
@@ -83,7 +80,7 @@ public class SkillWriteTools {
     @Tool(name = "remove_file", description = "Entfernt eine Zusatzdatei aus einem Skill." + ShellHints.SKILLS)
     public String removeFile(
             @ToolParam(description = SkillReadTools.NAME) String name,
-            @ToolParam(description = "Relativer Pfad der Datei") String file_path,
+            @ToolParam(description = "Pfad der Datei") String file_path,
             @ToolParam(required = false, description = NOTE) String note) {
         return service.removeFile(name, file_path, note);
     }
