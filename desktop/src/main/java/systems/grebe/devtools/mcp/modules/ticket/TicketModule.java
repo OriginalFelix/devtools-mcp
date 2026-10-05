@@ -2,9 +2,12 @@ package systems.grebe.devtools.mcp.modules.ticket;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
 
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.config.SettingsStore;
@@ -14,6 +17,9 @@ import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.modules.classify.ClassifyModule;
+import systems.grebe.devtools.mcp.modules.classify.TaskClassifier;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 
@@ -42,24 +48,35 @@ public class TicketModule implements ToolModule {
     static final String COMMENT_SUFFIX = "commentSuffix";
     static final String ALLOW_DELETE = "allowDelete";
     static final String DELETE_ONLY_OWN = "deleteOnlyOwn";
+    static final String ALLOW_CLASSIFY = "allowClassify";
 
     private final TicketProviders providers;
     /** Über alle Konfigurationsänderungen hinweg dieselbe Instanz – sonst ginge die Zuordnung beim Umschalten verloren. */
     private final TicketOwnership ownership;
 
-    /** Für Tests: Verzeichnis selbst angelegter Tickets nur im Speicher. */
+    /** Einstellungen von ticket_classify – aus dem Modul Modellwahl, bei jedem Aufruf neu gelesen. */
+    private final Supplier<TaskClassifier.Settings> classifier;
+
+    /** Für Tests: Verzeichnis selbst angelegter Tickets nur im Speicher, Classifier mit Standardeinstellungen. */
     public TicketModule(TicketProviders providers) {
         this(providers, TicketOwnership.inMemory());
     }
 
-    @Autowired
-    public TicketModule(TicketProviders providers, SettingsStore store) {
-        this(providers, new TicketOwnership(store.file().toAbsolutePath().getParent().resolve("tickets-own.json")));
+    TicketModule(TicketProviders providers, TicketOwnership ownership) {
+        this(providers, ownership, () -> ClassifyModule.settings(
+                ModuleConfig.of(new ClassifyModule().configSchema(), Map.of())));
     }
 
-    TicketModule(TicketProviders providers, TicketOwnership ownership) {
+    @Autowired
+    public TicketModule(TicketProviders providers, SettingsStore store, ObjectProvider<ToolRegistry> registry) {
+        this(providers, new TicketOwnership(store.file().toAbsolutePath().getParent().resolve("tickets-own.json")),
+                () -> ClassifyModule.settings(registry.getObject().config(ClassifyModule.ID)));
+    }
+
+    TicketModule(TicketProviders providers, TicketOwnership ownership, Supplier<TaskClassifier.Settings> classifier) {
         this.providers = providers;
         this.ownership = ownership;
+        this.classifier = classifier;
     }
 
     TicketEnvironment environment(ModuleConfig config) {
@@ -84,7 +101,8 @@ public class TicketModule implements ToolModule {
     public String description() {
         return "Jira, GitHub, GitLab, YouTrack, OpenProject und weitere Systeme (erweiterbar per ServiceLoader): Boards mit ihren Spalten, "
                 + "Tickets suchen, Status, Zuständige, Beschreibung, Kommentare und Verknüpfungen lesen; optional "
-                + "kommentieren, Status wechseln, zuweisen, bearbeiten und anlegen (einzeln schaltbar, je Projekt freigebbar).";
+                + "kommentieren, Status wechseln, zuweisen, bearbeiten und anlegen (einzeln schaltbar, je Projekt freigebbar) sowie "
+                + "die Komplexität einschätzen und das Modell für die Umsetzung empfehlen.";
     }
 
     @Override
@@ -104,6 +122,9 @@ public class TicketModule implements ToolModule {
                 `ticket_delete` (standardmäßig nur selbst angelegte; Schließen ist meist richtiger). Nur auf ausdrückliche \
                 Anweisung des Nutzers schreiben und das Ergebnis mit Link melden. Fehlt ein schreibendes Tool, ist es \
                 abgeschaltet: dem Nutzer den Schalter nennen, nicht per `curl`/`gh`/`glab` ausweichen.
+                - `ticket_classify` (wenn angeboten): vor der Umsetzung eines Tickets dessen Komplexität einschätzen lassen \
+                und das empfohlene Modell für die Umsetzung verwenden, z.B. als Modell des Subagenten; kommt ein \
+                Classifier-Prompt zurück, die Einschätzung damit selbst durchführen (am besten per Subagent auf Opus). Architektur-Kontext aus dem Code (betroffene Module, Schichten) in `context` mitgeben.
                 Taucht ein Ticket-Schlüssel (ABC-123, owner/repo#12, #123, Issue-URL) in Branch-Namen, Commits oder der Aufgabe auf, \
                 das Ticket mit `ticket_get` lesen, bevor du es interpretierst.""";
     }
@@ -162,7 +183,11 @@ public class TicketModule implements ToolModule {
                         .withHelp("ticket_delete, ticket_delete_comment – endgültig, nicht wiederherstellbar."),
                 ConfigField.of(DELETE_ONLY_OWN, "Nur selbst angelegte löschen", FieldType.BOOLEAN).withDefault("true")
                         .withHelp("Nur Tickets/Kommentare, die über ticket_create bzw. ticket_comment angelegt wurden "
-                                + "(gemerkt in tickets-own.json).")));
+                                + "(gemerkt in tickets-own.json)."),
+                ConfigField.of(ALLOW_CLASSIFY, "Komplexität einschätzen (ticket_classify)", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("Pre-Classifier: schätzt Tickets ein und empfiehlt das Modell für die "
+                                + "Umsetzung – über das LLM des aufrufenden Clients oder die Claude API. Ausführung, Modelle je "
+                                + "Stufe und Regeln: Modul Modellwahl.")));
         return fields;
     }
 
@@ -187,6 +212,9 @@ public class TicketModule implements ToolModule {
         }
         if (config.getBoolean(ALLOW_DELETE)) {
             beans.add(new TicketDeleteTools(env, config.getBoolean(DELETE_ONLY_OWN)));
+        }
+        if (config.getBoolean(ALLOW_CLASSIFY)) {
+            beans.add(new TicketClassifyTools(env, () -> new TaskClassifier(classifier.get())));
         }
         return List.of(ToolCallbacks.from(beans.toArray()));
     }

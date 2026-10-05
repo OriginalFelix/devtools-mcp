@@ -60,6 +60,9 @@ dependencies {
     implementation("org.commonmark:commonmark-ext-gfm-tables:$commonmarkVersion")
     implementation("org.commonmark:commonmark-ext-gfm-strikethrough:$commonmarkVersion")
 
+    // Ticket-Klassifizierung: Einschätzung der Komplexität über die Claude API (offizielles Java-SDK)
+    implementation("com.anthropic:anthropic-java:2.68.0")
+
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
     }

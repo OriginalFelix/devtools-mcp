@@ -99,9 +99,11 @@ public class JiraTicketProvider implements TicketProvider {
         private static final String LIST_FIELDS = "summary,status,assignee,issuetype,priority,labels,updated";
         private static final int BOARD_PAGE = 50;
         private static final int BOARD_MAX = 300;
+        private static final Pattern STORY_POINTS = Pattern.compile("(?i)story[ _-]?points?|story point estimate");
 
         private final HttpJson http;
         private final boolean cloud;
+        private volatile Map<String, String> storyPointFields;
 
         Jira(HttpJson http, boolean cloud) {
             this.http = http;
@@ -603,8 +605,10 @@ public class JiraTicketProvider implements TicketProvider {
         @Override
         public TicketDetails ticket(String key, String project, int maxComments) {
             String k = issueKey(key);
+            Map<String, String> storyPoints = storyPointFields();
             String fields = LIST_FIELDS + ",description,reporter,created,parent,fixVersions,components,duedate,resolution"
-                    + (maxComments > 0 ? ",comment" : "");
+                    + (maxComments > 0 ? ",comment" : "")
+                    + (storyPoints.isEmpty() ? "" : "," + String.join(",", storyPoints.keySet()));
             JsonNode i = http().getJson("/rest/api/2/issue/" + HttpJson.enc(k) + query("fields", fields));
             JsonNode f = i.path("fields");
             Map<String, String> extra = new LinkedHashMap<>();
@@ -616,6 +620,7 @@ public class JiraTicketProvider implements TicketProvider {
             put(extra, "Fix-Versionen", String.join(", ", texts(f.path("fixVersions"), "name")));
             put(extra, "Komponenten", String.join(", ", texts(f.path("components"), "name")));
             put(extra, "Fällig", text(f.path("duedate")));
+            storyPoints.forEach((id, name) -> put(extra, name, number(text(f.path(id)))));
 
             List<Comment> comments = new ArrayList<>();
             int totalComments = 0;
@@ -630,6 +635,35 @@ public class JiraTicketProvider implements TicketProvider {
             }
             return new TicketDetails(ticket(i), user(f.path("reporter")), text(f.path("created")),
                     text(f.path("description")), extra, comments, totalComments);
+        }
+
+        /**
+         * Story-Point-Felder (Custom Fields, je Instanz andere ID: „Story Points“, „Story point estimate“), einmal je
+         * Verbindung über die Feldliste ermittelt. Ohne Feldliste (Rechte, alte Version) bleibt die Map leer.
+         */
+        private Map<String, String> storyPointFields() {
+            Map<String, String> found = storyPointFields;
+            if (found == null) {
+                found = new LinkedHashMap<>();
+                try {
+                    for (JsonNode n : http().getJson("/rest/api/2/field")) {
+                        String id = text(n.path("id"));
+                        String name = text(n.path("name"));
+                        if (id != null && name != null && STORY_POINTS.matcher(name).find()) {
+                            found.put(id, name);
+                        }
+                    }
+                } catch (RuntimeException e) {
+                    // nur Zusatzinformation – das Ticket soll trotzdem lesbar sein
+                }
+                storyPointFields = found;
+            }
+            return found;
+        }
+
+        /** {@code 5.0} → {@code 5}: Jira liefert Story Points als Gleitkommazahl. */
+        private static String number(String v) {
+            return v != null && v.endsWith(".0") ? v.substring(0, v.length() - 2) : v;
         }
 
         private static void put(Map<String, String> m, String k, String v) {

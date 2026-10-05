@@ -654,6 +654,7 @@ public class OpenProjectTicketProvider implements TicketProvider {
             put(extra, "Beginn", text(wp.path("startDate")));
             put(extra, "Fällig", text(wp.path("dueDate")));
             put(extra, "Geschätzt", text(wp.path("estimatedTime")));
+            put(extra, "Story Points", text(wp.path("storyPoints")));
             put(extra, "Fortschritt", wp.path("percentageDone").isNumber() ? wp.path("percentageDone").asInt() + " %" : null);
 
             List<Comment> all = new ArrayList<>();
