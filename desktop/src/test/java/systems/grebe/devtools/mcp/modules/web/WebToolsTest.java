@@ -49,6 +49,11 @@ class WebToolsTest {
     final List<String> prompts = new CopyOnWriteArrayList<>();
     final List<Instant> deadlines = new CopyOnWriteArrayList<>();
     final Map<String, String> pages = new HashMap<>();
+    /** Zusätzliche Antwort-Header je Pfad, z.B. Cache-Control. */
+    final Map<String, Map<String, String>> headers = new HashMap<>();
+    /** Bedingte Anfragen: Pfad → If-None-Match bzw. If-Modified-Since der Anfrage. */
+    final List<String> conditionals = new CopyOnWriteArrayList<>();
+    final List<String> questions = new CopyOnWriteArrayList<>();
     final MutableClock clock = new MutableClock(Instant.parse("2026-10-05T10:00:00Z"));
     WebModule module;
 
@@ -85,6 +90,18 @@ class WebToolsTest {
             reply(ex, 404, "text/plain", "nicht da");
             return;
         }
+        Map<String, String> extra = headers.getOrDefault(path, Map.of());
+        extra.forEach((k, v) -> ex.getResponseHeaders().add(k, v));
+        String inm = ex.getRequestHeaders().getFirst("If-None-Match");
+        String ims = ex.getRequestHeaders().getFirst("If-Modified-Since");
+        if (inm != null || ims != null) {
+            conditionals.add(path + " " + (inm != null ? inm : ims));
+        }
+        if (inm != null && inm.equals(extra.get("ETag")) || ims != null && ims.equals(extra.get("Last-Modified"))) {
+            ex.sendResponseHeaders(304, -1);
+            ex.close();
+            return;
+        }
         reply(ex, 200, path.endsWith(".txt") ? "text/plain; charset=utf-8" : "text/html; charset=utf-8", body);
     }
 
@@ -98,6 +115,29 @@ class WebToolsTest {
     }
 
     WebTools tools(Map<String, String> values) {
+        return tools(values, null);
+    }
+
+    /** Fake für Claude: merkt sich die Frage, antwortet mit „Claude: …“ und der Länge des Dokuments. */
+    PageSummarizer.Remote claude(boolean fail) {
+        return new PageSummarizer.Remote() {
+            @Override
+            public String model() {
+                return "claude-haiku-4-5";
+            }
+
+            @Override
+            public PageSummarizer.Answer answer(String system, String document, String question) {
+                questions.add(document + "\n?" + question);
+                if (fail) {
+                    throw new IllegalStateException("Kein Claude-API-Key");
+                }
+                return new PageSummarizer.Answer("Claude: " + question, 4321, 12, 800);
+            }
+        };
+    }
+
+    WebTools tools(Map<String, String> values, PageSummarizer.Remote remote) {
         Map<String, String> v = new HashMap<>(Map.of(WebModule.ALLOW_PRIVATE, "true"));
         v.putAll(values);
         ModuleConfig config = ModuleConfig.of(module.configSchema(), v);
@@ -108,7 +148,7 @@ class WebToolsTest {
             deadlines.add(deadline);
             return new LocalLlm.Completion("Überblick " + prompts.size(), 100, 10, request.segments().size(),
                     "STOP_TOKEN", 1234);
-        }, clock);
+        }, remote, clock);
     }
 
     @Test
@@ -127,8 +167,9 @@ class WebToolsTest {
                 .doesNotContain("Menü", "Logo", "© Firma", "var x", "gradle build --fast");
         assertThat(deadlines.getFirst()).isBetween(before.plusSeconds(7), Instant.now().plusSeconds(8));
 
-        String second = tools(Map.of()).fetch(base + "/release", "", false);
-        assertThat(second).contains("aus dem Cache", "Überblick 1", "- Java 21 ist Mindestversion");
+        String second = tools(Map.of()).fetch(base + "/release", "", "");
+        assertThat(second).contains("aus dem Cache", "Antwort aus dem Cache", "Überblick 1",
+                "- Java 21 ist Mindestversion", "Cache dauerhaft (keine HTTP-Angabe)");
         assertThat(requests).containsExactly("/release");
         assertThat(prompts).hasSize(1);
     }
@@ -151,21 +192,137 @@ class WebToolsTest {
     }
 
     @Test
-    void refreshAndExpiryReload() {
-        WebTools tools = tools(Map.of(WebModule.CACHE_HOURS, "1"));
+    void withoutHttpHeadersPagesStayUntilForced() {
+        WebTools tools = tools(Map.of());
         tools.fetch(base + "/release", null, null);
-        tools.fetch(base + "/release", null, true);
-        assertThat(requests).hasSize(2);
-        assertThat(prompts).hasSize(2);
+        clock.advance(Duration.ofDays(1000));
+        assertThat(tools.fetch(base + "/release", null, null)).contains("Antwort aus dem Cache");
+        assertThat(tools.page(base + "/release", null, null)).contains("aus dem Cache");
+        assertThat(requests).hasSize(1);
 
-        clock.advance(Duration.ofMinutes(61));
-        assertThat(tools.fetch(base + "/release", null, null)).doesNotContain("aus dem Cache");
+        assertThat(tools.fetch(base + "/release", null, "force")).doesNotContain("aus dem Cache");
+        assertThat(tools.page(base + "/release", null, "force")).doesNotContain("aus dem Cache");
         assertThat(requests).hasSize(3);
+        assertThat(prompts).hasSize(2);
+        assertThat(conditionals).isEmpty();
+    }
+
+    @Test
+    void refreshAcceptsOnlyForce() {
+        assertThat(WebTools.force("force")).isTrue();
+        assertThat(WebTools.force(" TRUE ")).isTrue();
+        assertThat(WebTools.force(null)).isFalse();
+        assertThat(WebTools.force("false")).isFalse();
+        assertThatThrownBy(() -> WebTools.force("immer")).hasMessageContaining("\"force\"");
+    }
+
+    @Test
+    void maxAgeExpiresAndReusesSummaryForSameText() {
+        headers.put("/release", Map.of("Cache-Control", "public, max-age=600"));
+        WebTools tools = tools(Map.of());
+        assertThat(tools.fetch(base + "/release", null, null)).contains("Cache gültig bis 2026-10-05 10:10 (max-age=600)");
+
+        clock.advance(Duration.ofMinutes(9));
+        assertThat(tools.fetch(base + "/release", null, null)).contains("aus dem Cache");
+        assertThat(requests).hasSize(1);
+
+        clock.advance(Duration.ofMinutes(2));
+        String reloaded = tools.fetch(base + "/release", null, null);
+        assertThat(requests).hasSize(2);
+        // Gleicher Text: die Zusammenfassung gilt weiter, das Modell läuft nicht noch einmal
+        assertThat(reloaded).contains("Antwort aus dem Cache", "Cache gültig bis 2026-10-05 10:21");
+        assertThat(prompts).hasSize(1);
+
+        pages.put("/release", ARTICLE.replace("Java 21", "Java 25"));
+        clock.advance(Duration.ofMinutes(11));
+        assertThat(tools.fetch(base + "/release", null, null)).doesNotContain("Antwort aus dem Cache");
+        assertThat(prompts).hasSize(2);
+    }
+
+    @Test
+    void noCacheRevalidatesWithEtag() {
+        headers.put("/release", Map.of("Cache-Control", "no-cache", "ETag", "\"v1\""));
+        WebTools tools = tools(Map.of());
+        tools.fetch(base + "/release", null, null);
+
+        String second = tools.fetch(base + "/release", null, null);
+        assertThat(second).contains("unverändert (HTTP 304)", "Antwort aus dem Cache");
+        assertThat(conditionals).containsExactly("/release \"v1\"");
+        assertThat(requests).hasSize(2);
+        assertThat(prompts).hasSize(1);
+    }
+
+    @Test
+    void lastModifiedRevalidates() {
+        headers.put("/release", Map.of("Expires", "0", "Last-Modified", "Mon, 05 Oct 2026 08:00:00 GMT"));
+        WebTools tools = tools(Map.of());
+        tools.page(base + "/release", null, null);
+        assertThat(tools.page(base + "/release", null, null)).contains("unverändert (HTTP 304)");
+        assertThat(conditionals).containsExactly("/release Mon, 05 Oct 2026 08:00:00 GMT");
+    }
+
+    @Test
+    void noStoreIsNeverCached() {
+        headers.put("/release", Map.of("Cache-Control", "no-store"));
+        WebTools tools = tools(Map.of());
+        assertThat(tools.fetch(base + "/release", null, null)).contains("nicht gespeichert (no-store)");
+        tools.fetch(base + "/release", null, null);
+        assertThat(requests).hasSize(2);
+        assertThat(module.cache(ModuleConfig.of(module.configSchema(), Map.of()), clock).size()).containsExactly(0, 0);
+    }
+
+    @Test
+    void httpHeadersCanBeIgnored() {
+        headers.put("/release", Map.of("Cache-Control", "no-cache"));
+        WebTools tools = tools(Map.of(WebModule.HTTP_CACHING, "false"));
+        tools.fetch(base + "/release", null, null);
+        assertThat(tools.fetch(base + "/release", null, null)).contains("Cache dauerhaft");
+        assertThat(requests).hasSize(1);
+    }
+
+    @Test
+    void questionsGoToClaudeWithTheWholePage() {
+        WebTools tools = tools(Map.of(), claude(false));
+        String out = tools.fetch(base + "/release", "Welche Java-Version?", null);
+
+        assertThat(out).contains("Antwort von claude-haiku-4-5 (Claude API, 0.8 s, 4321 Token ein / 12 aus)",
+                "Claude: Welche Java-Version?", "- Java 21 ist Mindestversion");
+        assertThat(questions).hasSize(1);
+        assertThat(questions.getFirst()).startsWith("<page>\nTitle: Release 2.0\n")
+                .contains("Weitere Details folgen", "Java 21 ist Mindestversion")
+                .endsWith("</page>\n?Welche Java-Version?");
+        assertThat(prompts).isEmpty();
+
+        // Zweite gleiche Frage: Cache; Zusammenfassung ohne Frage: lokal
+        assertThat(tools.fetch(base + "/release", "Welche Java-Version?", null)).contains("Antwort aus dem Cache");
+        assertThat(tools.fetch(base + "/release", null, null)).contains("Zusammenfassung von " + WebModule.DEFAULT_MODEL);
+        assertThat(questions).hasSize(1);
+        assertThat(prompts).hasSize(1);
+    }
+
+    @Test
+    void longPagesAreCutForClaudeAndSaySo() {
+        pages.put("/big.txt", "x".repeat(5000));
+        WebTools tools = tools(Map.of(WebModule.CLAUDE_CONTEXT_CHARS, "1000"), claude(false));
+        String out = tools.fetch(base + "/big.txt", "Was steht da?", null);
+        assertThat(questions.getFirst()).contains("[… Seite nach 1000 von 5000 Zeichen gekürzt]");
+        assertThat(out).contains("(nur die ersten 1000 von 5000 Zeichen)");
+    }
+
+    @Test
+    void failingClaudeFallsBackToLocalAndRetriesLater() {
+        WebTools tools = tools(Map.of(), claude(true));
+        String out = tools.fetch(base + "/release", "Welche Java-Version?", null);
+        assertThat(out).contains("Hinweis: Kein Claude-API-Key – stattdessen lokales Modell",
+                "Zusammenfassung von " + WebModule.DEFAULT_MODEL, "Überblick 1");
+
+        tools.fetch(base + "/release", "Welche Java-Version?", null);
+        assertThat(questions).hasSize(2);
     }
 
     @Test
     void cacheCanBeDisabled() {
-        WebTools tools = tools(Map.of(WebModule.CACHE_HOURS, "0"));
+        WebTools tools = tools(Map.of(WebModule.CACHE_ENABLED, "false"));
         tools.fetch(base + "/release", null, null);
         tools.fetch(base + "/release", null, null);
         assertThat(requests).hasSize(2);
