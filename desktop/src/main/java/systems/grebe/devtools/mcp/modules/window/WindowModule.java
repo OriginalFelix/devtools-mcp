@@ -41,6 +41,8 @@ public class WindowModule implements ToolModule {
     /** Global freigegebene Ordner (Modul „Freigaben“), von der ToolRegistry eingefügt – nicht im Formular. */
     static final String SHARED = "sharedDirectories";
     private static final Pattern NAMED = Pattern.compile("([A-Za-z0-9._@ -]+)=(.+)");
+    /** So viele Programme nennt die Warnung beim Speichern, danach nur noch die Anzahl. */
+    private static final int MAX_LISTED = 20;
     static final String ALLOW_INPUT = "allowInput";
     static final String ALLOW_KEYBOARD = "allowKeyboard";
     static final String ALLOW_LAUNCH = "allowLaunch";
@@ -146,6 +148,55 @@ public class WindowModule implements ToolModule {
             } catch (InvalidPathException e) {
                 // ungültiger Eintrag: ignorieren
             }
+        }
+        return out;
+    }
+
+    /**
+     * Warnt, wenn Programme in global freigegebenen Ordnern unter „Prozesse ausschließen“ fallen – die Freigabe hebt
+     * den Ausschluss auf. Sucht dafür die Ordner rekursiv ab (siehe {@link SharedProgramScan}).
+     */
+    @Override
+    public List<String> saveWarnings(ModuleConfig config) {
+        List<Path> shared = sharedDirectories(config);
+        Pattern exclude;
+        try {
+            exclude = pattern(config, EXCLUDE);
+        } catch (IllegalStateException e) {
+            return List.of(); // ungültiger Ausdruck: meldet die Prüfung beim Aufruf
+        }
+        if (shared.isEmpty() || exclude == null) {
+            return List.of();
+        }
+        SharedProgramScan.Result scan = SharedProgramScan.scan(shared);
+        ProcessFilter plain = new ProcessFilter(null, null, -1);
+        List<Path> overridden = new ArrayList<>();
+        int locked = 0;
+        for (Path program : scan.programs()) {
+            ProcessFilter.Info info = ProcessFilter.Info.ofExecutable(program);
+            if (plain.rejection(info).isPresent()) {
+                locked++;
+            } else if (exclude.matcher(info.name() + " " + info.commandLine()).find()) {
+                overridden.add(program);
+            }
+        }
+        if (overridden.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        out.add("Diese Programme fallen unter „Prozesse ausschließen“, liegen aber in global freigegebenen Ordnern "
+                + "(Freigaben) und dürfen deshalb trotzdem gesteuert werden:");
+        overridden.stream().limit(MAX_LISTED).forEach(p -> out.add("  " + p));
+        if (overridden.size() > MAX_LISTED) {
+            out.add("  … und " + (overridden.size() - MAX_LISTED) + " weitere");
+        }
+        if (locked > 0) {
+            out.add(locked + " Programm(e) in den freigegebenen Ordnern bleiben gesperrt (Anmeldung, "
+                    + "Berechtigungsdialog oder Passwortmanager).");
+        }
+        if (!scan.complete()) {
+            out.add("Die Suche wurde nach " + SharedProgramScan.LIMIT + " Einträgen abgebrochen – weitere Programme "
+                    + "können betroffen sein.");
         }
         return out;
     }

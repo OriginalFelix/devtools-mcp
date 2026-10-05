@@ -95,6 +95,15 @@ public interface ToolModule {
         return Set.of();
     }
 
+    /**
+     * Warnungen, die vor dem Speichern dieser Einstellungen bestätigt werden müssen (z.B. weil globale Freigaben einen
+     * Ausschluss aufheben). {@code config} enthält die global freigegebenen Verzeichnisse wie beim Bau der Tools.
+     * Darf länger dauern (läuft im Hintergrund). Standard keine.
+     */
+    default List<String> saveWarnings(ModuleConfig config) {
+        return List.of();
+    }
+
     /** Sortierung in der Modulliste (aufsteigend, danach Anzeigename). */
     default int order() {
         return 100;
