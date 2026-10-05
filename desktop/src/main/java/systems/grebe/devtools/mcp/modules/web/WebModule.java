@@ -240,6 +240,18 @@ public class WebModule implements ToolModule {
         }
 
         @Override
+        public boolean needsTarget() {
+            return false;
+        }
+
+        @Override
+        public String describe(ModuleConfig config, String target) {
+            LocalLlm.Options o = options(config);
+            return (llm.running() ? "LLM-Prozess läuft" : "LLM-Prozess nicht gestartet") + " · Modell " + o.model()
+                    + (LocalLlm.downloaded(o) ? " liegt vor" : " noch nicht heruntergeladen (~750 MB)");
+        }
+
+        @Override
         public String label() {
             return "Modell laden";
         }
@@ -265,6 +277,11 @@ public class WebModule implements ToolModule {
         @Override
         public String id() {
             return "clear-cache";
+        }
+
+        @Override
+        public boolean needsTarget() {
+            return false;
         }
 
         @Override

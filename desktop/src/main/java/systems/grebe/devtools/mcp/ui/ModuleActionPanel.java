@@ -28,6 +28,8 @@ final class ModuleActionPanel extends VBox {
     private final ToolRegistry registry;
     private final String moduleId;
     private final ModuleAction action;
+    /** Aktion mit Zielauswahl; ohne ({@link ModuleAction#needsTarget()} = false) nur der Start-Knopf. */
+    private final boolean targeted;
     private final ComboBox<String> target = new ComboBox<>();
     private final Label targetInfo = new Label();
     private final Button start;
@@ -43,6 +45,7 @@ final class ModuleActionPanel extends VBox {
         this.registry = registry;
         this.moduleId = moduleId;
         this.action = action;
+        this.targeted = action.needsTarget();
         getStyleClass().add("module-action");
 
         Label description = new Label(action.description());
@@ -61,7 +64,9 @@ final class ModuleActionPanel extends VBox {
 
         HBox row = new HBox(8);
         row.setAlignment(Pos.CENTER_LEFT);
-        row.getChildren().add(target);
+        if (targeted) {
+            row.getChildren().add(target);
+        }
         for (ModuleAction.Flag f : action.flags()) {
             CheckBox cb = new CheckBox(f.label());
             flags.put(f.key(), cb);
@@ -87,6 +92,11 @@ final class ModuleActionPanel extends VBox {
         if (running != null) {
             return; // Auswahl während des Laufs nicht verändern
         }
+        if (!targeted) {
+            updateButtons();
+            updateTargetInfo(); // Zustand neu lesen, z.B. nach geänderter Konfiguration
+            return;
+        }
         List<String> targets = registry.actionTargets(moduleId, action.id());
         boolean hasTargets = !targets.isEmpty();
         String selected = target.getValue();
@@ -108,8 +118,8 @@ final class ModuleActionPanel extends VBox {
     }
 
     private void updateTargetInfo() {
-        String t = target.getValue();
-        if (t == null) {
+        String t = targeted ? target.getValue() : null;
+        if (targeted && t == null) {
             targetInfo.setText("");
             updateButtons();
             return;
@@ -118,7 +128,7 @@ final class ModuleActionPanel extends VBox {
         Thread.ofVirtual().start(() -> {
             String info = registry.describeActionTarget(moduleId, action.id(), t);
             Platform.runLater(() -> {
-                if (Objects.equals(t, target.getValue())) {
+                if (!targeted || Objects.equals(t, target.getValue())) {
                     targetInfo.setText(info == null ? "" : info);
                 }
             });
@@ -128,14 +138,14 @@ final class ModuleActionPanel extends VBox {
 
     private void updateButtons() {
         boolean busy = running != null;
-        start.setDisable(busy || target.getValue() == null);
+        start.setDisable(busy || targeted && target.getValue() == null);
         cancel.setDisable(!busy);
         target.setDisable(busy || target.getItems().isEmpty());
         flags.values().forEach(cb -> cb.setDisable(busy));
     }
 
     private void start() {
-        String t = target.getValue();
+        String t = targeted ? target.getValue() : null;
         Set<String> selectedFlags = new LinkedHashSet<>();
         flags.forEach((k, cb) -> {
             if (cb.isSelected()) {
