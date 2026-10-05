@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
 
+import systems.grebe.devtools.mcp.modules.window.cursor.macos.MacZOrder;
+
 import static java.lang.foreign.ValueLayout.ADDRESS;
 import static java.lang.foreign.ValueLayout.JAVA_BYTE;
 import static java.lang.foreign.ValueLayout.JAVA_DOUBLE;
@@ -253,6 +255,42 @@ final class MacWindowSystem implements WindowSystem {
             }
             return buf.getString(0, StandardCharsets.UTF_8);
         }
+    }
+
+    /** Fensternummern der eigenen Anzeige-Fenster (Rahmen, Hinweis) – einmal über die Fensterliste gefunden. */
+    private final java.util.Map<java.awt.Window, Long> ownNumbers = new java.util.WeakHashMap<>();
+
+    @Override
+    public boolean canStackAbove() {
+        return true;
+    }
+
+    /**
+     * Sucht die Fensternummer des eigenen Fensters über die Fensterliste (eigene PID, gleiche Grenzen) und ordnet es
+     * per AppKit direkt über das Ziel ({@link MacZOrder}).
+     */
+    @Override
+    public void stackAbove(java.awt.Window overlay, NativeWindow target) {
+        Long own;
+        synchronized (ownNumbers) {
+            own = ownNumbers.get(overlay);
+        }
+        if (own == null) {
+            Rectangle want = overlay.getBounds();
+            long self = ProcessHandle.current().pid();
+            own = windows().stream()
+                    .filter(w -> w.pid() == self && Math.abs(w.bounds().x - want.x) <= 1
+                            && Math.abs(w.bounds().y - want.y) <= 1 && Math.abs(w.bounds().width - want.width) <= 1
+                            && Math.abs(w.bounds().height - want.height) <= 1)
+                    .map(NativeWindow::id).findFirst().orElse(null);
+            if (own == null) {
+                return; // noch nicht auf dem Bildschirm – beim nächsten Nachführen
+            }
+            synchronized (ownNumbers) {
+                ownNumbers.put(overlay, own);
+            }
+        }
+        MacZOrder.stackAbove(own, target.id());
     }
 
     /** Die Fensterliste ist von vorn nach hinten sortiert: das erste normale Fenster liegt im Vordergrund. */

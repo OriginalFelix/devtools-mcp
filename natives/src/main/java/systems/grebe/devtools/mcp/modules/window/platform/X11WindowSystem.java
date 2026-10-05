@@ -32,6 +32,8 @@ final class X11WindowSystem implements WindowSystem {
 
     private static final long ANY_PROPERTY_TYPE = 0;
     private static final long CLIENT_MESSAGE = 33;
+    /** Stapelmodus {@code Above} aus X.h. */
+    private static final long ABOVE = 0;
     private static final long SUBSTRUCTURE_MASK = (1L << 19) | (1L << 20);
     private static final int XEVENT_SIZE = 192;
 
@@ -54,6 +56,7 @@ final class X11WindowSystem implements WindowSystem {
     private final long netWmPid;
     private final long netWmName;
     private final long netActiveWindow;
+    private final long netRestackWindow;
     private final long netWmStateHidden;
     private final long netWmState;
     private final long wmName;
@@ -95,6 +98,7 @@ final class X11WindowSystem implements WindowSystem {
         netWmPid = atom("_NET_WM_PID");
         netWmName = atom("_NET_WM_NAME");
         netActiveWindow = atom("_NET_ACTIVE_WINDOW");
+        netRestackWindow = atom("_NET_RESTACK_WINDOW");
         netWmState = atom("_NET_WM_STATE");
         netWmStateHidden = atom("_NET_WM_STATE_HIDDEN");
         wmName = atom("WM_NAME");
@@ -260,6 +264,39 @@ final class X11WindowSystem implements WindowSystem {
                 ev.set(JAVA_LONG, 56, 2);                // Quelle: Pager/Werkzeug (wird nicht abgewiesen)
                 ev.set(JAVA_LONG, 64, 0);                // CurrentTime
                 Natives.call(xMapRaised, "XMapRaised", display, id);
+                Natives.call(xSendEvent, "XSendEvent", display, root, 0, SUBSTRUCTURE_MASK, ev);
+            }
+            return null;
+        });
+    }
+
+    @Override
+    public boolean canStackAbove() {
+        return true;
+    }
+
+    /**
+     * Bittet den Fenstermanager per {@code _NET_RESTACK_WINDOW} (EWMH), das eigene Fenster direkt über das Ziel zu
+     * legen – der Fenstermanager setzt das für die Rahmen seiner Fenster um.
+     */
+    @Override
+    public synchronized void stackAbove(java.awt.Window overlay, NativeWindow target) {
+        long own = com.sun.jna.Native.getWindowID(overlay);
+        if (own == 0) {
+            return;
+        }
+        guarded(() -> {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment ev = arena.allocate(XEVENT_SIZE, 8);
+                ev.set(JAVA_INT, 0, (int) CLIENT_MESSAGE);
+                ev.set(JAVA_INT, 16, 1);                  // send_event
+                ev.set(ADDRESS, 24, display);
+                ev.set(JAVA_LONG, 32, own);               // window: das eigene Fenster
+                ev.set(JAVA_LONG, 40, netRestackWindow);  // message_type
+                ev.set(JAVA_INT, 48, 32);                 // format
+                ev.set(JAVA_LONG, 56, 2);                 // Quelle: Pager/Werkzeug
+                ev.set(JAVA_LONG, 64, target.id());       // Geschwister: das Ziel
+                ev.set(JAVA_LONG, 72, ABOVE);             // darüber
                 Natives.call(xSendEvent, "XSendEvent", display, root, 0, SUBSTRUCTURE_MASK, ev);
             }
             return null;
