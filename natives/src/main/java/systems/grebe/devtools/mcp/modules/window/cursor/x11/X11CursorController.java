@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.window.cursor.x11;
 
+import java.awt.Color;
 import java.awt.Point;
 import java.util.Set;
 
@@ -23,7 +24,8 @@ final class X11CursorController extends AbstractCursorController<X11MasterPointe
     }
 
     @Override
-    protected X11MasterPointer open(Point at) {
+    protected X11MasterPointer open(Point at, Color color) {
+        // den Master-Zeiger zeichnet der X-Server – die Farbe bleibt hier ohne Wirkung
         return new X11MasterPointer(at.x, at.y);
     }
 

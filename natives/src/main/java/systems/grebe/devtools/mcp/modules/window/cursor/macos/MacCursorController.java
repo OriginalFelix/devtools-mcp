@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.window.cursor.macos;
 
+import java.awt.Color;
 import java.awt.Point;
 import java.util.Set;
 
@@ -35,8 +36,8 @@ final class MacCursorController extends AbstractCursorController<MacCursorContro
     }
 
     @Override
-    protected MacCursor open(Point at) {
-        return new MacCursor(new MacCursorWindow(at.x, at.y));
+    protected MacCursor open(Point at, Color color) {
+        return new MacCursor(new MacCursorWindow(at.x, at.y, color));
     }
 
     @Override

@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.window.cursor;
 
+import java.awt.Color;
 import java.awt.Point;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,8 +25,8 @@ public abstract class AbstractCursorController<C> implements CursorController {
     private final Map<Long, Handle> cursors = new LinkedHashMap<>();
     private long nextId = 1;
 
-    /** Erzeugt den nativen Zeiger mit der Spitze an {@code at}. */
-    protected abstract C open(Point at);
+    /** Erzeugt den nativen Zeiger in {@code color} mit der Spitze an {@code at}. */
+    protected abstract C open(Point at, Color color);
 
     /** Zerstört den nativen Zeiger; gehaltene Tasten sind bereits losgelassen. */
     protected abstract void dispose(C cursor);
@@ -56,9 +57,9 @@ public abstract class AbstractCursorController<C> implements CursorController {
     protected abstract void key(C cursor, Point at, int keyCode, boolean down, Set<Integer> heldKeys);
 
     @Override
-    public synchronized VirtualCursor create(int x, int y) {
+    public synchronized VirtualCursor create(int x, int y, Color color) {
         Point at = new Point(x, y);
-        C nativeCursor = open(at);
+        C nativeCursor = open(at, color);
         Handle h = new Handle(nextId++, nativeCursor, at);
         cursors.put(h.id, h);
         return h;

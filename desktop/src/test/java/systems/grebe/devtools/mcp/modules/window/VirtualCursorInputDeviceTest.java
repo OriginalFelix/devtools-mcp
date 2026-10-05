@@ -33,7 +33,7 @@ class VirtualCursorInputDeviceTest {
         }
 
         @Override
-        protected String open(Point at) {
+        protected String open(Point at, java.awt.Color color) {
             log.add("create " + at.x + "," + at.y);
             return "c";
         }

@@ -34,6 +34,22 @@ class CursorImageTest {
     }
 
     @Test
+    void drawsInTheGivenColor() {
+        java.awt.Color cyan = new java.awt.Color(0, 200, 255);
+        CursorImage img = CursorImage.render(2, cyan);
+        // innerhalb des Pfeils, weg vom weißen Rand
+        int x = img.hotspot().x + 6;
+        int y = img.hotspot().y + 18;
+        int p = img.premultipliedArgb()[y * img.width() + x];
+        int a = p >>> 24;
+
+        assertThat(a).isEqualTo(255);
+        assertThat((p >> 16) & 0xFF).isCloseTo(cyan.getRed(), org.assertj.core.data.Offset.offset(10));
+        assertThat((p >> 8) & 0xFF).isCloseTo(cyan.getGreen(), org.assertj.core.data.Offset.offset(10));
+        assertThat(p & 0xFF).isCloseTo(cyan.getBlue(), org.assertj.core.data.Offset.offset(10));
+    }
+
+    @Test
     void encodesPng() {
         byte[] png = CursorImage.render(2).png();
 

@@ -36,8 +36,13 @@ public final class CursorImage {
         this.hotspot = hotspot;
     }
 
-    /** Zeichnet den Zeiger; {@code scale} = Bildpixel je logischem Pixel (z.B. 1.5 bei 150 %, 2 bei Retina). */
+    /** Zeichnet den Zeiger in {@link #ACCENT}; {@code scale} = Bildpixel je logischem Pixel (z.B. 1.5 bei 150 %). */
     public static CursorImage render(double scale) {
+        return render(scale, ACCENT);
+    }
+
+    /** Zeichnet den Zeiger in {@code color}; {@code scale} = Bildpixel je logischem Pixel (2 bei Retina). */
+    public static CursorImage render(double scale, Color color) {
         double s = Math.max(0.5, scale);
         int px = (int) Math.ceil(SIZE * s);
         BufferedImage img = new BufferedImage(px, px, BufferedImage.TYPE_INT_ARGB_PRE);
@@ -49,7 +54,7 @@ public final class CursorImage {
             Path2D arrow = arrow();
             g.setColor(new Color(0, 0, 0, 70));
             g.fill(AffineTransform.getTranslateInstance(1.2, 1.6).createTransformedShape(arrow));
-            g.setColor(ACCENT);
+            g.setColor(color);
             g.fill(arrow);
             g.setColor(Color.WHITE);
             g.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));

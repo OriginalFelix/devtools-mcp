@@ -20,8 +20,16 @@ public interface CursorController extends AutoCloseable {
     /** Name für Ausgaben, z.B. {@code Windows (Layered-Fenster, PostMessage)}. */
     String name();
 
-    /** Erzeugt einen Zeiger mit der Spitze an {@code (x, y)}. */
-    VirtualCursor create(int x, int y);
+    /** Erzeugt einen Zeiger in {@link CursorImage#ACCENT} mit der Spitze an {@code (x, y)}. */
+    default VirtualCursor create(int x, int y) {
+        return create(x, y, CursorImage.ACCENT);
+    }
+
+    /**
+     * Erzeugt einen Zeiger in {@code color} mit der Spitze an {@code (x, y)} – z.B. je KI eine eigene Farbe. Wo das
+     * System den Zeiger selbst zeichnet (X11), bleibt die Farbe ohne Wirkung.
+     */
+    VirtualCursor create(int x, int y, java.awt.Color color);
 
     /** Zerstört den Zeiger; noch gehaltene Tasten werden vorher losgelassen. Mehrfacher Aufruf ist erlaubt. */
     void destroy(VirtualCursor cursor);

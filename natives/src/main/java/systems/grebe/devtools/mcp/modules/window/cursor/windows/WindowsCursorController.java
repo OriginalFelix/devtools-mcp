@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.window.cursor.windows;
 
+import java.awt.Color;
 import java.awt.Point;
 import java.util.BitSet;
 import java.util.Optional;
@@ -80,12 +81,12 @@ final class WindowsCursorController extends AbstractCursorController<WindowsCurs
     }
 
     @Override
-    protected WinCursor open(Point at) {
+    protected WinCursor open(Point at, Color color) {
         int contact = contacts.nextClearBit(0);
         if (contact >= Win32Touch.MAX_CONTACTS) {
             throw new IllegalStateException("Höchstens " + Win32Touch.MAX_CONTACTS + " Zeiger gleichzeitig.");
         }
-        WinCursor c = new WinCursor(new Win32CursorWindow(at.x, at.y), contact);
+        WinCursor c = new WinCursor(new Win32CursorWindow(at.x, at.y, color), contact);
         contacts.set(contact);
         return c;
     }

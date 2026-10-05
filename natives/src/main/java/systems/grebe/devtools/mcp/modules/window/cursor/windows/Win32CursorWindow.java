@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.window.cursor.windows;
 
+import java.awt.Color;
 import java.awt.Point;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -54,8 +55,10 @@ final class Win32CursorWindow {
     private volatile HWND hwnd;
     private volatile Point hotspot = new Point();
     private Point position;
+    private final Color color;
 
-    Win32CursorWindow(int x, int y) {
+    Win32CursorWindow(int x, int y, Color color) {
+        this.color = color;
         position = new Point(x, y);
         thread = new Thread(this::run, "virtual-cursor-win32");
         thread.setDaemon(true);
@@ -195,7 +198,7 @@ final class Win32CursorWindow {
 
     /** Überträgt das Zeigerbild (vormultipliziertes BGRA, von oben nach unten) in das Layered-Fenster. */
     private void paint(HWND h, Point tip) {
-        CursorImage img = CursorImage.render(scale(h));
+        CursorImage img = CursorImage.render(scale(h), color);
         hotspot = img.hotspot();
         int w = img.width();
         int hgt = img.height();

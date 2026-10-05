@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.window.cursor.macos;
 
+import java.awt.Color;
 import java.awt.Point;
 import java.util.concurrent.CompletableFuture;
 
@@ -30,8 +31,8 @@ final class MacCursorWindow {
     private final double sizePoints;
     private volatile Pointer window;
 
-    MacCursorWindow(int x, int y) {
-        CursorImage img = CursorImage.render(IMAGE_SCALE);
+    MacCursorWindow(int x, int y, Color color) {
+        CursorImage img = CursorImage.render(IMAGE_SCALE, color);
         hotspotPoints = new Point((int) Math.round(img.hotspot().x / IMAGE_SCALE),
                 (int) Math.round(img.hotspot().y / IMAGE_SCALE));
         sizePoints = img.width() / IMAGE_SCALE;
