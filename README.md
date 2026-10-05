@@ -24,6 +24,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
+| **Web-Abruf** (Jlama, lokales LLM) | `web_fetch` (Seite abrufen und in wenigen Sekunden lokal mit Llama 3.2 1B zusammenfassen, optional mit Fragestellung; dazu die wichtigsten Sätze wörtlich), `web_page` (lesbarer Text der Seite als Markdown, seitenweise) – Seiten und Zusammenfassungen im Cache (Standard 24 h), lokales Netz standardmäßig gesperrt (siehe [Web-Abruf](#web-abruf-mit-lokalem-llm); Modul Standard: aus) |
 | **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 | **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` |
 | **Skripte** (Groovy 5 oder Java per `javac`) | `scripts_list`, `scripts_view` (Quelltext, Historie, ohne Namen die Referenz) · je Schalter (Standard aus): `scripts_save`, `scripts_delete` – jedes Skript wird zur Laufzeit ein eigenes Modul mit Tools `<skript>_*`, gespeichert im Backend (siehe [Skripte](#skripte--eigene-tools-zur-laufzeit)) |
@@ -317,6 +318,53 @@ Anmeldung) `maven-metadata.xml`, POMs und JARs – ohne lokales `~/.m2` und ohne
   auch package-private – Oberklasse wandern, zählen nicht) und die GitHub-Releases dazwischen (Abschnitte und Zeilen mit
   „Breaking“, „incompatible“, „removed“ …). Änderungen in `internal`/`impl`/`shaded`-Paketen sind standardmäßig
   ausgeblendet. Ohne GitHub-Token erlaubt GitHub 60 Abfragen pro Stunde.
+### Web-Abruf mit lokalem LLM
+
+`web_fetch` lädt eine Webseite, zieht den lesbaren Text heraus (jsoup: Hauptinhalt ohne Navigation, Kopf-/Fußzeilen,
+Skripte und Formulare; Überschriften, Listen, Tabellen und Codeblöcke bleiben als Markdown erhalten) und lässt ihn von
+einem **lokalen LLM** zusammenfassen – [Jlama](https://github.com/tjake/Jlama) mit `tjake/Llama-3.2-1B-Instruct-JQ4`
+(Llama 3.2 1B Instruct, 4-Bit). Kein API-Key, die Seite verlässt den Rechner nicht, und der Client bekommt statt der
+ganzen Seite nur eine kompakte Zusammenfassung in seinen Kontext. Mit `prompt` lässt sich gezielt fragen („Welche
+Breaking Changes gibt es?“). Für Vollständigkeit oder den genauen Wortlaut liefert `web_page` den extrahierten Text
+seitenweise.
+
+* **Schnell statt vollständig:** Jlama verarbeitet auf einer Notebook-CPU etwa 100–140 Tokens Eingabe und 30 Tokens
+  Ausgabe pro Sekunde – eine ganze Seite würde Minuten dauern. Deshalb wählt `web_fetch` zuerst ohne LLM die
+  relevantesten Sätze aus (mit Fragestellung nach BM25 auf deren Begriffe, sonst nach Zentralität, Position und
+  Überschriften) und gibt dem Modell nur diesen Auszug (Standard 2 400 Zeichen) in **einem** Aufruf. Unter der
+  Zusammenfassung stehen die wichtigsten Sätze der Seite **wörtlich** – die sind exakt, wo das kleine Modell ungenau ist.
+* **Zeitbudget:** Ein Aufruf ohne Cache-Treffer dauert höchstens *Zeitbudget* (Standard 8 Sekunden, Abruf plus Modell);
+  gemessen typisch 2,5–5,5 Sekunden. Der LLM-Prozess misst laufend, wie schnell das Modell rechnet, lässt bei Bedarf die
+  am schwächsten bewerteten Sätze weg und beendet die Antwort zur Frist an einer Satzgrenze. Der Prozess startet schon,
+  während die Seite lädt. Wiederholungsschleifen, in die kleine Modelle geraten, werden beim Generieren erkannt und
+  abgebrochen; Floskeln („Here is a summary …“) entfernt.
+* **Cache:** Seiten und Zusammenfassungen liegen als JSON unter `~/.devtools-mcp/web-cache` (Standard 24 Stunden,
+  0 = aus). Zusammenfassungen gelten je URL, Modell und Fragestellung; eine neue Fragestellung zur selben Seite lädt die
+  Seite nicht erneut. `refresh=true` übergeht den Cache, die Aktion *Cache leeren* löscht ihn.
+* **Modell:** wird beim ersten Aufruf oder über die Aktion *Modell laden* von Hugging Face nach
+  `~/.devtools-mcp/models` geladen (~750 MB). Jedes Jlama-kompatible Instruct-Modell geht (z.B. die größeren
+  `tjake/*-JQ4`); größere Modelle fassen genauer zusammen, brauchen aber mehr Speicher und Zeit.
+* **Eigener Prozess:** Jlama rechnet mit der Vector API, einem Inkubator-Modul, das nur mit
+  `--add-modules jdk.incubator.vector` beim JVM-Start verfügbar ist. Die App startet das Modell deshalb in einer eigenen
+  JVM (gleiches JDK, Klassenpfad der App als `@`-Datei, native SIMD-Routinen von `jlama-native` für Windows/Linux x64
+  und macOS) und spricht per JSON-Zeilen über stdin/stdout mit ihr – am App-Start ändert sich nichts. Der Prozess läuft
+  für alle Aufrufe einmal, Anfragen nacheinander, und endet nach Leerlauf (Standard 15 Minuten); danach startet der
+  nächste Aufruf ihn in etwa drei Sekunden neu.
+* **Schnellere Attention für Llama:** Jlama 0.8.4 rechnet die Attention beim Einlesen der Eingabe Position für Position
+  (RoPE seriell, je Position und Layer ein eigenes paralleles `for` über die Köpfe) und die RMS-Normalisierung seriell.
+  `FastLlamaModel` – eine Unterklasse von Jlamas `LlamaModel`, kein Fork – baut seine Blöcke mit Varianten, die erst K/V
+  aller Positionen schreiben und dann in einem parallelen `for` über alle (Position, Kopf) rechnen. Gleiche Ausgabe
+  Token für Token (Test bei Temperatur 0), etwa 25 % schneller. Abschaltbar über *Optimierte Attention für Llama*.
+* **Sicherheit:** nur http(s), Weiterleitungen werden einzeln geprüft. Adressen im lokalen Netz (localhost, 10.x,
+  192.168.x, Link-Local, fc00::/7 …) sind gesperrt, bis *Lokales Netz erlauben* gesetzt ist – das LLM soll über das Tool
+  nicht an interne Dienste kommen. Nur HTML und Text, kein JavaScript-Rendering; Größenlimit Standard 5 MB. Der
+  User-Agent ist bewusst schlicht (`DevTools-MCP/0.1`): CDNs wie Akamai bremsen Agents nach dem Muster
+  „Mozilla/5.0 (compatible; …)“ um rund 9 Sekunden aus.
+
+Das kleine Modell lässt gelegentlich Details aus oder gibt sie ungenau wieder; die Ausgabe weist darauf hin. Die Tests
+mit dem echten Modell (Zeitbudget, gleiche Ausgabe mit und ohne optimierte Attention) laufen nur mit gesetzter
+Umgebungsvariable `WEB_LLM_TEST=1`.
+
 ### Ziel-JVMs
 
 Alle Performance-Tools nehmen dieselbe `target`-Angabe:
