@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.window;
 
+import java.awt.Color;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.datatransfer.Transferable;
@@ -15,6 +16,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 import systems.grebe.devtools.mcp.modules.window.cursor.CursorController;
+import systems.grebe.devtools.mcp.modules.window.cursor.CursorImage;
 import systems.grebe.devtools.mcp.modules.window.cursor.MouseButton;
 import systems.grebe.devtools.mcp.modules.window.cursor.VirtualCursor;
 import systems.grebe.devtools.mcp.modules.window.platform.NativeWindow;
@@ -36,7 +38,7 @@ import systems.grebe.devtools.mcp.modules.window.platform.WindowSystem;
  *
  * <p>Threadsicher (alle Methoden synchronisiert), weil das Ausblenden nach Leerlauf auf einem eigenen Thread läuft.
  */
-final class VirtualCursorInputDevice implements InputDevice {
+final class VirtualCursorInputDevice implements InputDevice, AutoCloseable {
 
     private final InputDevice real;
     private final Supplier<CursorController> cursors;
@@ -46,6 +48,7 @@ final class VirtualCursorInputDevice implements InputDevice {
     private final boolean ownKeyboard;
     private final long self = ProcessHandle.current().pid();
     private final Duration idle;
+    private final Color color;
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "virtual-cursor-idle");
         t.setDaemon(true);
@@ -78,6 +81,14 @@ final class VirtualCursorInputDevice implements InputDevice {
     /** @param idle nach so langer Untätigkeit verschwindet der Zeiger */
     VirtualCursorInputDevice(InputDevice real, Supplier<CursorController> cursors, Function<Point, Point> toNative,
                              WindowSystem windows, boolean ownPointer, boolean ownKeyboard, Duration idle) {
+        this(real, cursors, toNative, windows, ownPointer, ownKeyboard, idle, CursorImage.ACCENT);
+    }
+
+    /** @param color Farbe des eigenen Zeigers – die Farbe der KI (siehe {@link AiColors}) */
+    VirtualCursorInputDevice(InputDevice real, Supplier<CursorController> cursors, Function<Point, Point> toNative,
+                             WindowSystem windows, boolean ownPointer, boolean ownKeyboard, Duration idle,
+                             Color color) {
+        this.color = color;
         this.idle = idle;
         this.real = real;
         this.cursors = cursors;
@@ -221,7 +232,7 @@ final class VirtualCursorInputDevice implements InputDevice {
         Point at = toNative.apply(new Point(x, y));
         CursorController c = cursors.get();
         if (cursor == null || !cursor.isOpen()) {
-            cursor = c.create(at.x, at.y);
+            cursor = c.create(at.x, at.y, color);
         } else {
             c.move(cursor, at.x, at.y);
         }
@@ -239,6 +250,13 @@ final class VirtualCursorInputDevice implements InputDevice {
 
     private synchronized void idleTimeout() {
         dropCursor();
+    }
+
+    /** Zerstört den Zeiger und beendet den Zeitgeber – die KI-Session ist vorbei. */
+    @Override
+    public synchronized void close() {
+        dropCursor();
+        timer.shutdownNow();
     }
 
     private void dropCursor() {

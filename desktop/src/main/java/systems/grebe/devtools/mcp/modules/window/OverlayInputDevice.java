@@ -14,7 +14,7 @@ import systems.grebe.devtools.mcp.modules.window.platform.WindowSystem;
  * Zielfenster ab {@link #target}, KI-Zeiger bei jeder Mausbewegung, Ausblenden bei {@link #release()}. Alle Eingaben
  * selbst gehen unverändert an das umhüllte Gerät.
  */
-final class OverlayInputDevice implements InputDevice {
+final class OverlayInputDevice implements InputDevice, AutoCloseable {
 
     private final InputDevice delegate;
     private final ControlOverlay overlay;
@@ -40,6 +40,15 @@ final class OverlayInputDevice implements InputDevice {
     public void release() {
         overlay.hide();
         delegate.release();
+    }
+
+    /** Ende der KI-Session: ausblenden und ein eigenes Gerät (eigener Zeiger) schließen; die echte Maus bleibt. */
+    @Override
+    public void close() throws Exception {
+        release();
+        if (delegate instanceof AutoCloseable c) {
+            c.close();
+        }
     }
 
     @Override

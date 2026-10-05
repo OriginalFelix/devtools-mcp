@@ -40,16 +40,17 @@ import systems.grebe.devtools.mcp.modules.window.platform.ScreenMapper;
  * <p>Koordinaten sind Java-Bildschirmkoordinaten (User-Space, wie {@link java.awt.Robot}); für den nativen Zeiger
  * rechnet {@link ScreenMapper} um. Alle Methoden sind threadsicher und kehren sofort zurück.
  */
-final class ControlOverlay {
+final class ControlOverlay implements AutoCloseable {
 
     private static final Logger LOG = Logger.getLogger(ControlOverlay.class.getName());
-    private static final Color ACCENT = CursorImage.ACCENT;
     private static final int BORDER = 4;
     private static final int FOLLOW_MILLIS = 400;
     static final long IDLE_MILLIS = 60_000;
 
     private final Supplier<CursorController> cursors;
     private final ScreenMapper.Mode mode;
+    /** Farbe der KI für Rahmen, Hinweis und Zeiger. */
+    private final Color color;
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "window-control-overlay");
         t.setDaemon(true);
@@ -75,8 +76,14 @@ final class ControlOverlay {
      *                macOS {@code IDENTITY})
      */
     ControlOverlay(Supplier<CursorController> cursors, ScreenMapper.Mode mode) {
+        this(cursors, mode, CursorImage.ACCENT);
+    }
+
+    /** @param color Farbe der KI (siehe {@link AiColors}) */
+    ControlOverlay(Supplier<CursorController> cursors, ScreenMapper.Mode mode, Color color) {
         this.cursors = cursors;
         this.mode = mode;
+        this.color = color;
     }
 
     /** Text des Hinweises, z.B. die Abbruch-Möglichkeit. */
@@ -112,7 +119,7 @@ final class ControlOverlay {
         try {
             CursorController c = cursors.get();
             if (cursor == null || !cursor.isOpen()) {
-                cursor = c.create(at.x, at.y);
+                cursor = c.create(at.x, at.y, color);
             } else {
                 c.move(cursor, at.x, at.y);
             }
@@ -144,6 +151,13 @@ final class ControlOverlay {
             }
         }
         SwingUtilities.invokeLater(this::disposeWindows);
+    }
+
+    /** Blendet aus und beendet den Zeitgeber – die KI-Session ist vorbei. */
+    @Override
+    public void close() {
+        hide();
+        timer.shutdownNow();
     }
 
     /** Ob gerade etwas angezeigt wird – für Tests. */
@@ -191,14 +205,14 @@ final class ControlOverlay {
         if (frame.isEmpty()) {
             for (int i = 0; i < 4; i++) {
                 JWindow strip = window();
-                strip.getContentPane().setBackground(ACCENT);
+                strip.getContentPane().setBackground(color);
                 frame.add(strip);
             }
             label = window();
             labelText = new JLabel(" " + hint + " ");
             labelText.setOpaque(true);
-            labelText.setBackground(ACCENT);
-            labelText.setForeground(Color.WHITE);
+            labelText.setBackground(color);
+            labelText.setForeground(AiColors.textColor(color));
             labelText.setFont(labelText.getFont().deriveFont(Font.BOLD, 12f));
             labelText.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
             label.getContentPane().add(labelText);

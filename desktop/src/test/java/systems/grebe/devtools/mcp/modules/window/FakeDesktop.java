@@ -49,7 +49,7 @@ final class FakeDesktop implements WindowSystem, InputDevice {
     }
 
     WindowSupport support(WindowSession session, ProcessFilter filter, boolean allowSiblings) {
-        return new WindowSupport(this, filter, session, () -> this, presence, new ReentrantLock(),
+        return new WindowSupport(this, filter, () -> session, () -> this, presence, new ReentrantLock(),
                 new WindowSupport.Settings(1280, true, Duration.ofSeconds(10), allowSiblings), millis -> { }, false);
     }
 

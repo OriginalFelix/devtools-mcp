@@ -59,14 +59,11 @@ public class WindowModule implements ToolModule {
     /** Die echte Tastatur (java.awt.Robot). */
     static final String KEYBOARD_REAL = "tastatur";
 
-    private static final String SESSION = "window.session";
-
     /** Maus und Tastatur gibt es einmal – geteilt von allen Benutzern und Clients. */
     private final UserPresenceMonitor presence = new UserPresenceMonitor(System::currentTimeMillis);
     private final ReentrantLock inputLock = new ReentrantLock();
-    /** Rahmen, Hinweis und KI-Zeiger – wie Maus und Tastatur einmal für alle. */
-    private final ControlOverlay overlay = new ControlOverlay(() -> CursorProvider.current().controller(),
-            screenMode());
+    /** Zustand je KI (MCP-Session): Bindung, Farbe, Rahmen und eigener Zeiger. */
+    private final WindowSessions sessions = WindowSessions.start(new AiColors());
     private InputDevice robot;
     /** Per window_launch gestartete Programme – Kindprozesse dieser App, die trotzdem gesteuert werden dürfen. */
     private final java.util.Set<Long> launched = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -76,8 +73,6 @@ public class WindowModule implements ToolModule {
         t.setDaemon(true);
         return t;
     });
-    /** Je Kombination aus eigener Maus und eigener Tastatur ein Gerät. */
-    private final java.util.Map<String, InputDevice> devices = new java.util.HashMap<>();
 
     @Override
     public String id() {
@@ -273,7 +268,7 @@ public class WindowModule implements ToolModule {
         if (GraphicsEnvironment.isHeadless()) {
             throw new IllegalStateException("Die App läuft ohne Bildschirm (headless) – Fenstersteuerung nicht verfügbar.");
         }
-        WindowSupport support = support(config, ws, scope.state(SESSION, WindowSession::new));
+        WindowSupport support = support(config, ws);
         List<Object> beans = new ArrayList<>(List.of(new WindowReadTools(support)));
         if (config.getBoolean(ALLOW_LAUNCH)) {
             beans.add(new WindowLaunchTools(support, ProgramLauncher.current(), background, WindowModule::sleep));
@@ -288,7 +283,7 @@ public class WindowModule implements ToolModule {
         return ToolBeans.callbacks(beans.toArray());
     }
 
-    private WindowSupport support(ModuleConfig config, WindowSystem ws, WindowSession session) {
+    private WindowSupport support(ModuleConfig config, WindowSystem ws) {
         WindowSupport.Settings settings = new WindowSupport.Settings(Math.max(200, config.getInt(MAX_IMAGE, 1280)),
                 config.getBoolean(ABORT_ON_MOUSE), Duration.ofSeconds(Math.max(0, config.getInt(COOLDOWN, 10))),
                 config.getBoolean(ALLOW_SIBLINGS));
@@ -296,31 +291,38 @@ public class WindowModule implements ToolModule {
                 ProcessHandle.current().pid(), launched, sharedDirectories(config));
         boolean ownPointer = !POINTER_MOUSE.equals(config.getString(POINTER_MODE, POINTER_OWN));
         boolean ownKeyboard = !KEYBOARD_REAL.equals(config.getString(KEYBOARD_MODE, KEYBOARD_OWN));
-        overlay.hint(ownPointer ? "KI steuert dieses Fenster mit eigenem Zeiger"
-                : settings.abortOnMouseMove() ? "KI steuert dieses Fenster – Maus bewegen bricht ab"
-                : "KI steuert dieses Fenster");
+        String mode = ownPointer ? " mit eigenem Zeiger"
+                : settings.abortOnMouseMove() ? " – Maus bewegen bricht ab" : "";
         boolean mac = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
-        return new WindowSupport(ws, filter, session, () -> device(ownPointer, ownKeyboard), presence, inputLock,
-                settings, WindowModule::sleep, mac);
+        return new WindowSupport(ws, filter, sessions::current, () -> device(ownPointer, ownKeyboard, mode), presence,
+                inputLock, settings, WindowModule::sleep, mac);
     }
 
     /**
-     * Das Eingabegerät für die Einstellungen – je Kombination einmal erzeugt; Robot (echte Maus und Tastatur,
-     * Bildschirm, Zwischenablage) teilen sich alle.
+     * Das Eingabegerät der KI, die gerade aufruft – je KI und Kombination aus eigener Maus/Tastatur einmal erzeugt, mit
+     * Rahmen, Hinweis und eigenem Zeiger in ihrer Farbe. Robot (echte Maus und Tastatur, Bildschirm, Zwischenablage)
+     * teilen sich alle.
+     *
+     * @param mode Ergänzung des Hinweises, z.B. „ mit eigenem Zeiger“
      */
-    private synchronized InputDevice device(boolean ownPointer, boolean ownKeyboard) {
+    private synchronized InputDevice device(boolean ownPointer, boolean ownKeyboard, String mode) {
         if (robot == null) {
             robot = new RobotInputDevice();
         }
-        return devices.computeIfAbsent(ownPointer + "/" + ownKeyboard, k -> {
+        WindowSession s = sessions.current();
+        ScreenMapper.Mode screen = screenMode();
+        ControlOverlay overlay = s.resource("overlay",
+                () -> new ControlOverlay(() -> CursorProvider.current().controller(), screen, s.color()));
+        overlay.hint(s.client() + " steuert dieses Fenster" + mode);
+        return s.resource("device/" + ownPointer + "/" + ownKeyboard, () -> {
             WindowSystem ws = WindowSystem.current();
             if (!ownPointer && !ownKeyboard) {
                 return new OverlayInputDevice(robot, overlay, ws, true);
             }
-            ScreenMapper.Mode mode = screenMode();
             // mit eigener Maus ist deren Zeiger selbst die Anzeige; sonst zeichnet die Anzeige den KI-Zeiger
             return new OverlayInputDevice(new VirtualCursorInputDevice(robot, () -> CursorProvider.current().controller(),
-                    p -> ScreenMapper.current(mode).toNative(p), ws, ownPointer, ownKeyboard), overlay, ws, !ownPointer);
+                    p -> ScreenMapper.current(screen).toNative(p), ws, ownPointer, ownKeyboard,
+                    VirtualCursorInputDevice.IDLE, s.color()), overlay, ws, !ownPointer);
         });
     }
 

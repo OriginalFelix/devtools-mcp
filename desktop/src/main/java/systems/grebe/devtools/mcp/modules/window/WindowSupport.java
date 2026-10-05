@@ -34,7 +34,7 @@ final class WindowSupport {
 
     private final WindowSystem windows;
     private final ProcessFilter filter;
-    private final WindowSession session;
+    private final Supplier<WindowSession> session;
     private final Supplier<InputDevice> device;
     private final UserPresenceMonitor presence;
     private final Lock lock;
@@ -42,7 +42,8 @@ final class WindowSupport {
     private final Sleeper sleeper;
     private final boolean mac;
 
-    WindowSupport(WindowSystem windows, ProcessFilter filter, WindowSession session, Supplier<InputDevice> device,
+    /** @param session Zustand der KI, die gerade aufruft (je MCP-Session, siehe {@link WindowSessions}) */
+    WindowSupport(WindowSystem windows, ProcessFilter filter, Supplier<WindowSession> session, Supplier<InputDevice> device,
                   UserPresenceMonitor presence, Lock lock, Settings settings, Sleeper sleeper, boolean mac) {
         this.windows = windows;
         this.filter = filter;
@@ -64,7 +65,7 @@ final class WindowSupport {
     }
 
     WindowSession session() {
-        return session;
+        return session.get();
     }
 
     Settings settings() {
@@ -84,7 +85,7 @@ final class WindowSupport {
      * seine Geschwister. Nie der Elternprozess.
      */
     Set<Long> boundPids() {
-        return session.require().pids(settings.allowSiblings());
+        return session().require().pids(settings.allowSiblings());
     }
 
     /** Sichtbare Fenster der erlaubten Prozesse, vorderstes zuerst. */
@@ -112,7 +113,7 @@ final class WindowSupport {
                             + "window_windows zeigt die aktuellen Fenster."));
         }
         if (own.isEmpty()) {
-            throw new IllegalStateException("Der gebundene Prozess " + session.require().describe()
+            throw new IllegalStateException("Der gebundene Prozess " + session().require().describe()
                     + " hat kein sichtbares Fenster.");
         }
         OptionalLong fg = windows.foreground();
@@ -187,7 +188,7 @@ final class WindowSupport {
                 }
                 NativeWindow target = refresh(w);
                 d.target(target, boundPids());
-                return action.apply(new InputGuard(this, d, presence, target, session.scale(w.id())));
+                return action.apply(new InputGuard(this, d, presence, target, session().scale(w.id())));
             } catch (UserPresenceMonitor.UserInterventionException e) {
                 d.release(); // der Nutzer hat übernommen – Anzeige sofort weg
                 throw e;
@@ -227,7 +228,7 @@ final class WindowSupport {
                 }
                 NativeWindow target = refresh(w);
                 d.target(target, boundPids());
-                return action.apply(new InputGuard(this, d, presence, target, session.scale(w.id()), false));
+                return action.apply(new InputGuard(this, d, presence, target, session().scale(w.id()), false));
             } catch (UserPresenceMonitor.UserInterventionException e) {
                 d.release();
                 throw e;
