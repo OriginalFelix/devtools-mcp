@@ -56,10 +56,11 @@ class TicketWriteGuardTest {
 
     @Test
     void eachSwitchAddsExactlyItsTool() {
-        List<String> read = List.of("providers", "boards", "board", "search", "get", "status", "links", "transitions");
+        List<String> read = List.of("providers", "boards", "board", "search", "get", "status", "links", "transitions", "worklogs");
         assertThat(toolNames(Map.of())).containsExactlyInAnyOrderElementsOf(read);
-        Map<String, String> switches = Map.of("allowComment", "comment", "allowTransition", "transition",
-                "allowAssign", "assign", "allowEdit", "update", "allowCreate", "create");
+        Map<String, String> switches = Map.ofEntries(Map.entry("allowComment", "comment"),
+                Map.entry("allowTransition", "transition"), Map.entry("allowAssign", "assign"),
+                Map.entry("allowEdit", "update"), Map.entry("allowCreate", "create"), Map.entry("allowLogTime", "log_time"));
         switches.forEach((sw, tool) -> assertThat(toolNames(Map.of(sw, "true"))).as(sw)
                 .hasSize(read.size() + 1).contains(tool));
         assertThat(toolNames(Map.ofEntries(switches.keySet().stream().map(k -> Map.entry(k, "true")).toArray(Map.Entry[]::new))))

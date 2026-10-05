@@ -1,6 +1,7 @@
 package systems.grebe.devtools.mcp.modules.ticket.openproject;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
@@ -605,6 +606,98 @@ public class OpenProjectTicketProvider implements TicketProvider {
                     .findFirst().orElseThrow(() -> new IllegalArgumentException("OpenProject: Typ '" + type + "' gibt es "
                             + "in " + project + " nicht. Gültig: " + String.join(", ", types.stream()
                             .map(x -> text(x.path("name"))).toList())));
+        }
+
+        // ------------------------------------------------------------------ Zeiterfassung
+
+        @Override
+        public List<WorkLogEntry> worklogs(String key, String project) {
+            int id = packageId(key);
+            String filters = "[{\"workPackage\":{\"operator\":\"=\",\"values\":[\"" + id + "\"]}}]";
+            List<WorkLogEntry> out = new ArrayList<>();
+            for (int page = 1; out.size() < 1000; page++) {
+                JsonNode res = http().getJson("/time_entries" + query("filters", filters,
+                        "sortBy", "[[\"spentOn\",\"asc\"]]", "pageSize", 200, "offset", page));
+                JsonNode elements = res.path("_embedded").path("elements");
+                for (JsonNode t : elements) {
+                    out.add(new WorkLogEntry(text(t.path("id")), title(t, "user"), text(t.path("spentOn")),
+                            hours(text(t.path("hours"))), text(t.path("comment").path("raw")), title(t, "activity")));
+                }
+                if (elements.isEmpty() || out.size() >= res.path("total").asInt(out.size())) {
+                    break;
+                }
+            }
+            return out;
+        }
+
+        /** {@code PT1H30M}; OpenProject schreibt längere Zeiten auch als {@code P1DT2H} (1 Tag = 24 Stunden). */
+        private static Duration hours(String iso) {
+            try {
+                return iso == null ? Duration.ZERO : Duration.parse(iso);
+            } catch (RuntimeException e) {
+                return Duration.ZERO;
+            }
+        }
+
+        @Override
+        public WriteResult logTime(String key, String project, WorkLog work) {
+            int id = packageId(key);
+            var body = HttpJson.object();
+            body.put("hours", work.duration().toString());
+            body.put("spentOn", work.date().toString());
+            if (work.comment() != null) {
+                body.putObject("comment").put("raw", work.comment());
+            }
+            ObjectNode links = body.putObject("_links");
+            links.putObject("workPackage").put("href", "/api/v3" + path(id));
+            if (work.activity() != null) {
+                links.putObject("activity").put("href", activityHref(id, work.activity()));
+            }
+            JsonNode res;
+            try {
+                res = http().post("/time_entries", body).body();
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 422) {
+                    throw new IllegalArgumentException(e.getMessage() + (work.activity() != null ? ""
+                            : " – ggf. 'activity' angeben: " + activityNames(id)), e);
+                }
+                throw e;
+            }
+            String tid = text(res.path("id"));
+            return new WriteResult("#" + id, TicketSystem.formatDuration(work.duration()) + " gebucht am " + work.date()
+                    + " (" + HttpJson.first(title(res, "activity"), work.activity(), "Standardaktivität") + ")"
+                    + (tid == null ? "" : ", Buchung " + tid), webUrl(id) + "/activity", tid);
+        }
+
+        /** Aktivitäten, die für Zeiteinträge auf diesem Arbeitspaket erlaubt sind (Formular-Endpunkt). */
+        private List<JsonNode> activities(int id) {
+            var body = HttpJson.object();
+            body.putObject("_links").putObject("workPackage").put("href", "/api/v3" + path(id));
+            List<JsonNode> out = new ArrayList<>();
+            http().post("/time_entries/form", body).body().path("_embedded").path("schema").path("activity")
+                    .path("_embedded").path("allowedValues").forEach(out::add);
+            return out;
+        }
+
+        private String activityHref(int id, String name) {
+            List<JsonNode> all = activities(id);
+            List<JsonNode> exact = all.stream().filter(a -> name.equalsIgnoreCase(text(a.path("name")))).toList();
+            String lower = name.toLowerCase(Locale.ROOT);
+            List<JsonNode> hits = exact.isEmpty() ? all.stream().filter(a -> HttpJson.first(text(a.path("name")), "")
+                    .toLowerCase(Locale.ROOT).contains(lower)).toList() : exact;
+            if (hits.size() == 1) {
+                return href(hits.getFirst(), "self");
+            }
+            throw new IllegalArgumentException("OpenProject: Aktivität '" + name + "' " + (hits.isEmpty() ? "gibt es nicht"
+                    : "ist mehrdeutig") + ". Verfügbar: " + String.join(", ", all.stream().map(a -> text(a.path("name"))).toList()));
+        }
+
+        private String activityNames(int id) {
+            try {
+                return String.join(", ", activities(id).stream().map(a -> text(a.path("name"))).toList());
+            } catch (RuntimeException e) {
+                return "(nicht abrufbar)";
+            }
         }
 
         @Override

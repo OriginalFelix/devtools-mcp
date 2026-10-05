@@ -1,6 +1,8 @@
 package systems.grebe.devtools.mcp.modules.ticket.jira;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -100,6 +102,8 @@ public class JiraTicketProvider implements TicketProvider {
         private static final int BOARD_PAGE = 50;
         private static final int BOARD_MAX = 300;
         private static final Pattern STORY_POINTS = Pattern.compile("(?i)story[ _-]?points?|story point estimate");
+        /** Format von {@code started} – Jira lehnt ISO-Offsets mit Doppelpunkt ab. */
+        private static final DateTimeFormatter STARTED = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
 
         private final HttpJson http;
         private final boolean cloud;
@@ -556,6 +560,47 @@ public class JiraTicketProvider implements TicketProvider {
                 }
             }
             return new WriteResult(newKey, msg, http.baseUrl() + "/browse/" + newKey);
+        }
+
+        @Override
+        public List<WorkLogEntry> worklogs(String key, String project) {
+            String k = issueKey(key);
+            List<WorkLogEntry> out = new ArrayList<>();
+            int startAt = 0;
+            while (out.size() < 1000) {
+                JsonNode res = http().getJson("/rest/api/2/issue/" + HttpJson.enc(k) + "/worklog"
+                        + query("startAt", startAt, "maxResults", 500));
+                JsonNode logs = res.path("worklogs");
+                for (JsonNode w : logs) {
+                    String started = text(w.path("started"));
+                    out.add(new WorkLogEntry(text(w.path("id")), user(w.path("author")), started == null ? null : day(started),
+                            Duration.ofSeconds(w.path("timeSpentSeconds").asLong()), text(w.path("comment")), null));
+                }
+                startAt += logs.size();
+                if (logs.isEmpty() || startAt >= res.path("total").asInt(startAt)) {
+                    break;
+                }
+            }
+            return out;
+        }
+
+        /** Zieht die Dauer automatisch von der Restschätzung ab (Jira-Standard {@code adjustEstimate=auto}). */
+        @Override
+        public WriteResult logTime(String key, String project, WorkLog work) {
+            if (work.activity() != null) {
+                throw new IllegalArgumentException("Jira kennt keine Tätigkeitsart beim Buchen – ohne 'activity' aufrufen.");
+            }
+            String k = issueKey(key);
+            var body = HttpJson.object();
+            body.put("timeSpentSeconds", work.duration().toSeconds());
+            body.put("started", work.start().format(STARTED));
+            if (work.comment() != null) {
+                body.put("comment", work.comment());
+            }
+            String id = text(http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/worklog", body).body().path("id"));
+            return new WriteResult(k, TicketSystem.formatDuration(work.duration()) + " gebucht am " + work.date()
+                    + (id == null ? "" : " (Buchung " + id + ")"),
+                    http.baseUrl() + "/browse/" + k + (id == null ? "" : "?focusedWorklogId=" + id), id);
         }
 
         @Override

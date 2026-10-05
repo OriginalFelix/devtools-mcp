@@ -1,7 +1,10 @@
 package systems.grebe.devtools.mcp.modules.ticket.youtrack;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -576,6 +579,65 @@ public class YouTrackTicketProvider implements TicketProvider {
                     .map(p -> text(p.path("id"))).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("YouTrack: Projekt '" + project + "' nicht gefunden. "
                             + "Verfügbar: " + String.join(", ", all.stream().map(p -> text(p.path("shortName"))).limit(30).toList())));
+        }
+
+        // ------------------------------------------------------------------ Zeiterfassung
+
+        @Override
+        public List<WorkLogEntry> worklogs(String key, String project) {
+            String id = issueId(key);
+            List<WorkLogEntry> out = new ArrayList<>();
+            for (JsonNode w : http().getJson(issuePath(id) + "/timeTracking/workItems" + query("fields",
+                    "id,author(login,fullName),date,duration(minutes),text,type(name)", "$top", 1000))) {
+                JsonNode date = w.path("date");
+                out.add(new WorkLogEntry(text(w.path("id")), name(w.path("author")), date.isNumber()
+                        ? Instant.ofEpochMilli(date.asLong()).atZone(ZoneId.systemDefault()).toLocalDate().toString() : null,
+                        Duration.ofMinutes(w.path("duration").path("minutes").asLong()), text(w.path("text")),
+                        text(w.path("type").path("name"))));
+            }
+            out.sort(Comparator.comparing(WorkLogEntry::date, Comparator.nullsLast(Comparator.naturalOrder())));
+            return out;
+        }
+
+        @Override
+        public WriteResult logTime(String key, String project, WorkLog work) {
+            String id = issueId(key);
+            var body = HttpJson.object();
+            body.putObject("duration").put("minutes", work.duration().toMinutes());
+            body.put("date", work.start().toInstant().toEpochMilli());
+            if (work.comment() != null) {
+                body.put("text", work.comment());
+            }
+            if (work.activity() != null) {
+                body.putObject("type").put("id", workItemType(work.activity()));
+            }
+            String wid;
+            try {
+                wid = text(http().post(issuePath(id) + "/timeTracking/workItems" + query("fields", "id"), body).body().path("id"));
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 400) {
+                    throw new IllegalArgumentException(e.getMessage() + " – ist die Zeiterfassung im Projekt aktiviert?", e);
+                }
+                throw e;
+            }
+            return new WriteResult(id, TicketSystem.formatDuration(work.duration()) + " gebucht am " + work.date()
+                    + (work.activity() == null ? "" : " (" + work.activity() + ")"), webUrl(id), wid);
+        }
+
+        /** ID eines Work Item Types per Name – exakt vor eindeutigem Teilstring. */
+        private String workItemType(String name) {
+            List<JsonNode> all = new ArrayList<>();
+            http().getJson("/admin/timeTrackingSettings/workItemTypes" + query("fields", "id,name")).forEach(all::add);
+            List<JsonNode> exact = all.stream().filter(t -> name.equalsIgnoreCase(text(t.path("name")))).toList();
+            String lower = name.toLowerCase(Locale.ROOT);
+            List<JsonNode> hits = exact.isEmpty() ? all.stream().filter(t -> HttpJson.first(text(t.path("name")), "")
+                    .toLowerCase(Locale.ROOT).contains(lower)).toList() : exact;
+            if (hits.size() == 1) {
+                return text(hits.getFirst().path("id"));
+            }
+            throw new IllegalArgumentException("YouTrack: Tätigkeitsart '" + name + "' " + (hits.isEmpty() ? "gibt es nicht"
+                    : "ist mehrdeutig") + ". Verfügbar: " + String.join(", ", all.stream()
+                    .map(t -> text(t.path("name"))).toList()));
         }
 
         @Override
