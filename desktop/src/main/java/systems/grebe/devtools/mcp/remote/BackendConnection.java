@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -122,6 +123,7 @@ public class BackendConnection {
     private volatile Status status = Status.CONNECTING;
     private volatile String message = "";
     private volatile Instant lastSync;
+    private volatile boolean closing;
     private String reportedCatalog;
 
     public BackendConnection(SettingsStore store, ObjectProvider<ToolRegistry> registry,
@@ -148,8 +150,17 @@ public class BackendConnection {
         registry.getObject().addChangeListener(() -> executor.execute(this::reportCatalogQuietly));
     }
 
+    /**
+     * Schon beim Schließen des Kontexts: vor dem Graceful Shutdown des Webservers. Sonst schließt das eingebettete
+     * Backend die Subscriptions, und sie verbinden sich gegen den bereits gestoppten WebSocket-Client endlos neu.
+     */
+    @EventListener(ContextClosedEvent.class)
     @PreDestroy
-    public void stop() {
+    public synchronized void stop() {
+        if (closing) {
+            return;
+        }
+        closing = true;
         subscriptions.forEach(Disposable::dispose);
         WebSocketGraphQlClient w = ws;
         if (w != null) {
@@ -163,6 +174,9 @@ public class BackendConnection {
     }
 
     private void connectQuietly() {
+        if (closing) {
+            return;
+        }
         try {
             connect();
         } catch (RuntimeException e) {
@@ -212,7 +226,7 @@ public class BackendConnection {
         subscriptions.forEach(Disposable::dispose);
         subscriptions.clear();
         Retry retry = Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(1)).maxBackoff(Duration.ofSeconds(30))
-                .doBeforeRetry(r -> offline(r.failure()));
+                .filter(e -> !closing).doBeforeRetry(r -> offline(r.failure()));
         subscriptions.add(ws.document("subscription { settingsChanged { " + SETTINGS_FIELDS + " } }")
                 .retrieveSubscription("settingsChanged").toEntity(SettingsSnapshot.class)
                 .retryWhen(retry).subscribe(s -> executor.execute(() -> onSettings(s)), this::offline));
@@ -269,6 +283,9 @@ public class BackendConnection {
     }
 
     private void offline(Throwable error) {
+        if (closing) {
+            return;
+        }
         if (status != Status.ERROR) {
             status = Status.OFFLINE;
         }

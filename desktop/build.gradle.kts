@@ -100,6 +100,8 @@ springBoot {
 
 tasks.named<Jar>("bootJar") {
     archiveBaseName = "devtools-mcp"
+    // Native Zugriffe (JavaFX, tree-sitter über FFM) ohne Warnung beim Start mit java -jar
+    manifest.attributes("Enable-Native-Access" to "ALL-UNNAMED")
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
