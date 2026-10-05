@@ -41,6 +41,22 @@ public interface WindowSystem {
         return Optional.empty();
     }
 
+    /**
+     * Ob {@link #stackAbove} unterstützt wird. Sonst liegen Rahmen und Hinweis über allen Fenstern (immer im
+     * Vordergrund).
+     */
+    default boolean canStackAbove() {
+        return false;
+    }
+
+    /**
+     * Legt ein eigenes Anzeige-Fenster in der Z-Reihenfolge direkt über {@code target} – auf dieselbe Ebene: Fenster,
+     * die über dem Ziel liegen, verdecken auch die Anzeige. Nur auf dem EDT aufrufen; nachführen, wenn sich die
+     * Reihenfolge ändert.
+     */
+    default void stackAbove(java.awt.Window overlay, NativeWindow target) {
+    }
+
     /** Wirft mit verständlicher Meldung, wenn Eingaben per Robot nicht ankommen würden (fehlende Berechtigung). */
     default void requireInputPermission() {
     }

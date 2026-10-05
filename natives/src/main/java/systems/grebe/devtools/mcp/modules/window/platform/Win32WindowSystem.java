@@ -254,6 +254,19 @@ final class Win32WindowSystem implements WindowSystem {
 
     private volatile Win32Messages messages;
 
+    @Override
+    public boolean canStackAbove() {
+        return true;
+    }
+
+    @Override
+    public void stackAbove(java.awt.Window overlay, NativeWindow target) {
+        com.sun.jna.Pointer own = com.sun.jna.Native.getWindowPointer(overlay);
+        if (own != null) {
+            Win32ZOrder.stackAbove(com.sun.jna.Pointer.nativeValue(own), target.id());
+        }
+    }
+
     /** {@code PrintWindow} über {@link Win32Messages} – das Fenster bleibt, wo es ist. */
     @Override
     public Optional<java.awt.image.BufferedImage> captureInBackground(NativeWindow window) {

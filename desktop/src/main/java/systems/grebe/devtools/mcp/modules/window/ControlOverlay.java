@@ -24,7 +24,9 @@ import javax.swing.SwingUtilities;
 import systems.grebe.devtools.mcp.modules.window.cursor.CursorController;
 import systems.grebe.devtools.mcp.modules.window.cursor.CursorImage;
 import systems.grebe.devtools.mcp.modules.window.cursor.VirtualCursor;
+import systems.grebe.devtools.mcp.modules.window.platform.NativeWindow;
 import systems.grebe.devtools.mcp.modules.window.platform.ScreenMapper;
+import systems.grebe.devtools.mcp.modules.window.platform.WindowSystem;
 
 /**
  * Zeigt sichtbar an, dass die KI ein Fenster steuert: farbiger Rahmen um das Fenster, ein Hinweis mit der
@@ -51,6 +53,8 @@ final class ControlOverlay implements AutoCloseable {
     private final ScreenMapper.Mode mode;
     /** Farbe der KI für Rahmen, Hinweis und Zeiger. */
     private final Color color;
+    /** Legt Rahmen und Hinweis auf die Ebene des Fensters; {@code null} = über allen Fenstern. */
+    private final WindowSystem stacking;
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "window-control-overlay");
         t.setDaemon(true);
@@ -64,7 +68,7 @@ final class ControlOverlay implements AutoCloseable {
 
     // unter der Sperre von this
     private volatile String hint = "";
-    private Supplier<Optional<Rectangle>> bounds = Optional::empty;
+    private Supplier<Optional<NativeWindow>> target = Optional::empty;
     private ScheduledFuture<?> follow;
     private ScheduledFuture<?> idle;
     private VirtualCursor cursor;
@@ -76,14 +80,19 @@ final class ControlOverlay implements AutoCloseable {
      *                macOS {@code IDENTITY})
      */
     ControlOverlay(Supplier<CursorController> cursors, ScreenMapper.Mode mode) {
-        this(cursors, mode, CursorImage.ACCENT);
+        this(cursors, mode, CursorImage.ACCENT, null);
     }
 
-    /** @param color Farbe der KI (siehe {@link AiColors}) */
-    ControlOverlay(Supplier<CursorController> cursors, ScreenMapper.Mode mode, Color color) {
+    /**
+     * @param color   Farbe der KI (siehe {@link AiColors})
+     * @param windows legt Rahmen und Hinweis in der Z-Reihenfolge direkt über das Fenster, wenn es das kann
+     *                ({@link WindowSystem#canStackAbove()}); sonst liegen sie über allen Fenstern
+     */
+    ControlOverlay(Supplier<CursorController> cursors, ScreenMapper.Mode mode, Color color, WindowSystem windows) {
         this.cursors = cursors;
         this.mode = mode;
         this.color = color;
+        this.stacking = windows != null && windows.canStackAbove() ? windows : null;
     }
 
     /** Text des Hinweises, z.B. die Abbruch-Möglichkeit. */
@@ -97,12 +106,15 @@ final class ControlOverlay implements AutoCloseable {
         });
     }
 
-    /** Blendet Rahmen und Hinweis um das Fenster ein und folgt seinen Grenzen, bis {@link #hide()}. */
-    synchronized void show(Supplier<Optional<Rectangle>> windowBounds) {
+    /**
+     * Blendet Rahmen und Hinweis um das Fenster ein und folgt seinen Grenzen und seiner Ebene, bis {@link #hide()}.
+     * Leer = Fenster gerade nicht sichtbar.
+     */
+    synchronized void show(Supplier<Optional<NativeWindow>> window) {
         if (GraphicsEnvironment.isHeadless()) {
             return;
         }
-        bounds = windowBounds;
+        target = window;
         touch();
         if (follow == null) {
             follow = timer.scheduleWithFixedDelay(this::refresh, 0, FOLLOW_MILLIS, TimeUnit.MILLISECONDS);
@@ -140,7 +152,7 @@ final class ControlOverlay implements AutoCloseable {
             idle.cancel(false);
             idle = null;
         }
-        bounds = Optional::empty;
+        target = Optional::empty;
         if (cursor != null) {
             VirtualCursor c = cursor;
             cursor = null;
@@ -174,34 +186,34 @@ final class ControlOverlay implements AutoCloseable {
 
     /** Liest die Fenstergrenzen (außerhalb des EDT – das sind native Aufrufe) und setzt die Fenster darauf. */
     private void refresh() {
-        Supplier<Optional<Rectangle>> source;
+        Supplier<Optional<NativeWindow>> source;
         synchronized (this) {
-            source = bounds;
+            source = target;
         }
-        Optional<Rectangle> b;
+        Optional<NativeWindow> w;
         try {
-            b = source.get();
+            w = source.get();
         } catch (RuntimeException e) {
-            b = Optional.empty();
+            w = Optional.empty();
         }
-        Optional<Rectangle> target = b;
-        SwingUtilities.invokeLater(() -> place(target));
+        Optional<NativeWindow> current = w;
+        SwingUtilities.invokeLater(() -> place(current));
     }
 
-    private void place(Optional<Rectangle> target) {
+    private void place(Optional<NativeWindow> window) {
         synchronized (this) {
             if (follow == null) {
                 return; // inzwischen ausgeblendet
             }
         }
-        if (target.isEmpty()) {
+        if (window.isEmpty()) {
             frame.forEach(w -> w.setVisible(false));
             if (label != null) {
                 label.setVisible(false);
             }
             return;
         }
-        Rectangle r = target.get();
+        Rectangle r = window.get().bounds();
         if (frame.isEmpty()) {
             for (int i = 0; i < 4; i++) {
                 JWindow strip = window();
@@ -230,6 +242,13 @@ final class ControlOverlay implements AutoCloseable {
         }
         label.setLocation(r.x + r.width - label.getWidth(), labelY);
         label.setVisible(!hint.isEmpty());
+        if (stacking != null) {
+            // auf die Ebene des Fensters: was darüber liegt, verdeckt auch den Rahmen
+            frame.forEach(w -> stacking.stackAbove(w, window.get()));
+            if (label.isVisible()) {
+                stacking.stackAbove(label, window.get());
+            }
+        }
     }
 
     private static int screenTop(Rectangle r) {
@@ -242,9 +261,9 @@ final class ControlOverlay implements AutoCloseable {
         return 0;
     }
 
-    private static JWindow window() {
+    private JWindow window() {
         JWindow w = new JWindow();
-        w.setAlwaysOnTop(true);
+        w.setAlwaysOnTop(stacking == null);
         w.setFocusableWindowState(false);
         w.setAutoRequestFocus(false);
         w.setType(java.awt.Window.Type.UTILITY);

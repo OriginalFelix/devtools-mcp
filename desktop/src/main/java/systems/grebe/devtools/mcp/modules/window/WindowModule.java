@@ -312,7 +312,8 @@ public class WindowModule implements ToolModule {
         WindowSession s = sessions.current();
         ScreenMapper.Mode screen = screenMode();
         ControlOverlay overlay = s.resource("overlay",
-                () -> new ControlOverlay(() -> CursorProvider.current().controller(), screen, s.color()));
+                () -> new ControlOverlay(() -> CursorProvider.current().controller(), screen, s.color(),
+                        WindowSystem.current()));
         overlay.hint(s.client() + " steuert dieses Fenster" + mode);
         return s.resource("device/" + ownPointer + "/" + ownKeyboard, () -> {
             WindowSystem ws = WindowSystem.current();

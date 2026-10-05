@@ -32,7 +32,7 @@ final class OverlayInputDevice implements InputDevice, AutoCloseable {
     @Override
     public void target(NativeWindow window, Set<Long> allowedPids) {
         long id = window.id();
-        overlay.show(() -> windows.window(id).filter(w -> allowedPids.contains(w.pid())).map(NativeWindow::bounds));
+        overlay.show(() -> windows.window(id).filter(w -> allowedPids.contains(w.pid())));
         delegate.target(window, allowedPids);
     }
 
