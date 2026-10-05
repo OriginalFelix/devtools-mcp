@@ -329,6 +329,28 @@ class GraphQlApiIntegrationTest {
     }
 
     @Test
+    void scriptsBelongToTheTokenUserAndAreSyntaxChecked() {
+        String ja = token(newUser());
+        String jb = token(newUser());
+        String save = """
+                mutation($n: String!, $c: String!) { saveScript(name: $n, content: $c) }""";
+        // ohne description: fester Text aus module { description '…' }; ausgeführt wird auf dem Server nichts
+        assertThat(mutation(ja, save, Map.of("n", "jira", "c", "module { description 'Jira-Abfragen' }\n"
+                + "tool('a') { description 'x'; run { System.exit(1) } }"), "saveScript")).contains("angelegt");
+        ClientGraphQlResponse broken = client(ja).document(save)
+                .variables(Map.of("n", "jira", "c", "tool(")).executeSync();
+        assertThat(errorType(broken)).isEqualTo("BAD_REQUEST");
+        assertThat(broken.getErrors().getFirst().getMessage()).contains("Zeile 1");
+
+        assertThat(client(ja).document("{ scripts { name description scope revision } }")
+                .retrieveSync("scripts[0].description").toEntity(String.class)).isEqualTo("Jira-Abfragen");
+        assertThat(client(jb).document("{ scripts { name } }").retrieveSync("scripts").toEntityList(Object.class))
+                .isEmpty();
+        assertThat(errorType(client(ja).document("mutation { publishScript(name: \"jira\") }").executeSync()))
+                .isEqualTo("BAD_REQUEST"); // nur Administratoren
+    }
+
+    @Test
     void subscriptionDeliversCurrentStateAndChanges() {
         UserAccount u = newUser();
         String jwt = token(u);

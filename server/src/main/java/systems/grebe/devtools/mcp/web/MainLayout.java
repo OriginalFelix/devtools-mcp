@@ -64,6 +64,7 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         nav.addItem(new SideNavItem("Übersicht", OverviewView.class, VaadinIcon.DASHBOARD.create()));
         nav.addItem(new SideNavItem("Projekte", ProjectsView.class, VaadinIcon.FOLDER_OPEN.create()));
         nav.addItem(new SideNavItem("Einstellungen", SettingsView.class, VaadinIcon.COG.create()));
+        nav.addItem(new SideNavItem("Skripte", ScriptsView.class, VaadinIcon.CODE.create()));
         nav.addItem(new SideNavItem("Profile", ProfilesView.class, VaadinIcon.RECORDS.create()));
         nav.addItem(new SideNavItem("Mein Konto", AccountView.class, VaadinIcon.USER.create()));
         if (auth.hasRole(Role.ADMIN.name())) {

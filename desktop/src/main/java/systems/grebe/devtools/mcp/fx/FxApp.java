@@ -19,6 +19,7 @@ import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
 import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 import systems.grebe.devtools.mcp.modules.visualvm.VisualVmModule;
 import systems.grebe.devtools.mcp.plugin.PluginManager;
@@ -30,6 +31,7 @@ import systems.grebe.devtools.mcp.ui.BackendView;
 import systems.grebe.devtools.mcp.ui.MainView;
 import systems.grebe.devtools.mcp.ui.MemoriesView;
 import systems.grebe.devtools.mcp.ui.PluginsView;
+import systems.grebe.devtools.mcp.ui.ScriptsView;
 import systems.grebe.devtools.mcp.ui.SkillsView;
 import systems.grebe.devtools.mcp.ui.TrayManager;
 
@@ -74,6 +76,7 @@ public class FxApp extends Application {
         MainView view = new MainView(registry, log, store, endpoint, stage, List.of(
                 new Tab("Skills", skillsView(backend)),
                 new Tab("Memories", memoriesView(backend)),
+                new Tab("Skripte", scriptsView(backend, registry)),
                 new Tab("Artefakte", new ArtifactsView(context.getBean(JavaEnvironmentProvider.class), getHostServices(),
                         context.getBean(VisualVmModule.class)::openFile)),
                 new Tab("Plugins", new PluginsView(context.getBean(PluginManager.class),
@@ -114,6 +117,14 @@ public class FxApp extends Application {
     /** Memories-Ansicht; lädt neu, wenn sich Konto oder Verbindung ändern. */
     private MemoriesView memoriesView(BackendConnection backend) {
         MemoriesView v = new MemoriesView(context.getBean(MemoryBackend.class));
+        backend.addListener(() -> Platform.runLater(v::refresh));
+        return v;
+    }
+
+    /** Skript-Editor; Zustand der Module (Schalter, Fehler) und Konto aktualisieren die Liste. */
+    private ScriptsView scriptsView(BackendConnection backend, ToolRegistry registry) {
+        ScriptsView v = new ScriptsView(context.getBean(ScriptManager.class), backend::me);
+        registry.addChangeListener(() -> Platform.runLater(v::refresh));
         backend.addListener(() -> Platform.runLater(v::refresh));
         return v;
     }

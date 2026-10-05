@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 import systems.grebe.devtools.mcp.backend.memories.MemoryService;
+import systems.grebe.devtools.mcp.backend.scripts.ScriptService;
 import systems.grebe.devtools.mcp.backend.skills.SkillService;
 
 /**
@@ -17,9 +18,10 @@ public class ChangeBus {
     private final Sinks.Many<BackendChanged> sink = Sinks.many().multicast().directBestEffort();
     private final java.util.concurrent.atomic.AtomicLong revision = new java.util.concurrent.atomic.AtomicLong();
 
-    public ChangeBus(SkillService skills, MemoryService memories) {
+    public ChangeBus(SkillService skills, MemoryService memories, ScriptService scripts) {
         skills.addChangeListener(() -> publish(BackendChanged.all(BackendChanged.Topic.SKILLS)));
         memories.addChangeListener(() -> publish(BackendChanged.all(BackendChanged.Topic.MEMORIES)));
+        scripts.addChangeListener(() -> publish(BackendChanged.all(BackendChanged.Topic.SCRIPTS)));
     }
 
     @EventListener
