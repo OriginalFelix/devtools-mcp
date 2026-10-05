@@ -149,3 +149,16 @@
     -fx-background-radius: 6;
     -fx-font-size: 12px;
 }
+
+/* Fensterauswahl (Einstellungen der Fenstersteuerung) */
+.window-tile {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 6;
+    -fx-border-color: #dde2e8;
+    -fx-border-radius: 6;
+    -fx-cursor: hand;
+}
+.window-tile:hover { -fx-border-color: -accent; -fx-background-color: #f0f5fb; }
+.window-placeholder { -fx-background-color: #edf2f7; -fx-background-radius: 4; }
+.window-placeholder .label { -fx-text-fill: #4a5568; -fx-font-size: 14px; }
+.window-title { -fx-font-weight: bold; -fx-text-fill: #1a202c; }

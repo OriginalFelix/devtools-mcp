@@ -212,12 +212,14 @@ public class WindowModule implements ToolModule {
     @Override
     public List<ConfigField> configSchema() {
         return List.of(
-                ConfigField.of(INCLUDE, "Nur diese Prozesse", FieldType.STRING)
-                        .withHelp("Regulärer Ausdruck auf Prozessname und Kommandozeile. Leer = alle Prozesse des "
-                                + "Benutzers mit Fenstern."),
-                ConfigField.of(EXCLUDE, "Prozesse ausschließen", FieldType.STRING)
-                        .withHelp("Regulärer Ausdruck. Immer ausgeschlossen: diese App, Anmelde-/Berechtigungsdialoge "
-                                + "des Systems und gängige Passwortmanager."),
+                ConfigField.of(INCLUDE, "Nur diese Prozesse", FieldType.PROCESS_PATTERN)
+                        .withHelp("Regulärer Ausdruck auf Prozessname und Kommandozeile; „Fenster wählen…“ fügt ein "
+                                + "Programm hinzu. Leer = alle Prozesse des Benutzers mit Fenstern. Programme aus "
+                                + "Ordnern unter „Freigaben“ sind immer freigegeben."),
+                ConfigField.of(EXCLUDE, "Prozesse ausschließen", FieldType.PROCESS_PATTERN)
+                        .withHelp("Regulärer Ausdruck; „Fenster wählen…“ fügt ein Programm hinzu. Gilt nicht für "
+                                + "Programme aus Ordnern unter „Freigaben“. Immer ausgeschlossen: diese App, "
+                                + "Anmelde-/Berechtigungsdialoge des Systems und gängige Passwortmanager."),
                 ConfigField.of(ALLOW_INPUT, "Eingaben erlauben (Klicken, Scrollen, Ziehen)", FieldType.BOOLEAN)
                         .withDefault("false").withHelp("Ohne diesen Schalter kann die KI Fenster nur ansehen. Mit "
                                 + "eigenem Zeiger bleibt deine Maus frei, im Modus „maus“ bewegt die KI die echte Maus."),
