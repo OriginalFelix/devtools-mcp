@@ -99,8 +99,8 @@ public final class McpRuntime implements AutoCloseable {
                 continue;
             }
             try {
-                server.addTool(inScope(ToolProgress.wrap(withAnnotations(McpToolUtils.toSyncToolSpecification(cb),
-                        ToolBeans.annotations(cb)))));
+                server.addTool(inScope(ToolProgress.wrap(ToolImages.wrap(withAnnotations(
+                        McpToolUtils.toSyncToolSpecification(cb), ToolBeans.annotations(cb))))));
                 current.registered.add(name);
             } catch (RuntimeException e) {
                 LOG.error("Tool {} konnte nicht registriert werden", name, e);

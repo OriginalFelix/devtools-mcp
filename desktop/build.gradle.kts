@@ -63,6 +63,11 @@ dependencies {
     // Ticket-Klassifizierung: Einschätzung der Komplexität über die Claude API (offizielles Java-SDK)
     implementation("com.anthropic:anthropic-java:2.68.0")
 
+    // Fenstersteuerung: zweiter, nativ gezeichneter KI-Zeiger (user32/gdi32, AppKit über die ObjC-Runtime, XInput2/MPX)
+    implementation("net.java.dev.jna:jna-platform:5.18.1")
+    // Betriebssystem-Erkennung für die Auswahl des CursorProvider (PlatformEnum)
+    implementation("com.github.oshi:oshi-core:6.11.1")
+
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
     }

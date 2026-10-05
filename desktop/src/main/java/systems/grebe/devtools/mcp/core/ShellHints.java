@@ -64,6 +64,9 @@ public final class ShellHints {
     public static final String PROJECTS = " Welche Projekte (Repositories, Build-, Graph-Projekte) zur Verfügung stehen, "
             + "immer über projects_list ermitteln, nicht durch Durchsuchen des Dateisystems in der Shell.";
 
+    public static final String WINDOW = " Fenster anderer Anwendungen immer über die window_*-Tools sehen und bedienen, "
+            + "nicht per PowerShell, AppleScript, xdotool oder Skripten in der Shell.";
+
     private ShellHints() {
     }
 }
