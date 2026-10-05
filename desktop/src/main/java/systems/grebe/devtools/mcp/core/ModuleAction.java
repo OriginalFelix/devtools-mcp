@@ -22,12 +22,26 @@ public interface ModuleAction {
     /** Ein Satz für die UI. */
     String description();
 
-    /** Auswählbare Ziele (z.B. Projektnamen) für die Konfiguration; leer = Aktion ohne Ziel. Darf nicht werfen. */
+    /**
+     * Ob die Aktion ein Ziel aus {@link #targets} braucht. {@code false}: die UI zeigt nur den Start-Knopf, {@link #run}
+     * und {@link #describe} bekommen {@code null} als Ziel.
+     */
+    default boolean needsTarget() {
+        return true;
+    }
+
+    /**
+     * Auswählbare Ziele (z.B. Projektnamen) für die Konfiguration; leer = derzeit nichts auswählbar (z.B. Konfiguration
+     * unvollständig), die UI sperrt dann den Start. Darf nicht werfen. Nur für Aktionen mit {@link #needsTarget()}.
+     */
     default List<String> targets(ModuleConfig config) {
         return List.of();
     }
 
-    /** Zustand eines Ziels für die Anzeige (z.B. „Graph vom …“) oder {@code null}. Muss schnell sein. */
+    /**
+     * Zustand eines Ziels für die Anzeige (z.B. „Graph vom …“) oder {@code null}; bei Aktionen ohne Ziel mit
+     * {@code target == null}. Muss schnell sein.
+     */
     default String describe(ModuleConfig config, String target) {
         return null;
     }

@@ -624,7 +624,8 @@ Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekunde
 * **Indizieren in der App:** Im Modul unter **Aktionen** ein Projekt wählen und *Indizieren* klicken (optional
   *Komplett neu*) – mit Fortschrittsbalken, Abbrechen und dem Stand der vorhandenen Graph-Datei. Läuft mit der
   gespeicherten Konfiguration und auch bei inaktivem Modul, d.h. ohne dass `graph_*`-Tools beim LLM erscheinen.
-  Andere Module können eigene Aktionen über `ToolModule#actions()` (`core/ModuleAction`) anbieten.
+  Andere Module können eigene Aktionen über `ToolModule#actions()` (`core/ModuleAction`) anbieten – mit Zielauswahl
+  wie hier oder, mit `needsTarget() = false`, als einfacher Knopf (z.B. *Modell laden* im Web-Abruf).
 
 ### Skills – prozedurales Gedächtnis des LLM
 
