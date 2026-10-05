@@ -17,6 +17,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
 import systems.grebe.devtools.mcp.backend.BackendHome;
 import systems.grebe.devtools.mcp.backend.SkillsDatabaseConfig;
+import systems.grebe.devtools.mcp.backend.memories.MemoryService;
 
 /**
  * Schlanker Spring-Kontext für die Skill-Ablage: genau die Persistenz-Konfiguration des Backends
@@ -34,7 +35,7 @@ public final class SkillTestSupport {
     @SpringBootConfiguration
     @ImportAutoConfiguration({HibernateJpaAutoConfiguration.class, DataJpaRepositoriesAutoConfiguration.class,
             TransactionAutoConfiguration.class})
-    @Import({BackendHome.class, SkillsDatabaseConfig.class, SkillService.class})
+    @Import({BackendHome.class, SkillsDatabaseConfig.class, SkillService.class, MemoryService.class})
     static class SkillsOnly {
     }
 

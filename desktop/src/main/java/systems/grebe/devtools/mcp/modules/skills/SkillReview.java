@@ -46,9 +46,14 @@ public class SkillReview {
             - Bei Änderungen expected_revision aus skills_view mitgeben und eine kurze note („warum“).
 
             ## Nicht festhalten
-            - Einmal-Details: Datumsangaben, PIDs, Ticket-/PR-Nummern, Commit-Hashes, temporäre Pfade.
+            - Einmal-Details: Datumsangaben, PIDs, Ticket-/PR-Nummern, Commit-Hashes, temporäre Pfade. Was bei \
+            diesem Durchlauf konkret passiert ist, gehört – wenn memories_save angeboten wird – in eine Memory mit \
+            Verweis auf den Skill, nicht in den Skill.
             - Passwörter, Tokens, Schlüssel oder andere Geheimnisse – auch nicht maskiert.
             - Was nur für genau diese Sitzung gilt oder jederzeit leicht nachzulesen ist.
+
+            Die erledigte Aktion selbst (Ticket, Ergebnis, Entscheidung) außerdem mit memories_save festhalten, \
+            falls angeboten.
 
             „Nichts zu speichern.“ ist erlaubt, wenn die Aufgabe glatt lief, keine Korrektur kam und nichts Neues \
             gelernt wurde – aber nicht als Standard. Sonst handeln und dem Nutzer am Ende in einem Satz sagen, welcher \

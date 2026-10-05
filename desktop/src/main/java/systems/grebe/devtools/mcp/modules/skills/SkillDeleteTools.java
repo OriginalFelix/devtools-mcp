@@ -13,10 +13,8 @@ public class SkillDeleteTools {
         this.service = service;
     }
 
-    @Tool(name = "delete", description = "Löscht einen eigenen Skill samt Zusatzdateien und Historie endgültig; bei "
-            + "einer persönlichen Kopie gilt danach wieder die globale Vorlage. Globale Vorlagen sind nicht löschbar. "
-            + "Nur auf ausdrücklichen Wunsch des Nutzers; veraltete Skills besser mit skills_patch korrigieren."
-            + ShellHints.SKILLS)
+    @Tool(name = "delete", description = "Löscht einen eigenen Skill endgültig (bei einer Kopie gilt wieder die "
+            + "Vorlage). Nur auf ausdrücklichen Wunsch; sonst skills_patch." + ShellHints.SKILLS)
     public String delete(@ToolParam(description = SkillReadTools.NAME) String name) {
         return service.delete(name);
     }

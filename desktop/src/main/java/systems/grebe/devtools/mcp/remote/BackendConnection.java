@@ -60,10 +60,10 @@ import tools.jackson.databind.json.JsonMapper;
  * oder auf einem Team-Server (Adresse + Desktop-Token in den Einstellungen; Wechsel nach Neustart).
  *
  * <p>Beim Start meldet die App ihre Module ({@code reportCatalog}), lädt Benutzer, Vorgaben des aktiven Profils und
- * Projekte und abonniert {@code settingsChanged}, {@code projectsChanged} und {@code skillsChanged} per WebSocket. Jede
- * Änderung baut die Tools neu – verbundene MCP-Clients bekommen {@code tools/list_changed}. Bricht die Verbindung ab,
- * verbinden sich die Subscriptions mit wachsendem Abstand neu und liefern dabei den aktuellen Stand; dazwischen gilt
- * der letzte (beim Team-Server auch über einen Neustart hinweg: verschlüsselte Cache-Datei {@code team-cache.json}).
+ * Projekte und abonniert {@code settingsChanged}, {@code projectsChanged}, {@code skillsChanged} und
+ * {@code memoriesChanged} per WebSocket. Jede Änderung baut die Tools neu – verbundene MCP-Clients bekommen
+ * {@code tools/list_changed}. Bricht die Verbindung ab, verbinden sich die Subscriptions mit wachsendem Abstand neu und
+ * liefern dabei den aktuellen Stand; dazwischen gilt der letzte (beim Team-Server auch über einen Neustart hinweg: verschlüsselte Cache-Datei {@code team-cache.json}).
  *
  * <p>Beim ersten eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen aus
  * {@code settings.json} als globale Vorgaben.
@@ -106,6 +106,7 @@ public class BackendConnection {
     private final JsonMapper json = JsonMapper.builder().build();
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private final List<Runnable> skillListeners = new CopyOnWriteArrayList<>();
+    private final List<Runnable> memoryListeners = new CopyOnWriteArrayList<>();
     private final List<Disposable> subscriptions = new CopyOnWriteArrayList<>();
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "backend-connection");
@@ -219,6 +220,9 @@ public class BackendConnection {
         subscriptions.add(ws.document("subscription { skillsChanged }")
                 .retrieveSubscription("skillsChanged").toEntity(Integer.class)
                 .retryWhen(retry).subscribe(n -> skillListeners.forEach(Runnable::run), this::offline));
+        subscriptions.add(ws.document("subscription { memoriesChanged }")
+                .retrieveSubscription("memoriesChanged").toEntity(Integer.class)
+                .retryWhen(retry).subscribe(n -> memoryListeners.forEach(Runnable::run), this::offline));
     }
 
     private void onSettings(SettingsSnapshot settings) {
@@ -331,6 +335,11 @@ public class BackendConnection {
     /** Wird aufgerufen, wenn sich Skills geändert haben (beliebiger Thread). */
     public void addSkillListener(Runnable listener) {
         skillListeners.add(listener);
+    }
+
+    /** Wird aufgerufen, wenn sich Memories geändert haben (beliebiger Thread). */
+    public void addMemoryListener(Runnable listener) {
+        memoryListeners.add(listener);
     }
 
     // ---------------------------------------------------------------- Ändern

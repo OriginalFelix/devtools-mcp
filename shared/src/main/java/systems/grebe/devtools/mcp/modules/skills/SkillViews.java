@@ -22,11 +22,21 @@ public final class SkillViews {
     /**
      * Zeile der Übersicht. {@code templateRevision}: bei {@link Scope#COPY} die Revision der Vorlage beim Kopieren;
      * {@code currentTemplateRevision}: die aktuelle Revision der Vorlage (oder {@code null}, wenn sie inzwischen
-     * zurückgezogen wurde).
+     * zurückgezogen wurde); {@code triggers}: Tool-Namen bzw. Präfixe ({@code pr_*}), für die der Skill registriert ist.
      */
     public record Summary(String name, String description, String category, List<String> tags, int revision,
                           long useCount, Instant lastUsedAt, Instant updatedAt, int fileCount, Scope scope,
-                          Integer templateRevision, Integer currentTemplateRevision) {
+                          Integer templateRevision, Integer currentTemplateRevision, List<String> triggers) {
+
+        public Summary {
+            triggers = triggers == null ? List.of() : List.copyOf(triggers);
+        }
+
+        /** Ist der Skill für dieses Tool registriert (exakter Name oder Präfix mit {@code *})? */
+        public boolean triggeredBy(String toolName) {
+            return triggers.stream().anyMatch(t -> t.endsWith("*")
+                    ? toolName.startsWith(t.substring(0, t.length() - 1)) : t.equals(toolName));
+        }
 
         public boolean global() {
             return scope == Scope.GLOBAL;

@@ -13,9 +13,11 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 
 /**
- * Skill-Speicher für das LLM, angelehnt an das Skill-Management von Hermes: Das LLM sucht vor einer Aufgabe passende
- * Skills, lädt sie und legt nach einer schwierigen oder neu gelernten Aufgabe selbst einen an bzw. korrigiert einen
- * bestehenden. Die Skills liegen im Backend ({@link SkillBackend}) – eingebettet in der App oder auf dem Team-Server –
+ * Skill-Speicher für das LLM, angelehnt an das Skill-Management von Hermes: Ein Skill ist die Registrierung eines
+ * Aufgabentyps mit seinem erprobten Ablauf (z.B. {@code ticket-review}: wie ein Ticket geprüft wird). Das LLM sucht vor
+ * einer Aufgabe passende Skills, lädt sie und legt nach einer schwierigen oder neu gelernten Aufgabe selbst einen an
+ * bzw. korrigiert einen bestehenden. Was bei einem einzelnen Durchlauf passiert ist, gehört nicht in den Skill, sondern
+ * in eine Memory ({@code memories_*}). Die Skills liegen im Backend ({@link SkillBackend}) – eingebettet in der App oder auf dem Team-Server –
  * und gehören der E-Mail des Benutzerkontos; dazu kommen schreibgeschützte globale Vorlagen.
  */
 @Component
@@ -56,44 +58,27 @@ public class SkillsModule implements ToolModule {
 
     @Override
     public String description() {
-        return "Wiederverwendbare Abläufe (Skills) für das LLM: suchen, laden und nach gelösten Aufgaben selbst anlegen "
-                + "oder verbessern – mit Zusatzdateien und Änderungshistorie. Gespeichert im Backend (eingebettet oder "
-                + "Team-Server) je Benutzerkonto, plus schreibgeschützte globale Vorlagen.";
+        return "Registrierte Abläufe (Skills) für Aufgabentypen wie „Ticket-Review“: suchen, laden und nach gelösten "
+                + "Aufgaben selbst anlegen oder verbessern – mit Zusatzdateien und Änderungshistorie. Gespeichert im "
+                + "Backend (eingebettet oder Team-Server) je Benutzerkonto, plus schreibgeschützte globale Vorlagen.";
     }
 
     @Override
     public String instructions() {
         return """
-                Skills sind dein prozedurales Gedächtnis: erprobte Abläufe, Befehle, Fallstricke und Vorlieben des \
-                Nutzers für wiederkehrende Aufgabentypen.
-
-                Vor einer Aufgabe:
-                - `skills_list` (mit Suchtext) aufrufen, sobald die Aufgabe über eine einfache Frage hinausgeht. Passt \
-                ein Skill auch nur teilweise, ihn mit `skills_view` laden und seine Anweisungen befolgen.
-
-                Nach einer Aufgabe – Skill anlegen oder verbessern, wenn:
-                - die Aufgabe schwierig oder mehrstufig war (etwa 5+ Tool-Aufrufe) oder Fehlversuche nötig waren,
-                - der Nutzer dich korrigiert oder eine Vorliebe für diese Art Arbeit genannt hat,
-                - du einen nicht offensichtlichen Ablauf, Befehl oder Workaround gefunden hast, der wiederkommen wird.
-                Dann: gibt es einen passenden Skill → `skills_patch` (gezielt ergänzen/korrigieren); sonst → \
-                `skills_create`. War ein geladener Skill falsch oder lückenhaft, ihn sofort mit `skills_patch` \
-                korrigieren. Nach größeren Aufgaben kurz anbieten, den Ablauf als Skill zu speichern.
-
-                Globale Vorlagen: In `skills_list` mit „(global)“ markierte Skills sind schreibgeschützte Vorlagen \
-                für alle Benutzer. Genauso laden und befolgen wie eigene. Eine Änderung (`skills_patch`, \
-                `skills_update`, `skills_write_file`, `skills_remove_file`) legt automatisch eine persönliche Kopie an, \
-                die ab dann statt der Vorlage gilt – dafür nichts Besonderes tun und keinen neuen Skill anlegen.
-
-                Selbstverbesserung: Nach einer abgeschlossenen mehrstufigen Aufgabe `skills_review` aufrufen und die \
-                Checkliste abarbeiten. Hängt der Server an ein Tool-Ergebnis einen Hinweis „[DevTools-Skills] …“ \
-                (Stand der Bibliothek bzw. Aufrufe seit der letzten Skill-Pflege), gilt das ebenso – sobald die \
-                laufende Aufgabe fertig ist, nicht mittendrin. Hat der Client einen eigenen Skill-Speicher, gehört \
-                Wissen über die hier angebotenen Tools und Projekte in diese Bibliothek.
-
-                Inhalt: Lehren statt Protokoll – Regel plus Begründung, konkrete Befehle/Tool-Aufrufe, Prüfschritte. \
-                Keine Einmal-Details (Datumsangaben, Ticketnummern, PIDs) und niemals Passwörter, Tokens oder andere \
-                Geheimnisse. `description` ist ein Satz, wann der Skill greift. Lange Referenzen mit \
-                `skills_write_file` nach references/ auslagern. `skills_delete` nur auf ausdrücklichen Wunsch.""";
+                Skills = registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): Schritte, Tool-Aufrufe, \
+                Kriterien, Fallstricke, Vorlieben des Nutzers.
+                - Vor jeder Aufgabe, die über eine einfache Frage hinausgeht, zuerst `skills_list` mit 1–3 \
+                Stichworten – nicht ohne Suche loslegen. Genau ein Treffer kommt direkt mit Inhalt; sonst den \
+                passenden mit `skills_view` laden und befolgen.
+                - Nennt der Server „[DevTools] Registrierter Skill …“ oder „Passende Skills …“, diesen Skill laden, \
+                bevor du weitermachst.
+                - Danach: Korrektur des Nutzers, Fehlversuch oder neuer Workaround → `skills_patch` am passenden \
+                Skill, sonst `skills_create` mit `triggers` (Tools, bei denen er greifen soll). Checkliste: \
+                `skills_review`; Hinweise „[DevTools-Skills] …“ erst nach der laufenden Aufgabe abarbeiten.
+                - `*` in `skills_list` = globale Vorlage; Änderungen legen automatisch eine persönliche Kopie an.
+                - Inhalt: Regel + Begründung, konkrete Tool-Aufrufe; keine Einzelfall-Details (→ Memory), keine \
+                Geheimnisse. `skills_delete` nur auf Wunsch.""";
     }
 
     @Override
