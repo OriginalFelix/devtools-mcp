@@ -3,6 +3,7 @@ package systems.grebe.devtools.mcp.modules.build;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
@@ -55,10 +56,16 @@ public class BuildModule implements ToolModule {
     }
 
     @Override
+    public Set<String> sharedDirectoryFields() {
+        return Set.of(PROJECTS);
+    }
+
+    @Override
     public List<ConfigField> configSchema() {
         return List.of(
-                ConfigField.of(PROJECTS, "Projekte", FieldType.DIRECTORY_LIST).asRequired()
-                        .withHelp("Projektverzeichnisse oder Sammelordner (Unterordner mit build.gradle(.kts)/pom.xml werden übernommen)."),
+                ConfigField.of(PROJECTS, "Projekte", FieldType.DIRECTORY_LIST)
+                        .withHelp("Projektverzeichnisse oder Sammelordner (Unterordner mit build.gradle(.kts)/pom.xml werden "
+                                + "übernommen). Dazu kommen die unter „Freigaben“ global freigegebenen."),
                 ConfigField.of(DEFAULT_PROJECT, "Standardprojekt", FieldType.STRING)
                         .withHelp("Ordnername des Projekts, das ohne Angabe verwendet wird."),
                 ConfigField.of(ALLOWED_TASKS, "Erlaubte Tasks/Goals", FieldType.STRING_LIST)
@@ -87,7 +94,9 @@ public class BuildModule implements ToolModule {
         }
         Workspaces projects = new BuildRunner(config).projects();
         if (projects.isEmpty()) {
-            return ConnectionTestResult.failed("Keine Gradle-/Maven-Projekte gefunden.");
+            return Workspaces.unrestricted()
+                    ? ConnectionTestResult.ok("Keine Projekte eingetragen. " + projects.unrestrictedHint())
+                    : ConnectionTestResult.failed("Keine Gradle-/Maven-Projekte gefunden.");
         }
         StringBuilder sb = new StringBuilder(projects.all().size() + " Projekt(e) gefunden:\n");
         projects.all().forEach((name, dir) -> sb.append(name).append(" [").append(BuildTool.detect(dir).label())

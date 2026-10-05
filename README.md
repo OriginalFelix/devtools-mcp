@@ -30,6 +30,12 @@ Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, A
 und JMX-Ziele für alle Performance-Module. Container-Laufzeit und freigegebene Container kommen aus dem
 Container-Modul (ältere Einstellungen werden beim ersten Start übernommen).
 
+Das Modul **Freigaben** hat ebenfalls keine eigenen Tools. *Für alle Tools freigegeben* nimmt Verzeichnisse oder
+Sammelordner auf, die Git, Build, Code-Graph, Pull Requests und Compose zusätzlich zu ihren eigenen Listen bekommen –
+jedes Modul übernimmt, was zu ihm passt (Git-Repositories, Gradle-/Maven-Projekte …). Der Schalter *Beschränkung
+aufheben* lässt die Tools jeden absoluten Pfad verwenden (aufgelöst zum nächsten passenden Verzeichnis darüber, z.B.
+dem Repository); nur lesend freigegebene Projekte des Team-Servers und die Schalter der Module gelten weiter.
+
 ### Container-Laufzeiten erweitern (ServiceLoader)
 
 Laufzeiten sind über `modules/container/spi` austauschbar. Docker und Podman liefert die App mit; eine weitere
@@ -372,7 +378,8 @@ eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen au
 ### Sicherheit
 
 * Nur `127.0.0.1`; Clients auf demselben Rechner ohne Token oder mit dem Zugriffstoken aus den Einstellungen.
-* Git/Build arbeiten ausschließlich in den freigegebenen Verzeichnissen; Pfade außerhalb werden abgewiesen.
+* Git/Build arbeiten ausschließlich in den freigegebenen Verzeichnissen (im Modul oder global unter **Freigaben**);
+  Pfade außerhalb werden abgewiesen – außer die Beschränkung ist unter **Freigaben** bewusst aufgehoben.
 * Build: nur freigegebene Tasks/Goals, Argumente werden gegen eine Zeichen-Whitelist geprüft (kein Shell-Injection
   über `cmd.exe`), ein Build pro Projekt gleichzeitig, Timeout.
 * Git-Schreibtools lassen sich per Schalter „Schreibende Operationen erlauben“ komplett abschalten.
@@ -711,7 +718,8 @@ MCP-Tool-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `open
 Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die Callbacks mit
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
-zerstörerisch. Bisher annotiert: SSH, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard).
+zerstörerisch. Bisher annotiert: SSH, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
+Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`.
 
 ## Plugins
 

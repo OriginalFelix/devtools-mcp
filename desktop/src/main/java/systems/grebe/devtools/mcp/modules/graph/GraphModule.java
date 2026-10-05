@@ -1,6 +1,7 @@
 package systems.grebe.devtools.mcp.modules.graph;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
@@ -71,11 +72,17 @@ public class GraphModule implements ToolModule {
     }
 
     @Override
+    public Set<String> sharedDirectoryFields() {
+        return Set.of(PROJECTS);
+    }
+
+    @Override
     public List<ConfigField> configSchema() {
         return List.of(
-                ConfigField.of(PROJECTS, "Projekte", FieldType.DIRECTORY_LIST).asRequired()
+                ConfigField.of(PROJECTS, "Projekte", FieldType.DIRECTORY_LIST)
                         .withHelp("Projektverzeichnisse oder Sammelordner (Unterordner mit build.gradle(.kts), pom.xml, "
-                                + ".git oder src werden übernommen). Je Projekt und Git-Branch gibt es einen Graphen."),
+                                + ".git oder src werden übernommen); dazu die unter „Freigaben“ global freigegebenen. Je "
+                                + "Projekt und Git-Branch gibt es einen Graphen."),
                 ConfigField.of(STORAGE, "Ablage", FieldType.ENUM).withDefault(STORAGE_NEO4J)
                         .withOptions(STORAGE_NEO4J, STORAGE_FILE)
                         .withHelp("neo4j = Neo4j-Datenbank (Abfragen per Cypher, graph_cypher), file = Datei "
@@ -113,7 +120,7 @@ public class GraphModule implements ToolModule {
         }
         GraphService service = new GraphService(config);
         Workspaces projects = service.projects();
-        if (projects.isEmpty()) {
+        if (projects.isEmpty() && !Workspaces.unrestricted()) {
             return ConnectionTestResult.failed("Keine Projekte gefunden.");
         }
         GraphStorage storage;

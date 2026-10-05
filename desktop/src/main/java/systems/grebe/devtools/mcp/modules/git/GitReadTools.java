@@ -67,7 +67,7 @@ public class GitReadTools {
     public String listRepositories() {
         Workspaces repos = git.repositories();
         if (repos.isEmpty()) {
-            return "Keine Repositories konfiguriert.";
+            return Workspaces.unrestricted() ? repos.unrestrictedHint() : "Keine Repositories konfiguriert.";
         }
         StringBuilder sb = new StringBuilder();
         repos.all().forEach((name, path) -> {
@@ -83,6 +83,7 @@ public class GitReadTools {
             }
             sb.append(w.name()).append("  [").append(branch).append("]  ").append(w.dir()).append("  (Worktree)\n");
         }
+        sb.append('\n').append(repos.unrestrictedHint());
         return sb.toString().trim();
     }
 

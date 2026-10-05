@@ -1,5 +1,8 @@
 package systems.grebe.devtools.mcp.core;
 
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -190,9 +193,10 @@ public class ToolRegistry {
         return effective(state(moduleId));
     }
 
+    /** Konfiguration, mit der Tools und Aktionen des Moduls arbeiten (inkl. globaler Freigaben). */
     public ModuleConfig config(String moduleId) {
         ModuleState s = state(moduleId);
-        return ModuleConfig.of(s.module.configSchema(), effective(s).values());
+        return ModuleConfig.of(s.module.configSchema(), toolSettings(s).values());
     }
 
     /** Alle Tools, die das Modul mit der aktuellen Konfiguration anbietet (auch deaktivierte). */
@@ -245,7 +249,7 @@ public class ToolRegistry {
     public ConnectionTestResult testConnection(String moduleId, Map<String, String> values) {
         ToolModule m = state(moduleId).module;
         try {
-            return m.testConnection(ModuleConfig.of(m.configSchema(), values));
+            return m.testConnection(ModuleConfig.of(m.configSchema(), withSharedDirectories(m, values)));
         } catch (RuntimeException e) {
             return ConnectionTestResult.failed(ManagedToolCallback.describe(e));
         }
@@ -320,7 +324,11 @@ public class ToolRegistry {
             s.settings = change.apply(s.settings);
             store.saveModule(moduleId, s.settings, secretKeys(s.module));
         }
-        rebuild(moduleId);
+        if (AccessModule.ID.equals(moduleId)) {
+            refreshAll(); // globale Freigaben betreffen alle Module mit Projektlisten
+        } else {
+            rebuild(moduleId);
+        }
     }
 
     private static Set<String> secretKeys(ToolModule m) {
@@ -337,11 +345,69 @@ public class ToolRegistry {
             if (states.get(moduleId) != s) {
                 return; // inzwischen entfernt (Plugin deaktiviert) – keine Tools eines alten Moduls registrieren
             }
-            local.rebuild(s.module, effective(s), callListeners());
+            if (AccessModule.ID.equals(moduleId)) {
+                local.scope().setUnrestricted(accessConfig().getBoolean(AccessModule.UNRESTRICTED));
+            }
+            local.rebuild(s.module, toolSettings(s), callListeners());
         }
         // Kein explizites notifyToolsListChanged(): addTool/removeTool benachrichtigen die Clients bereits selbst
         // (spring.ai.mcp.server.tool-change-notification=true), LiveInstructionsTransport bündelt sie zu einer Meldung.
         changeListeners.forEach(Runnable::run);
+    }
+
+    /** Wirksame Einstellungen plus global freigegebene Verzeichnisse – damit werden die Tools gebaut. */
+    private ModuleSettings toolSettings(ModuleState s) {
+        ModuleSettings settings = effective(s);
+        if (s.module.sharedDirectoryFields().isEmpty()) {
+            return settings;
+        }
+        return settings.withValues(withSharedDirectories(s.module, settings.values()));
+    }
+
+    /** Hängt die Verzeichnisse aus dem Modul „Freigaben“ an die Projektlisten des Moduls an (ohne Dubletten). */
+    private Map<String, String> withSharedDirectories(ToolModule module, Map<String, String> values) {
+        if (module.sharedDirectoryFields().isEmpty() || AccessModule.ID.equals(module.id())) {
+            return values;
+        }
+        List<String> shared = accessConfig().getList(AccessModule.DIRECTORIES);
+        if (shared.isEmpty()) {
+            return values;
+        }
+        Map<String, String> out = new LinkedHashMap<>(values);
+        for (String field : module.sharedDirectoryFields()) {
+            List<String> lines = new ArrayList<>(ModuleConfig.splitLines(out.getOrDefault(field, "")));
+            for (String dir : shared) {
+                if (lines.stream().noneMatch(l -> sameDir(l, dir))) {
+                    lines.add(dir);
+                }
+            }
+            out.put(field, String.join("\n", lines));
+        }
+        return out;
+    }
+
+    /** Ob ein Listeneintrag ({@code pfad} oder {@code name=pfad}) dasselbe Verzeichnis meint. */
+    private static boolean sameDir(String line, String dir) {
+        int eq = line.indexOf('=');
+        return samePath(line, dir) || eq > 0 && samePath(line.substring(eq + 1), dir);
+    }
+
+    private static boolean samePath(String a, String b) {
+        try {
+            return Path.of(a.strip()).toAbsolutePath().normalize().equals(Path.of(b.strip()).toAbsolutePath().normalize());
+        } catch (InvalidPathException e) {
+            return false;
+        }
+    }
+
+    /** Einstellungen des Moduls „Freigaben“ (leer, falls es fehlt). */
+    private ModuleConfig accessConfig() {
+        ModuleState a;
+        synchronized (states) {
+            a = states.get(AccessModule.ID);
+        }
+        return a == null ? ModuleConfig.of(List.of(), Map.of())
+                : ModuleConfig.of(a.module.configSchema(), effective(a).values());
     }
 
     private List<ToolCallListener> callListeners() {

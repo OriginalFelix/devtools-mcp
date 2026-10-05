@@ -11,6 +11,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.build.BuildModule.BuildTool;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.Workspaces;
 
 /** Build-Tools für Gradle und Maven. */
 public class BuildTools {
@@ -33,8 +34,12 @@ public class BuildTools {
         StringBuilder sb = new StringBuilder();
         runner.projects().all().forEach((name, dir) -> sb.append(name).append("  [")
                 .append(BuildTool.detect(dir).label()).append("]  ").append(dir).append('\n'));
-        if (sb.isEmpty()) {
+        if (sb.isEmpty() && !Workspaces.unrestricted()) {
             return "Keine Projekte konfiguriert.";
+        }
+        String hint = runner.projects().unrestrictedHint();
+        if (!hint.isEmpty()) {
+            sb.append(hint).append('\n');
         }
         sb.append("\nErlaubte Tasks/Goals: ")
                 .append(runner.allowedTasks().isEmpty() ? "alle" : String.join(", ", runner.allowedTasks()));

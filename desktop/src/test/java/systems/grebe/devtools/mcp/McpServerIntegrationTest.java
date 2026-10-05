@@ -446,6 +446,35 @@ class McpServerIntegrationTest {
     }
 
     @Test
+    void globalSharesAndLiftedRestrictionApplyToModuleTools(@TempDir Path other) throws Exception {
+        Git.init().setDirectory(other.toFile()).setInitialBranch("main").call().close();
+        registry.updateConfig("git", Map.of()); // keine eigenen Repositories im Modul
+        try {
+            registry.updateConfig("access", Map.of("directories", repoDir.toString()));
+            String list = ((McpSchema.TextContent) client.callTool(callRequest("git_list_repositories", Map.of()))
+                    .content().getFirst()).text();
+            assertThat(list).contains(repoDir.toString());
+            assertThat(registry.settings("git").values().getOrDefault("repositories", "")).isEmpty(); // Formular unverändert
+
+            McpSchema.CallToolResult denied = client.callTool(
+                    callRequest("git_status", Map.of("repository", other.toString())));
+            assertThat(denied.isError()).isTrue();
+
+            registry.updateConfig("access", Map.of("directories", repoDir.toString(), "unrestricted", "true"));
+            McpSchema.CallToolResult allowed = client.callTool(
+                    callRequest("git_status", Map.of("repository", other.toString())));
+            assertThat(allowed.isError()).isNotEqualTo(Boolean.TRUE);
+            assertThat(((McpSchema.TextContent) allowed.content().getFirst()).text()).contains("main");
+        } finally {
+            registry.updateConfig("access", Map.of());
+            registry.updateConfig("git", Map.of("repositories", repoDir.toString()));
+        }
+        McpSchema.CallToolResult again = client.callTool(
+                callRequest("git_status", Map.of("repository", other.toString())));
+        assertThat(again.isError()).isTrue();
+    }
+
+    @Test
     void toolErrorsAreReportedAsErrorResult() {
         McpSchema.CallToolResult result = client.callTool(
                 callRequest("git_status", Map.of("repository", "gibt-es-nicht")));
