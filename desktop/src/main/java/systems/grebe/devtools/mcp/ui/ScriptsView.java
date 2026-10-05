@@ -293,7 +293,10 @@ public class ScriptsView extends BorderPane {
     }
 
     private void showState(ScriptManager.Status s) {
-        if (s.error() != null) {
+        if (s.cached()) {
+            setStatus("Letzter gespeicherter Stand – der Team-Server ist gerade nicht erreichbar. Tools: "
+                    + String.join(", ", s.activeTools()), null);
+        } else if (s.error() != null) {
             setStatus("Fehler: " + s.error(), "error");
         } else if (!s.enabled()) {
             setStatus("Modul deaktiviert (Schalter im Tab „Module“) – Tools: " + String.join(", ", s.tools()), null);
@@ -400,13 +403,9 @@ public class ScriptsView extends BorderPane {
     }
 
     static String stateLabel(ScriptManager.Status s) {
-        if (s.error() != null) {
-            return "Fehler";
-        }
-        if (!s.enabled()) {
-            return "deaktiviert";
-        }
-        return s.activeTools().size() + " Tool(s) aktiv";
+        String state = s.error() != null ? "Fehler" : !s.enabled() ? "deaktiviert"
+                : s.activeTools().size() + " Tool(s) aktiv";
+        return s.cached() ? state + " · offline" : state;
     }
 
     private static TextArea monoArea() {

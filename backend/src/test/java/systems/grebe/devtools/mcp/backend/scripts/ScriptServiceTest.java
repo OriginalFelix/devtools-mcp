@@ -60,8 +60,26 @@ class ScriptServiceTest {
                 assertThatThrownBy(() -> scripts.save(bad, "d", SOURCE, null, null))
                         .as(bad).hasMessageContaining("Ungültiger Skriptname");
             }
-            assertThatThrownBy(() -> scripts.save("demo", " ", SOURCE, null, null))
+            assertThatThrownBy(() -> scripts.save("demo", " ", "tool('a') { run { 1 } }", null, null))
                     .hasMessageContaining("Beschreibung fehlt");
+        }
+    }
+
+    @Test
+    void syntaxIsCheckedWithoutRunningAndDescriptionIsReadFromTheScript() {
+        try (ConfigurableApplicationContext ctx = start("anna@example.com", false)) {
+            ScriptService scripts = ctx.getBean(ScriptService.class);
+            assertThatThrownBy(() -> scripts.save("demo", "d", "module {\n description 'x'\n\ntool('a') {", null, null))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Zeile");
+            // ohne description (Web-UI): fester Text aus module { description '…' }; ausgeführt wird nichts
+            scripts.save("demo", null, "System.exit(1)\nmodule { description 'Aus dem Skript' }", null, null);
+            assertThat(scripts.details("demo").orElseThrow().summary().description()).isEqualTo("Aus dem Skript");
+            // nicht ermittelbar (GString) → die bisherige bleibt
+            scripts.save("demo", null, "def x = 1\nmodule { description \"Nr ${x}\" }", null, null);
+            assertThat(scripts.details("demo").orElseThrow().summary().description()).isEqualTo("Aus dem Skript");
+            // @Grab lädt beim Prüfen nichts herunter
+            assertThat(ScriptSyntax.check("t.groovy", "@Grab('org.example:gibtsnicht:1.0')\n"
+                    + "import org.example.X\nmodule { description 'grab' }")).contains("grab");
         }
     }
 

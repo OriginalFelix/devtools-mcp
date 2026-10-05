@@ -23,6 +23,8 @@ public interface ScriptBackend {
      * Legt ein eigenes Skript an oder ändert es (neue Revision). Gibt es nur eine globale Vorlage gleichen Namens,
      * entsteht ein eigenes Skript, das sie verdeckt.
      *
+     * @param description      Beschreibung aus der ausgewerteten DSL; {@code null} = aus {@code module { description '…' }}
+     *                         lesen (fester Text) bzw. die bisherige behalten
      * @param expectedRevision optional: Revision, auf der die Änderung beruht – weicht sie ab, wird abgelehnt
      */
     String save(String name, String description, String content, String note, Integer expectedRevision);

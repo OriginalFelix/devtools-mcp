@@ -72,7 +72,7 @@ public class AccountView extends VerticalLayout {
         TextField name = new TextField("Anzeigename");
         name.setValue(me.displayName() == null ? "" : me.displayName());
         EmailField email = new EmailField("E-Mail");
-        email.setHelperText("Eigentümer deiner Skills");
+        email.setHelperText("Eigentümer deiner Skills und Skripte");
         email.setValue(me.email() == null ? "" : me.email());
         Button save = new Button("Speichern", e -> Ui.run(() -> {
             UserAccount current = accounts.user(userId).orElseThrow();

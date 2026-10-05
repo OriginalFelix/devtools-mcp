@@ -674,9 +674,10 @@ tool('open_issues') {                        // → jira_open_issues (Skriptname
   und `run { args -> … }` bzw. `run { args, cfg -> … }`. In `run` stehen `progress "…"` (MCP-Progress) und `log` zur
   Verfügung. Die vollständige Referenz liefert `scripts_view` ohne Namen bzw. der Reiter *DSL-Referenz* in der App.
 * **Ablauf:** Der Code auf oberster Ebene läuft beim Laden einmal (Zeitlimit 10 s) und beschreibt das Modul; `run`
-  läuft bei jedem Aufruf. Vor dem Speichern wird das Skript übersetzt und ausgewertet – Fehler kommen mit Zeile
-  zurück, gespeichert wird dann nichts. Ein Skript, das (z.B. nach einem Update der App) nicht mehr übersetzt, steht
-  mit seinem Fehler in der Modulliste.
+  läuft bei jedem Aufruf. Vor dem Speichern übersetzt und wertet die Desktop-App das Skript aus – Fehler kommen mit
+  Zeile zurück, gespeichert wird dann nichts. Das Backend prüft zusätzlich die **Syntax**, ohne etwas auszuführen
+  (nur Parsen bis zum AST, `@Grab` abgeschaltet) – so landet auch aus der Web-UI kein unübersetzbares Skript in der
+  Ablage. Ein Skript mit DSL- oder Laufzeitfehler in der Definition steht mit seinem Fehler in der Modulliste.
 * **Ablage im Backend** (eingebettet oder Team-Server, Tabellen `script`/`script_revision` in der Skill-Datenbank):
   Quelltext, Beschreibung und **Historie** je Änderung. Eigentümer wie bei den Skills: eigene Skripte je
   Konto-E-Mail, dazu **globale Vorlagen**, die Administratoren im Tab **Skripte** veröffentlichen und zurückziehen – sie
@@ -688,6 +689,13 @@ tool('open_issues') {                        // → jira_open_issues (Skriptname
 * **Bearbeiten in der App:** Tab **Skripte** – links die Skripte mit Herkunft, Revision und Zustand, rechts Editor
   (*Prüfen*, *Speichern*), Historie (früheren Stand in den Editor übernehmen) und DSL-Referenz. Ungespeicherte
   Änderungen bleiben erhalten, wenn ein Skript woanders geändert wird.
+* **Web-UI des Team-Servers:** Seite **Skripte** – eigene Skripte und globale Vorlagen ansehen, anlegen, bearbeiten
+  (mit Syntaxprüfung), Historie, löschen; Administratoren veröffentlichen und ziehen Vorlagen zurück. Ohne
+  Ausführung ermittelt der Server die Beschreibung aus `module { description '…' }` (fester Text, sonst bleibt die
+  bisherige). Ob ein Skript lädt und welche Tools entstehen, zeigt die Desktop-App, die Änderungen sofort übernimmt.
+* **Ohne erreichbaren Team-Server:** Nach jedem Abgleich speichert die App den Stand verschlüsselt in
+  `scripts-cache.json` (nur für den Server, von dem er stammt). Ist der Server beim Start nicht erreichbar, lädt sie
+  die Skripte von dort („offline“ in Liste und `scripts_list`) und gleicht ab, sobald er wieder antwortet.
 * **Sicherheit:** Skripte laufen ohne Sandbox mit allen Rechten der App (Dateisystem, Netz, Prozesse, alle
   Bibliotheken der App). Deshalb darf das LLM Skripte nur mit den Schaltern *LLM darf Skripte anlegen und ändern* bzw.
   *… löschen* (Standard aus) schreiben; Lesen (`scripts_list`, `scripts_view`) ist immer dabei. Auf einem Team-Server
@@ -911,7 +919,7 @@ desktop/
   config/SettingsStore    ── settings.json (App-Einstellungen), SecretCipher (AES-GCM)
   server/BearerTokenFilter── optionaler Token-Schutz für /mcp
   remote/                 ── EmbeddedBackend + LocalUser, BackendConnection (GraphQL-Client, Subscriptions, Cache),
-                             BackendSettingsResolver, BackendSkills, BackendScripts
+                             BackendSettingsResolver, BackendSkills, BackendScripts, ScriptCacheFile
   modules/{git,sonar,build,graph,skills,…}
   modules/scripts/        ── Groovy-Skripte: ScriptManager (Abgleich mit dem Backend, Registrierung zur Laufzeit),
                              ScriptCompiler + DevToolsScript (DSL), ScriptToolModule/ScriptToolCallback, ScriptsModule
@@ -922,7 +930,7 @@ backend/
   backend/BackendConfig   ── Einstieg (Component-Scan des Backends)
   backend/BackendGraphQlController, GraphQlAuth, GraphQlErrors, ChangeBus ── GraphQL-API, Token, Fehler, Subscriptions
   backend/{account,profile,project,catalog,skills,scripts} ── Benutzer + Tokens, Profile + Ebenen, Projekte, Katalog,
-                             Skills, Groovy-Skripte (nur Ablage)
+                             Skills, Groovy-Skripte (Ablage + Syntaxprüfung ohne Ausführung)
 server/
   DevToolsServerApplication ── Spring Boot (Jetty) · WildFlyInitializer (WAR)
   server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI

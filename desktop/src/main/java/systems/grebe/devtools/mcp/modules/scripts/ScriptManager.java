@@ -32,6 +32,9 @@ import systems.grebe.devtools.mcp.core.ToolRegistry;
  * <p>Speichern und Löschen (aus der App oder über die {@code scripts_*}-Tools) gehen ebenfalls hierüber: Vor dem
  * Speichern wird das Skript übersetzt und ausgewertet, danach sofort neu geladen – das Ergebnis meldet, welche Tools
  * entstanden sind.
+ *
+ * <p>Nach jedem Abgleich landet der Stand im {@link ScriptCache} (beim Team-Server eine verschlüsselte Datei). Ist das
+ * Backend beim Start nicht erreichbar, lädt die App die Skripte von dort und gleicht ab, sobald es wieder antwortet.
  */
 @Component
 public class ScriptManager {
@@ -40,9 +43,13 @@ public class ScriptManager {
     private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9]{1,31}");
     static final int DEFAULT_TIMEOUT_SECONDS = 300;
 
-    /** Zustand eines Skripts für Anzeige und LLM. */
+    /**
+     * Zustand eines Skripts für Anzeige und LLM.
+     *
+     * @param cached aus dem {@link ScriptCache} geladen, weil das Backend (noch) nicht erreichbar ist
+     */
     public record Status(ScriptViews.Summary summary, String error, boolean enabled, List<String> tools,
-                         List<String> activeTools) {
+                         List<String> activeTools, boolean cached) {
 
         public String name() {
             return summary.name();
@@ -50,11 +57,13 @@ public class ScriptManager {
     }
 
     /** Geladenes Skript; {@code module == null}, wenn die ID schon vergeben war. */
-    private record Entry(ScriptViews.Summary summary, ScriptToolModule module, String conflict) {
+    private record Entry(ScriptViews.Summary summary, String content, ScriptToolModule module, String conflict,
+                         boolean cached) {
     }
 
     private final ScriptBackend backend;
     private final ObjectProvider<ToolRegistry> registry;
+    private final ObjectProvider<ScriptCache> cache;
     private final ScriptCompiler compiler = new ScriptCompiler();
     private final Map<String, Entry> loaded = new LinkedHashMap<>();
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
@@ -64,9 +73,11 @@ public class ScriptManager {
         return t;
     });
 
-    public ScriptManager(ScriptBackend backend, ObjectProvider<ToolRegistry> registry) {
+    public ScriptManager(ScriptBackend backend, ObjectProvider<ToolRegistry> registry,
+                         ObjectProvider<ScriptCache> cache) {
         this.backend = backend;
         this.registry = registry;
+        this.cache = cache;
     }
 
     /** Nach der Registrierung der eingebauten Module; den ersten Stand liefert die Subscription bzw. dieser Abgleich. */
@@ -112,12 +123,12 @@ public class ScriptManager {
         for (Entry e : entries) {
             String name = e.summary().name();
             if (e.module() == null || !r.hasModule(name)) {
-                out.add(new Status(e.summary(), e.conflict(), false, List.of(), List.of()));
+                out.add(new Status(e.summary(), e.conflict(), false, List.of(), List.of(), e.cached()));
                 continue;
             }
             List<String> tools = r.availableTools(name).stream().map(ToolDefinition::name).toList();
             out.add(new Status(e.summary(), r.moduleError(name).orElse(null), r.settings(name).enabled(), tools,
-                    tools.stream().filter(t -> r.isToolActive(name, t)).toList()));
+                    tools.stream().filter(t -> r.isToolActive(name, t)).toList(), e.cached()));
         }
         return out;
     }
@@ -236,7 +247,29 @@ public class ScriptManager {
             reload();
         } catch (RuntimeException e) {
             LOG.debug("Skripte nicht geladen: {}", e.getMessage());
+            loadCachedIfEmpty();
         }
+    }
+
+    /** Backend nicht erreichbar und noch nichts geladen: letzten Stand aus dem Cache nehmen. */
+    private synchronized void loadCachedIfEmpty() {
+        if (!loaded.isEmpty()) {
+            return;
+        }
+        List<ScriptCache.Entry> cached;
+        try {
+            ScriptCache c = cache.getIfAvailable();
+            cached = c == null ? List.of() : c.load();
+        } catch (RuntimeException e) {
+            LOG.warn("Skript-Cache nicht lesbar", e);
+            return;
+        }
+        if (cached.isEmpty()) {
+            return;
+        }
+        cached.forEach(c -> load(c.summary(), c.content(), true));
+        LOG.info("Backend nicht erreichbar – Skripte aus dem letzten Stand geladen: {}", loaded.keySet());
+        fireChanged();
     }
 
     /** Gleicht die registrierten Skript-Module mit dem Backend ab (nur geänderte Skripte werden neu übersetzt). */
@@ -244,15 +277,20 @@ public class ScriptManager {
         List<ScriptViews.Summary> visible = backend.overview();
         Map<String, ScriptViews.Summary> byName = new LinkedHashMap<>();
         visible.forEach(s -> byName.put(s.name(), s));
+        boolean changed = false;
         for (String name : List.copyOf(loaded.keySet())) {
             if (!byName.containsKey(name)) {
                 unload(name);
+                changed = true;
             }
         }
-        boolean changed = false;
         for (ScriptViews.Summary s : visible) {
             Entry e = loaded.get(s.name());
             if (e != null && e.summary().revision() == s.revision() && e.summary().scope() == s.scope()) {
+                if (e.cached()) { // Stand aus dem Cache ist aktuell: Modul behalten, nur die Markierung weg
+                    loaded.put(s.name(), new Entry(s, e.content(), e.module(), e.conflict(), false));
+                    changed = true;
+                }
                 continue;
             }
             Optional<ScriptViews.Details> details = backend.details(s.name());
@@ -260,12 +298,29 @@ public class ScriptManager {
                 continue; // inzwischen gelöscht – der nächste Abgleich räumt auf
             }
             unload(s.name());
-            load(details.get().summary(), details.get().content());
+            load(details.get().summary(), details.get().content(), false);
             changed = true;
         }
         if (changed) {
             LOG.info("Skripte geladen: {}", loaded.keySet());
         }
+        storeCache(); // auch ohne Änderung: ein veralteter Cache (z.B. gelöschte Skripte) wird so ersetzt
+        fireChanged();
+    }
+
+    private void storeCache() {
+        ScriptCache c = cache.getIfAvailable();
+        if (c == null) {
+            return;
+        }
+        try {
+            c.store(loaded.values().stream().map(e -> new ScriptCache.Entry(e.summary(), e.content())).toList());
+        } catch (RuntimeException e) {
+            LOG.warn("Skript-Cache nicht geschrieben", e);
+        }
+    }
+
+    private void fireChanged() {
         listeners.forEach(l -> {
             try {
                 l.run();
@@ -275,11 +330,12 @@ public class ScriptManager {
         });
     }
 
-    private void load(ScriptViews.Summary s, String content) {
+    private void load(ScriptViews.Summary s, String content, boolean cached) {
         ToolRegistry r = registry.getObject();
         if (r.hasModule(s.name())) {
-            loaded.put(s.name(), new Entry(s, null, "Der Name '" + s.name() + "' ist schon die ID eines eingebauten "
-                    + "Moduls oder Plugins – das Skript wird nicht geladen. Unter anderem Namen speichern."));
+            loaded.put(s.name(), new Entry(s, content, null, "Der Name '" + s.name() + "' ist schon die ID eines "
+                    + "eingebauten Moduls oder Plugins – das Skript wird nicht geladen. Unter anderem Namen speichern.",
+                    cached));
             return;
         }
         ScriptToolModule module;
@@ -291,10 +347,10 @@ public class ScriptManager {
         }
         try {
             r.register(module);
-            loaded.put(s.name(), new Entry(s, module, null));
+            loaded.put(s.name(), new Entry(s, content, module, null, cached));
         } catch (IllegalArgumentException e) {
             module.close();
-            loaded.put(s.name(), new Entry(s, null, e.getMessage()));
+            loaded.put(s.name(), new Entry(s, content, null, e.getMessage(), cached));
         }
     }
 

@@ -22,10 +22,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
+import org.springframework.context.ApplicationContext;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptBackend;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptCache;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Groovy-Skripte End-to-End: Anlegen über MCP (Schalter), Tools erscheinen und verschwinden zur Laufzeit, Einstellungen
@@ -75,6 +80,9 @@ class ScriptsIntegrationTest {
 
     @Autowired
     ScriptBackend backend;
+
+    @Autowired
+    ApplicationContext context;
 
     McpSyncClient client;
 
@@ -178,8 +186,12 @@ class ScriptsIntegrationTest {
         await(() -> registry.hasModule("other"), "Skript per Subscription geladen");
         assertThat(text(call("other_ping", Map.of()))).isEqualTo("pong");
 
-        // Kaputtes Skript im Backend: Modul mit Fehler statt Tools
-        backend.save("kaputt", "Kaputt", "tool(", null, null);
+        // Syntaxfehler lehnt schon das Backend ab (z.B. aus der Web-UI)
+        assertThatThrownBy(() -> backend.save("kaputt", "Kaputt", "tool(", null, null))
+                .hasMessageContaining("Zeile 1");
+        // syntaktisch gültig, aber DSL-Fehler: Modul mit Fehler statt Tools
+        backend.save("kaputt", "Kaputt", "module { description 'Kaputt' }\ntool('a') {\n descripton 'x'\n run { 1 }\n}",
+                null, null);
         await(() -> registry.hasModule("kaputt"), "kaputtes Skript geladen");
         assertThat(registry.moduleError("kaputt")).hasValueSatisfying(e -> assertThat(e).contains("Zeile"));
         assertThat(text(call("scripts_list", Map.of()))).contains("demo:", "aktiv – Tools: demo_hi", "kaputt:",
@@ -193,5 +205,82 @@ class ScriptsIntegrationTest {
         backend.delete("kaputt");
         await(() -> !registry.hasModule("other") && !registry.hasModule("kaputt"), "per Subscription entfernt");
         assertThat(scripts.statuses()).isEmpty();
+    }
+
+    @Test
+    void withoutBackendTheLastCachedStateIsLoadedAndConfirmedLater() throws Exception {
+        // wie beim Start mit nicht erreichbarem Team-Server: Backend wirft, der Cache hat den letzten Stand
+        ScriptViews.Summary summary = new ScriptViews.Summary("offline", "Aus dem Cache", ScriptViews.Scope.OWN, 4,
+                java.time.Instant.now(), null);
+        String source = "module { description 'Aus dem Cache' }\ntool('ping') { description 'Ping'; run { 'pong' } }";
+        java.util.List<java.util.List<ScriptCache.Entry>> stored = new java.util.concurrent.CopyOnWriteArrayList<>();
+        ScriptCache cache = new ScriptCache() {
+            @Override
+            public void store(List<Entry> scripts) {
+                stored.add(scripts);
+            }
+
+            @Override
+            public List<Entry> load() {
+                return List.of(new Entry(summary, source));
+            }
+        };
+        java.util.concurrent.atomic.AtomicBoolean online = new java.util.concurrent.atomic.AtomicBoolean();
+        ScriptBackend flaky = new ScriptBackend() {
+            @Override
+            public void addChangeListener(Runnable listener) {
+            }
+
+            @Override
+            public List<ScriptViews.Summary> overview() {
+                if (!online.get()) {
+                    throw new IllegalStateException("Backend nicht erreichbar");
+                }
+                return List.of(summary);
+            }
+
+            @Override
+            public java.util.Optional<ScriptViews.Details> details(String name) {
+                return java.util.Optional.of(new ScriptViews.Details(summary, source, summary.updatedAt(), List.of()));
+            }
+
+            @Override
+            public String save(String name, String description, String content, String note, Integer rev) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public String delete(String name) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public String publish(String name) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public String unpublish(String name) {
+                throw new UnsupportedOperationException();
+            }
+        };
+        ScriptManager manager = new ScriptManager(flaky, context.getBeanProvider(ToolRegistry.class),
+                new StaticListableBeanFactory(Map.of("cache", cache)).getBeanProvider(ScriptCache.class));
+        try {
+            manager.start();
+            await(() -> registry.hasModule("offline"), "Skript aus dem Cache geladen");
+            assertThat(manager.statuses()).singleElement().satisfies(st -> assertThat(st.cached()).isTrue());
+            assertThat(text(call("offline_ping", Map.of()))).isEqualTo("pong");
+            assertThat(stored).isEmpty(); // ohne Backend wird der Cache nicht überschrieben
+
+            online.set(true);
+            manager.reload();
+            assertThat(manager.statuses()).singleElement().satisfies(st -> assertThat(st.cached()).isFalse());
+            assertThat(stored).last().satisfies(l -> assertThat(l).extracting(e -> e.summary().name())
+                    .containsExactly("offline"));
+        } finally {
+            manager.stop();
+            registry.unregister("offline");
+        }
     }
 }

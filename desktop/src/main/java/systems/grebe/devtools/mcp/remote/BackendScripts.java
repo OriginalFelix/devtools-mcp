@@ -46,7 +46,7 @@ public class BackendScripts implements ScriptBackend {
     @Override
     public String save(String name, String description, String content, String note, Integer expectedRevision) {
         return text("""
-                mutation($name: String!, $description: String!, $content: String!, $note: String, $rev: Int) { \
+                mutation($name: String!, $description: String, $content: String!, $note: String, $rev: Int) { \
                 saveScript(name: $name, description: $description, content: $content, note: $note, \
                 expectedRevision: $rev) }""", "saveScript", args("name", name, "description", description,
                 "content", content, "note", note, "rev", expectedRevision));

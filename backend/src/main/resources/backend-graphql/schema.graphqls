@@ -49,8 +49,8 @@ type Mutation {
     publishSkill(name: String!): String!
     unpublishSkill(name: String!): String!
 
-    "Legt ein eigenes Skript an oder ändert es; die Desktop-App prüft den Quelltext vorher und liefert die Beschreibung."
-    saveScript(name: String!, description: String!, content: String!, note: String, expectedRevision: Int): String!
+    "Legt ein eigenes Skript an oder ändert es. Das Backend prüft die Syntax (ohne Ausführung); ohne description gilt der feste Text aus module { description '…' }."
+    saveScript(name: String!, description: String, content: String!, note: String, expectedRevision: Int): String!
     deleteScript(name: String!): String!
     publishScript(name: String!): String!
     unpublishScript(name: String!): String!

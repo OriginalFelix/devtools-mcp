@@ -36,7 +36,8 @@ public class ScriptReadTools {
         for (ScriptManager.Status s : all) {
             sb.append("- ").append(s.name()).append(": ").append(s.summary().description())
                     .append("  [").append(s.summary().global() ? "global" : "eigen")
-                    .append(", Revision ").append(s.summary().revision()).append("]\n    ");
+                    .append(", Revision ").append(s.summary().revision())
+                    .append(s.cached() ? ", letzter Stand – Server nicht erreichbar" : "").append("]\n    ");
             if (s.error() != null) {
                 sb.append("Fehler: ").append(s.error());
             } else if (!s.enabled()) {

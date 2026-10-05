@@ -2,8 +2,6 @@ package systems.grebe.devtools.mcp.modules.scripts;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.List;
-import java.util.stream.Collectors;
 
 import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
@@ -12,14 +10,11 @@ import groovy.lang.Script;
 import groovy.transform.ThreadInterrupt;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilerConfiguration;
-import org.codehaus.groovy.control.MultipleCompilationErrorsException;
 import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
-import org.codehaus.groovy.control.messages.ExceptionMessage;
-import org.codehaus.groovy.control.messages.SyntaxErrorMessage;
-import org.codehaus.groovy.syntax.SyntaxException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import systems.grebe.devtools.mcp.backend.scripts.ScriptSyntax;
 import systems.grebe.devtools.mcp.core.FieldType;
 
 /**
@@ -79,7 +74,7 @@ public final class ScriptCompiler {
                 script = shell.parse(source, fileName(scriptName));
             } catch (CompilationFailedException e) {
                 throw new IllegalArgumentException("Skript '" + scriptName + "' lässt sich nicht übersetzen: "
-                        + compileErrors(e));
+                        + ScriptSyntax.describe(e));
             }
             if (!(script instanceof DevToolsScript dsl)) {
                 throw new IllegalArgumentException("Skript '" + scriptName + "' hat eine eigene Basisklasse – das ist "
@@ -127,22 +122,5 @@ public final class ScriptCompiler {
             }
         }
         return msg;
-    }
-
-    private static String compileErrors(CompilationFailedException e) {
-        if (e instanceof MultipleCompilationErrorsException m && m.getErrorCollector().getErrorCount() > 0) {
-            List<?> errors = m.getErrorCollector().getErrors();
-            return errors.stream().limit(5).map(err -> {
-                if (err instanceof SyntaxErrorMessage s) {
-                    SyntaxException x = s.getCause();
-                    return "Zeile " + x.getLine() + ", Spalte " + x.getStartColumn() + ": " + x.getOriginalMessage();
-                }
-                if (err instanceof ExceptionMessage x) {
-                    return x.getCause().getMessage();
-                }
-                return String.valueOf(err);
-            }).collect(Collectors.joining("; "));
-        }
-        return e.getMessage();
     }
 }

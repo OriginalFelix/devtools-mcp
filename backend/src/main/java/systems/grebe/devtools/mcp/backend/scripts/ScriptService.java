@@ -20,9 +20,10 @@ import systems.grebe.devtools.mcp.modules.scripts.ScriptBackend;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
 
 /**
- * Ablage der Groovy-Skripte: Validierung, Historie und Eigentümer über die Spring-Data-Repositories. Übersetzt wird
- * hier nichts – das Backend läuft auch auf dem Team-Server, ausgeführt werden Skripte nur in der Desktop-App, die sie
- * vor dem Speichern prüft und die Beschreibung mitliefert.
+ * Ablage der Groovy-Skripte: Validierung, Historie und Eigentümer über die Spring-Data-Repositories. Ausgeführt wird
+ * hier nichts – das Backend läuft auch auf dem Team-Server, Skripte laufen nur in der Desktop-App, die sie vor dem
+ * Speichern auswertet und die Beschreibung mitliefert. Das Backend prüft zusätzlich die Syntax ({@link ScriptSyntax},
+ * ohne Ausführung) – so landet auch aus der Web-UI kein unübersetzbares Skript in der Ablage.
  *
  * <p><b>Eigentümer</b> wie bei den Skills ({@link SkillOwner}): Jeder sieht seine eigenen Skripte und die globalen
  * Vorlagen; ein eigenes Skript verdeckt die Vorlage gleichen Namens. Vorlagen veröffentlichen und zurückziehen nur
@@ -84,12 +85,16 @@ public class ScriptService implements ScriptBackend {
     @Override
     public String save(String name, String description, String content, String note, Integer expectedRevision) {
         String n = requireName(name);
-        String d = requireDescription(description);
         String body = requireContent(content);
+        Optional<String> declared = ScriptSyntax.check("script_" + n + ".groovy", body);
         String user = users.email();
         Optional<Script> own = scripts.findByOwnerAndName(user, n);
         Optional<Script> template = own.isPresent() ? Optional.empty() : scripts.findByOwnerAndName(SkillOwner.GLOBAL, n);
-        own.or(() -> template).ifPresent(s -> checkRevision(s, expectedRevision));
+        Optional<Script> current = own.or(() -> template);
+        current.ifPresent(s -> checkRevision(s, expectedRevision));
+        // Beschreibung: von der Desktop-App ausgewertet, sonst fester Text im Skript, sonst die bisherige
+        String d = requireDescription(description != null && !description.isBlank() ? description
+                : declared.orElse(current.map(Script::getDescription).orElse(null)));
         Instant now = Instant.now();
         if (own.isPresent()) {
             Script s = own.get();
@@ -211,7 +216,8 @@ public class ScriptService implements ScriptBackend {
     private static String requireDescription(String description) {
         String d = description == null ? "" : description.strip().replaceAll("\\s+", " ");
         if (d.isEmpty()) {
-            throw new IllegalArgumentException("Beschreibung fehlt: im Skript module { description '…' } angeben.");
+            throw new IllegalArgumentException("Beschreibung fehlt: im Skript module { description '…' } mit festem "
+                    + "Text angeben.");
         }
         return d.length() > MAX_DESCRIPTION ? d.substring(0, MAX_DESCRIPTION) : d;
     }
