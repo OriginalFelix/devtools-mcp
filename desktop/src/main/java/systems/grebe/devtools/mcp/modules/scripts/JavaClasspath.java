@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
  * {@code javac} nichts anfangen. Dann werden Klassen und Bibliotheken einmal je Jar-Version in einen Ordner unter
  * {@code java.io.tmpdir} entpackt und von dort verwendet.
  */
-final class JavaClasspath {
+public final class JavaClasspath {
 
     private static final Logger LOG = LoggerFactory.getLogger(JavaClasspath.class);
     private static volatile String cached;
@@ -32,7 +32,7 @@ final class JavaClasspath {
     private JavaClasspath() {
     }
 
-    static String get() {
+    public static String get() {
         String cp = cached;
         if (cp == null) {
             synchronized (JavaClasspath.class) {
