@@ -15,6 +15,7 @@ import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.component.splitlayout.SplitLayout;
 import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
@@ -27,11 +28,12 @@ import systems.grebe.devtools.mcp.backend.account.AccountService;
 import systems.grebe.devtools.mcp.backend.account.Role;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.backend.scripts.ScriptService;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptTemplates;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
 import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
 
 /**
- * Groovy-Skripte des Benutzers und globale Vorlagen: ansehen, bearbeiten (mit Syntaxprüfung, ohne Ausführung),
+ * Skripte (Groovy oder Java) des Benutzers und globale Vorlagen: ansehen, bearbeiten (mit Syntaxprüfung, ohne Ausführung),
  * Historie, löschen; Administratoren veröffentlichen und ziehen Vorlagen zurück. Ausgeführt werden Skripte nur in den
  * Desktop-Apps – die übernehmen Änderungen sofort (Subscription {@code scriptsChanged}) und melden dort, ob das
  * Skript lädt.
@@ -40,21 +42,6 @@ import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
 @PageTitle("Skripte – DevTools MCP")
 @PermitAll
 public class ScriptsView extends VerticalLayout {
-
-    static final String TEMPLATE = """
-            module {
-                description 'Was die Tools dieses Skripts können'
-            }
-
-            tool('hello') {
-                description 'Begrüßt jemanden'
-                param 'who', String, 'Wen begrüßen'
-                readOnly true
-                run { args ->
-                    "Hallo ${args.who}!"
-                }
-            }
-            """;
 
     private final ScriptService scripts;
     private final AccountService accounts;
@@ -84,6 +71,7 @@ public class ScriptsView extends VerticalLayout {
         setSizeFull();
 
         grid.addColumn(ScriptViews.Summary::name).setHeader("Name").setAutoWidth(true);
+        grid.addColumn(s -> label(s.language())).setHeader("Sprache").setAutoWidth(true);
         grid.addColumn(s -> s.global() ? "global" : "eigen").setHeader("Herkunft").setAutoWidth(true);
         grid.addColumn(ScriptViews.Summary::revision).setHeader("Rev.").setAutoWidth(true);
         grid.addColumn(ScriptViews.Summary::description).setHeader("Beschreibung").setFlexGrow(1);
@@ -99,7 +87,7 @@ public class ScriptsView extends VerticalLayout {
         split.setSplitterPosition(40);
         split.setSizeFull();
 
-        add(new H2("Skripte"), new Paragraph("Groovy-Skripte ergänzen deine Desktop-Apps zur Laufzeit um eigene "
+        add(new H2("Skripte"), new Paragraph("Skripte (Groovy oder Java) ergänzen deine Desktop-Apps zur Laufzeit um eigene "
                 + "Module mit Tools (Präfix = Skriptname). Hier prüft der Server nur die Syntax – ob ein Skript lädt "
                 + "und welche Tools entstehen, zeigt die Desktop-App (Tab „Skripte“), die Änderungen sofort "
                 + "übernimmt." + (admin ? " Globale Vorlagen laufen in den Desktop-Apps aller Benutzer." : "")),
@@ -161,7 +149,7 @@ public class ScriptsView extends VerticalLayout {
         current = s.name();
         currentRevision = s.revision();
         title.setText(s.name());
-        meta.setText((s.global() ? "Globale Vorlage – Speichern legt ein eigenes Skript an, das sie verdeckt"
+        meta.setText(label(s.language()) + " · " + (s.global() ? "Globale Vorlage – Speichern legt ein eigenes Skript an, das sie verdeckt"
                 : "Eigenes Skript") + " · Revision " + s.revision() + " · geändert " + Ui.time(s.updatedAt())
                 + (s.updatedBy() == null ? "" : " von " + s.updatedBy()));
         editor.setValue(d.get().content());
@@ -185,10 +173,18 @@ public class ScriptsView extends VerticalLayout {
         TextField name = new TextField("Name");
         name.setHelperText("2–32 Kleinbuchstaben/Ziffern, z.B. jira – Modul-ID und Tool-Präfix");
         name.setWidthFull();
-        d.add(name);
+        Select<ScriptViews.Language> language = new Select<>();
+        language.setLabel("Sprache");
+        language.setItems(ScriptViews.Language.values());
+        language.setItemLabelGenerator(ScriptsView::label);
+        language.setValue(ScriptViews.Language.GROOVY);
+        language.setHelperText("Java braucht ein JDK auf den Rechnern mit der Desktop-App");
+        d.add(new VerticalLayout(name, language));
         Button ok = new Button("Anlegen", e -> {
             String n = name.getValue().strip();
-            if (Ui.run(() -> as(() -> scripts.save(n, null, TEMPLATE, "angelegt in der Web-UI", null)), "Angelegt")) {
+            ScriptViews.Language l = language.getValue();
+            if (Ui.run(() -> as(() -> scripts.save(n, l, null, ScriptTemplates.of(l), "angelegt in der Web-UI",
+                    null)), "Angelegt")) {
                 d.close();
                 refresh();
                 show(n);
@@ -227,6 +223,10 @@ public class ScriptsView extends VerticalLayout {
             c.setConfirmButtonTheme("error primary");
         }
         c.open();
+    }
+
+    static String label(ScriptViews.Language l) {
+        return l == ScriptViews.Language.JAVA ? "Java" : "Groovy";
     }
 
     /** Skripte gehören der Konto-E-Mail – wie bei den Desktop-Apps über GraphQL. */

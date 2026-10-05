@@ -48,7 +48,13 @@ final class ScriptTimeout {
             }
         }, Math.max(1, limit.toMillis()), TimeUnit.MILLISECONDS);
         try {
-            return body.get();
+            T result = body.get();
+            if (timedOut(guard, state)) { // nach dem Interrupt freiwillig beendet: Ergebnis ist unvollständig
+                throw new Exceeded(what, limit);
+            }
+            return result;
+        } catch (Exceeded e) {
+            throw e;
         } catch (RuntimeException e) {
             if (timedOut(guard, state)) {
                 throw new Exceeded(what, limit);

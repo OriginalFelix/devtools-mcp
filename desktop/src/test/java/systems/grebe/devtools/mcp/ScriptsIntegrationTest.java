@@ -197,6 +197,28 @@ class ScriptsIntegrationTest {
         assertThat(text(call("scripts_list", Map.of()))).contains("demo:", "aktiv – Tools: demo_hi", "kaputt:",
                 "Fehler:");
 
+        // Java-Skript über MCP: javac, ToolModule-API, Einstellungen aus dem Formular
+        String java = systems.grebe.devtools.mcp.modules.scripts.ScriptTemplates.JAVA.replace(
+                systems.grebe.devtools.mcp.modules.scripts.ScriptTemplates.PLACEHOLDER_DESCRIPTION, "Java-Gruß");
+        assertThat(text(call("scripts_save", Map.of("name", "jgruss", "language", "java", "content", java))))
+                .contains("angelegt", "jgruss_hello");
+        assertThat(text(call("jgruss_hello", Map.of("who", "Welt")))).isEqualTo("Hallo Welt!");
+        registry.updateConfig("jgruss", Map.of("greeting", "Servus"));
+        assertThat(text(call("jgruss_hello", Map.of("who", "Welt")))).isEqualTo("Servus Welt!");
+        McpSchema.CallToolResult javaError = call("scripts_save", Map.of("name", "jgruss",
+                "content", java.replace("return greeting", "return grreting")));
+        assertThat(javaError.isError()).isTrue();
+        assertThat(text(javaError)).contains("Zeile", "grreting");
+        assertThat(text(call("scripts_view", Map.of("name", "jgruss")))).contains("language: java", "```java");
+        assertThat(text(call("scripts_delete", Map.of("name", "jgruss")))).contains("gelöscht");
+
+        // Groovy mit Typprüfung: Fehler schon beim Speichern
+        McpSchema.CallToolResult typed = call("scripts_save", Map.of("name", "typed", "content",
+                "// devtools: compileStatic\nmodule { description 'x' }\n"
+                        + "tool('a') { description 'y'; execute { args -> args.who.toUpperCase() } }"));
+        assertThat(typed.isError()).isTrue();
+        assertThat(text(typed)).contains("toUpperCase");
+
         // Löschen: Tools weg
         assertThat(text(call("scripts_delete", Map.of("name", "demo")))).contains("gelöscht");
         assertThat(toolNames()).doesNotContain("demo_hi");
@@ -210,7 +232,7 @@ class ScriptsIntegrationTest {
     @Test
     void withoutBackendTheLastCachedStateIsLoadedAndConfirmedLater() throws Exception {
         // wie beim Start mit nicht erreichbarem Team-Server: Backend wirft, der Cache hat den letzten Stand
-        ScriptViews.Summary summary = new ScriptViews.Summary("offline", "Aus dem Cache", ScriptViews.Scope.OWN, 4,
+        ScriptViews.Summary summary = new ScriptViews.Summary("offline", "Aus dem Cache", ScriptViews.Scope.OWN, null, 4,
                 java.time.Instant.now(), null);
         String source = "module { description 'Aus dem Cache' }\ntool('ping') { description 'Ping'; run { 'pong' } }";
         java.util.List<java.util.List<ScriptCache.Entry>> stored = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -245,7 +267,8 @@ class ScriptsIntegrationTest {
             }
 
             @Override
-            public String save(String name, String description, String content, String note, Integer rev) {
+            public String save(String name, ScriptViews.Language language, String description, String content,
+                               String note, Integer rev) {
                 throw new UnsupportedOperationException();
             }
 

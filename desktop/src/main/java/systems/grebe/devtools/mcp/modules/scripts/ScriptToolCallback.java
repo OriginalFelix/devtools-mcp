@@ -16,7 +16,7 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Ein Tool aus einem Groovy-Skript: Eingabeschema aus den {@code param}-Angaben, Aufruf der {@code run}-Closure mit den
+ * Ein Tool aus einem Groovy-Skript: Eingabeschema aus den {@code param}-Angaben, Aufruf der {@code execute}-Closure mit den
  * Argumenten (und den Einstellungen des Moduls) unter Zeitlimit. Ergebnisse: Text unverändert, {@code null} → „OK“,
  * alles andere als JSON.
  */

@@ -76,37 +76,47 @@ public class ScriptService implements ScriptBackend {
 
     private static ScriptViews.Summary summary(Script s) {
         return new ScriptViews.Summary(s.getName(), s.getDescription(),
-                s.isGlobal() ? ScriptViews.Scope.GLOBAL : ScriptViews.Scope.OWN, s.getRevision(), s.getUpdatedAt(),
+                s.isGlobal() ? ScriptViews.Scope.GLOBAL : ScriptViews.Scope.OWN, s.getLanguage(), s.getRevision(),
+                s.getUpdatedAt(),
                 s.getUpdatedBy());
     }
 
     // ------------------------------------------------------------------ Schreiben
 
+    /** Hier deklariert, damit auch dieser Weg in einer Transaktion läuft (die Default-Methode hätte keine). */
     @Override
     public String save(String name, String description, String content, String note, Integer expectedRevision) {
+        return save(name, null, description, content, note, expectedRevision);
+    }
+
+    @Override
+    public String save(String name, ScriptViews.Language language, String description, String content, String note,
+                       Integer expectedRevision) {
         String n = requireName(name);
         String body = requireContent(content);
-        Optional<String> declared = ScriptSyntax.check("script_" + n + ".groovy", body);
         String user = users.email();
         Optional<Script> own = scripts.findByOwnerAndName(user, n);
         Optional<Script> template = own.isPresent() ? Optional.empty() : scripts.findByOwnerAndName(SkillOwner.GLOBAL, n);
         Optional<Script> current = own.or(() -> template);
         current.ifPresent(s -> checkRevision(s, expectedRevision));
+        ScriptViews.Language lang = language != null ? language
+                : current.map(Script::getLanguage).orElse(ScriptViews.Language.GROOVY);
+        Optional<String> declared = ScriptSyntax.check(lang, n, body);
         // Beschreibung: von der Desktop-App ausgewertet, sonst fester Text im Skript, sonst die bisherige
         String d = requireDescription(description != null && !description.isBlank() ? description
                 : declared.orElse(current.map(Script::getDescription).orElse(null)));
         Instant now = Instant.now();
         if (own.isPresent()) {
             Script s = own.get();
-            if (d.equals(s.getDescription()) && body.equals(s.getContent())) {
+            if (lang == s.getLanguage() && d.equals(s.getDescription()) && body.equals(s.getContent())) {
                 return "Keine Änderung an Skript '" + n + "' (Revision " + s.getRevision() + ").";
             }
-            s.change(d, body);
+            s.change(lang, d, body);
             s.recordRevision("update", normalizeNote(note), user, now);
             changed();
             return "Skript '" + n + "' gespeichert (Revision " + s.getRevision() + ").";
         }
-        Script s = new Script(user, n, d, body, now);
+        Script s = new Script(user, n, lang, d, body, now);
         s.recordRevision("create", template.isPresent()
                 ? noteOr(note, "verdeckt die globale Vorlage (Revision " + template.get().getRevision() + ")")
                 : normalizeNote(note), user, now);
@@ -142,15 +152,15 @@ public class ScriptService implements ScriptBackend {
                 "Nur eigene Skripte können veröffentlicht werden – '" + n + "' gehört nicht " + user + "."));
         Instant now = Instant.now();
         Optional<Script> existing = scripts.findByOwnerAndName(SkillOwner.GLOBAL, n);
-        Script template = existing.orElseGet(() -> new Script(SkillOwner.GLOBAL, n, own.getDescription(),
-                own.getContent(), now));
+        Script template = existing.orElseGet(() -> new Script(SkillOwner.GLOBAL, n, own.getLanguage(),
+                own.getDescription(), own.getContent(), now));
         if (existing.isPresent()) {
-            if (Objects.equals(template.getContent(), own.getContent())
+            if (Objects.equals(template.getContent(), own.getContent()) && template.getLanguage() == own.getLanguage()
                     && Objects.equals(template.getDescription(), own.getDescription())) {
                 return "Die globale Vorlage '" + n + "' entspricht schon deinem Stand (Revision "
                         + template.getRevision() + ").";
             }
-            template.change(own.getDescription(), own.getContent());
+            template.change(own.getLanguage(), own.getDescription(), own.getContent());
         }
         template.recordRevision("publish", (existing.isPresent() ? "aktualisiert" : "veröffentlicht")
                 + " aus dem Skript von " + user + " (Revision " + own.getRevision() + ")", user, now);
@@ -216,8 +226,8 @@ public class ScriptService implements ScriptBackend {
     private static String requireDescription(String description) {
         String d = description == null ? "" : description.strip().replaceAll("\\s+", " ");
         if (d.isEmpty()) {
-            throw new IllegalArgumentException("Beschreibung fehlt: im Skript module { description '…' } mit festem "
-                    + "Text angeben.");
+            throw new IllegalArgumentException("Beschreibung fehlt: im Skript module { description '…' } (Groovy) bzw. "
+                    + "description() mit return \"…\" (Java) als festen Text angeben.");
         }
         return d.length() > MAX_DESCRIPTION ? d.substring(0, MAX_DESCRIPTION) : d;
     }

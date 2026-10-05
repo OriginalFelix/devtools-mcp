@@ -39,7 +39,7 @@ class ScriptCompilerTest {
                 param 'limit', Integer, 'Höchstens so viele', required: false
                 param 'state', String, 'Status', options: ['open', 'closed'], required: false
                 readOnly true
-                run { args, cfg ->
+                execute { args, cfg ->
                     progress "Frage ${cfg.baseUrl} ab"
                     [project: args.project, limit: args.limit ?: cfg.limit, state: args.state, url: "${cfg.baseUrl}/x"]
                 }
@@ -48,19 +48,19 @@ class ScriptCompilerTest {
             tool('hello') {
                 description 'Begrüßt'
                 param 'who', 'Wen'
-                run { args -> "Hallo ${args.who}" }
+                execute { args -> "Hallo ${args.who}" }
             }
 
             tool('nothing') {
                 description 'Gibt nichts zurück'
-                run { -> null }
+                execute { -> null }
             }
             """;
 
     private final ScriptCompiler compiler = new ScriptCompiler();
 
     private static ScriptViews.Summary summary(String name) {
-        return new ScriptViews.Summary(name, "d", ScriptViews.Scope.OWN, 1, Instant.now(), null);
+        return new ScriptViews.Summary(name, "d", ScriptViews.Scope.OWN, null, 1, Instant.now(), null);
     }
 
     private static ToolCallback tool(List<ToolCallback> tools, String name) {
@@ -169,5 +169,59 @@ class ScriptCompilerTest {
         ScriptToolModule m = ScriptToolModule.broken(summary("x"), "Zeile 1: kaputt");
         assertThat(m.error()).contains("Zeile 1: kaputt");
         assertThatThrownBy(() -> m.createTools(ModuleConfig.of(List.of(), Map.of()))).hasMessage("Zeile 1: kaputt");
+    }
+
+    @Test
+    void compileStaticChecksTheWholeScriptIncludingTheDsl() throws Exception {
+        // Die DSL selbst ist statisch prüfbar: das Beispiel mit allen Elementen übersetzt mit compileStatic
+        String jira = "// devtools: compileStatic\n" + JIRA.replace("execute { -> null }", "execute { null }");
+        try (ScriptCompiler.Compiled c = compiler.compile("jira", jira)) {
+            ScriptToolModule module = ScriptToolModule.of(summary("jira"), c, () -> Duration.ofSeconds(5));
+            List<ToolCallback> tools = module.createTools(ModuleConfig.of(module.configSchema(),
+                    Map.of("baseUrl", "https://jira.example.com")));
+            assertThat(tool(tools, "hello").call("{\"who\":\"Welt\"}")).isEqualTo("Hallo Welt");
+            assertThat(JSON.readTree(tool(tools, "open_issues").call("{\"project\":\"ABC\"}")).get("limit").asLong())
+                    .isEqualTo(20);
+        }
+        // Tippfehler in der DSL fällt beim Übersetzen auf, nicht erst bei der Auswertung
+        assertThatThrownBy(() -> compiler.compile("bad", "// devtools: compileStatic\nmodule { description 'x' }\n"
+                + "tool('a') {\n descripton 'y'\n execute { 1 }\n}"))
+                .hasMessageContaining("nicht übersetzen").hasMessageContaining("Zeile 4").hasMessageContaining("descripton");
+        // ... ebenso Methoden auf Object und unbekannte Methoden in eigenen Klassen
+        assertThatThrownBy(() -> compiler.compile("bad", "// devtools: compileStatic\nmodule { description 'x' }\n"
+                + "tool('a') { description 'y'; execute { args -> args.who.toUpperCase() } }"))
+                .hasMessageContaining("toUpperCase");
+        assertThatThrownBy(() -> compiler.compile("bad", "// devtools: typeChecked\n"
+                + "class Util { static int f() { return gibtsNicht() } }\nmodule { description 'x' }\n"
+                + "tool('a') { description 'y'; execute { Util.f() } }"))
+                .hasMessageContaining("gibtsNicht");
+        // mit Cast geht es; dynamisch übersetzt dasselbe Skript ohne Fehler (und scheitert erst beim Aufruf)
+        try (ScriptCompiler.Compiled c = compiler.compile("ok", "// devtools: compileStatic\n"
+                + "module { description 'x' }\ntool('a') { description 'y'; param 'who', 'Wen'\n"
+                + " execute { args -> (args.who as String).toUpperCase() } }")) {
+            ToolCallback t = ScriptToolModule.of(summary("ok"), c, () -> Duration.ofSeconds(5))
+                    .createTools(ModuleConfig.of(List.of(), Map.of())).getFirst();
+            assertThat(t.call("{\"who\":\"welt\"}")).isEqualTo("WELT");
+        }
+        compiler.compile("dyn", "class Util { static int f() { return gibtsNicht() } }\nmodule { description 'x' }\n"
+                + "tool('a') { description 'y'; execute { Util.f() } }").close();
+        // run { … } bindet Groovy statisch an Closure.run() – klare Meldung statt Endlosrekursion
+        assertThatThrownBy(() -> compiler.compile("bad", "// devtools: compileStatic\nmodule { description 'x' }\n"
+                + "tool('a') { description 'y'; run { 1 } }")).hasMessageContaining("execute { … }");
+        assertThatThrownBy(() -> compiler.compile("bad", "// devtools: superstrict\nmodule { description 'x' }"))
+                .hasMessageContaining("compileStatic, typeChecked");
+    }
+
+    @Test
+    void readmeExamplesCompileAsDocumented() throws Exception {
+        // Groovy-Beispiel aus der README (Abschnitt „Skripte“) – mit compileStatic
+        String readme = java.nio.file.Files.readString(java.nio.file.Path.of("..", "README.md"));
+        int start = readme.indexOf("```groovy\n// devtools: compileStatic") + "```groovy\n".length();
+        String example = readme.substring(start, readme.indexOf("```", start));
+        compiler.compile("jira", example).close();
+        // Java-Beispiel aus der README
+        int js = readme.indexOf("```java\nimport java.util.List;") + "```java\n".length();
+        String java = readme.substring(js, readme.indexOf("```", js));
+        new JavaScriptCompiler().compile("jira", java).close();
     }
 }

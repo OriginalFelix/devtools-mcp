@@ -16,6 +16,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 import systems.grebe.devtools.mcp.DevToolsMcpApplication;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptBackend;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptTemplates;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
 import systems.grebe.devtools.mcp.remote.BackendConnection;
 
 /**
@@ -31,10 +33,12 @@ public final class ScriptsViewSnapshot {
         ConfigurableApplicationContext ctx = DevToolsMcpApplication.startSpring(new String[] {"--server.port=0",
                 "--devtools.local-user.email=snapshot@example.com"});
         ScriptManager scripts = ctx.getBean(ScriptManager.class);
-        scripts.save("demo", ScriptsView.TEMPLATE.replace("Was die Tools dieses Skripts können",
-                "Begrüßungen für den Sichttest"), "erste Fassung", null);
-        scripts.save("demo", ScriptsView.TEMPLATE.replace("Was die Tools dieses Skripts können",
-                "Begrüßungen für den Sichttest").replace("Hallo", "Moin"), "Gruß geändert", 1);
+        String groovy = ScriptTemplates.GROOVY.replace(ScriptTemplates.PLACEHOLDER_DESCRIPTION,
+                "Begrüßungen für den Sichttest");
+        scripts.save("demo", null, groovy, "erste Fassung", null);
+        scripts.save("demo", null, groovy.replace("Hallo", "Moin"), "Gruß geändert", 1);
+        scripts.save("javademo", ScriptViews.Language.JAVA, ScriptTemplates.JAVA.replace(
+                ScriptTemplates.PLACEHOLDER_DESCRIPTION, "Java-Begrüßungen"), null, null);
         ctx.getBean(ScriptBackend.class).save("kaputt", "Absichtlich fehlerhaft",
                 "module { description 'x' }\ntool('a') {\n  descripton 'Tippfehler'\n  run { 1 }\n}", null, null);
         scripts.reload();
@@ -47,7 +51,7 @@ public final class ScriptsViewSnapshot {
             stage.setScene(scene);
             stage.show();
             new Thread(() -> {
-                String[] names = {select, "kaputt"};
+                String[] names = {select, "kaputt", "javademo"};
                 for (int i = 0; i < names.length; i++) {
                     String n = names[i];
                     int index = i;

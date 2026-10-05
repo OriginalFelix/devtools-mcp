@@ -65,6 +65,7 @@ public class ScriptManager {
     private final ObjectProvider<ToolRegistry> registry;
     private final ObjectProvider<ScriptCache> cache;
     private final ScriptCompiler compiler = new ScriptCompiler();
+    private final JavaScriptCompiler javaCompiler = new JavaScriptCompiler();
     private final Map<String, Entry> loaded = new LinkedHashMap<>();
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
@@ -154,28 +155,50 @@ public class ScriptManager {
     // ------------------------------------------------------------------ Ändern
 
     /**
-     * Prüft ein Skript, ohne es zu speichern: übersetzen, Definition auswerten (der Code auf oberster Ebene läuft
-     * dabei!) und beschreiben, welche Tools entstünden.
+     * Prüft ein Skript, ohne es zu speichern: übersetzen, Definition auswerten (der Code auf oberster Ebene bzw. der
+     * Konstruktor läuft dabei!) und beschreiben, welche Tools entstünden.
+     *
+     * @param language {@code null} = die des vorhandenen Skripts, sonst Groovy
      */
-    public String check(String name, String content) {
+    public String check(String name, ScriptViews.Language language, String content) {
         String n = requireName(name);
         requireFreeId(n);
-        try (ScriptCompiler.Compiled c = compiler.compile(n, content)) {
-            return "Skript '" + n + "' ist gültig: " + describe(n, c.definition());
+        try (CompiledScript c = compile(n, languageOf(n, language), content)) {
+            return "Skript '" + n + "' ist gültig: " + describe(n, c);
         }
     }
 
-    /** Prüft, speichert im Backend und lädt neu; die Meldung nennt die entstandenen Tools. */
-    public String save(String name, String content, String note, Integer expectedRevision) {
+    /**
+     * Prüft, speichert im Backend und lädt neu; die Meldung nennt die entstandenen Tools.
+     *
+     * @param language {@code null} = die des vorhandenen Skripts, sonst Groovy
+     */
+    public String save(String name, ScriptViews.Language language, String content, String note,
+                       Integer expectedRevision) {
         String n = requireName(name);
         requireFreeId(n);
+        ScriptViews.Language lang = languageOf(n, language);
         String description;
-        try (ScriptCompiler.Compiled c = compiler.compile(n, content)) {
-            description = c.definition().description();
+        try (CompiledScript c = compile(n, lang, content)) {
+            description = c.description();
         }
-        String msg = backend.save(n, description, content, note, expectedRevision);
+        String msg = backend.save(n, lang, description, content, note, expectedRevision);
         reload();
         return msg + " " + statusLine(n);
+    }
+
+    /** Übersetzt je nach Sprache; Fehler als {@link IllegalArgumentException} mit Zeile. */
+    CompiledScript compile(String name, ScriptViews.Language language, String content) {
+        return language == ScriptViews.Language.JAVA ? javaCompiler.compile(name, content)
+                : compiler.compile(name, content);
+    }
+
+    private synchronized ScriptViews.Language languageOf(String name, ScriptViews.Language requested) {
+        if (requested != null) {
+            return requested;
+        }
+        Entry e = loaded.get(name);
+        return e == null ? ScriptViews.Language.GROOVY : e.summary().language();
     }
 
     public String delete(String name) {
@@ -210,9 +233,10 @@ public class ScriptManager {
         }).orElse("");
     }
 
-    private static String describe(String name, ScriptDefinition d) {
-        return "Modul „" + d.displayName() + "“ mit " + d.tools().size() + " Tool(s) ("
-                + String.join(", ", d.tools().stream().map(t -> ManagedToolCallback.prefixed(name, t.name())).toList())
+    private static String describe(String name, CompiledScript d) {
+        List<String> tools = d.toolNames();
+        return "Modul „" + d.displayName() + "“ mit " + tools.size() + " Tool(s) ("
+                + String.join(", ", tools.stream().map(t -> ManagedToolCallback.prefixed(name, t)).toList())
                 + ")"
                 + (d.settings().isEmpty() ? "" : ", Einstellungen: " + String.join(", ",
                 d.settings().stream().map(f -> f.key()).toList())) + ".";
@@ -340,7 +364,7 @@ public class ScriptManager {
         }
         ScriptToolModule module;
         try {
-            module = ScriptToolModule.of(s, compiler.compile(s.name(), content), this::callTimeout);
+            module = ScriptToolModule.of(s, compile(s.name(), s.language(), content), this::callTimeout);
         } catch (IllegalArgumentException e) {
             LOG.warn("Skript {} nicht übersetzbar: {}", s.name(), e.getMessage());
             module = ScriptToolModule.broken(s, e.getMessage());

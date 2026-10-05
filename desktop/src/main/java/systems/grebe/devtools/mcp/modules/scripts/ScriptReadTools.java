@@ -23,8 +23,8 @@ public class ScriptReadTools {
         this.scripts = scripts;
     }
 
-    @Tool(name = "list", description = "Listet die Groovy-Skripte, die diesen Server um eigene Tools erweitern: Name, "
-            + "Herkunft (eigen/global), Revision, Zustand (aktiv, deaktiviert, Fehler) und ihre Tools."
+    @Tool(name = "list", description = "Listet die Skripte (Groovy/Java), die diesen Server um eigene Tools erweitern: "
+            + "Name, Sprache, Herkunft (eigen/global), Revision, Zustand (aktiv, deaktiviert, Fehler) und ihre Tools."
             + ShellHints.SCRIPTS)
     public String list() {
         List<ScriptManager.Status> all = scripts.statuses();
@@ -35,7 +35,8 @@ public class ScriptReadTools {
         StringBuilder sb = new StringBuilder(all.size() + " Skript(e):\n");
         for (ScriptManager.Status s : all) {
             sb.append("- ").append(s.name()).append(": ").append(s.summary().description())
-                    .append("  [").append(s.summary().global() ? "global" : "eigen")
+                    .append("  [").append(lang(s.summary())).append(", ")
+                    .append(s.summary().global() ? "global" : "eigen")
                     .append(", Revision ").append(s.summary().revision())
                     .append(s.cached() ? ", letzter Stand – Server nicht erreichbar" : "").append("]\n    ");
             if (s.error() != null) {
@@ -51,10 +52,10 @@ public class ScriptReadTools {
         return sb.append("Quelltext mit scripts_view(name).").toString();
     }
 
-    @Tool(name = "view", description = "Zeigt den Groovy-Quelltext eines Skripts (optional einen früheren Stand aus "
-            + "der Historie) – ohne Namen die DSL-Referenz zum Schreiben eigener Skripte." + ShellHints.SCRIPTS)
+    @Tool(name = "view", description = "Zeigt den Quelltext eines Skripts (optional einen früheren Stand aus der "
+            + "Historie) – ohne Namen die Referenz zum Schreiben eigener Skripte in Groovy oder Java." + ShellHints.SCRIPTS)
     public String view(
-            @ToolParam(required = false, description = NAME + "; leer = DSL-Referenz") String name,
+            @ToolParam(required = false, description = NAME + "; leer = Referenz") String name,
             @ToolParam(required = false, description = "Optional: frühere Revision statt des aktuellen Stands") Integer revision) {
         if (name == null || name.isBlank()) {
             return ScriptsModule.REFERENCE;
@@ -67,9 +68,10 @@ public class ScriptReadTools {
                     .orElseThrow(() -> new IllegalArgumentException("Skript '" + s.name() + "' hat keine Revision "
                             + revision + " (aktuell " + s.revision() + ")."));
             return "# " + s.name() + " – Revision " + r.revision() + " (" + r.action() + ", "
-                    + DATE.format(r.changedAt()) + ")\n\n```groovy\n" + r.content() + "\n```";
+                    + DATE.format(r.changedAt()) + ")\n\n```" + lang(s) + "\n" + r.content() + "\n```";
         }
         StringBuilder sb = new StringBuilder("---\nname: ").append(s.name())
+                .append("\nlanguage: ").append(lang(s))
                 .append("\ndescription: ").append(s.description())
                 .append("\nscope: ").append(s.global() ? "global (Vorlage – Speichern legt ein eigenes Skript an, das "
                         + "sie verdeckt)" : "eigen")
@@ -80,7 +82,11 @@ public class ScriptReadTools {
                 ? "Fehler – " + st.error() : (st.enabled() ? "aktiv" : "deaktiviert") + ", Tools: "
                 + String.join(", ", st.tools())));
         sb.append("\nhistory: ").append(d.revisions().stream().map(r -> r.revision() + " " + r.action()).toList())
-                .append("\n---\n\n```groovy\n").append(d.content()).append("\n```");
+                .append("\n---\n\n```").append(lang(s)).append('\n').append(d.content()).append("\n```");
         return sb.toString();
+    }
+
+    private static String lang(ScriptViews.Summary s) {
+        return s.language().name().toLowerCase(java.util.Locale.ROOT);
     }
 }

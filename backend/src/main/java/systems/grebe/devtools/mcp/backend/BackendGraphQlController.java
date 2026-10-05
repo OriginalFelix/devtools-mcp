@@ -268,9 +268,10 @@ public class BackendGraphQlController {
 
     @MutationMapping
     public String saveScript(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
-                             @Argument String name, @Argument String description, @Argument String content,
-                             @Argument String note, @Argument Integer expectedRevision) {
-        return as(user, () -> scripts.save(name, description, content, note, expectedRevision));
+                             @Argument String name, @Argument ScriptViews.Language language,
+                             @Argument String description, @Argument String content, @Argument String note,
+                             @Argument Integer expectedRevision) {
+        return as(user, () -> scripts.save(name, language, description, content, note, expectedRevision));
     }
 
     @MutationMapping

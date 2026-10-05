@@ -16,6 +16,7 @@ import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Control;
 import javafx.scene.control.Label;
 import javafx.scene.control.SplitPane;
@@ -32,31 +33,18 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptTemplates;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptsModule;
 
 /**
  * Groovy-Skripte bearbeiten: links die Skripte mit Herkunft und Zustand (aktiv, deaktiviert, Fehler), rechts Editor,
- * Historie und DSL-Referenz. Speichern prüft das Skript, legt es im Backend ab und lädt es sofort als Modul – die
+ * Historie und Referenz. Skripte sind Groovy oder Java (Auswahl neben dem Namen). Speichern prüft das Skript, legt es im Backend ab und lädt es sofort als Modul – die
  * Tools stehen den Clients ohne Neustart zur Verfügung. Ändert jemand anderes (das LLM, eine andere Desktop-App) ein
  * Skript, aktualisiert sich die Liste; ungespeicherte Änderungen im Editor bleiben dabei erhalten.
  */
 public class ScriptsView extends BorderPane {
 
-    static final String TEMPLATE = """
-            module {
-                description 'Was die Tools dieses Skripts können'
-            }
-
-            tool('hello') {
-                description 'Begrüßt jemanden'
-                param 'who', String, 'Wen begrüßen'
-                readOnly true
-                run { args ->
-                    "Hallo ${args.who}!"
-                }
-            }
-            """;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("dd.MM.yy HH:mm")
             .withZone(ZoneId.systemDefault());
 
@@ -64,6 +52,7 @@ public class ScriptsView extends BorderPane {
     private final Supplier<Optional<Me>> account;
     private final TableView<ScriptManager.Status> table = new TableView<>();
     private final TextField name = new TextField();
+    private final ComboBox<ScriptViews.Language> language = new ComboBox<>();
     private final Label scopeHint = new Label();
     private final Label status = new Label();
     private final TextArea editor = new TextArea();
@@ -109,7 +98,7 @@ public class ScriptsView extends BorderPane {
             }
         });
         Button check = new Button("Prüfen");
-        check.setOnAction(e -> background(() -> scripts.check(name.getText(), editor.getText()), this::ok));
+        check.setOnAction(e -> background(() -> scripts.check(name.getText(), language.getValue(), editor.getText()), this::ok));
         save.getStyleClass().add("accent");
         save.setOnAction(e -> saveScript());
         delete.setOnAction(e -> confirm("Skript „" + loadedName + "“ samt Historie löschen? Seine Tools verschwinden "
@@ -142,6 +131,8 @@ public class ScriptsView extends BorderPane {
         table.setPlaceholder(new Label("Noch keine Skripte – „Neu“ legt eines an."));
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.getColumns().add(col("Name", 110, ScriptManager.Status::name));
+        table.getColumns().add(col("Sprache", 60, s -> s.summary().language() == ScriptViews.Language.JAVA ? "Java"
+                : "Groovy"));
         table.getColumns().add(col("Herkunft", 70, s -> scopeLabel(s.summary())));
         table.getColumns().add(col("Rev.", 40, s -> String.valueOf(s.summary().revision())));
         table.getColumns().add(col("Zustand", 140, ScriptsView::stateLabel));
@@ -172,7 +163,27 @@ public class ScriptsView extends BorderPane {
         Label nameLabel = new Label("Name");
         nameLabel.getStyleClass().add("form-label");
         scopeHint.getStyleClass().add("form-help");
-        HBox head = new HBox(8, nameLabel, name, scopeHint);
+        language.getItems().setAll(ScriptViews.Language.values());
+        language.setConverter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(ScriptViews.Language l) {
+                return l == null ? "" : l == ScriptViews.Language.JAVA ? "Java" : "Groovy";
+            }
+
+            @Override
+            public ScriptViews.Language fromString(String s) {
+                return null;
+            }
+        });
+        language.setValue(ScriptViews.Language.GROOVY);
+        // Neues Skript, Vorlage noch unverändert: Vorlage der gewählten Sprache zeigen
+        language.valueProperty().addListener((o, a, l) -> {
+            if (l != null && loadedName == null && editor.getText().equals(ScriptTemplates.of(a))) {
+                loadedContent = ScriptTemplates.of(l);
+                editor.setText(loadedContent);
+            }
+        });
+        HBox head = new HBox(8, nameLabel, name, language, scopeHint);
         head.setAlignment(Pos.CENTER_LEFT);
 
         status.getStyleClass().add("status-text");
@@ -205,7 +216,7 @@ public class ScriptsView extends BorderPane {
         history.setDividerPositions(0.4);
         historyTab.setContent(history);
 
-        TabPane tabs = new TabPane(new Tab("Quelltext", editor), historyTab, new Tab("DSL-Referenz", reference));
+        TabPane tabs = new TabPane(new Tab("Quelltext", editor), historyTab, new Tab("Referenz", reference));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         VBox.setVgrow(tabs, Priority.ALWAYS);
         VBox box = new VBox(8, head, status, tabs);
@@ -239,15 +250,16 @@ public class ScriptsView extends BorderPane {
     private void newScript() {
         loadedName = null;
         loadedRevision = null;
-        loadedContent = TEMPLATE;
+        language.setValue(ScriptViews.Language.GROOVY);
+        loadedContent = ScriptTemplates.GROOVY;
         name.setText("");
         name.setEditable(true);
-        editor.setText(TEMPLATE);
+        editor.setText(ScriptTemplates.GROOVY);
         scopeHint.setText("neues Skript");
         revisions.getItems().clear();
         revisionContent.clear();
         historyTab.setText("Historie");
-        setStatus("Name eintragen, Quelltext anpassen, „Speichern“. Die DSL-Referenz steht im dritten Reiter.", null);
+        setStatus("Name eintragen, Quelltext anpassen, „Speichern“. Groovy oder Java – die Referenz steht im dritten Reiter.", null);
         updateActions(null);
     }
 
@@ -259,6 +271,7 @@ public class ScriptsView extends BorderPane {
             loadedRevision = s.revision();
             loadedContent = details.content();
             name.setText(s.name());
+            language.setValue(s.language());
             editor.setText(details.content());
             editor.positionCaret(0);
             scopeHint.setText(s.global()
@@ -281,7 +294,7 @@ public class ScriptsView extends BorderPane {
         String content = editor.getText();
         Integer expected = n.equals(loadedName) ? loadedRevision : null;
         saving = true;
-        background(() -> scripts.save(n, content, null, expected), msg -> {
+        background(() -> scripts.save(n, language.getValue(), content, null, expected), msg -> {
             saving = false;
             loadedName = n;
             loadedContent = content;

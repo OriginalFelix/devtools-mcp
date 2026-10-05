@@ -21,7 +21,8 @@ class ScriptCacheFileTest {
     Path home;
 
     private static ScriptCache.Entry entry(String name) {
-        return new ScriptCache.Entry(new ScriptViews.Summary(name, "Beschreibung " + name, ScriptViews.Scope.GLOBAL, 3,
+        return new ScriptCache.Entry(new ScriptViews.Summary(name, "Beschreibung " + name, ScriptViews.Scope.GLOBAL,
+                ScriptViews.Language.JAVA, 3,
                 Instant.parse("2026-10-05T10:00:00Z"), "anna@example.com"), "module { description 'geheim-url' }");
     }
 

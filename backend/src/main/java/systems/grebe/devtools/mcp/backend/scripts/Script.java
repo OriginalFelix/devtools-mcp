@@ -17,6 +17,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
 
 /**
  * Ein Groovy-Skript, aus dem die Desktop-App zur Laufzeit ein Modul mit eigenen Tools macht. Der Name ist zugleich die
@@ -53,6 +54,10 @@ public class Script {
     @Column(nullable = false, length = CONTENT_COLUMN)
     private String content;
 
+    /** GROOVY oder JAVA; leer bei Skripten von vor der Java-Unterstützung (= Groovy). */
+    @Column(length = 10)
+    private String language;
+
     /** Fachliche Revisionsnummer (1 = angelegt), steigt mit jeder Änderung. */
     @Column(nullable = false)
     private int revision;
@@ -78,9 +83,10 @@ public class Script {
         // JPA
     }
 
-    Script(String owner, String name, String description, String content, Instant now) {
+    Script(String owner, String name, ScriptViews.Language language, String description, String content, Instant now) {
         this.owner = owner;
         this.name = name;
+        this.language = language.name();
         this.description = description;
         this.content = content;
         this.createdAt = now;
@@ -91,9 +97,14 @@ public class Script {
         return SkillOwner.GLOBAL.equals(owner);
     }
 
-    void change(String description, String content) {
+    void change(ScriptViews.Language language, String description, String content) {
+        this.language = language.name();
         this.description = description;
         this.content = content;
+    }
+
+    public ScriptViews.Language getLanguage() {
+        return language == null ? ScriptViews.Language.GROOVY : ScriptViews.Language.valueOf(language);
     }
 
     /** Erhöht die Revision und hält den neuen Stand in der Historie fest. */

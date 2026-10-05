@@ -17,7 +17,10 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import groovy.lang.Closure;
+import groovy.lang.DelegatesTo;
 import groovy.lang.Script;
+import groovy.transform.stc.ClosureParams;
+import groovy.transform.stc.FromString;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +45,7 @@ import systems.grebe.devtools.mcp.core.ToolProgress;
  *     param 'project', String, 'Projektschlüssel'
  *     param 'limit', Integer, 'Höchstens so viele', required: false
  *     readOnly true
- *     run { args, cfg ->
+ *     execute { args, cfg ->
  *         progress "Frage ${cfg.baseUrl} ab …"
  *         "Issues für ${args.project}"
  *     }
@@ -52,6 +55,10 @@ import systems.grebe.devtools.mcp.core.ToolProgress;
  * Feldtypen ({@code STRING}, {@code SECRET}, {@code INT}, {@code BOOLEAN}, {@code URL}, {@code DIRECTORY}, …) sind
  * statisch importiert; Java-Klassen ({@code String}, {@code Integer}, {@code Boolean}, {@code List} …) gehen ebenso.
  * In Tool-Closures stehen {@link #progress} und {@link #getLog() log} zur Verfügung.
+ *
+ * <p>Die DSL-Methoden tragen {@code @DelegatesTo}/{@code @ClosureParams}, damit Skripte mit der Anweisung
+ * {@code // devtools: compileStatic} (bzw. {@code typeChecked}) vollständig statisch geprüft werden können – siehe
+ * {@link ScriptCompiler.Mode}.
  */
 public abstract class DevToolsScript extends Script {
 
@@ -62,7 +69,7 @@ public abstract class DevToolsScript extends Script {
     private Logger log;
 
     /** Modul-Angaben: Name, Beschreibung, Instructions und Einstellungsfelder. */
-    public void module(Closure<?> body) {
+    public void module(@DelegatesTo(value = ModuleSpec.class, strategy = Closure.DELEGATE_FIRST) Closure<?> body) {
         collector.requireDefining("module");
         ModuleSpec spec = collector.module;
         body.setResolveStrategy(Closure.DELEGATE_FIRST);
@@ -71,7 +78,8 @@ public abstract class DevToolsScript extends Script {
     }
 
     /** Ein Tool; der Name bekommt das Modul-Präfix ({@code open_issues} → {@code jira_open_issues}). */
-    public void tool(String name, Closure<?> body) {
+    public void tool(String name,
+                     @DelegatesTo(value = ToolSpec.class, strategy = Closure.DELEGATE_FIRST) Closure<?> body) {
         collector.requireDefining("tool");
         String n = name == null ? "" : name.strip();
         if (!TOOL_NAME.matcher(n).matches()) {
@@ -246,9 +254,17 @@ public abstract class DevToolsScript extends Script {
         }
 
         /** Code des Tools: {@code { args -> … }} oder {@code { args, cfg -> … }}; das Ergebnis geht an das LLM. */
+        public void execute(@ClosureParams(value = FromString.class, options = {
+                "java.util.Map<java.lang.String,java.lang.Object>",
+                "java.util.Map<java.lang.String,java.lang.Object>,java.util.Map<java.lang.String,java.lang.Object>"})
+                            Closure<?> code) {
+            run(code);
+        }
+
+        /** Älterer Name von {@link #execute} – nur ohne Typprüfung (statisch bindet Groovy {@code run} an Closure). */
         public void run(Closure<?> code) {
             if (body != null) {
-                throw new IllegalArgumentException("Tool '" + name + "' hat mehr als einen run-Block.");
+                throw new IllegalArgumentException("Tool '" + name + "' hat mehr als einen execute-Block.");
             }
             body = Objects.requireNonNull(code, "run");
         }
@@ -259,7 +275,7 @@ public abstract class DevToolsScript extends Script {
                         + "LLM, wann es das Tool verwenden soll.");
             }
             if (body == null) {
-                throw new IllegalArgumentException("Tool '" + name + "' hat keinen run { … }-Block.");
+                throw new IllegalArgumentException("Tool '" + name + "' hat keinen execute { … }-Block.");
             }
             McpSchema.ToolAnnotations annotations = readOnly == null && destructive == null && idempotent == null
                     && openWorld == null ? null : annotations();

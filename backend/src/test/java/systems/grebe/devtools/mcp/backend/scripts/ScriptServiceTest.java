@@ -115,4 +115,26 @@ class ScriptServiceTest {
             assertThat(scripts.overview()).extracting(ScriptViews.Summary::scope).containsExactly(ScriptViews.Scope.OWN);
         }
     }
+
+    @Test
+    void javaScriptsKeepTheirLanguageAndAreParsedWithoutTypes() {
+        try (ConfigurableApplicationContext ctx = start("anna@example.com", false)) {
+            ScriptService scripts = ctx.getBean(ScriptService.class);
+            // nur geparst: unbekannte Typen (ToolModule liegt in der Desktop-App) sind hier kein Fehler
+            String java = "public class Hello implements ToolModule {\n"
+                    + "    public String description() { return \"Aus Java\"; }\n}\n";
+            scripts.save("hello", ScriptViews.Language.JAVA, null, java, null, null);
+            ScriptViews.Summary s = scripts.details("hello").orElseThrow().summary();
+            assertThat(s.language()).isEqualTo(ScriptViews.Language.JAVA);
+            assertThat(s.description()).isEqualTo("Aus Java");
+            // ohne Sprachangabe bleibt Java
+            scripts.save("hello", null, java.replace("Aus Java", "Neu"), null, null);
+            assertThat(scripts.details("hello").orElseThrow().summary().language()).isEqualTo(ScriptViews.Language.JAVA);
+            assertThatThrownBy(() -> scripts.save("hello", null, "public class Hello { void x( }", null, null))
+                    .hasMessageContaining("Java-Skript").hasMessageContaining("Zeile 1");
+            // Groovy-Skripte ohne Angabe bleiben Groovy
+            scripts.save("demo", "Demo", SOURCE, null, null);
+            assertThat(scripts.details("demo").orElseThrow().summary().language()).isEqualTo(ScriptViews.Language.GROOVY);
+        }
+    }
 }

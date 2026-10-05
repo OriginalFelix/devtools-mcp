@@ -49,8 +49,9 @@ type Mutation {
     publishSkill(name: String!): String!
     unpublishSkill(name: String!): String!
 
-    "Legt ein eigenes Skript an oder ändert es. Das Backend prüft die Syntax (ohne Ausführung); ohne description gilt der feste Text aus module { description '…' }."
-    saveScript(name: String!, description: String, content: String!, note: String, expectedRevision: Int): String!
+    "Legt ein eigenes Skript an oder ändert es. Das Backend prüft die Syntax (ohne Ausführung); ohne description gilt der feste Text aus dem Quelltext, ohne language die bisherige Sprache (neu: GROOVY)."
+    saveScript(name: String!, language: ScriptLanguage, description: String, content: String!, note: String,
+               expectedRevision: Int): String!
     deleteScript(name: String!): String!
     publishScript(name: String!): String!
     unpublishScript(name: String!): String!
@@ -239,10 +240,13 @@ type SkillDetails {
 
 enum ScriptScope { OWN GLOBAL }
 
+enum ScriptLanguage { GROOVY JAVA }
+
 type ScriptSummary {
     name: String!
     description: String
     scope: ScriptScope!
+    language: ScriptLanguage!
     revision: Int!
     updatedAt: String
     updatedBy: String

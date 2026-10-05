@@ -17,9 +17,21 @@ public final class ScriptViews {
         GLOBAL
     }
 
+    /** Sprache des Quelltexts. */
+    public enum Language {
+        /** Groovy-DSL ({@code module { … }}, {@code tool('…') { … }}). */
+        GROOVY,
+        /** Java-Quelldatei mit einer {@code public class}, die {@code ToolModule} implementiert (braucht ein JDK). */
+        JAVA
+    }
+
     /** Zeile der Übersicht; {@code revision} steigt mit jeder Änderung (Grundlage für das Neuladen in der App). */
-    public record Summary(String name, String description, Scope scope, int revision, Instant updatedAt,
-                          String updatedBy) {
+    public record Summary(String name, String description, Scope scope, Language language, int revision,
+                          Instant updatedAt, String updatedBy) {
+
+        public Summary {
+            language = language == null ? Language.GROOVY : language;
+        }
 
         public boolean global() {
             return scope == Scope.GLOBAL;

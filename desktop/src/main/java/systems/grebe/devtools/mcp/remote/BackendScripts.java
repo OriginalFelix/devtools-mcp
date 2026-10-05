@@ -18,7 +18,7 @@ import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
 @Component
 public class BackendScripts implements ScriptBackend {
 
-    private static final String SUMMARY = "name description scope revision updatedAt updatedBy";
+    private static final String SUMMARY = "name description scope language revision updatedAt updatedBy";
 
     private final BackendConnection backend;
 
@@ -44,11 +44,13 @@ public class BackendScripts implements ScriptBackend {
     }
 
     @Override
-    public String save(String name, String description, String content, String note, Integer expectedRevision) {
+    public String save(String name, ScriptViews.Language language, String description, String content, String note,
+                       Integer expectedRevision) {
         return text("""
-                mutation($name: String!, $description: String, $content: String!, $note: String, $rev: Int) { \
-                saveScript(name: $name, description: $description, content: $content, note: $note, \
-                expectedRevision: $rev) }""", "saveScript", args("name", name, "description", description,
+                mutation($name: String!, $language: ScriptLanguage, $description: String, $content: String!, \
+                $note: String, $rev: Int) { saveScript(name: $name, language: $language, description: $description, \
+                content: $content, note: $note, expectedRevision: $rev) }""", "saveScript", args("name", name,
+                "language", language == null ? null : language.name(), "description", description,
                 "content", content, "note", note, "rev", expectedRevision));
     }
 

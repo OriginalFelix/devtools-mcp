@@ -23,11 +23,18 @@ public interface ScriptBackend {
      * Legt ein eigenes Skript an oder ändert es (neue Revision). Gibt es nur eine globale Vorlage gleichen Namens,
      * entsteht ein eigenes Skript, das sie verdeckt.
      *
-     * @param description      Beschreibung aus der ausgewerteten DSL; {@code null} = aus {@code module { description '…' }}
-     *                         lesen (fester Text) bzw. die bisherige behalten
+     * @param language         Sprache; {@code null} = die bisherige (neue Skripte: Groovy)
+     * @param description      Beschreibung aus dem ausgewerteten Skript; {@code null} = aus dem Quelltext lesen
+     *                         (fester Text in {@code description}) bzw. die bisherige behalten
      * @param expectedRevision optional: Revision, auf der die Änderung beruht – weicht sie ab, wird abgelehnt
      */
-    String save(String name, String description, String content, String note, Integer expectedRevision);
+    String save(String name, ScriptViews.Language language, String description, String content, String note,
+                Integer expectedRevision);
+
+    /** Wie {@link #save(String, ScriptViews.Language, String, String, String, Integer)} mit unveränderter Sprache. */
+    default String save(String name, String description, String content, String note, Integer expectedRevision) {
+        return save(name, null, description, content, note, expectedRevision);
+    }
 
     /** Löscht ein eigenes Skript samt Historie; globale Vorlagen lassen sich nur zurückziehen. */
     String delete(String name);
