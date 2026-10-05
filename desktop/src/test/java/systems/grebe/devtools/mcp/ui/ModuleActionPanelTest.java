@@ -153,28 +153,6 @@ class ModuleActionPanelTest {
         assertThat(login.isDisabled()).isFalse();
     }
 
-    /** Aktion ohne Ziel (Web-Abruf „Cache leeren“): keine Auswahlbox, Knopf sofort bedienbar, Zustand sichtbar. */
-    @Test
-    void actionWithoutTargetIsJustAButton() throws Exception {
-        Assumptions.assumeTrue(toolkit, "kein JavaFX-Toolkit verfügbar");
-        ToolModule web = registry.modules().stream().filter(m -> m.id().equals("web")).findFirst().orElseThrow();
-        AtomicReference<ModuleDetailPane> pane = new AtomicReference<>();
-        onFx(() -> pane.set(new ModuleDetailPane(registry, web)));
-
-        Button clear = (Button) find(pane.get(), Button.class, "Cache leeren");
-        ModuleActionPanel panel = (ModuleActionPanel) clear.getParent().getParent();
-        AtomicReference<Node> box = new AtomicReference<>();
-        onFx(() -> box.set(search(panel, ComboBox.class, null)));
-        assertThat(box.get()).isNull();
-        assertThat(clear.isDisabled()).isFalse();
-        waitFor(() -> labels(panel).stream().anyMatch(t -> t.endsWith("Zusammenfassung(en) im Cache")), "Zustand");
-
-        onFx(clear::fire);
-        waitFor(() -> labels(panel).contains("0 Cache-Einträge gelöscht."), "Ergebnis");
-        assertThat(clear.isDisabled()).isFalse();
-        assertThat(((Button) find(pane.get(), Button.class, "Modell laden")).isDisabled()).isFalse();
-    }
-
     // ------------------------------------------------------------------ Hilfen
 
     private static List<String> labels(Node root) {

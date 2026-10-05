@@ -163,11 +163,6 @@ public final class PluginToolModule implements ToolModule {
         }
 
         @Override
-        public boolean needsTarget() {
-            return delegate.needsTarget();
-        }
-
-        @Override
         public List<String> targets(ModuleConfig config) {
             return withLoader(loader, () -> delegate.targets(config));
         }
