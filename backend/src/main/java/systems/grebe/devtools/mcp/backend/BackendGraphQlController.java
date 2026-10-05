@@ -20,7 +20,10 @@ import systems.grebe.devtools.mcp.api.ModuleOverlay;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.api.SettingsSnapshot;
 import systems.grebe.devtools.mcp.backend.catalog.ModuleCatalog;
+import systems.grebe.devtools.mcp.backend.memories.Memory;
+import systems.grebe.devtools.mcp.backend.memories.MemoryService;
 import systems.grebe.devtools.mcp.backend.skills.SkillService;
+import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 import systems.grebe.devtools.mcp.profile.Overrides;
 import systems.grebe.devtools.mcp.backend.profile.ProfileService;
@@ -29,7 +32,7 @@ import systems.grebe.devtools.mcp.backend.project.ProjectService;
 
 /**
  * GraphQL-API ({@code schema.graphqls}) für die Desktop-Apps: Benutzer und Profile, Modul-Katalog,
- * Einstellungs-Vorgaben, Projekte und Skills. Jede Operation braucht einen angemeldeten Benutzer
+ * Einstellungs-Vorgaben, Projekte, Skills und Memories. Jede Operation braucht einen angemeldeten Benutzer
  * ({@link GraphQlAuth}); Subscriptions liefern sofort den aktuellen Stand und danach jede Änderung ({@link ChangeBus}).
  */
 @Controller
@@ -37,19 +40,23 @@ public class BackendGraphQlController {
 
     private static final int DEFAULT_MAX_CONTENT = 100_000;
     private static final int LIMIT_MAX_CONTENT = 1_000_000;
+    private static final int DEFAULT_MAX_MEMORY = 20_000;
+    private static final int OVERVIEW_LIMIT = 200;
 
     private final ProfileService profiles;
     private final ProjectService projects;
     private final ModuleCatalog catalog;
     private final SkillService skills;
+    private final MemoryService memories;
     private final ChangeBus bus;
 
     public BackendGraphQlController(ProfileService profiles, ProjectService projects, ModuleCatalog catalog,
-                                    SkillService skills, ChangeBus bus) {
+                                    SkillService skills, MemoryService memories, ChangeBus bus) {
         this.profiles = profiles;
         this.projects = projects;
         this.catalog = catalog;
         this.skills = skills;
+        this.memories = memories;
         this.bus = bus;
     }
 
@@ -249,6 +256,70 @@ public class BackendGraphQlController {
         return as(user, () -> skills.unpublish(name));
     }
 
+    // ---------------------------------------------------------------- Memories
+
+    @QueryMapping
+    public List<MemoryViews.Entry> memories(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                            @Argument String query, @Argument String project, @Argument String skill,
+                                            @Argument Integer limit) {
+        int max = limit == null ? OVERVIEW_LIMIT : Math.min(limit, OVERVIEW_LIMIT);
+        return as(user, () -> memories.overview(query, project, skill, max));
+    }
+
+    @QueryMapping
+    public MemoryViews.Entry memory(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                    @Argument long id) {
+        return as(user, () -> memories.details(id).orElse(null));
+    }
+
+    @QueryMapping
+    public int memoryCount(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
+        return as(user, memories::count);
+    }
+
+    @QueryMapping
+    public String memorySearch(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                               @Argument String query, @Argument String project, @Argument String skill,
+                               @Argument String tag, @Argument Integer days, @Argument Integer limit) {
+        return as(user, () -> memories.search(query, project, skill, tag, days, limit));
+    }
+
+    @QueryMapping
+    public String memoryView(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                             @Argument long id) {
+        return as(user, () -> memories.view(id));
+    }
+
+    @MutationMapping
+    public String saveMemory(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                             @Argument String title, @Argument String content, @Argument String project,
+                             @Argument String skill, @Argument String reference, @Argument List<String> tags,
+                             @Argument Integer maxContentChars) {
+        return as(user, () -> memories.save(title, content, project, skill, reference, tags,
+                maxMemory(maxContentChars)));
+    }
+
+    @MutationMapping
+    public String updateMemory(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                               @Argument long id, @Argument String title, @Argument String content,
+                               @Argument String append, @Argument String project, @Argument String skill,
+                               @Argument String reference, @Argument List<String> tags,
+                               @Argument Integer maxContentChars) {
+        return as(user, () -> memories.update(id, title, content, append, project, skill, reference, tags,
+                maxMemory(maxContentChars)));
+    }
+
+    @MutationMapping
+    public String deleteMemory(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                               @Argument long id) {
+        return as(user, () -> memories.delete(id));
+    }
+
+    private static int maxMemory(Integer requested) {
+        return requested == null ? DEFAULT_MAX_MEMORY
+                : Math.min(requested, Memory.CONTENT_COLUMN);
+    }
+
     private static <T> T as(UserAccount user, Supplier<T> body) {
         return SkillCaller.as(require(user), body);
     }
@@ -278,6 +349,12 @@ public class BackendGraphQlController {
         UserAccount u = require(user);
         return stream(bus.changes(BackendChanged.Topic.SKILLS, u.id()),
                 () -> SkillCaller.as(u, skills::visibleCount));
+    }
+
+    @SubscriptionMapping
+    public Flux<Integer> memoriesChanged(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
+        UserAccount u = require(user);
+        return stream(bus.changes(BackendChanged.Topic.MEMORIES, u.id()), () -> SkillCaller.as(u, memories::count));
     }
 
     /** Aktueller Stand, danach bei jedem Ereignis neu gelesen (Datenbankzugriffe außerhalb der Event-Threads). */

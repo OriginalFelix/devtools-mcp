@@ -24,7 +24,8 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
-| **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
+| **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
+| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
 und JMX-Ziele für alle Performance-Module. Container-Laufzeit und freigegebene Container kommen aus dem
@@ -330,7 +331,7 @@ Gradle-Multiprojekt:
 | Projekt | Inhalt | Artefakt |
 |---|---|---|
 | `desktop` | Desktop-App: MCP-Server, alle Module, Plugins, JavaFX-Oberfläche; Backend eingebettet oder Anbindung an einen Team-Server | `desktop/build/libs/devtools-mcp-<version>.jar` |
-| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
+| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
 | `shared` | Gemeinsam: Einstellungs-Modell, Datenklassen der GraphQL-API (`api`) | – |
 
@@ -365,6 +366,7 @@ claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
 * **Tools**: jedes Tool einzeln abschaltbar.
 * **Aufrufe**: Live-Protokoll aller Tool-Aufrufe mit Argumenten, Ergebnis, Dauer und Fehlern.
 * **Skills**: Übersicht der gespeicherten Skills mit Inhalt, Zusatzdateien und Historie.
+* **Memories**: die vom LLM festgehaltenen früheren Aktionen mit Suche (wie `memories_search`) und Löschen.
 * **Backend**: eingebettet oder Team-Server, Status, aktives Profil, Projekte mit lokalem Verzeichnis (siehe unten).
 * **Einstellungen**: Port (nach Neustart), optionales Bearer-Token (sofort wirksam), Tray-Verhalten.
 * Fenster schließen → läuft im System-Tray weiter; *Beenden* über das Tray-Menü.
@@ -402,7 +404,7 @@ eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen au
 
 ### Backend und Team-Server
 
-Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte und Skills und bietet dafür eine
+Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills und Memories und bietet dafür eine
 **GraphQL-API** unter `/graphql` (Schema: `backend/src/main/resources/backend-graphql/schema.graphqls`; Queries/Mutations über
 HTTP, Subscriptions über WebSocket).
 
@@ -419,8 +421,8 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
 ```
 
 * **Abgleich:** Die App meldet dem Backend ihre Module samt Feldern und Tools (`reportCatalog`; daraus baut die Web-UI
-  die Formulare), lädt Benutzer, Vorgaben und Projekte und abonniert `settingsChanged`, `projectsChanged` und
-  `skillsChanged`. Änderungen – auch aus der Web-UI oder von einer anderen Desktop-App – kommen sofort an; die Tools
+  die Formulare), lädt Benutzer, Vorgaben und Projekte und abonniert `settingsChanged`, `projectsChanged`,
+  `skillsChanged` und `memoriesChanged`. Änderungen – auch aus der Web-UI oder von einer anderen Desktop-App – kommen sofort an; die Tools
   werden neu gebaut, MCP-Clients bekommen `tools/list_changed`. Bricht die Verbindung ab, verbinden sich die
   Subscriptions mit wachsendem Abstand neu; dazwischen gilt der letzte Stand (beim Team-Server auch über einen
   Neustart: verschlüsselte Cache-Datei `team-cache.json`). Überholte Stände erkennt die App am Änderungszähler
@@ -571,6 +573,10 @@ Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekunde
 
 ### Skills – prozedurales Gedächtnis des LLM
 
+Ein Skill registriert einen wiederkehrenden Aufgabentyp mit seinem erprobten Ablauf, z.B. `ticket-review`: wie ein
+Ticket geprüft wird (Schritte, Kriterien, Tool-Aufrufe, Vorlieben des Nutzers). Was bei einem einzelnen Durchlauf
+konkret passiert ist, gehört nicht in den Skill, sondern in eine [Memory](#memories--gedächtnis-für-frühere-aktionen).
+
 Angelehnt an das Skill-Management von Hermes: Das LLM sucht vor einer Aufgabe mit `skills_list` passende Skills und
 lädt sie mit `skills_view`. Nach einer schwierigen, mehrstufigen oder korrigierten Aufgabe legt es selbst einen Skill
 an (`skills_create`) oder verbessert einen bestehenden gezielt (`skills_patch`, `old_string` → `new_string`, muss
@@ -637,6 +643,31 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
   „Löschen erlauben“ – der gilt nur für das LLM.
 * Die H2-Datei ist exklusiv gesperrt, solange die App läuft. Wer parallel mit IntelliJ o.ä. hineinschauen will,
   hängt `;AUTO_SERVER=TRUE` an die JDBC-URL.
+
+### Memories – Gedächtnis für frühere Aktionen
+
+Memories ergänzen die Skills: Ein Skill sagt, *wie* ein Aufgabentyp abläuft (`ticket-review`), eine Memory hält fest,
+*was* bei einem konkreten Durchlauf passiert ist – „Ticket ABC-123 reviewt: Akzeptanzkriterien fehlen, an PO zurück“.
+Hier gehören die Einmal-Details hinein, die ein Skill bewusst nicht enthält: Ticket-/PR-Nummern, Ergebnis,
+Entscheidungen, Datum.
+
+* **Anlegen:** Nach einer nennenswerten Aktion (Ticket reviewt, Fehler behoben, PR erstellt, Entscheidung mit dem
+  Nutzer) legt das LLM mit `memories_save` eine Memory an: `title` (eine Zeile), `content` (Markdown: Ausgangslage,
+  Vorgehen, Ergebnis, offene Punkte) und optional `project` (Name aus `projects_list`), `skill` (die
+  Skill-Registrierung, nach der gearbeitet wurde), `reference` (Ticket-Key, PR, Commit) und `tags`. Gibt es zum selben
+  Bezug schon Memories, nennt die Antwort sie und verweist auf `memories_update`.
+* **Nachtragen:** `memories_update` mit `append` hängt einen datierten Nachtrag an (z.B. Ergebnis nach Rückmeldung);
+  `content` ersetzt den Inhalt, die übrigen Felder lassen sich einzeln ändern (leerer Text entfernt sie).
+* **Suchen:** `memories_search` zerlegt den Suchtext in Begriffe und sucht in Titel, Inhalt, Tags, Bezug, Projekt und
+  Skill; Treffer werden nach Anzahl getroffener Begriffe gewichtet (Titel und Bezug doppelt), dann nach Datum. Filter:
+  `project`, `skill` (z.B. alle früheren Ticket-Reviews), `tag`, `days`, `limit` (Standard 10, max. 50). Ohne Suchtext
+  kommen die neuesten. `memories_view` lädt eine Memory vollständig.
+* **Ablage:** im Backend neben den Skills (Tabelle `memory` in derselben Datenbank, Spring Data JPA mit
+  `MemoryRepository`/`MemoryService`), je Benutzerkonto (E-Mail) – andere Benutzer sehen sie nicht, globale Memories
+  gibt es nicht. GraphQL: `memories`, `memory`, `memorySearch`, `memoryView`, `saveMemory`, `updateMemory`,
+  `deleteMemory`, Subscription `memoriesChanged`.
+* **Schalter:** „Anlegen und Nachtragen erlauben“ (Standard an), „Löschen erlauben“ (Standard aus, nur für das LLM –
+  im Tab **Memories** der App geht Löschen immer), „Max. Zeichen je Memory“ (Standard 20 000).
 
 ### Instructions für das LLM
 

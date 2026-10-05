@@ -567,7 +567,8 @@ public class SkillService implements SkillBackend {
         return c;
     }
 
-    static String normalizeTags(List<String> tags) {
+    /** Tags klein, ohne Leerzeichen und Duplikate, kommagetrennt; auch für Memories. */
+    public static String normalizeTags(List<String> tags) {
         if (tags == null) {
             return null;
         }

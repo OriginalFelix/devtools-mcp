@@ -156,10 +156,12 @@ class McpServerIntegrationTest {
                 .contains("Tools `build_*`", "Tools `container_*`", "Tools `sonar_*`", "Tools `jvm_*`",
                         "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`", "Tools `graph_*`",
                         "`graph_report`", "`graph_neighbors`", "Tools `ticket_*`", "`ticket_get`", "`ticket_board`",
-                        "## Skills – Tools `skills_*`", "`skills_list`", "Tools `maven_*`", "`maven_breaking_changes`", "`skills_create`", "`skills_patch`")
+                        "## Skills – Tools `skills_*`", "`skills_list`", "Tools `maven_*`", "`maven_breaking_changes`", "`skills_create`", "`skills_patch`",
+                        "## Memories – Tools `memories_*`", "`memories_search`", "`memories_save`")
                 .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
         // Reihenfolge wie in der Modulliste: order, dann Anzeigename – Skills zuerst, damit sie vor jeder Aufgabe greifen
-        assertThat(instructions.indexOf("Tools `skills_*`")).isLessThan(instructions.indexOf("Tools `git_*`"));
+        assertThat(instructions.indexOf("Tools `skills_*`")).isLessThan(instructions.indexOf("Tools `memories_*`"));
+        assertThat(instructions.indexOf("Tools `memories_*`")).isLessThan(instructions.indexOf("Tools `git_*`"));
         assertThat(instructions.indexOf("Tools `git_*`")).isLessThan(instructions.indexOf("Tools `container_*`"));
         assertThat(instructions.indexOf("Tools `container_*`")).isLessThan(instructions.indexOf("Tools `jvm_*`"));
         assertThat(instructions.indexOf("Tools `jvm_*`")).isLessThan(instructions.indexOf("Tools `debug_*`"));
@@ -181,6 +183,7 @@ class McpServerIntegrationTest {
                 "allowCreate", "true", "allowRemove", "true", "allowCompose", "true",
                 "composeProjects", composeDir.toString()));
         registry.updateConfig("skills", Map.of("allowDelete", "true"));
+        registry.updateConfig("memories", Map.of("allowDelete", "true"));
         registry.updateConfig("ticket", Map.of("allowComment", "true", "allowTransition", "true", "allowAssign", "true",
                 "allowEdit", "true", "allowCreate", "true", "allowDelete", "true"));
         try {
@@ -190,11 +193,12 @@ class McpServerIntegrationTest {
                     Map.entry("jvm_", ShellHints.JVM), Map.entry("jfr_", ShellHints.JFR),
                     Map.entry("asprof_", ShellHints.ASPROF), Map.entry("visualvm_", ShellHints.VISUALVM),
                     Map.entry("debug_", ShellHints.DEBUG), Map.entry("skills_", ShellHints.SKILLS),
+                    Map.entry("memories_", ShellHints.MEMORIES),
                     Map.entry("graph_", ShellHints.GRAPH), Map.entry("ticket_", ShellHints.TICKET),
                     Map.entry("projects_", ShellHints.PROJECTS), Map.entry("maven_", ShellHints.MAVEN),
                     Map.entry("decompile_", ShellHints.DECOMPILE), Map.entry("pr_", ShellHints.PR));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(162); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(167); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -211,6 +215,7 @@ class McpServerIntegrationTest {
             registry.updateConfig("pr", Map.of());
             registry.updateConfig("container", Map.of());
             registry.updateConfig("skills", Map.of());
+            registry.updateConfig("memories", Map.of());
             registry.updateConfig("ticket", Map.of());
         }
     }
@@ -249,6 +254,44 @@ class McpServerIntegrationTest {
             registry.updateConfig("skills", Map.of());
         }
         assertThat(Files.exists(home.resolve("skills.mv.db"))).isTrue();
+    }
+
+    @Test
+    void memoriesRoundTripOverMcp() {
+        assertThat(toolNames()).contains("memories_search", "memories_view", "memories_save", "memories_update")
+                .doesNotContain("memories_delete");
+
+        McpSchema.CallToolResult saved = client.callTool(callRequest("memories_save", Map.of(
+                "title", "Ticket MCP-7 reviewt: Akzeptanzkriterien fehlen",
+                "content", "Zurück an den PO.", "project", "devtools", "skill", "ticket-review",
+                "reference", "MCP-7", "tags", List.of("review"))));
+        assertThat(saved.isError()).isNotEqualTo(Boolean.TRUE);
+        String id = text(saved).replaceAll("(?s)^Memory #(\\d+) gespeichert\\..*$", "$1");
+        assertThat(id).matches("\\d+");
+
+        assertThat(text(client.callTool(callRequest("memories_update", Map.of("id", Long.parseLong(id),
+                "append", "PO hat nachgebessert, freigegeben.")))))
+                .contains("Memory #" + id + " aktualisiert (Nachtrag)");
+        assertThat(text(client.callTool(callRequest("memories_search", Map.of("query", "mcp-7")))))
+                .contains("1 Memory für 'mcp-7'", "#" + id, "Skill ticket-review");
+        assertThat(text(client.callTool(callRequest("memories_search", Map.of("skill", "ticket-review")))))
+                .contains("#" + id);
+        assertThat(text(client.callTool(callRequest("memories_view", Map.of("id", Long.parseLong(id))))))
+                .contains("reference: MCP-7", "Zurück an den PO.", "**Nachtrag ", "freigegeben.");
+
+        McpSchema.CallToolResult missing = client.callTool(callRequest("memories_view", Map.of("id", 999_999)));
+        assertThat(missing.isError()).isTrue();
+        assertThat(text(missing)).contains("#999999 gibt es nicht", "memories_search");
+
+        registry.updateConfig("memories", Map.of("allowWrite", "false", "allowDelete", "true"));
+        try {
+            assertThat(toolNames()).contains("memories_search", "memories_delete")
+                    .doesNotContain("memories_save", "memories_update");
+            assertThat(text(client.callTool(callRequest("memories_delete", Map.of("id", Long.parseLong(id))))))
+                    .contains("gelöscht");
+        } finally {
+            registry.updateConfig("memories", Map.of());
+        }
     }
 
     @Test
@@ -314,14 +357,17 @@ class McpServerIntegrationTest {
     }
 
     @Test
-    void skillToolsStateTheirTriggerInTheFirstSentence() {
+    void skillAndMemoryToolsStateTheirTriggerInTheFirstSentence() {
         // Hermes zeigt ausgelagerte MCP-Tools nur mit dem ersten Satz (max. 60 Zeichen) – der muss den Auslöser nennen.
         Map<String, String> expected = Map.of(
                 "skills_list", "VOR einer Aufgabe: gespeicherte Skills des Nutzers suchen.",
                 "skills_view", "Lädt einen gespeicherten Skill (erprobter Ablauf).",
                 "skills_create", "Speichert neu Gelerntes dauerhaft als Skill (Ablauf, Fix).",
                 "skills_patch", "Ergänzt einen Skill um Korrekturen und Workarounds.",
-                "skills_review", "Nach mehrstufiger Aufgabe: prüfen, was als Skill bleibt.");
+                "skills_review", "Nach mehrstufiger Aufgabe: prüfen, was als Skill bleibt.",
+                "memories_search", "VOR einer Aufgabe: frühere Aktionen des Nutzers suchen.",
+                "memories_save", "Hält eine abgeschlossene Aktion als Memory fest.",
+                "memories_update", "Ergänzt eine Memory um Nachtrag oder Korrektur.");
         List<McpSchema.Tool> tools = client.listTools().tools();
         expected.forEach((name, sentence) -> {
             assertThat(sentence).hasSizeLessThanOrEqualTo(60);

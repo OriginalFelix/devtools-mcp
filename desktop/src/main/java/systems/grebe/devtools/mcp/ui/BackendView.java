@@ -77,9 +77,9 @@ public class BackendView extends BorderPane {
             return "Eingebettetes Backend eingestellt";
         }, msg -> msg + " – wirksam nach einem Neustart der App."));
 
-        Label help = new Label("Ohne Server läuft das Backend (Benutzer, Profile, Einstellungen, Projekte, Skills) "
+        Label help = new Label("Ohne Server läuft das Backend (Benutzer, Profile, Einstellungen, Projekte, Skills, Memories) "
                 + "eingebettet in dieser App. Mit einem Team-Server gelten dessen Vorgaben (Global → Benutzer → Profil) "
-                + "und Projekte, Skills liegen dort zentral; Änderungen kommen sofort an (GraphQL-Subscriptions).");
+                + "und Projekte, Skills und Memories liegen dort zentral; Änderungen kommen sofort an (GraphQL-Subscriptions).");
         help.setWrapText(true);
         help.getStyleClass().add("form-help");
 

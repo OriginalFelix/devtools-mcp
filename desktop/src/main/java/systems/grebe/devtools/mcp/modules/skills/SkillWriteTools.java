@@ -24,8 +24,10 @@ public class SkillWriteTools {
     @Tool(name = "create", description = "Speichert neu Gelerntes dauerhaft als Skill (Ablauf, Fix). Anlegen, wenn eine Aufgabe schwierig oder "
             + "mehrstufig war, Fehlversuche nötig waren, der Nutzer korrigiert hat oder ein nicht offensichtlicher "
             + "Ablauf gefunden wurde, der wiederkommen wird. Vorher mit skills_list prüfen, ob es schon einen "
-            + "passenden gibt – dann skills_patch. Inhalt als Markdown: wann verwenden, Schritte, konkrete "
-            + "Befehle/Tool-Aufrufe, Fallstricke, Prüfung. Lehren statt Protokoll, keine Geheimnisse."
+            + "passenden gibt – dann skills_patch. Ein Skill registriert einen Aufgabentyp (z.B. 'ticket-review'), "
+            + "nicht einen einzelnen Durchlauf – der gehört in memories_save. Inhalt als Markdown: wann verwenden, "
+            + "Schritte, konkrete Befehle/Tool-Aufrufe, Fallstricke, Prüfung. Lehren statt Protokoll, keine "
+            + "Geheimnisse."
             + ShellHints.SKILLS)
     public String create(
             @ToolParam(description = SkillReadTools.NAME) String name,

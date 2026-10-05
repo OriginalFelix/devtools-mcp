@@ -23,6 +23,14 @@ type Query {
     skillList(query: String, category: String): String!
     skillView(name: String!, filePath: String): String!
     skillHistory(name: String!, revision: Int): String!
+
+    "Memories des Benutzers (frühere Aktionen), beste Treffer bzw. neueste zuerst."
+    memories(query: String, project: String, skill: String, limit: Int): [MemoryEntry!]!
+    memory(id: Int!): MemoryEntry
+    memoryCount: Int!
+    "Texte für das LLM wie die Tools memories_search und memories_view."
+    memorySearch(query: String, project: String, skill: String, tag: String, days: Int, limit: Int): String!
+    memoryView(id: Int!): String!
 }
 
 type Mutation {
@@ -44,6 +52,13 @@ type Mutation {
     deleteSkill(name: String!): String!
     publishSkill(name: String!): String!
     unpublishSkill(name: String!): String!
+
+    saveMemory(title: String!, content: String!, project: String, skill: String, reference: String, tags: [String!],
+               maxContentChars: Int): String!
+    "Nicht angegebene Felder bleiben; leerer Text entfernt Projekt, Skill, Bezug bzw. Tags."
+    updateMemory(id: Int!, title: String, content: String, append: String, project: String, skill: String,
+                 reference: String, tags: [String!], maxContentChars: Int): String!
+    deleteMemory(id: Int!): String!
 }
 
 type Subscription {
@@ -53,6 +68,8 @@ type Subscription {
     projectsChanged: [Project!]!
     "Meldet Änderungen an Skills (Anzahl sichtbarer Skills)."
     skillsChanged: Int!
+    "Meldet Änderungen an Memories (Anzahl eigener Memories)."
+    memoriesChanged: Int!
 }
 
 enum Level { GLOBAL USER PROFILE }
@@ -223,4 +240,17 @@ type SkillDetails {
     createdAt: String
     files: [SkillFile!]!
     revisions: [SkillRevision!]!
+}
+
+"Eine frühere Aktion des Benutzers (was passiert ist), optional mit Bezug auf Projekt, Skill und Ticket/PR."
+type MemoryEntry {
+    id: Int!
+    title: String!
+    content: String!
+    project: String
+    skill: String
+    reference: String
+    tags: [String!]!
+    createdAt: String
+    updatedAt: String
 }

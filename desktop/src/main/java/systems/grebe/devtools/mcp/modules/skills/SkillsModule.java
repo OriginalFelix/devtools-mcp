@@ -13,9 +13,11 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 
 /**
- * Skill-Speicher für das LLM, angelehnt an das Skill-Management von Hermes: Das LLM sucht vor einer Aufgabe passende
- * Skills, lädt sie und legt nach einer schwierigen oder neu gelernten Aufgabe selbst einen an bzw. korrigiert einen
- * bestehenden. Die Skills liegen im Backend ({@link SkillBackend}) – eingebettet in der App oder auf dem Team-Server –
+ * Skill-Speicher für das LLM, angelehnt an das Skill-Management von Hermes: Ein Skill ist die Registrierung eines
+ * Aufgabentyps mit seinem erprobten Ablauf (z.B. {@code ticket-review}: wie ein Ticket geprüft wird). Das LLM sucht vor
+ * einer Aufgabe passende Skills, lädt sie und legt nach einer schwierigen oder neu gelernten Aufgabe selbst einen an
+ * bzw. korrigiert einen bestehenden. Was bei einem einzelnen Durchlauf passiert ist, gehört nicht in den Skill, sondern
+ * in eine Memory ({@code memories_*}). Die Skills liegen im Backend ({@link SkillBackend}) – eingebettet in der App oder auf dem Team-Server –
  * und gehören der E-Mail des Benutzerkontos; dazu kommen schreibgeschützte globale Vorlagen.
  */
 @Component
@@ -56,16 +58,19 @@ public class SkillsModule implements ToolModule {
 
     @Override
     public String description() {
-        return "Wiederverwendbare Abläufe (Skills) für das LLM: suchen, laden und nach gelösten Aufgaben selbst anlegen "
-                + "oder verbessern – mit Zusatzdateien und Änderungshistorie. Gespeichert im Backend (eingebettet oder "
-                + "Team-Server) je Benutzerkonto, plus schreibgeschützte globale Vorlagen.";
+        return "Registrierte Abläufe (Skills) für Aufgabentypen wie „Ticket-Review“: suchen, laden und nach gelösten "
+                + "Aufgaben selbst anlegen oder verbessern – mit Zusatzdateien und Änderungshistorie. Gespeichert im "
+                + "Backend (eingebettet oder Team-Server) je Benutzerkonto, plus schreibgeschützte globale Vorlagen.";
     }
 
     @Override
     public String instructions() {
         return """
-                Skills sind dein prozedurales Gedächtnis: erprobte Abläufe, Befehle, Fallstricke und Vorlieben des \
-                Nutzers für wiederkehrende Aufgabentypen.
+                Skills sind dein prozedurales Gedächtnis: Jeder Skill registriert einen wiederkehrenden Aufgabentyp \
+                mit seinem erprobten Ablauf – Schritte, Befehle, Kriterien, Fallstricke und Vorlieben des Nutzers \
+                (z.B. `ticket-review`: wie ein Ticket geprüft wird). Was bei einem einzelnen Durchlauf konkret \
+                passiert ist (welches Ticket, welches Ergebnis), gehört nicht in den Skill, sondern – wenn \
+                `memories_save` angeboten wird – in eine Memory mit Verweis auf den Skill.
 
                 Vor einer Aufgabe:
                 - `skills_list` (mit Suchtext) aufrufen, sobald die Aufgabe über eine einfache Frage hinausgeht. Passt \
