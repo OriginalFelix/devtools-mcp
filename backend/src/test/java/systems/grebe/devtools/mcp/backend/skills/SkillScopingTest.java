@@ -61,7 +61,7 @@ class SkillScopingTest {
         assertThat(anna.view("gradle-jdk", null)).contains("Annas Weg").doesNotContain("Bernds Weg");
         assertThat(bernd.view("gradle-jdk", null)).contains("Bernds Weg");
         assertThat(anna.list(null, null)).contains("gradle-jdk").doesNotContain("nur-bernd");
-        assertThat(anna.list("geheim", null)).contains("Keine Skills gefunden");
+        assertThat(anna.list("geheim", null)).contains("Keine Skills für 'geheim'");
         assertThat(anna.overview()).extracting(SkillViews.Summary::name).containsExactly("gradle-jdk");
 
         // Fremde Skills sind für alle Operationen unsichtbar
@@ -89,8 +89,8 @@ class SkillScopingTest {
         assertThat(admin.publish("heap-leak")).contains("veröffentlicht", "Revision 1");
 
         // Bernd sieht die Vorlage als global markiert und kann sie laden
-        assertThat(bernd.list(null, null)).contains("heap-leak: Verwenden, wenn der Heap wächst.", "(global)");
-        assertThat(bernd.view("heap-leak", null)).contains("scope: global", "1. jvm_heap");
+        assertThat(bernd.list(null, null)).contains("heap-leak* – Verwenden, wenn der Heap wächst.", "* globale Vorlage");
+        assertThat(bernd.view("heap-leak", null)).contains("globale Vorlage", "1. jvm_heap");
         assertThat(bernd.view("heap-leak", "references/jcmd.md")).contains("GC.class_histogram");
         assertThat(bernd.overview()).singleElement().extracting(SkillViews.Summary::scope)
                 .isEqualTo(SkillViews.Scope.GLOBAL);
@@ -106,10 +106,10 @@ class SkillScopingTest {
                 "Bernds Ergänzung", null, 5_000))
                 .startsWith("Globale Vorlage 'heap-leak' ist schreibgeschützt – persönliche Kopie angelegt")
                 .contains("Revision 2");
-        assertThat(bernd.view("heap-leak", null)).contains("3. GC-Wurzel", "persönliche Kopie der globalen Vorlage");
+        assertThat(bernd.view("heap-leak", null)).contains("3. GC-Wurzel", "Kopie der Vorlage Rev. 1");
         assertThat(bernd.view("heap-leak", "references/jcmd.md")).contains("GC.class_histogram"); // Dateien mitkopiert
         assertThat(bernd.history("heap-leak", null)).contains("patch", "adopt", "Kopie der globalen Vorlage");
-        assertThat(bernd.list(null, null)).doesNotContain("(global)"); // Kopie verdeckt die Vorlage
+        assertThat(bernd.list(null, null)).doesNotContain("heap-leak*"); // Kopie verdeckt die Vorlage
         assertThat(bernd.overview()).singleElement().satisfies(s -> {
             assertThat(s.scope()).isEqualTo(SkillViews.Scope.COPY);
             assertThat(s.templateRevision()).isEqualTo(1);
@@ -124,7 +124,7 @@ class SkillScopingTest {
 
         // Löscht Bernd seine Kopie, gilt wieder die Vorlage
         assertThat(bernd.delete("heap-leak")).contains("globale Vorlage 'heap-leak' ist wieder sichtbar");
-        assertThat(bernd.view("heap-leak", null)).contains("scope: global").doesNotContain("GC-Wurzel");
+        assertThat(bernd.view("heap-leak", null)).contains("globale Vorlage").doesNotContain("GC-Wurzel");
     }
 
     @Test

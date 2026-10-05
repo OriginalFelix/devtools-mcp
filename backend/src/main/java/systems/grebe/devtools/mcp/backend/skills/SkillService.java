@@ -50,6 +50,12 @@ public class SkillService implements SkillBackend {
     static final int MAX_DESCRIPTION = 1024;
     static final int MAX_TAGS = 500;
     static final int MAX_NOTE = 500;
+    static final Pattern TRIGGER = Pattern.compile("[a-z][a-z0-9_]{0,62}\\*?");
+    static final int MAX_TRIGGERS = 500;
+    /** Beschreibungen in skills_list werden auf so viele Zeichen gekürzt (Tokens sparen). */
+    static final int LIST_DESCRIPTION = 160;
+    /** Bis zu dieser Länge liefert skills_list bei genau einem Treffer den Inhalt gleich mit. */
+    static final int INLINE_MAX = 6_000;
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
             .withZone(ZoneId.systemDefault());
@@ -100,7 +106,8 @@ public class SkillService implements SkillBackend {
         SkillViews.Scope scope = scope(k);
         return new SkillViews.Summary(k.getName(), k.getDescription(), k.getCategory(), k.tagList(), k.getRevision(),
                 k.getUseCount(), k.getLastUsedAt(), k.getUpdatedAt(), k.getFiles().size(), scope,
-                k.getTemplateRevision(), scope == SkillViews.Scope.COPY ? templates.get(k.getName()) : null);
+                k.getTemplateRevision(), scope == SkillViews.Scope.COPY ? templates.get(k.getName()) : null,
+                k.triggerList());
     }
 
     private static SkillViews.Scope scope(Skill k) {
@@ -190,7 +197,10 @@ public class SkillService implements SkillBackend {
 
     // ------------------------------------------------------------------ Lesen
 
-    @Transactional(readOnly = true)
+    /**
+     * Kompakte Liste für das LLM (Beschreibungen gekürzt, ohne Tags). Bei Suchtext und genau einem Treffer kommt der
+     * Inhalt gleich mit – spart den zweiten Aufruf; dann wird auch die Nutzung gezählt (daher schreibend).
+     */
     public String list(String query, String category) {
         String q = blankToNull(query);
         String c = blankToNull(category);
@@ -198,13 +208,18 @@ public class SkillService implements SkillBackend {
                 c == null ? null : c.toLowerCase(Locale.ROOT));
         if (found.isEmpty()) {
             return q == null && c == null
-                    ? "Noch keine Skills gespeichert. Nach einer schwierigen oder mehrstufigen Aufgabe mit "
-                    + "skills_create den Ablauf festhalten."
-                    : "Keine Skills gefunden" + (q != null ? " für '" + q + "'" : "")
-                    + (c != null ? " in Kategorie '" + c + "'" : "") + ". skills_list ohne Filter zeigt alle.";
+                    ? "Noch keine Skills. Nach einer mehrstufigen Aufgabe den Ablauf mit skills_create registrieren."
+                    : "Keine Skills" + (q != null ? " für '" + q + "'" : "")
+                    + (c != null ? " in Kategorie '" + c + "'" : "") + ". Andere Stichworte oder skills_list ohne "
+                    + "Filter.";
+        }
+        if (q != null && found.size() == 1 && found.getFirst().getContent().length() <= INLINE_MAX) {
+            Skill k = found.getFirst();
+            skills.markUsed(k.getId(), Instant.now());
+            return "1 Skill für '" + q + "' – direkt geladen:\n\n" + render(k);
         }
         StringBuilder sb = new StringBuilder(found.size() + " Skill(s)")
-                .append(q != null ? " für '" + q + "'" : "").append(":\n");
+                .append(q != null ? " für '" + q + "'" : "").append(" – laden mit skills_view(name):\n");
         String lastCategory = "\u0000";
         for (Skill k : found) {
             String cat = k.getCategory() == null ? "(ohne Kategorie)" : k.getCategory();
@@ -212,20 +227,13 @@ public class SkillService implements SkillBackend {
                 sb.append(cat).append(":\n");
                 lastCategory = cat;
             }
-            sb.append("  - ").append(k.getName()).append(": ").append(k.getDescription());
-            if (!k.tagList().isEmpty()) {
-                sb.append("  [").append(String.join(", ", k.tagList())).append(']');
-            }
-            if (k.isGlobal()) {
-                sb.append("  (global)");
-            }
-            sb.append('\n');
+            sb.append("  ").append(k.getName()).append(k.isGlobal() ? "*" : "").append(" – ")
+                    .append(shorten(k.getDescription(), LIST_DESCRIPTION)).append('\n');
         }
-        sb.append("Passende Skills vor Beginn der Aufgabe mit skills_view laden.");
         if (found.stream().anyMatch(Skill::isGlobal)) {
-            sb.append(" (global) = schreibgeschützte Vorlage; eine Änderung legt automatisch eine persönliche Kopie an.");
+            sb.append("* globale Vorlage (Änderung legt automatisch eine persönliche Kopie an)\n");
         }
-        return sb.toString();
+        return sb.toString().stripTrailing();
     }
 
     /** Schreibend, weil die Nutzung gezählt wird. */
@@ -239,28 +247,29 @@ public class SkillService implements SkillBackend {
             return "# " + n + " / " + path + "\n\n" + f.getContent();
         }
         skills.markUsed(k.getId(), Instant.now());
-        StringBuilder sb = new StringBuilder();
-        sb.append("---\nname: ").append(k.getName())
-                .append("\ndescription: ").append(k.getDescription());
-        if (k.getCategory() != null) {
-            sb.append("\ncategory: ").append(k.getCategory());
-        }
-        if (!k.tagList().isEmpty()) {
-            sb.append("\ntags: [").append(String.join(", ", k.tagList())).append(']');
-        }
+        return render(k);
+    }
+
+    /** Kompakter Kopf (Name, Revision, Herkunft, Registrierung) plus Inhalt – die Beschreibung kennt das LLM schon. */
+    private static String render(Skill k) {
+        StringBuilder sb = new StringBuilder("# ").append(k.getName()).append(" · Revision ").append(k.getRevision());
         if (k.isGlobal()) {
-            sb.append("\nscope: global (schreibgeschützt – eine Änderung legt automatisch eine persönliche Kopie an)");
+            sb.append(" · globale Vorlage (Änderung legt persönliche Kopie an)");
         } else if (k.getTemplateRevision() != null) {
-            sb.append("\nscope: persönliche Kopie der globalen Vorlage (Revision ").append(k.getTemplateRevision())
-                    .append(')');
+            sb.append(" · Kopie der Vorlage Rev. ").append(k.getTemplateRevision());
         }
-        sb.append("\nrevision: ").append(k.getRevision())
-                .append("\nupdated: ").append(DATE.format(k.getUpdatedAt()))
-                .append("\n---\n\n").append(k.getContent());
+        if (!k.triggerList().isEmpty()) {
+            sb.append("\nRegistriert für: ").append(String.join(", ", k.triggerList()));
+        }
+        sb.append("\n\n").append(k.getContent().strip());
         if (!k.getFiles().isEmpty()) {
-            sb.append("\n\n---\nZusatzdateien (mit skills_view(name, file_path) laden): ").append(filePaths(k));
+            sb.append("\n\nZusatzdateien (skills_view mit file_path): ").append(filePaths(k));
         }
         return sb.toString();
+    }
+
+    static String shorten(String text, int max) {
+        return text.length() <= max ? text : text.substring(0, max - 1).stripTrailing() + "…";
     }
 
     @Transactional(readOnly = true)
@@ -306,13 +315,28 @@ public class SkillService implements SkillBackend {
 
     // ------------------------------------------------------------------ Schreiben
 
+    // Kurzformen ohne Trigger hier statt als Default-Methode: nur so laufen sie über den Transaktions-Proxy.
+    @Override
     public String create(String name, String description, String content, String category, List<String> tags,
                          int maxContentChars) {
+        return create(name, description, content, category, tags, null, maxContentChars);
+    }
+
+    @Override
+    public String update(String name, String description, String content, String category, List<String> tags,
+                         String note, Integer expectedRevision, int maxContentChars) {
+        return update(name, description, content, category, tags, null, note, expectedRevision, maxContentChars);
+    }
+
+    @Override
+    public String create(String name, String description, String content, String category, List<String> tags,
+                         List<String> triggers, int maxContentChars) {
         String n = requireName(name);
         String d = requireDescription(description);
         String body = requireContent(content, "content", maxContentChars);
         String cat = normalizeCategory(category);
         String t = normalizeTags(tags);
+        String tr = normalizeTriggers(triggers);
         String user = users.email();
         if (skills.existsByOwnerAndName(user, n)) {
             throw new IllegalArgumentException("Skill '" + n + "' existiert bereits. Mit skills_view ansehen und "
@@ -324,14 +348,16 @@ public class SkillService implements SkillBackend {
                     + "einen anderen Namen wählen.");
         }
         Skill k = new Skill(user, n, d, body, cat, t, Instant.now());
+        k.setTriggers(tr);
         k.recordRevision("create", null, user, k.getCreatedAt());
         skills.save(k);
         changed();
-        return "Skill '" + n + "' angelegt (Revision 1).";
+        return "Skill '" + n + "' angelegt (Revision 1)" + (tr == null ? "" : ", registriert für " + tr) + ".";
     }
 
+    @Override
     public String update(String name, String description, String content, String category, List<String> tags,
-                         String note, Integer expectedRevision, int maxContentChars) {
+                         List<String> triggers, String note, Integer expectedRevision, int maxContentChars) {
         String n = requireName(name);
         String user = users.email();
         Skill current = find(user, n);
@@ -340,8 +366,10 @@ public class SkillService implements SkillBackend {
         String body = content == null ? current.getContent() : requireContent(content, "content", maxContentChars);
         String cat = category == null ? current.getCategory() : normalizeCategory(category);
         String t = tags == null ? current.getTags() : normalizeTags(tags);
+        String tr = triggers == null ? current.getTriggers() : normalizeTriggers(triggers);
         if (d.equals(current.getDescription()) && body.equals(current.getContent())
-                && Objects.equals(cat, current.getCategory()) && Objects.equals(t, current.getTags())) {
+                && Objects.equals(cat, current.getCategory()) && Objects.equals(t, current.getTags())
+                && Objects.equals(tr, current.getTriggers())) {
             // Ohne Änderung auch keine Kopie einer Vorlage anlegen
             return "Keine Änderung an '" + n + "' (Revision " + current.getRevision() + ").";
         }
@@ -351,6 +379,7 @@ public class SkillService implements SkillBackend {
         k.setContent(body);
         k.setCategory(cat);
         k.setTags(t);
+        k.setTriggers(tr);
         k.recordRevision("update", normalizeNote(note), user, Instant.now());
         changed();
         return w.prefix() + "Skill '" + n + "' aktualisiert (Revision " + k.getRevision() + ").";
@@ -583,6 +612,35 @@ public class SkillService implements SkillBackend {
         String joined = String.join(",", set);
         if (joined.length() > MAX_TAGS) {
             throw new IllegalArgumentException("Zu viele Tags (" + joined.length() + " Zeichen, max. " + MAX_TAGS + ").");
+        }
+        return joined.isEmpty() ? null : joined;
+    }
+
+    /** Tool-Namen bzw. Präfixe mit {@code *}, klein, ohne Duplikate; {@code null} bei leerer Liste. */
+    static String normalizeTriggers(List<String> triggers) {
+        if (triggers == null) {
+            return null;
+        }
+        LinkedHashSet<String> set = new LinkedHashSet<>();
+        for (String t : triggers) {
+            if (t == null) {
+                continue;
+            }
+            for (String x : t.split(",")) {
+                String v = x.trim().toLowerCase(Locale.ROOT);
+                if (v.isEmpty()) {
+                    continue;
+                }
+                if (!TRIGGER.matcher(v).matches()) {
+                    throw new IllegalArgumentException("Ungültiger Trigger '" + x.trim() + "': Tool-Name wie "
+                            + "'ticket_get' oder Präfix mit * wie 'pr_*'.");
+                }
+                set.add(v);
+            }
+        }
+        String joined = String.join(",", set);
+        if (joined.length() > MAX_TRIGGERS) {
+            throw new IllegalArgumentException("Zu viele Trigger (max. " + MAX_TRIGGERS + " Zeichen).");
         }
         return joined.isEmpty() ? null : joined;
     }

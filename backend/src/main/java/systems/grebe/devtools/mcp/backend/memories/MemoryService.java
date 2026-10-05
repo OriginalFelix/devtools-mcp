@@ -10,6 +10,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -48,14 +49,18 @@ public class MemoryService implements MemoryBackend {
     static final int MAX_TITLE = 200;
     static final int MAX_PROJECT = 100;
     static final int MAX_REFERENCE = 200;
-    static final int DEFAULT_LIMIT = 10;
+    static final int DEFAULT_LIMIT = 5;
     static final int MAX_LIMIT = 50;
     /** So viele Kandidaten (neueste zuerst) holt die Suche aus der Datenbank, bevor sie gewichtet. */
     static final int CANDIDATES = 500;
     private static final int MAX_TERMS = 10;
-    private static final int SNIPPET = 160;
+    private static final int SNIPPET = 120;
+    /** Bis zu dieser Länge liefert memories_search bei genau einem Treffer den Inhalt gleich mit. */
+    static final int INLINE_MAX = 4_000;
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            .withZone(ZoneId.systemDefault());
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("yyyy-MM-dd")
             .withZone(ZoneId.systemDefault());
     private static final Logger LOG = LoggerFactory.getLogger(MemoryService.class);
 
@@ -95,6 +100,39 @@ public class MemoryService implements MemoryBackend {
         return (int) memories.countByOwner(users.email());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Set<String> references() {
+        return Set.copyOf(memories.referencesOf(users.email()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MemoryViews.Entry> related(List<String> references, String skill, int limit) {
+        String user = users.email();
+        List<String> refs = references == null ? List.of() : references.stream().filter(r -> r != null && !r.isBlank())
+                .map(r -> r.strip().toLowerCase(Locale.ROOT)).distinct().toList();
+        String sk = blankToNull(skill) == null ? null : skill.strip().toLowerCase(Locale.ROOT);
+        if (refs.isEmpty() && sk == null) {
+            return List.of();
+        }
+        Specification<Memory> spec = (root, q, cb) -> {
+            List<Predicate> or = new ArrayList<>();
+            if (!refs.isEmpty()) {
+                or.add(cb.lower(root.<String>get("reference")).in(refs));
+            }
+            if (sk != null) {
+                or.add(cb.equal(root.get("skill"), sk));
+            }
+            return cb.and(cb.equal(root.get("owner"), user), cb.or(or.toArray(Predicate[]::new)));
+        };
+        return memories.findAll(spec, PageRequest.of(0, Math.max(1, Math.min(MAX_LIMIT, limit)),
+                        Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))).stream()
+                .map(m -> new MemoryViews.Entry(m.getId(), m.getTitle(), null, m.getProject(), m.getSkill(),
+                        m.getReference(), m.tagList(), m.getCreatedAt(), m.getUpdatedAt()))
+                .toList();
+    }
+
     private static MemoryViews.Entry entry(Memory m) {
         return new MemoryViews.Entry(m.getId(), m.getTitle(), m.getContent(), m.getProject(), m.getSkill(),
                 m.getReference(), m.tagList(), m.getCreatedAt(), m.getUpdatedAt());
@@ -118,45 +156,52 @@ public class MemoryService implements MemoryBackend {
                     : "Keine Memories gefunden" + filters + ". Mit weniger Begriffen oder ohne Filter erneut suchen.";
         }
         List<String> terms = terms(query);
+        if (found.size() == 1 && (!terms.isEmpty() || !filters.isEmpty())
+                && found.getFirst().memory().getContent().length() <= INLINE_MAX) {
+            return "1 Memory" + filters + " – direkt geladen:\n\n" + render(found.getFirst().memory());
+        }
         StringBuilder sb = new StringBuilder(found.size() + (found.size() == 1 ? " Memory" : " Memories"))
-                .append(filters).append(" (").append(terms.isEmpty() ? "neueste zuerst" : "beste Treffer zuerst")
-                .append("):\n");
+                .append(filters).append(" (").append(terms.isEmpty() ? "neueste" : "beste Treffer")
+                .append(" zuerst; laden mit memories_view(id)):\n");
         for (Hit h : found) {
             Memory m = h.memory();
-            sb.append("#").append(m.getId()).append("  ").append(DATE.format(m.getCreatedAt())).append("  ")
-                    .append(m.getTitle());
-            String meta = meta(m);
-            if (!meta.isEmpty()) {
-                sb.append("  [").append(meta).append(']');
-            }
-            sb.append("\n    ").append(snippet(m.getContent(), terms)).append('\n');
+            sb.append(line(m)).append("\n  ").append(snippet(m.getContent(), terms)).append('\n');
         }
-        return sb.append("Vollständig mit memories_view(id) laden.").toString();
+        return sb.toString().stripTrailing();
+    }
+
+    /** Eine Zeile: Nummer, Datum, Titel und – kompakt – Projekt, Skill, Bezug. */
+    static String line(Memory m) {
+        String meta = meta(m);
+        return "#" + m.getId() + " " + DAY.format(m.getCreatedAt()) + " " + m.getTitle()
+                + (meta.isEmpty() ? "" : " [" + meta + "]");
     }
 
     @Override
     @Transactional(readOnly = true)
     public String view(long id) {
-        Memory m = find(users.email(), id);
-        StringBuilder sb = new StringBuilder("---\nid: ").append(m.getId())
-                .append("\ntitle: ").append(m.getTitle());
+        return render(find(users.email(), id));
+    }
+
+    /** Kompakter Kopf (eine Zeile Metadaten) plus Inhalt. */
+    private static String render(Memory m) {
+        StringBuilder sb = new StringBuilder("# #").append(m.getId()).append(' ').append(m.getTitle()).append('\n');
+        List<String> parts = new ArrayList<>();
         if (m.getProject() != null) {
-            sb.append("\nproject: ").append(m.getProject());
+            parts.add("Projekt " + m.getProject());
         }
         if (m.getSkill() != null) {
-            sb.append("\nskill: ").append(m.getSkill()).append(" (Ablauf dazu mit skills_view laden)");
+            parts.add("Skill " + m.getSkill());
         }
         if (m.getReference() != null) {
-            sb.append("\nreference: ").append(m.getReference());
+            parts.add("Bezug " + m.getReference());
         }
         if (!m.tagList().isEmpty()) {
-            sb.append("\ntags: [").append(String.join(", ", m.tagList())).append(']');
+            parts.add("Tags " + String.join(", ", m.tagList()));
         }
-        sb.append("\ncreated: ").append(DATE.format(m.getCreatedAt()));
-        if (!m.getUpdatedAt().equals(m.getCreatedAt())) {
-            sb.append("\nupdated: ").append(DATE.format(m.getUpdatedAt()));
-        }
-        return sb.append("\n---\n\n").append(m.getContent()).toString();
+        parts.add(DATE.format(m.getCreatedAt())
+                + (m.getUpdatedAt().equals(m.getCreatedAt()) ? "" : ", geändert " + DATE.format(m.getUpdatedAt())));
+        return sb.append(String.join(" · ", parts)).append("\n\n").append(m.getContent().strip()).toString();
     }
 
     // ------------------------------------------------------------------ Schreiben
@@ -346,16 +391,13 @@ public class MemoryService implements MemoryBackend {
     private static String meta(Memory m) {
         List<String> parts = new ArrayList<>();
         if (m.getProject() != null) {
-            parts.add("Projekt " + m.getProject());
+            parts.add(m.getProject());
         }
         if (m.getSkill() != null) {
-            parts.add("Skill " + m.getSkill());
+            parts.add(m.getSkill());
         }
         if (m.getReference() != null) {
             parts.add(m.getReference());
-        }
-        if (!m.tagList().isEmpty()) {
-            parts.add(String.join(", ", m.tagList()));
         }
         return String.join(" · ", parts);
     }

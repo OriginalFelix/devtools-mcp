@@ -31,6 +31,10 @@ type Query {
     "Texte für das LLM wie die Tools memories_search und memories_view."
     memorySearch(query: String, project: String, skill: String, tag: String, days: Int, limit: Int): String!
     memoryView(id: Int!): String!
+    "Bezüge aller Memories (klein geschrieben) – die App erkennt damit Ticket-Keys o.ä. in Tool-Aufrufen."
+    memoryReferences: [String!]!
+    "Neueste Memories mit einem der Bezüge oder zu einem Skill (ohne Inhalt)."
+    relatedMemories(references: [String!], skill: String, limit: Int): [MemoryEntry!]!
 }
 
 type Mutation {
@@ -41,10 +45,11 @@ type Mutation {
     saveOverrides(level: Level!, moduleId: String!, input: OverlayInput!): Settings!
     createProject(name: String!, description: String, sonarKey: String, ticketProject: String): Project!
 
+    "triggers: Tool-Namen oder Präfixe mit * (z.B. ticket_get, pr_*), für die der Skill registriert ist."
     createSkill(name: String!, description: String!, content: String!, category: String, tags: [String!],
-                maxContentChars: Int): String!
+                triggers: [String!], maxContentChars: Int): String!
     updateSkill(name: String!, description: String, content: String, category: String, tags: [String!],
-                note: String, expectedRevision: Int, maxContentChars: Int): String!
+                triggers: [String!], note: String, expectedRevision: Int, maxContentChars: Int): String!
     patchSkill(name: String!, oldString: String!, newString: String!, replaceAll: Boolean, filePath: String,
                note: String, expectedRevision: Int, maxContentChars: Int): String!
     writeSkillFile(name: String!, filePath: String!, content: String!, note: String, maxContentChars: Int): String!
@@ -216,6 +221,7 @@ type SkillSummary {
     scope: SkillScope!
     templateRevision: Int
     currentTemplateRevision: Int
+    triggers: [String!]!
 }
 
 type SkillFile {
@@ -246,7 +252,8 @@ type SkillDetails {
 type MemoryEntry {
     id: Int!
     title: String!
-    content: String!
+    "Leer bei relatedMemories."
+    content: String
     project: String
     skill: String
     reference: String

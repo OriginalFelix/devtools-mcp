@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -50,6 +51,19 @@ public class BackendMemories implements MemoryBackend {
     public int count() {
         Integer n = backend.query("{ memoryCount }", Map.of(), "memoryCount", Integer.class);
         return n == null ? 0 : n;
+    }
+
+    @Override
+    public Set<String> references() {
+        return Set.copyOf(backend.queryList("{ memoryReferences }", "memoryReferences", String.class));
+    }
+
+    @Override
+    public List<MemoryViews.Entry> related(List<String> references, String skill, int limit) {
+        return backend.queryList("""
+                query($refs: [String!], $skill: String, $limit: Int) { relatedMemories(references: $refs, \
+                skill: $skill, limit: $limit) { id title project skill reference tags createdAt updatedAt } }""",
+                args("refs", references, "skill", skill, "limit", limit), "relatedMemories", MemoryViews.Entry.class);
     }
 
     @Override

@@ -29,6 +29,6 @@ class MemoriesModuleTest {
     @Test
     void instructionsSeparateMemoriesFromSkills() {
         assertThat(module.instructions()).contains("`memories_search`", "`memories_save`", "skill=<name>",
-                "`ticket-review`", "append");
+                "`ticket-review`", "`append`", "[DevTools] Frühere Aktionen");
     }
 }

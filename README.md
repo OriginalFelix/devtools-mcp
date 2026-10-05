@@ -584,6 +584,12 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
 
 * **Aufbau** wie ein `SKILL.md`: Name (`a-z0-9._-`), ein Satz `description` („wann greift der Skill“), Kategorie,
   Tags, Markdown-Inhalt, dazu Zusatzdateien unter `references/`, `templates/`, `scripts/`, `assets/`.
+* **Registrierung (`triggers`):** Tool-Namen oder Präfixe (`ticket_get`, `pr_*`), für die der Skill gilt. Ruft das LLM
+  ein solches Tool auf, hängt der Server einmal je Session eine Zeile an das Ergebnis: „[DevTools] Registrierter Skill
+  für ticket_get: ticket-review – … (per skills_view ladbar)“. Ein bereits geladener Skill wird nicht mehr genannt.
+* **Sparsam ausgeliefert:** `skills_list` zeigt je Skill nur Name und gekürzte Beschreibung (ohne Tags); bei Suchtext
+  und genau einem Treffer kommt der Inhalt gleich mit (spart den zweiten Aufruf). `skills_view` hat statt Frontmatter
+  eine Kopfzeile (Name, Revision, Herkunft, Registrierung).
 * **Historie:** jede Änderung erzeugt eine Revision mit Aktion und Notiz (`skills_history`). Mit
   `expected_revision` lehnt ein Patch ab, wenn der Skill inzwischen woanders geändert wurde.
 * **Ablage im Backend:** Skills liegen im Backend (eingebettet oder Team-Server) und gehören der E-Mail des
@@ -660,7 +666,7 @@ Entscheidungen, Datum.
   `content` ersetzt den Inhalt, die übrigen Felder lassen sich einzeln ändern (leerer Text entfernt sie).
 * **Suchen:** `memories_search` zerlegt den Suchtext in Begriffe und sucht in Titel, Inhalt, Tags, Bezug, Projekt und
   Skill; Treffer werden nach Anzahl getroffener Begriffe gewichtet (Titel und Bezug doppelt), dann nach Datum. Filter:
-  `project`, `skill` (z.B. alle früheren Ticket-Reviews), `tag`, `days`, `limit` (Standard 10, max. 50). Ohne Suchtext
+  `project`, `skill` (z.B. alle früheren Ticket-Reviews), `tag`, `days`, `limit` (Standard 5, max. 50). Ohne Suchtext
   kommen die neuesten. `memories_view` lädt eine Memory vollständig.
 * **Ablage:** im Backend neben den Skills (Tabelle `memory` in derselben Datenbank, Spring Data JPA mit
   `MemoryRepository`/`MemoryService`), je Benutzerkonto (E-Mail) – andere Benutzer sehen sie nicht, globale Memories
@@ -668,6 +674,27 @@ Entscheidungen, Datum.
   `deleteMemory`, Subscription `memoriesChanged`.
 * **Schalter:** „Anlegen und Nachtragen erlauben“ (Standard an), „Löschen erlauben“ (Standard aus, nur für das LLM –
   im Tab **Memories** der App geht Löschen immer), „Max. Zeichen je Memory“ (Standard 20 000).
+* **Sparsam ausgeliefert:** Standard 5 Treffer mit einer Zeile plus kurzem Ausschnitt; bei genau einem Treffer kommt
+  die Memory direkt vollständig.
+
+### Hinweise des Servers: Skills und Memories finden das LLM
+
+Damit das LLM nicht ohne das vorhandene Wissen loslegt, hängt der Server (`RecallHints`) an Tool-Ergebnisse kurze
+Zeilen „[DevTools] …“ – nur bei einem Treffer, jeder Skill und jede Memory höchstens einmal je MCP-Session:
+
+| Auslöser | Hinweis |
+|---|---|
+| Tool, für das ein Skill registriert ist (`triggers`) | „Registrierter Skill für ticket_get: ticket-review – …“ |
+| Argument enthält einen Bezug einer Memory (z.B. `ABC-123`) | „Frühere Aktionen zu abc-123: #12 2026-10-01 …“ |
+| `skills_view` | frühere Durchläufe dieses Skills (Memories mit `skill`) |
+| `skills_list` mit Suchtext | passende Memories |
+| `memories_search` mit Suchtext | passende Skills |
+
+Registrierungen und Bezüge hält die App im Speicher und lädt sie bei jeder Änderung neu (eigene Schreib-Tools sofort,
+andere Apps über `skillsChanged`/`memoriesChanged`) – ein Tool-Aufruf ohne Treffer kostet keinen Backend-Zugriff.
+Zahlen in Argumenten zählen nur unter ID-artigen Namen (`id`, `number`, `pr`, `key` …), nicht etwa `limit`. Die
+Hinweise beschreiben nur den Zustand („per skills_view ladbar“), weil Clients Aufforderungen in Tool-Ergebnissen
+misstrauen. Abgeschaltete Module bzw. Lese-Tools liefern keine Hinweise.
 
 ### Instructions für das LLM
 
@@ -880,21 +907,22 @@ desktop/
   config/SettingsStore    ── settings.json (App-Einstellungen), SecretCipher (AES-GCM)
   server/BearerTokenFilter── optionaler Token-Schutz für /mcp
   remote/                 ── EmbeddedBackend + LocalUser, BackendConnection (GraphQL-Client, Subscriptions, Cache),
-                             BackendSettingsResolver, BackendSkills
-  modules/{git,sonar,build,graph,skills,…}
+                             BackendSettingsResolver, BackendSkills, BackendMemories
+  modules/{git,sonar,build,graph,skills,memories,…} ── skills/RecallHints: Hinweise auf Skills und Memories
   plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
   plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
   ui/                     ── MainView, ModuleDetailPane, ConfigForm, InvocationLogView, PluginsView, BackendView, Dialoge
 backend/
   backend/BackendConfig   ── Einstieg (Component-Scan des Backends)
   backend/BackendGraphQlController, GraphQlAuth, GraphQlErrors, ChangeBus ── GraphQL-API, Token, Fehler, Subscriptions
-  backend/{account,profile,project,catalog,skills} ── Benutzer + Tokens, Profile + Ebenen, Projekte, Katalog, Skills
+  backend/{account,profile,project,catalog,skills,memories} ── Benutzer + Tokens, Profile + Ebenen, Projekte,
+                             Katalog, Skills, Memories
 server/
   DevToolsServerApplication ── Spring Boot (Jetty) · WildFlyInitializer (WAR)
   server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI
 shared/
   api/                    ── Datenklassen der GraphQL-API
-  core/ConfigField, config/ModuleSettings, profile/Overrides, modules/skills/{SkillBackend,SkillViews}
+  core/ConfigField, config/ModuleSettings, profile/Overrides, modules/{skills,memories}/{…Backend,…Views}
 ```
 
 MCP-Server: Spring AI `spring-ai-starter-mcp-server-webflux` 2.0.1 (MCP Java SDK 2.0.0), Protokoll `STREAMABLE`.

@@ -203,17 +203,19 @@ public class BackendGraphQlController {
     public String createSkill(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                               @Argument String name, @Argument String description, @Argument String content,
                               @Argument String category, @Argument List<String> tags,
-                              @Argument Integer maxContentChars) {
-        return as(user, () -> skills.create(name, description, content, category, tags, max(maxContentChars)));
+                              @Argument List<String> triggers, @Argument Integer maxContentChars) {
+        return as(user, () -> skills.create(name, description, content, category, tags, triggers,
+                max(maxContentChars)));
     }
 
     @MutationMapping
     public String updateSkill(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                               @Argument String name, @Argument String description, @Argument String content,
-                              @Argument String category, @Argument List<String> tags, @Argument String note,
+                              @Argument String category, @Argument List<String> tags,
+                              @Argument List<String> triggers, @Argument String note,
                               @Argument Integer expectedRevision, @Argument Integer maxContentChars) {
-        return as(user, () -> skills.update(name, description, content, category, tags, note, expectedRevision,
-                max(maxContentChars)));
+        return as(user, () -> skills.update(name, description, content, category, tags, triggers, note,
+                expectedRevision, max(maxContentChars)));
     }
 
     @MutationMapping
@@ -288,6 +290,18 @@ public class BackendGraphQlController {
     public String memoryView(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                              @Argument long id) {
         return as(user, () -> memories.view(id));
+    }
+
+    @QueryMapping
+    public List<String> memoryReferences(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
+        return as(user, () -> List.copyOf(memories.references()));
+    }
+
+    @QueryMapping
+    public List<MemoryViews.Entry> relatedMemories(
+            @ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+            @Argument List<String> references, @Argument String skill, @Argument Integer limit) {
+        return as(user, () -> memories.related(references, skill, limit == null ? 3 : limit));
     }
 
     @MutationMapping

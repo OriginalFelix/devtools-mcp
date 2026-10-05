@@ -52,6 +52,9 @@ public class SkillReview {
             - Passwörter, Tokens, Schlüssel oder andere Geheimnisse – auch nicht maskiert.
             - Was nur für genau diese Sitzung gilt oder jederzeit leicht nachzulesen ist.
 
+            Die erledigte Aktion selbst (Ticket, Ergebnis, Entscheidung) außerdem mit memories_save festhalten, \
+            falls angeboten.
+
             „Nichts zu speichern.“ ist erlaubt, wenn die Aufgabe glatt lief, keine Korrektur kam und nichts Neues \
             gelernt wurde – aber nicht als Standard. Sonst handeln und dem Nutzer am Ende in einem Satz sagen, welcher \
             Skill angelegt oder geändert wurde.""";

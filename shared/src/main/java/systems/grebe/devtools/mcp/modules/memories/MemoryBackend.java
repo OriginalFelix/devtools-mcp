@@ -2,6 +2,7 @@ package systems.grebe.devtools.mcp.modules.memories;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Memory-Speicher aus Sicht von Tools und Oberfläche: im Backend (eingebettet oder auf dem Team-Server). Texte sind
@@ -19,6 +20,15 @@ public interface MemoryBackend {
     Optional<MemoryViews.Entry> details(long id);
 
     int count();
+
+    /** Bezüge (Ticket-Keys, PRs …) aller Memories des Benutzers, klein – für Hinweise bei Tool-Aufrufen. */
+    Set<String> references();
+
+    /**
+     * Neueste Memories mit einem der Bezüge (Groß-/Kleinschreibung egal) oder zu einem Skill; {@code content} bleibt
+     * dabei leer (nur für kurze Hinweise).
+     */
+    List<MemoryViews.Entry> related(List<String> references, String skill, int limit);
 
     String search(String query, String project, String skill, String tag, Integer days, Integer limit);
 

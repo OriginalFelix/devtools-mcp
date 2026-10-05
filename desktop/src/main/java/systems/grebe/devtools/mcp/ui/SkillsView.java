@@ -353,6 +353,9 @@ public class SkillsView extends BorderPane {
         if (!s.tags().isEmpty()) {
             sb.append("  ·  Tags: ").append(String.join(", ", s.tags()));
         }
+        if (!s.triggers().isEmpty()) {
+            sb.append("  ·  Registriert für: ").append(String.join(", ", s.triggers()));
+        }
         sb.append("  ·  Revision ").append(s.revision())
                 .append("  ·  angelegt ").append(TIME.format(d.createdAt()))
                 .append("  ·  geändert ").append(TIME.format(s.updatedAt()))

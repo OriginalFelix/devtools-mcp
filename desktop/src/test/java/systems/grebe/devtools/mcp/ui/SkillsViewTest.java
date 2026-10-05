@@ -13,12 +13,12 @@ class SkillsViewTest {
 
     private static SkillViews.Summary skill(String name, String category, String... tags) {
         return new SkillViews.Summary(name, "Beschreibung von " + name, category, List.of(tags), 1, 0, null,
-                Instant.parse("2026-09-28T10:00:00Z"), 0, SkillViews.Scope.OWN, null, null);
+                Instant.parse("2026-09-28T10:00:00Z"), 0, SkillViews.Scope.OWN, null, null, List.of());
     }
 
     private static SkillViews.Summary scoped(SkillViews.Scope scope, Integer templateRev, Integer currentTemplateRev) {
         return new SkillViews.Summary("x", "d", null, List.of(), 1, 0, null, Instant.parse("2026-09-28T10:00:00Z"),
-                0, scope, templateRev, currentTemplateRev);
+                0, scope, templateRev, currentTemplateRev, List.of());
     }
 
     @Test
@@ -78,9 +78,9 @@ class SkillsViewTest {
     void metaLineShowsUsage() {
         SkillViews.Summary s = new SkillViews.Summary("x", "d", null, List.of("a", "b"), 3, 2,
                 Instant.parse("2026-09-28T11:00:00Z"), Instant.parse("2026-09-28T10:00:00Z"), 0,
-                SkillViews.Scope.OWN, null, null);
+                SkillViews.Scope.OWN, null, null, List.of("ticket_get"));
         String line = SkillsView.metaLine(new SkillViews.Details(s, "c", Instant.parse("2026-09-27T09:00:00Z"),
                 List.of(), List.of()));
-        assertThat(line).startsWith(SkillsView.NO_CATEGORY).contains("Tags: a, b", "Revision 3", "2× geladen", "zuletzt");
+        assertThat(line).startsWith(SkillsView.NO_CATEGORY).contains("Tags: a, b", "Registriert für: ticket_get", "Revision 3", "2× geladen", "zuletzt");
     }
 }

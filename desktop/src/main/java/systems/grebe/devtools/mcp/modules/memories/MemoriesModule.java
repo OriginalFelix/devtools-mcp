@@ -55,24 +55,16 @@ public class MemoriesModule implements ToolModule {
     @Override
     public String instructions() {
         return """
-                Memories sind dein Gedächtnis für frühere Aktionen: was bei einer konkreten Aufgabe getan, \
-                entschieden und herausgefunden wurde – mit Ticket-/PR-Nummern, Ergebnis und Datum. Skills \
-                beschreiben dagegen, *wie* ein Aufgabentyp abläuft (z.B. `ticket-review`); eine Memory hält einen \
-                einzelnen Durchlauf fest und verweist mit `skill` auf den Skill, nach dem gearbeitet wurde.
-
-                Vor einer Aufgabe:
-                - Geht es um ein Ticket, einen PR, einen Fehler oder ein Thema, das schon einmal vorkam, mit \
-                `memories_search` (Ticket-Key, Stichworte, `project`) nach früheren Aktionen suchen und Treffer mit \
-                `memories_view` laden. Nach `skills_view` eines Skills liefert `memories_search` mit `skill=<name>` \
-                frühere Durchläufe dieses Ablaufs.
-
-                Nach einer Aufgabe – mit `memories_save` festhalten, wenn eine nennenswerte Aktion abgeschlossen \
-                ist: Ticket reviewt oder bearbeitet, Fehler analysiert oder behoben, PR erstellt, Deployment, \
-                Entscheidung mit dem Nutzer. `title` = eine Zeile, was getan wurde; `content` = Ausgangslage, \
-                Vorgehen, Ergebnis, Begründung, offene Punkte; dazu `project`, `skill` und `reference` (Ticket-Key, \
-                PR, Commit), soweit bekannt. Folgeaktionen zur selben Sache mit `memories_update` und `append` \
-                nachtragen statt eine neue Memory anzulegen. Niemals Passwörter, Tokens oder andere Geheimnisse. \
-                `memories_delete` nur auf ausdrücklichen Wunsch.""";
+                Memories = was bei früheren Aufgaben konkret passiert ist (Ticket, Ergebnis, Entscheidung); `skill` \
+                verweist auf den Ablauf (z.B. `ticket-review`), nach dem gearbeitet wurde.
+                - Vor einer Aufgabe zu einem Ticket, PR, Fehler oder bekannten Thema: `memories_search` mit \
+                Ticket-Key oder Stichworten. Genau ein Treffer kommt direkt vollständig, sonst `memories_view`. Mit \
+                `skill=<name>` frühere Durchläufe eines Skills.
+                - Nennt der Server „[DevTools] Frühere Aktionen …“ oder „Frühere Durchläufe …“, diese Memory laden \
+                statt neu zu recherchieren.
+                - Nach einer abgeschlossenen Aktion: `memories_save` (title = eine Zeile; content = Ergebnis, \
+                Begründung, offene Punkte; dazu project, skill, reference). Folgeaktion zur selben Sache: \
+                `memories_update` mit `append`. Keine Geheimnisse; `memories_delete` nur auf Wunsch.""";
     }
 
     @Override

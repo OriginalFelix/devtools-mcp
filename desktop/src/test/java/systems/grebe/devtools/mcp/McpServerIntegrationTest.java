@@ -237,9 +237,9 @@ class McpServerIntegrationTest {
                 "old_string", "1. anlegen\n", "new_string", "1. anlegen\n2. patchen\n", "note", "Schritt 2")))))
                 .contains("Revision 2");
         assertThat(text(client.callTool(callRequest("skills_list", Map.of("query", "roundtrip")))))
-                .contains("testing:", "mcp-roundtrip: Verwenden, wenn der Roundtrip geprüft wird.", "[mcp, h2]");
+                .contains("direkt geladen", "# mcp-roundtrip · Revision 2", "2. patchen");
         assertThat(text(client.callTool(callRequest("skills_view", Map.of("name", "mcp-roundtrip")))))
-                .contains("revision: 2", "2. patchen");
+                .contains("Revision 2", "2. patchen");
 
         // Fachlicher Fehler kommt als isError-Ergebnis mit Hinweis auf den nächsten Schritt beim LLM an
         McpSchema.CallToolResult duplicate = client.callTool(callRequest("skills_create", Map.of(
@@ -277,7 +277,7 @@ class McpServerIntegrationTest {
         assertThat(text(client.callTool(callRequest("memories_search", Map.of("skill", "ticket-review")))))
                 .contains("#" + id);
         assertThat(text(client.callTool(callRequest("memories_view", Map.of("id", Long.parseLong(id))))))
-                .contains("reference: MCP-7", "Zurück an den PO.", "**Nachtrag ", "freigegeben.");
+                .contains("Bezug MCP-7", "Zurück an den PO.", "**Nachtrag ", "freigegeben.");
 
         McpSchema.CallToolResult missing = client.callTool(callRequest("memories_view", Map.of("id", 999_999)));
         assertThat(missing.isError()).isTrue();
@@ -290,6 +290,40 @@ class McpServerIntegrationTest {
             assertThat(text(client.callTool(callRequest("memories_delete", Map.of("id", Long.parseLong(id))))))
                     .contains("gelöscht");
         } finally {
+            registry.updateConfig("memories", Map.of());
+        }
+    }
+
+    @Test
+    void serverPointsToRegisteredSkillsAndEarlierActions() {
+        assertThat(text(client.callTool(callRequest("skills_create", Map.of("name", "hint-demo",
+                "description", "Verwenden beim Blick auf die Remotes.", "content", "1. git_remotes",
+                "triggers", List.of("git_remotes")))))).contains("registriert für git_remotes");
+        String saved = text(client.callTool(callRequest("memories_save", Map.of("title", "Hotfix HINT-42 geprüft",
+                "content", "Alles gut.", "skill", "hint-demo", "reference", "HINT-42"))));
+        String id = saved.replaceAll("(?s)^Memory #(\\d+) gespeichert.*$", "$1");
+        McpSyncClient fresh = connect(null);
+        try {
+            // Aufruf eines registrierten Tools nennt den Skill – je Session einmal
+            assertThat(text(fresh.callTool(callRequest("git_remotes", Map.of()))))
+                    .contains("[DevTools] Registrierter Skill für git_remotes: hint-demo – Verwenden beim Blick auf "
+                            + "die Remotes. (per skills_view ladbar)");
+            assertThat(text(fresh.callTool(callRequest("git_remotes", Map.of()))))
+                    .doesNotContain("Registrierter Skill");
+            // bekannter Bezug in den Argumenten nennt die frühere Aktion
+            assertThat(text(fresh.callTool(callRequest("git_grep", Map.of("pattern", "HINT-42")))))
+                    .contains("[DevTools] Frühere Aktionen zu hint-42: #" + id, "Hotfix HINT-42 geprüft");
+            // skills_view nennt frühere Durchläufe des Skills (in der ersten Session noch nicht genannt)
+            assertThat(text(client.callTool(callRequest("skills_view", Map.of("name", "hint-demo")))))
+                    .contains("# hint-demo · Revision 1", "Registriert für: git_remotes",
+                            "[DevTools] Frühere Durchläufe von hint-demo: #" + id);
+        } finally {
+            fresh.closeGracefully();
+            registry.updateConfig("skills", Map.of("allowDelete", "true"));
+            registry.updateConfig("memories", Map.of("allowDelete", "true"));
+            client.callTool(callRequest("skills_delete", Map.of("name", "hint-demo")));
+            client.callTool(callRequest("memories_delete", Map.of("id", Long.parseLong(id))));
+            registry.updateConfig("skills", Map.of());
             registry.updateConfig("memories", Map.of());
         }
     }
@@ -325,7 +359,7 @@ class McpServerIntegrationTest {
             assertThat(text(reviewed)).startsWith("# Skill-Review")
                     .contains("Geladenen Skill patchen", "Nicht festhalten", "Korrektur zur Formatierung",
                             "Geladen (skills_view): review-demo", "Bereits geändert: review-demo",
-                            "review-demo: Verwenden für den Review-Test.");
+                            "review-demo – Verwenden für den Review-Test.");
             // die zweite Session hat nichts geladen
             assertThat(text(second.callTool(callRequest("skills_review", Map.of()))))
                     .contains("Geladen (skills_view): keine", "Bereits geändert: keine");

@@ -29,11 +29,26 @@ public interface SkillBackend {
 
     int visibleCount();
 
+    /**
+     * @param triggers Registrierung: Tool-Namen oder Präfixe mit {@code *} (z.B. {@code ticket_get}, {@code pr_*}),
+     *                 bei deren Aufruf der Server auf den Skill hinweist; {@code null} = keine
+     */
     String create(String name, String description, String content, String category, List<String> tags,
-                  int maxContentChars);
+                  List<String> triggers, int maxContentChars);
 
-    String update(String name, String description, String content, String category, List<String> tags, String note,
-                  Integer expectedRevision, int maxContentChars);
+    default String create(String name, String description, String content, String category, List<String> tags,
+                          int maxContentChars) {
+        return create(name, description, content, category, tags, null, maxContentChars);
+    }
+
+    /** {@code triggers}: {@code null} = unverändert, leere Liste = entfernen. */
+    String update(String name, String description, String content, String category, List<String> tags,
+                  List<String> triggers, String note, Integer expectedRevision, int maxContentChars);
+
+    default String update(String name, String description, String content, String category, List<String> tags,
+                          String note, Integer expectedRevision, int maxContentChars) {
+        return update(name, description, content, category, tags, null, note, expectedRevision, maxContentChars);
+    }
 
     String patch(String name, String oldString, String newString, Boolean replaceAll, String filePath, String note,
                  Integer expectedRevision, int maxContentChars);

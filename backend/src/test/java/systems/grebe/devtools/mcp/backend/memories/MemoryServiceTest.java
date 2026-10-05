@@ -55,13 +55,17 @@ class MemoryServiceTest {
         service.save("Heap-Leck in WildFly analysiert", "Cache ohne Obergrenze in OrderService gefunden.",
                 "egecko", null, null, List.of("heap"), 5_000);
 
+        // genau ein Treffer: direkt vollständig, kein zweiter Aufruf nötig
         assertThat(service.search("abc-123", null, null, null, null, null))
-                .contains("1 Memory für 'abc-123'", "#" + id, "Ticket ABC-123 reviewt",
-                        "Projekt egecko · Skill ticket-review · ABC-123 · review, abgelehnt", "memories_view");
+                .startsWith("1 Memory für 'abc-123' – direkt geladen:")
+                .contains("# #" + id + " Ticket ABC-123 reviewt",
+                        "Projekt egecko · Skill ticket-review · Bezug ABC-123 · Tags review, abgelehnt", "## Ergebnis");
         assertThat(service.search(null, null, null, null, null, null))
-                .contains("2 Memories (neueste zuerst)", "Heap-Leck", "Ticket ABC-123");
-        assertThat(service.view(id)).contains("id: " + id, "project: egecko", "skill: ticket-review",
-                "reference: ABC-123", "tags: [review, abgelehnt]", "## Ergebnis");
+                .contains("2 Memories (neueste zuerst; laden mit memories_view(id))", "Heap-Leck",
+                        "[egecko · ticket-review · ABC-123]")
+                .doesNotContain("direkt geladen");
+        assertThat(service.view(id)).startsWith("# #" + id + " Ticket ABC-123 reviewt: Akzeptanzkriterien fehlen\nProjekt egecko")
+                .contains("## Ergebnis");
         assertThat(service.count()).isEqualTo(2);
     }
 
@@ -80,7 +84,7 @@ class MemoryServiceTest {
         assertThat(newest.indexOf("#" + wrapper)).isLessThan(newest.indexOf("#" + toolchain));
         // … mit Suchtext gewichtet: beide Begriffe im Titel schlagen einen Begriff, auch wenn älter
         String found = service.search("gradle toolchain", null, null, null, null, null);
-        assertThat(found).contains("2 Memories für 'gradle toolchain' (beste Treffer zuerst)");
+        assertThat(found).contains("2 Memories für 'gradle toolchain' (beste Treffer zuerst;");
         assertThat(found.indexOf("#" + toolchain)).isLessThan(found.indexOf("#" + wrapper));
 
         assertThat(service.search(null, null, "ticket-review", null, null, null))
@@ -163,5 +167,20 @@ class MemoryServiceTest {
                 .contains("TREFFER").hasSizeLessThanOrEqualTo(162);
         assertThat(MemoryService.snippet("kurz\n\nund  knapp", List.of())).isEqualTo("kurz und knapp");
         assertThat(MemoryService.terms("  Heap heap  WildFly ")).containsExactly("heap", "wildfly");
+    }
+
+    @Test
+    void referencesAndRelatedForHints() {
+        long review = saveReview();
+        service.save("Andere Sache", "x", null, "ticket-review", "#77", null, 5_000);
+        service.save("Ohne Bezug", "y", null, null, null, null, 5_000);
+
+        assertThat(service.references()).containsExactlyInAnyOrder("abc-123", "#77");
+        assertThat(service.related(List.of("ABC-123"), null, 3)).extracting(MemoryViews.Entry::id)
+                .containsExactly(review);
+        assertThat(service.related(null, "ticket-review", 3)).extracting(MemoryViews.Entry::title)
+                .containsExactly("Andere Sache", "Ticket ABC-123 reviewt: Akzeptanzkriterien fehlen");
+        assertThat(service.related(null, "ticket-review", 3)).allSatisfy(e -> assertThat(e.content()).isNull());
+        assertThat(service.related(List.of(), null, 3)).isEmpty();
     }
 }

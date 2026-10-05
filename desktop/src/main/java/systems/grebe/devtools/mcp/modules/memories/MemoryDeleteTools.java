@@ -13,8 +13,8 @@ public class MemoryDeleteTools {
         this.service = service;
     }
 
-    @Tool(name = "delete", description = "Löscht eine Memory endgültig. Nur auf ausdrücklichen Wunsch des Nutzers; "
-            + "falsche Angaben besser mit memories_update korrigieren." + ShellHints.MEMORIES)
+    @Tool(name = "delete", description = "Löscht eine Memory endgültig. Nur auf ausdrücklichen Wunsch; sonst "
+            + "memories_update." + ShellHints.MEMORIES)
     public String delete(@ToolParam(description = MemoryReadTools.ID) long id) {
         return service.delete(id);
     }

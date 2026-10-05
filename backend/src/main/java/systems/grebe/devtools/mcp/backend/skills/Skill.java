@@ -61,6 +61,13 @@ public class Skill {
     @Column(length = 500)
     private String tags;
 
+    /**
+     * Registrierung: Tool-Namen, bei deren Aufruf der Skill greift, z.B. {@code ticket_get} oder {@code pr_*}
+     * (kommagetrennt). Ruft das LLM ein solches Tool auf, weist der Server einmal je Session auf den Skill hin.
+     */
+    @Column(length = 500)
+    private String triggers;
+
     @Column(nullable = false, length = CONTENT_COLUMN)
     private String content;
 
@@ -110,6 +117,7 @@ public class Skill {
     /** Persönliche Kopie einer globalen Vorlage samt Zusatzdateien; die Historie beginnt neu. */
     Skill copyFor(String newOwner, Instant now) {
         Skill copy = new Skill(newOwner, name, description, content, category, tags, now);
+        copy.triggers = triggers;
         copy.templateRevision = revision;
         files.forEach(f -> copy.addFile(new SkillFile(copy, f.getPath(), f.getContent(), now)));
         return copy;
@@ -121,6 +129,7 @@ public class Skill {
         content = source.content;
         category = source.category;
         tags = source.tags;
+        triggers = source.triggers;
         files.clear();
         source.files.forEach(f -> addFile(new SkillFile(this, f.getPath(), f.getContent(), now)));
     }
@@ -163,6 +172,18 @@ public class Skill {
 
     List<String> tagList() {
         return tags == null || tags.isBlank() ? List.of() : Arrays.asList(tags.split(","));
+    }
+
+    List<String> triggerList() {
+        return triggers == null || triggers.isBlank() ? List.of() : Arrays.asList(triggers.split(","));
+    }
+
+    public String getTriggers() {
+        return triggers;
+    }
+
+    void setTriggers(String triggers) {
+        this.triggers = triggers;
     }
 
     public Long getId() {
