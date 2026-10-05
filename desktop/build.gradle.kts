@@ -13,12 +13,6 @@ val javafxPlatform = when {
     osName.contains("mac") -> if (osArch.contains("aarch64")) "mac-aarch64" else "mac"
     else -> if (osArch.contains("aarch64")) "linux-aarch64" else "linux"
 }
-// Native SIMD-Routinen von Jlama; für Linux/aarch64 gibt es keine – dort rechnet Jlama mit der Vector API allein
-val jlamaNativePlatform = when {
-    osName.contains("win") -> "windows-x86_64"
-    osName.contains("mac") -> if (osArch.contains("aarch64")) "osx-aarch_64" else "osx-x86_64"
-    else -> if (osArch.contains("aarch64")) null else "linux-x86_64"
-}
 
 dependencies {
     // Backend (GraphQL, Benutzer, Profile, Projekte, Skills): eingebettet ohne eingetragenen Team-Server
@@ -76,12 +70,6 @@ dependencies {
 
     // Ticket-Klassifizierung: Einschätzung der Komplexität über die Claude API (offizielles Java-SDK)
     implementation("com.anthropic:anthropic-java:2.68.0")
-
-    // Web-Abruf: HTML → Text (jsoup) und Zusammenfassung mit einem lokalen LLM (Jlama, LLM-Inferenz in reinem Java).
-    // Jlama braucht die Vector API (Inkubator-Modul) und läuft deshalb in einem eigenen JVM-Prozess (LocalLlm).
-    implementation("org.jsoup:jsoup:1.23.2")
-    implementation("com.github.tjake:jlama-core:0.8.4")
-    jlamaNativePlatform?.let { runtimeOnly("com.github.tjake:jlama-native:0.8.4:$it") }
 
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")

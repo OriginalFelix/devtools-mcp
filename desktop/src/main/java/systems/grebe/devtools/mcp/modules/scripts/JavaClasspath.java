@@ -18,14 +18,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Klassenpfad für {@code javac}, damit Java-Skripte gegen die Klassen der App übersetzt werden können – und für
- * Hilfsprozesse, die Klassen der App in einer eigenen JVM starten (z.B. das lokale LLM des Web-Moduls). In der
+ * Klassenpfad für {@code javac}, damit Java-Skripte gegen die Klassen der App übersetzt werden können. In der
  * Entwicklung (IDE, {@code bootRun}, Tests) ist das einfach {@code java.class.path}. Läuft die App als Spring-Boot-Jar
  * ({@code java -jar devtools-mcp.jar}), liegen die Bibliotheken verschachtelt unter {@code BOOT-INF/lib/} – damit kann
  * {@code javac} nichts anfangen. Dann werden Klassen und Bibliotheken einmal je Jar-Version in einen Ordner unter
  * {@code java.io.tmpdir} entpackt und von dort verwendet.
  */
-public final class JavaClasspath {
+final class JavaClasspath {
 
     private static final Logger LOG = LoggerFactory.getLogger(JavaClasspath.class);
     private static volatile String cached;
@@ -33,8 +32,7 @@ public final class JavaClasspath {
     private JavaClasspath() {
     }
 
-    /** Klassenpfad der App als Dateipfade (bei Bedarf einmalig entpackt). */
-    public static String get() {
+    static String get() {
         String cp = cached;
         if (cp == null) {
             synchronized (JavaClasspath.class) {
