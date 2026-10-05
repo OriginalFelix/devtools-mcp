@@ -12,12 +12,17 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.PixelFormat;
 import javafx.scene.image.WritableImage;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
@@ -39,7 +44,7 @@ final class WindowPickerDialog {
     private static final double TILE_W = 240;
     private static final double TILE_H = 150;
     private static final double PREVIEW_W = 820;
-    private static final double PREVIEW_H = 440;
+    private static final double PREVIEW_H = 360;
 
     private final Stage stage = new Stage();
     private final BorderPane root = new BorderPane();
@@ -109,10 +114,12 @@ final class WindowPickerDialog {
         loadPreview(c, image, PREVIEW_W, PREVIEW_H);
         Label title = new Label(title(c));
         title.getStyleClass().add("window-title");
-        Label details = new Label(c.processName() + " · PID " + c.pid()
-                + (c.executable() == null ? "" : "\n" + c.executable()));
-        details.getStyleClass().add("form-help");
-        details.setWrapText(true);
+        GridPane details = new GridPane();
+        details.setHgap(8);
+        details.setVgap(4);
+        copyable(details, 0, "Name", c.processName());
+        copyable(details, 1, "PID", String.valueOf(c.pid()));
+        copyable(details, 2, "Pfad", c.executable() == null ? "(unbekannt)" : c.executable());
 
         Button back = new Button("Zurück");
         back.setCancelButton(true);
@@ -126,6 +133,25 @@ final class WindowPickerDialog {
         });
         root.setCenter(new VBox(8, image, title, details));
         root.setBottom(buttons(back, add));
+    }
+
+    /** Eine Zeile „Beschriftung · Wert · Kopieren“; der Wert ist markierbar, der Button kopiert ihn ganz. */
+    private static void copyable(GridPane grid, int row, String label, String value) {
+        Label name = new Label(label);
+        name.getStyleClass().add("form-label");
+        TextField field = new TextField(value);
+        field.setEditable(false);
+        field.setFocusTraversable(false);
+        GridPane.setHgrow(field, Priority.ALWAYS);
+        Button copy = new Button("Kopieren");
+        copy.setTooltip(new Tooltip(label + " in die Zwischenablage kopieren"));
+        copy.setOnAction(e -> {
+            ClipboardContent content = new ClipboardContent();
+            content.putString(value);
+            Clipboard.getSystemClipboard().setContent(content);
+            copy.setText("Kopiert");
+        });
+        grid.addRow(row, name, field, copy);
     }
 
     private static HBox buttons(Button... buttons) {
