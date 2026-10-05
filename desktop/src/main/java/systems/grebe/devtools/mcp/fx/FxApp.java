@@ -18,6 +18,7 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 import systems.grebe.devtools.mcp.modules.visualvm.VisualVmModule;
@@ -28,6 +29,7 @@ import systems.grebe.devtools.mcp.ui.AppIcons;
 import systems.grebe.devtools.mcp.ui.ArtifactsView;
 import systems.grebe.devtools.mcp.ui.BackendView;
 import systems.grebe.devtools.mcp.ui.MainView;
+import systems.grebe.devtools.mcp.ui.MemoriesView;
 import systems.grebe.devtools.mcp.ui.PluginsView;
 import systems.grebe.devtools.mcp.ui.ScriptsView;
 import systems.grebe.devtools.mcp.ui.SkillsView;
@@ -73,6 +75,7 @@ public class FxApp extends Application {
         BackendConnection backend = context.getBean(BackendConnection.class);
         MainView view = new MainView(registry, log, store, endpoint, stage, List.of(
                 new Tab("Skills", skillsView(backend)),
+                new Tab("Memories", memoriesView(backend)),
                 new Tab("Skripte", scriptsView(backend, registry)),
                 new Tab("Artefakte", new ArtifactsView(context.getBean(JavaEnvironmentProvider.class), getHostServices(),
                         context.getBean(VisualVmModule.class)::openFile)),
@@ -107,6 +110,13 @@ public class FxApp extends Application {
     /** Skills-Ansicht; lädt neu, wenn sich Konto oder Verbindung ändern. */
     private SkillsView skillsView(BackendConnection backend) {
         SkillsView v = new SkillsView(context.getBean(SkillBackend.class), backend::me);
+        backend.addListener(() -> Platform.runLater(v::refresh));
+        return v;
+    }
+
+    /** Memories-Ansicht; lädt neu, wenn sich Konto oder Verbindung ändern. */
+    private MemoriesView memoriesView(BackendConnection backend) {
+        MemoriesView v = new MemoriesView(context.getBean(MemoryBackend.class));
         backend.addListener(() -> Platform.runLater(v::refresh));
         return v;
     }

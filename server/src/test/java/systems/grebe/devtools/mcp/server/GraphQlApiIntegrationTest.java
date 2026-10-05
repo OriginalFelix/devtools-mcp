@@ -306,6 +306,29 @@ class GraphQlApiIntegrationTest {
     }
 
     @Test
+    void memoriesBelongToTheTokenUser() {
+        String ja = token(newUser());
+        String jb = token(newUser());
+        String saved = mutation(ja, """
+                mutation($t: String!, $c: String!, $r: String) { saveMemory(title: $t, content: $c, reference: $r) }""",
+                Map.of("t", "Ticket GQL-1 reviewt", "c", "Freigegeben.", "r", "GQL-1"), "saveMemory");
+        assertThat(saved).matches("Memory #\\d+ gespeichert\\.");
+        long id = Long.parseLong(saved.replaceAll("\\D", ""));
+
+        assertThat(client(ja).document("{ memorySearch(query: \"gql-1\") }").retrieveSync("memorySearch")
+                .toEntity(String.class)).contains("Ticket GQL-1 reviewt");
+        assertThat(client(jb).document("{ memorySearch(query: \"gql-1\") }").retrieveSync("memorySearch")
+                .toEntity(String.class)).contains("Keine Memories");
+        assertThat(client(ja).document("query($id: Int!) { memory(id: $id) { title reference tags } }")
+                .variables(Map.of("id", id)).retrieveSync("memory.reference").toEntity(String.class))
+                .isEqualTo("GQL-1");
+        assertThat(errorType(client(jb).document("mutation($id: Int!) { deleteMemory(id: $id) }")
+                .variables(Map.of("id", id)).executeSync())).isEqualTo("BAD_REQUEST");
+        assertThat(client(jb).document("{ memoryCount }").retrieveSync("memoryCount").toEntity(Integer.class))
+                .isZero();
+    }
+
+    @Test
     void scriptsBelongToTheTokenUserAndAreSyntaxChecked() {
         String ja = token(newUser());
         String jb = token(newUser());

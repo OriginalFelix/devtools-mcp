@@ -35,7 +35,8 @@ public class SkillReviewTracker implements ToolCallListener {
 
     /** Tools, die als Skill-Pflege zählen und den Zähler zurücksetzen. */
     static final Set<String> MAINTENANCE = Set.of("skills_create", "skills_patch", "skills_update",
-            "skills_write_file", "skills_remove_file", "skills_delete", "skills_review");
+            "skills_write_file", "skills_remove_file", "skills_delete", "skills_review", "memories_save",
+            "memories_update");
     static final Set<String> WRITES = Set.of("skills_create", "skills_patch", "skills_update",
             "skills_write_file", "skills_remove_file", "skills_delete");
     static final String NO_SESSION = "_";
@@ -120,23 +121,31 @@ public class SkillReviewTracker implements ToolCallListener {
             }
         }
         // Datenbankzugriff außerhalb des Locks
-        String appended = (intro ? intro(librarySize()) : "") + (calls > 0 ? nudge(calls) : "");
+        boolean memories = memoriesAvailable();
+        String appended = (intro ? intro(librarySize(), memories) : "") + (calls > 0 ? nudge(calls, memories) : "");
         return appended.isEmpty() ? result : result + appended;
     }
 
     static String nudge(int calls) {
-        return "\n\n---\n[DevTools-Skills] " + calls + " Tool-Aufrufe in dieser Session seit der letzten Skill-Pflege. "
-                + "Korrekturen des Nutzers, Workarounds und Wege nach Fehlversuchen bleiben nur erhalten, wenn sie nach "
-                + "Abschluss der Aufgabe mit skills_patch oder skills_create gespeichert werden; skills_review liefert "
-                + "die Checkliste dafür.";
+        return nudge(calls, false);
+    }
+
+    static String nudge(int calls, boolean memories) {
+        return "\n\n---\n[DevTools-Skills] " + calls + " Tool-Aufrufe seit der letzten Skill-Pflege. Korrekturen, "
+                + "Workarounds und Wege nach Fehlversuchen bleiben nur per skills_patch/skills_create erhalten "
+                + "(Checkliste: skills_review)" + (memories ? ", die erledigte Aktion selbst per memories_save." : ".");
+    }
+
+    static String intro(int size) {
+        return intro(size, false);
     }
 
     /** Hinweis auf die Bibliothek; {@code size < 0} = Anzahl unbekannt. */
-    static String intro(int size) {
-        String library = size < 0 ? "vorhanden" : size == 0 ? "noch leer" : size + " Skill(s), per skills_list durchsuchbar";
-        return "\n\n---\n[DevTools-Skills] Skill-Bibliothek des Nutzers auf diesem Server: " + library + ". Sie ist das "
-                + "dauerhafte Gedächtnis für erprobte Abläufe, Fallstricke und Vorlieben; neu Gelerntes aus einer "
-                + "mehrstufigen Aufgabe landet dort über skills_create bzw. skills_patch (Checkliste: skills_review).";
+    static String intro(int size, boolean memories) {
+        String library = size < 0 ? "vorhanden" : size == 0 ? "noch leer" : size + " Skill(s)";
+        return "\n\n---\n[DevTools-Skills] Skill-Bibliothek des Nutzers auf diesem Server: " + library + ". Abläufe "
+                + "je Aufgabentyp findet skills_list, neu Gelerntes speichern skills_create/skills_patch"
+                + (memories ? "; frühere Aktionen findet memories_search." : ".");
     }
 
     /** Für den Nutzer sichtbare Skills, {@code -1} wenn nicht ermittelbar. */
@@ -175,6 +184,12 @@ public class SkillReviewTracker implements ToolCallListener {
             return 0;
         }
         return r.config(SkillsModule.ID).getInt(SkillsModule.REVIEW_INTERVAL, DEFAULT_INTERVAL);
+    }
+
+    /** Memories können gespeichert werden – dann nennen die Hinweise auch memories_save/memories_search. */
+    boolean memoriesAvailable() {
+        ToolRegistry r = registry == null ? null : registry.getIfAvailable();
+        return r != null && r.isToolActive("memories", "memories_save");
     }
 
     /** Nur erinnern, wenn das LLM auch reagieren kann (Review-Tool und Schreib-Tools aktiv). */

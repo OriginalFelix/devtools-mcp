@@ -20,7 +20,7 @@ import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 public class BackendSkills implements SkillBackend {
 
     private static final String SUMMARY = "name description category tags revision useCount lastUsedAt updatedAt "
-            + "fileCount scope templateRevision currentTemplateRevision";
+            + "fileCount scope templateRevision currentTemplateRevision triggers";
 
     private final BackendConnection backend;
 
@@ -82,25 +82,27 @@ public class BackendSkills implements SkillBackend {
 
     @Override
     public String create(String name, String description, String content, String category, List<String> tags,
-                         int maxContentChars) {
+                         List<String> triggers, int maxContentChars) {
         return text("""
                 mutation($name: String!, $description: String!, $content: String!, $category: String, \
-                $tags: [String!], $max: Int) { createSkill(name: $name, description: $description, content: $content, \
-                category: $category, tags: $tags, maxContentChars: $max) }""", "createSkill",
+                $tags: [String!], $triggers: [String!], $max: Int) { createSkill(name: $name, \
+                description: $description, content: $content, category: $category, tags: $tags, \
+                triggers: $triggers, maxContentChars: $max) }""", "createSkill",
                 args("name", name, "description", description, "content", content, "category", category,
-                        "tags", tags, "max", maxContentChars));
+                        "tags", tags, "triggers", triggers, "max", maxContentChars));
     }
 
     @Override
     public String update(String name, String description, String content, String category, List<String> tags,
-                         String note, Integer expectedRevision, int maxContentChars) {
+                         List<String> triggers, String note, Integer expectedRevision, int maxContentChars) {
         return text("""
                 mutation($name: String!, $description: String, $content: String, $category: String, $tags: [String!], \
-                $note: String, $rev: Int, $max: Int) { updateSkill(name: $name, description: $description, \
-                content: $content, category: $category, tags: $tags, note: $note, expectedRevision: $rev, \
-                maxContentChars: $max) }""", "updateSkill",
+                $triggers: [String!], $note: String, $rev: Int, $max: Int) { updateSkill(name: $name, \
+                description: $description, content: $content, category: $category, tags: $tags, \
+                triggers: $triggers, note: $note, expectedRevision: $rev, maxContentChars: $max) }""", "updateSkill",
                 args("name", name, "description", description, "content", content, "category", category,
-                        "tags", tags, "note", note, "rev", expectedRevision, "max", maxContentChars));
+                        "tags", tags, "triggers", triggers, "note", note, "rev", expectedRevision,
+                        "max", maxContentChars));
     }
 
     @Override

@@ -43,8 +43,9 @@ public final class ShellHints {
 
     public static final String DEBUG = " Breakpoint-Debugging immer über die debug_*-Tools, nicht mit `jdb` in der Shell.";
 
-    public static final String SKILLS = " Skills (wiederverwendbare Abläufe) immer über die skills_*-Tools lesen und "
-            + "pflegen, nicht als SKILL.md-Dateien in der Shell oder im Dateisystem.";
+    public static final String SKILLS = " Skills nur über skills_*-Tools, nicht als SKILL.md-Dateien.";
+
+    public static final String MEMORIES = " Memories nur über memories_*-Tools, nicht als Notizdateien.";
 
     public static final String SCRIPTS = " Eigene Tools als Groovy-Skripte immer über die scripts_*-Tools anlegen und "
             + "pflegen, nicht als Dateien im Dateisystem und nicht per `groovy` in der Shell ausführen.";

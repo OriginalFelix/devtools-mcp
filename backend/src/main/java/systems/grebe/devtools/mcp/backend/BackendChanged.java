@@ -19,7 +19,9 @@ public record BackendChanged(Topic topic, Set<Long> userIds) {
         /** Skills. */
         SKILLS,
         /** Groovy-Skripte. */
-        SCRIPTS
+        SCRIPTS,
+        /** Memories. */
+        MEMORIES
     }
 
     public static BackendChanged all(Topic topic) {

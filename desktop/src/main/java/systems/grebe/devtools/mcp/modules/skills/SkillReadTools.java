@@ -7,7 +7,8 @@ import systems.grebe.devtools.mcp.core.ShellHints;
 /** Lesende Skill-Tools: auflisten/suchen, laden, Historie. */
 public class SkillReadTools {
 
-    static final String NAME = "Skill-Name, z.B. 'wildfly-heap-leak' (Kleinbuchstaben, Ziffern, . _ -)";
+    static final String NAME = "Skill-Name, z.B. 'ticket-review'";
+    static final String FILE = "Zusatzdatei, z.B. 'references/api.md'; leer = Hauptinhalt";
 
     private final SkillBackend service;
 
@@ -16,30 +17,28 @@ public class SkillReadTools {
     }
 
     @Tool(name = "list", description = "VOR einer Aufgabe: gespeicherte Skills des Nutzers suchen. "
-            + "Listet die Skills des Nutzers und die globalen Vorlagen (markiert mit (global)) mit Beschreibung, Kategorie und Tags, optional gefiltert per Suchtext über Name, "
-            + "Beschreibung, Tags und Inhalt. VOR Beginn einer Aufgabe aufrufen und passende Skills mit skills_view "
-            + "laden – sie enthalten erprobte Abläufe, Befehle, Fallstricke und Vorlieben des Nutzers."
-            + ShellHints.SKILLS)
+            + "Skills sind registrierte Abläufe je Aufgabentyp (Schritte, Tool-Aufrufe, Fallstricke, Vorlieben). "
+            + "Sucht in Name, Beschreibung, Tags und Inhalt; genau ein Treffer kommt direkt mit Inhalt, sonst den "
+            + "passenden mit skills_view laden. Nennt ggf. auch passende Memories." + ShellHints.SKILLS)
     public String list(
-            @ToolParam(required = false, description = "Suchtext (Groß-/Kleinschreibung egal), z.B. 'heap' oder 'gradle'") String query,
-            @ToolParam(required = false, description = "Nur diese Kategorie, z.B. 'software-development'") String category) {
+            @ToolParam(required = false, description = "1–3 Stichworte, z.B. 'ticket review'") String query,
+            @ToolParam(required = false, description = "Nur diese Kategorie") String category) {
         return service.list(query, category);
     }
 
-    @Tool(name = "view", description = "Lädt einen gespeicherten Skill (erprobter Ablauf). Vollständig mit "
-            + "Metadaten, Inhalt und Liste der Zusatzdateien oder mit file_path eine einzelne Zusatzdatei. Die Anweisungen des Skills befolgen; ist er veraltet oder "
-            + "lückenhaft, nach der Aufgabe mit skills_patch korrigieren." + ShellHints.SKILLS)
+    @Tool(name = "view", description = "Lädt einen gespeicherten Skill (erprobter Ablauf). Anweisungen befolgen; "
+            + "Fehler oder Lücken danach mit skills_patch korrigieren." + ShellHints.SKILLS)
     public String view(
             @ToolParam(description = NAME) String name,
-            @ToolParam(required = false, description = "Zusatzdatei, z.B. 'references/api.md'; leer = Hauptinhalt") String file_path) {
+            @ToolParam(required = false, description = FILE) String file_path) {
         return service.view(name, file_path);
     }
 
-    @Tool(name = "history", description = "Änderungshistorie eines Skills (Revision, Zeitpunkt, Aktion, Notiz) oder "
-            + "mit revision den damaligen Stand von Beschreibung und Inhalt." + ShellHints.SKILLS)
+    @Tool(name = "history", description = "Änderungshistorie eines Skills oder mit revision der damalige Stand."
+            + ShellHints.SKILLS)
     public String history(
             @ToolParam(description = NAME) String name,
-            @ToolParam(required = false, description = "Revisionsnummer; leer = Übersicht") Integer revision) {
+            @ToolParam(required = false, description = "Revision; leer = Übersicht") Integer revision) {
         return service.history(name, revision);
     }
 }

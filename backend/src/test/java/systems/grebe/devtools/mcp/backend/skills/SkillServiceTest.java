@@ -78,18 +78,18 @@ class SkillServiceTest {
         createHeapSkill();
 
         assertThat(service.list(null, null))
-                .contains("software-development:", "wildfly-heap-leak: Verwenden, wenn der WildFly-Heap wächst.",
-                        "[wildfly, heap, leak-suche]");
+                .contains("software-development:", "wildfly-heap-leak – Verwenden, wenn der WildFly-Heap wächst.")
+                .doesNotContain("leak-suche"); // Tags nur für die Suche, nicht in der Liste
         // Suche über Name, Beschreibung, Tags und Inhalt, unabhängig von Groß-/Kleinschreibung
         assertThat(service.list("VISUALVM", null)).contains("wildfly-heap-leak");
         assertThat(service.list("leak-suche", null)).contains("wildfly-heap-leak");
         assertThat(service.list("heap", "software-development")).contains("wildfly-heap-leak");
-        assertThat(service.list("gradle", null)).contains("Keine Skills gefunden für 'gradle'");
-        assertThat(service.list(null, "devops")).contains("Keine Skills gefunden");
+        assertThat(service.list("gradle", null)).contains("Keine Skills für 'gradle'");
+        assertThat(service.list(null, "devops")).contains("Keine Skills in Kategorie 'devops'");
 
         assertThat(service.view("wildfly-heap-leak", null))
-                .startsWith("---\nname: wildfly-heap-leak\n")
-                .contains("category: software-development", "revision: 1", "1. jvm_heap zweimal vergleichen")
+                .startsWith("# wildfly-heap-leak · Revision 1\n\n## Schritte")
+                .contains("# wildfly-heap-leak · Revision 1", "1. jvm_heap zweimal vergleichen")
                 .doesNotContain("Zusatzdateien");
     }
 
@@ -116,7 +116,7 @@ class SkillServiceTest {
         assertThat(service.patch("wildfly-heap-leak", "2. visualvm_heap_analyze\n",
                 "2. visualvm_heap_analyze\n3. Pfad zur GC-Wurzel prüfen\n", null, null, "GC-Wurzel ergänzt", null, 5_000))
                 .contains("1 Stelle(n) ersetzt, Revision 2");
-        assertThat(service.view("wildfly-heap-leak", null)).contains("3. Pfad zur GC-Wurzel prüfen", "revision: 2");
+        assertThat(service.view("wildfly-heap-leak", null)).contains("3. Pfad zur GC-Wurzel prüfen", "Revision 2");
 
         assertThatThrownBy(() -> service.patch("wildfly-heap-leak", "gibt es nicht", "x", null, null, null, null, 5_000))
                 .hasMessageContaining("nicht vor").hasMessageContaining("skills_view");
@@ -147,7 +147,7 @@ class SkillServiceTest {
         // Patch ergäbe einen zu langen Inhalt: weder Inhalt noch Revision dürfen sich ändern
         assertThatThrownBy(() -> service.patch("wildfly-heap-leak", "Schritte", "x".repeat(5_000), null, null, null,
                 null, 5_000)).hasMessageContaining("max. 5000");
-        assertThat(service.view("wildfly-heap-leak", null)).contains("revision: 1", "## Schritte");
+        assertThat(service.view("wildfly-heap-leak", null)).contains("Revision 1", "## Schritte");
         assertThat(count("skill_revision")).isEqualTo(1);
     }
 
@@ -169,8 +169,11 @@ class SkillServiceTest {
         assertThat(service.update("wildfly-heap-leak", "Neue Beschreibung", null, "", List.of(), "aufgeräumt", null,
                 5_000)).contains("Revision 2");
         String view = service.view("wildfly-heap-leak", null);
-        assertThat(view).contains("description: Neue Beschreibung", "1. jvm_heap zweimal vergleichen")
-                .doesNotContain("category:", "tags:");
+        assertThat(view).contains("Revision 2", "1. jvm_heap zweimal vergleichen");
+        assertThat(service.details("wildfly-heap-leak").orElseThrow().summary())
+                .satisfies(s -> assertThat(s.description()).isEqualTo("Neue Beschreibung"))
+                .satisfies(s -> assertThat(s.category()).isNull())
+                .satisfies(s -> assertThat(s.tags()).isEmpty());
         assertThat(service.list(null, null)).contains("(ohne Kategorie):");
     }
 
@@ -220,7 +223,7 @@ class SkillServiceTest {
         service.view("wildfly-heap-leak", null);
         assertThat(jdbc.queryForObject("select use_count from skill where name = 'wildfly-heap-leak'", Long.class))
                 .isEqualTo(2);
-        assertThat(service.view("wildfly-heap-leak", null)).contains("revision: 1");
+        assertThat(service.view("wildfly-heap-leak", null)).contains("Revision 1");
     }
 
     @Test
@@ -320,5 +323,38 @@ class SkillServiceTest {
         });
         assertThat(service.details("verworfen")).isEmpty();
         assertThat(events).hasValue(6);
+    }
+
+    @Test
+    void triggersRegisterTheSkillForTools() {
+        assertThat(service.create("ticket-review", "Verwenden, wenn ein Ticket geprüft wird.", "1. ticket_get",
+                null, null, List.of("ticket_get", " PR_* ", "ticket_get"), 5_000))
+                .contains("registriert für ticket_get,pr_*");
+        assertThat(service.view("ticket-review", null)).contains("Registriert für: ticket_get, pr_*");
+        SkillViews.Summary s = service.overview().getFirst();
+        assertThat(s.triggers()).containsExactly("ticket_get", "pr_*");
+        assertThat(s.triggeredBy("ticket_get")).isTrue();
+        assertThat(s.triggeredBy("pr_diff")).isTrue();
+        assertThat(s.triggeredBy("ticket_search")).isFalse();
+
+        assertThat(service.update("ticket-review", null, null, null, null, List.of(), null, null, 5_000))
+                .contains("Revision 2");
+        assertThat(service.overview().getFirst().triggers()).isEmpty();
+        assertThatThrownBy(() -> service.update("ticket-review", null, null, null, null, List.of("git status"), null,
+                null, 5_000)).hasMessageContaining("Ungültiger Trigger");
+    }
+
+    @Test
+    void listLoadsASingleHitDirectlyAndShortensDescriptions() {
+        createHeapSkill();
+        service.create("long-one", "x".repeat(400), "inhalt", null, null, 5_000);
+
+        assertThat(service.list("visualvm", null)).startsWith("1 Skill für 'visualvm' – direkt geladen:")
+                .contains("# wildfly-heap-leak · Revision 1", "2. visualvm_heap_analyze");
+        assertThat(jdbc.queryForObject("select use_count from skill where name = 'wildfly-heap-leak'", Long.class))
+                .isEqualTo(1);
+        String all = service.list(null, null);
+        assertThat(all).contains("long-one – " + "x".repeat(150)).doesNotContain("x".repeat(160))
+                .doesNotContain("direkt geladen");
     }
 }
