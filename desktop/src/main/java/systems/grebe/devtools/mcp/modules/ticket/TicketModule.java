@@ -2,9 +2,12 @@ package systems.grebe.devtools.mcp.modules.ticket;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
 
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.config.SettingsStore;
@@ -14,6 +17,9 @@ import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.modules.classify.ClassifyModule;
+import systems.grebe.devtools.mcp.modules.classify.TaskClassifier;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 
@@ -43,31 +49,34 @@ public class TicketModule implements ToolModule {
     static final String ALLOW_DELETE = "allowDelete";
     static final String DELETE_ONLY_OWN = "deleteOnlyOwn";
     static final String ALLOW_CLASSIFY = "allowClassify";
-    static final String CLASSIFY_API_KEY = "classifyApiKey";
-    static final String CLASSIFY_BASE_URL = "classifyBaseUrl";
-    static final String CLASSIFY_EFFORT = "classifyEffort";
-    static final String CLASSIFY_MODEL_SIMPLE = "classifyModelSimple";
-    static final String CLASSIFY_MODEL_NORMAL = "classifyModelNormal";
-    static final String CLASSIFY_MODEL_COMPLEX = "classifyModelComplex";
-    static final String CLASSIFY_RULES = "classifyRules";
 
     private final TicketProviders providers;
     /** Über alle Konfigurationsänderungen hinweg dieselbe Instanz – sonst ginge die Zuordnung beim Umschalten verloren. */
     private final TicketOwnership ownership;
 
-    /** Für Tests: Verzeichnis selbst angelegter Tickets nur im Speicher. */
+    /** Einstellungen von ticket_classify – aus dem Modul Modellwahl, bei jedem Aufruf neu gelesen. */
+    private final Supplier<TaskClassifier.Settings> classifier;
+
+    /** Für Tests: Verzeichnis selbst angelegter Tickets nur im Speicher, Classifier mit Standardeinstellungen. */
     public TicketModule(TicketProviders providers) {
         this(providers, TicketOwnership.inMemory());
     }
 
-    @Autowired
-    public TicketModule(TicketProviders providers, SettingsStore store) {
-        this(providers, new TicketOwnership(store.file().toAbsolutePath().getParent().resolve("tickets-own.json")));
+    TicketModule(TicketProviders providers, TicketOwnership ownership) {
+        this(providers, ownership, () -> ClassifyModule.settings(
+                ModuleConfig.of(new ClassifyModule().configSchema(), Map.of())));
     }
 
-    TicketModule(TicketProviders providers, TicketOwnership ownership) {
+    @Autowired
+    public TicketModule(TicketProviders providers, SettingsStore store, ObjectProvider<ToolRegistry> registry) {
+        this(providers, new TicketOwnership(store.file().toAbsolutePath().getParent().resolve("tickets-own.json")),
+                () -> ClassifyModule.settings(registry.getObject().config(ClassifyModule.ID)));
+    }
+
+    TicketModule(TicketProviders providers, TicketOwnership ownership, Supplier<TaskClassifier.Settings> classifier) {
         this.providers = providers;
         this.ownership = ownership;
+        this.classifier = classifier;
     }
 
     TicketEnvironment environment(ModuleConfig config) {
@@ -177,25 +186,8 @@ public class TicketModule implements ToolModule {
                                 + "(gemerkt in tickets-own.json)."),
                 ConfigField.of(ALLOW_CLASSIFY, "Komplexität einschätzen (ticket_classify)", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("Pre-Classifier: schätzt Tickets mit Claude Opus 5.5 ein und empfiehlt das Modell für die "
-                                + "Umsetzung. Sendet Titel, Beschreibung, Kommentare und Kontext an die Claude API (kostenpflichtig)."),
-                ConfigField.of(CLASSIFY_API_KEY, "Claude API-Key", FieldType.SECRET)
-                        .withHelp("Für ticket_classify (console.anthropic.com → API Keys). Leer = ANTHROPIC_API_KEY bzw. "
-                                + "Anmeldung per `ant auth login`. Wird verschlüsselt gespeichert."),
-                ConfigField.of(CLASSIFY_BASE_URL, "Claude API-URL", FieldType.URL)
-                        .withHelp("Leer = https://api.anthropic.com. Nur für ein Gateway/Proxy der Firma."),
-                ConfigField.of(CLASSIFY_EFFORT, "Gründlichkeit der Einschätzung", FieldType.ENUM).withDefault("high")
-                        .withOptions(TicketClassifier.EFFORTS.toArray(String[]::new))
-                        .withHelp("Effort von Claude Opus 5.5: höher = gründlicher, langsamer und teurer."),
-                ConfigField.of(CLASSIFY_MODEL_SIMPLE, "Modell für einfache Tickets", FieldType.STRING)
-                        .withDefault(TicketClassifier.DEFAULT_SIMPLE),
-                ConfigField.of(CLASSIFY_MODEL_NORMAL, "Modell für normale Tickets", FieldType.STRING)
-                        .withDefault(TicketClassifier.DEFAULT_NORMAL)
-                        .withHelp("z.B. claude-sonnet-4-5 oder claude-sonnet-5-5"),
-                ConfigField.of(CLASSIFY_MODEL_COMPLEX, "Modell für komplexe Tickets", FieldType.STRING)
-                        .withDefault(TicketClassifier.DEFAULT_COMPLEX),
-                ConfigField.of(CLASSIFY_RULES, "Regeln für die Einschätzung", FieldType.STRING_LIST)
-                        .withHelp("Eine Regel je Zeile, gehen den allgemeinen Kriterien vor, z.B. „Änderungen am Lohnmodul "
-                                + "sind immer komplex“ oder „Reine Übersetzungs-Tickets sind einfach“.")));
+                                + "Umsetzung. Sendet Titel, Beschreibung, Kommentare und Kontext an die Claude API "
+                                + "(kostenpflichtig). API-Key, Modelle je Stufe und Regeln: Modul Modellwahl.")));
         return fields;
     }
 
@@ -222,17 +214,9 @@ public class TicketModule implements ToolModule {
             beans.add(new TicketDeleteTools(env, config.getBoolean(DELETE_ONLY_OWN)));
         }
         if (config.getBoolean(ALLOW_CLASSIFY)) {
-            beans.add(new TicketClassifyTools(env, new TicketClassifier(classifierSettings(config))));
+            beans.add(new TicketClassifyTools(env, () -> new TaskClassifier(classifier.get())));
         }
         return List.of(ToolCallbacks.from(beans.toArray()));
-    }
-
-    static TicketClassifier.Settings classifierSettings(ModuleConfig config) {
-        return new TicketClassifier.Settings(config.get(CLASSIFY_API_KEY).orElse(null),
-                config.get(CLASSIFY_BASE_URL).orElse(null), config.getString(CLASSIFY_EFFORT, "high"),
-                TicketClassifier.Settings.models(config.getString(CLASSIFY_MODEL_SIMPLE, ""),
-                        config.getString(CLASSIFY_MODEL_NORMAL, ""), config.getString(CLASSIFY_MODEL_COMPLEX, "")),
-                config.getList(CLASSIFY_RULES));
     }
 
     @Override

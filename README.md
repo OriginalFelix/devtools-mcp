@@ -21,6 +21,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
+| **Modellwahl** (Claude API) | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität immer mit Claude Opus 5.5 einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus); Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
@@ -104,27 +105,30 @@ der Parameter `provider`. Ein weiteres System (z.B. Redmine) braucht eine `Ticke
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`; `spi/HttpJson`
 (JSON über HTTP mit verständlichen Fehlermeldungen) steht Providern – auch aus Plugins – zur Verfügung.
 
-### Ticket-Komplexität einschätzen (`ticket_classify`)
+### Modellwahl: Komplexität einschätzen (`classify_task`, `ticket_classify`)
 
-Pre-Classifier vor der Umsetzung: `ticket_classify` liest das Ticket (Titel, Beschreibung, Typ, Priorität, Status, Labels,
-Story Points, weitere Felder wie Komponenten, die neuesten 10 Kommentare und die Verknüpfungen) und lässt es **immer von
-Claude Opus 5.5** (`claude-opus-5-5`, offizielles Java-SDK, Structured Output) einschätzen. Das aufrufende LLM gibt in
-`context` den Architektur-Kontext aus dem Code mit (betroffene Module, Schichten, Technologien); ohne `key` lassen sich auch
-Aufgaben aus `title`/`description` einschätzen. Ergebnis: Stufe, Sicherheit, Begründung, Faktoren, Risiken, offene Fragen
-und das **empfohlene Modell** für die Umsetzung:
+Pre-Classifier vor der Umsetzung: Die Aufgabe wird **immer von Claude Opus 5.5** (`claude-opus-5-5`, offizielles
+Java-SDK, Structured Output) eingeschätzt. Ergebnis sind Stufe, Sicherheit, Begründung, Faktoren, Risiken, offene Fragen
+und das **empfohlene Modell** für die Umsetzung, z.B. als Modell eines Subagenten:
 
 | Stufe | Typisch | Modell (Standard, einstellbar) |
 |---|---|---|
-| einfach | lokale, eindeutige Änderung (Texte, Konfiguration, Bugfix mit bekannter Ursache) | `claude-haiku-4-5` |
-| normal | Feature/Bugfix über mehrere Dateien eines Moduls nach bestehenden Mustern | `claude-sonnet-4-5` |
-| komplex | modulübergreifend, Architektur, Migrationen, Nebenläufigkeit, Sicherheit, vage Anforderungen | `claude-opus-5-5` |
+| einfach | klar umrissen, wenige Schritte, leicht prüfbar (Texte, Konfiguration, Bugfix mit bekannter Ursache) | `claude-haiku-4-5` |
+| normal | mehrere Schritte nach bekannten Mustern (Feature in einem Modul, strukturierte Analyse) | `claude-sonnet-4-5` |
+| komplex | modulübergreifend, Architektur, Migrationen, Nebenläufigkeit, Sicherheit, vage Anforderungen, teure Fehler | `claude-opus-5-5` |
 
-Story Points zählen als Hinweis, nicht als Regel; zwischen zwei Stufen wählt der Classifier die höhere. Jira-Story-Points
-(Custom Field, je Instanz andere ID) erkennt das Modul über `/rest/api/2/field`, GitLab liefert das Gewicht, YouTrack und
-OpenProject ihre Felder. Eingeschaltet wird das Tool mit „Komplexität einschätzen“ (Standard aus – die Ticket-Inhalte gehen
-an die Claude API); dazu „Claude API-Key“ (leer = `ANTHROPIC_API_KEY` bzw. `ant auth login`), optional eine API-URL für ein
-Gateway, die Gründlichkeit (Effort, Standard `high`), die Modelle je Stufe und eigene **Regeln** des Teams (eine je Zeile,
-z.B. „Änderungen am Lohnmodul sind immer komplex“), die den allgemeinen Kriterien vorgehen.
+* `classify_task` (Modul **Modellwahl**) bewertet eine beliebige Aufgabe: `task` (Beschreibung), optional `title`, `kind`
+  (Feature, Analyse, Text …), `scope` (Umfang) und `context` (Projekt, Architektur, Randbedingungen).
+* `ticket_classify` (Modul **Tickets**, Schalter „Komplexität einschätzen“) lädt das Ticket selbst: Titel, Beschreibung,
+  Typ, Priorität, Status, Labels, Story Points, weitere Felder wie Komponenten, die neuesten 10 Kommentare und die
+  Verknüpfungen; `context` ergänzt den Architektur-Kontext aus dem Code. Jira-Story-Points (Custom Field, je Instanz
+  andere ID) erkennt das Modul über `/rest/api/2/field`, GitLab liefert das Gewicht, YouTrack und OpenProject ihre Felder.
+
+Story Points zählen als Hinweis, nicht als Regel; zwischen zwei Stufen wählt der Classifier die höhere. Die Einstellungen
+für beide Tools liegen im Modul Modellwahl (Standard aus – die Inhalte gehen an die Claude API): „Claude API-Key“ (leer =
+`ANTHROPIC_API_KEY` bzw. `ant auth login`), optional eine API-URL für ein Gateway, die Gründlichkeit (Effort, Standard
+`high`), die Modelle je Stufe und eigene **Regeln** des Teams (eine je Zeile, z.B. „Änderungen am Lohnmodul sind immer
+komplex“), die den allgemeinen Kriterien vorgehen. „Verbindung testen“ prüft Key und Modell, ohne Token zu verbrauchen.
 
 ### Git-Server und Pull Requests (ServiceLoader)
 

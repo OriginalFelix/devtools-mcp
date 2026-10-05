@@ -1,25 +1,32 @@
 package systems.grebe.devtools.mcp.modules.ticket;
 
-import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.Text;
-import systems.grebe.devtools.mcp.modules.ticket.TicketClassifier.Complexity;
+import systems.grebe.devtools.mcp.modules.classify.TaskClassifier;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 
-/** Pre-Classifier: Komplexität eines Tickets mit Claude Opus 5.5 einschätzen und das Modell für die Umsetzung empfehlen. */
+/**
+ * Pre-Classifier für Tickets: lädt das Ticket und lässt es vom {@link TaskClassifier} (Claude Opus 5.5) einschätzen.
+ * API-Key, Modelle je Stufe und Regeln kommen aus dem Modul Modellwahl.
+ */
 class TicketClassifyTools {
 
     /** Kommentare, die in die Einschätzung eingehen – mehr als bei ticket_get, Diskussionen verraten oft den Umfang. */
     private static final int COMMENTS = 10;
+    private static final Pattern STORY_POINTS = Pattern.compile("(?i)story[ _-]?points?|^gewicht$|^weight$");
 
     private final TicketEnvironment env;
-    private final TicketClassifier classifier;
+    private final Supplier<TaskClassifier> classifier;
 
-    TicketClassifyTools(TicketEnvironment env, TicketClassifier classifier) {
+    TicketClassifyTools(TicketEnvironment env, Supplier<TaskClassifier> classifier) {
         this.env = env;
         this.classifier = classifier;
     }
@@ -27,8 +34,8 @@ class TicketClassifyTools {
     @Tool(name = "classify", description = "Pre-Classifier vor der Umsetzung eines Tickets: schätzt die Komplexität "
             + "(Titel, Beschreibung, Typ, Priorität, Story Points, Labels, Kommentare, Verknüpfungen, Projekt und "
             + "Architektur-Kontext) immer mit Claude Opus 5.5 ein und empfiehlt das Modell für die Umsetzung: einfach → "
-            + "Haiku, normal → Sonnet, komplex → Opus (Zuordnung in der App einstellbar). Mit dem empfohlenen Modell den "
-            + "Subagenten bzw. die Sitzung für die Umsetzung wählen. Ohne 'key' für Aufgaben außerhalb eines "
+            + "Haiku, normal → Sonnet, komplex → Opus (Zuordnung im Modul Modellwahl einstellbar). Mit dem empfohlenen "
+            + "Modell den Subagenten bzw. die Sitzung für die Umsetzung wählen. Ohne 'key' für Aufgaben außerhalb eines "
             + "Ticket-Systems: 'title' und 'description' angeben. Sendet die Ticket-Inhalte an die Claude API."
             + ShellHints.TICKET)
     public String classify(
@@ -44,37 +51,59 @@ class TicketClassifyTools {
                     + "Schichten, Schnittstellen, Technologien, Größe des Repositories, bekannte Fallstricke. Je genauer, "
                     + "desto besser die Einschätzung (z.B. aus graph_report oder dem Lesen des Codes).") String context,
             @ToolParam(required = false, description = TicketTools.PROVIDER) String provider) {
-        TicketClassifier.Input in = blank(key)
-                ? freeText(project, title, description, storyPoints, context)
-                : fromTicket(key.trim(), project, description, storyPoints, context, provider);
-        TicketClassifier.Result r = classifier.classify(in);
-        return format(in, r, classifier.settings());
-    }
-
-    private TicketClassifier.Input freeText(String project, String title, String description, String storyPoints,
-                                            String context) {
-        if (blank(title)) {
-            throw new IllegalArgumentException("Weder 'key' noch 'title' angegeben – Ticket-Schlüssel oder Titel und "
-                    + "Beschreibung der Aufgabe übergeben.");
+        TaskClassifier.Input in;
+        String heading;
+        if (blank(key)) {
+            if (blank(title)) {
+                throw new IllegalArgumentException("Weder 'key' noch 'title' angegeben – Ticket-Schlüssel oder Titel und "
+                        + "Beschreibung der Aufgabe übergeben.");
+            }
+            Map<String, String> attributes = new LinkedHashMap<>();
+            put(attributes, "Projekt", project);
+            put(attributes, "Story Points", storyPoints);
+            in = new TaskClassifier.Input(title.trim(), description, attributes, null, null, context);
+            heading = "Aufgabe: " + title.trim();
+        } else {
+            in = fromTicket(key.trim(), project, description, storyPoints, context, provider);
+            heading = in.attributes().get("Ticket") + ": " + in.title();
         }
-        return new TicketClassifier.Input(null, trimOrNull(project), title.trim(), null, null, null, List.of(),
-                trimOrNull(storyPoints), null, description, List.of(), List.of(), context);
+        TaskClassifier c = classifier.get();
+        return TaskClassifier.format(heading, c.classify(in), c.settings());
     }
 
-    private TicketClassifier.Input fromTicket(String key, String project, String description, String storyPoints,
-                                              String context, String provider) {
+    private TaskClassifier.Input fromTicket(String key, String project, String description, String storyPoints,
+                                            String context, String provider) {
         TicketEnvironment.Entry e = env.resolve(provider, key);
         String p = e.project(project);
         TicketSystem.TicketDetails d = e.system().ticket(key, p, COMMENTS);
         TicketSystem.Ticket t = d.ticket();
+        String proj = e.system().projectOf(key, p);
+        Map<String, String> attributes = new LinkedHashMap<>();
+        put(attributes, "Ticket", t.key());
+        put(attributes, "System", e.provider().displayName());
+        put(attributes, "Projekt", proj == null ? p : proj);
+        put(attributes, "Typ", t.type());
+        put(attributes, "Priorität", t.priority());
+        put(attributes, "Status", t.status());
+        put(attributes, "Labels", t.labels().isEmpty() ? null : String.join(", ", t.labels()));
+        put(attributes, "Story Points", blank(storyPoints) ? storyPoints(d.fields()) : storyPoints);
+        d.fields().forEach((k, v) -> attributes.putIfAbsent(k, v));
         List<String> comments = d.comments().stream()
                 .filter(c -> !blank(c.body()))
                 .map(c -> Text.orDash(c.author()) + ": " + c.body().strip()).toList();
         String desc = blank(description) ? d.description()
                 : (blank(d.description()) ? "" : d.description().strip() + "\n\n") + "Ergänzung: " + description.strip();
-        String proj = e.system().projectOf(key, p);
-        return new TicketClassifier.Input(t.key(), proj == null ? p : proj, t.title(), t.type(), t.priority(), t.status(),
-                t.labels(), trimOrNull(storyPoints), d.fields(), desc, comments, links(e, key, p), context);
+        return new TaskClassifier.Input(t.title(), desc, attributes, comments, links(e, key, p), context);
+    }
+
+    /** Story Points aus den Feldern des Systems (Jira „Story Points“, YouTrack „Story points“, GitLab „Gewicht“ …). */
+    static String storyPoints(Map<String, String> fields) {
+        for (Map.Entry<String, String> f : fields.entrySet()) {
+            if (STORY_POINTS.matcher(f.getKey().strip()).find() && !blank(f.getValue())) {
+                return f.getValue().strip();
+            }
+        }
+        return null;
     }
 
     /** Verknüpfungen, soweit das System sie liefert – fehlen sie, wird ohne eingeschätzt. */
@@ -88,45 +117,10 @@ class TicketClassifyTools {
         }
     }
 
-    static String format(TicketClassifier.Input in, TicketClassifier.Result r, TicketClassifier.Settings s) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(in.key() == null ? "Aufgabe" : in.key()).append(": ").append(in.title()).append('\n');
-        sb.append("Komplexität: ").append(r.complexity().label()).append(" (Sicherheit: ").append(confidence(r.confidence()))
-                .append(")\n");
-        sb.append("Empfohlenes Modell: ").append(r.model()).append('\n');
-        if (!blank(r.summary())) {
-            sb.append("\n").append(r.summary()).append('\n');
+    private static void put(Map<String, String> m, String k, String v) {
+        if (!blank(v)) {
+            m.put(k, v.strip());
         }
-        list(sb, "Faktoren", r.factors());
-        list(sb, "Risiken", r.risks());
-        list(sb, "Offene Fragen", r.openQuestions());
-        List<String> stages = new ArrayList<>();
-        for (Complexity c : Complexity.values()) {
-            stages.add(c.label() + " → " + s.model(c));
-        }
-        sb.append("\nEingeschätzt mit ").append(TicketClassifier.MODEL).append(" (effort ").append(r.effort())
-                .append(", ").append(r.inputTokens()).append(" Token ein / ").append(r.outputTokens()).append(" aus). ")
-                .append("Zuordnung: ").append(String.join(", ", stages)).append('.');
-        return sb.toString();
-    }
-
-    private static String confidence(String c) {
-        return switch (c == null ? "" : c) {
-            case "low" -> "niedrig";
-            case "high" -> "hoch";
-            default -> "mittel";
-        };
-    }
-
-    private static void list(StringBuilder sb, String title, List<String> items) {
-        if (!items.isEmpty()) {
-            sb.append('\n').append(title).append(":\n");
-            items.forEach(i -> sb.append("- ").append(i).append('\n'));
-        }
-    }
-
-    private static String trimOrNull(String s) {
-        return blank(s) ? null : s.trim();
     }
 
     private static boolean blank(String s) {
