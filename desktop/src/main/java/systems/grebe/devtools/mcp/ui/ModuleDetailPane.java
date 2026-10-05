@@ -110,7 +110,7 @@ public class ModuleDetailPane extends ScrollPane {
         } else {
             enabled.setVisible(false);
             enabled.setManaged(false);
-            configTitle.setText("Einstellungen (gelten für alle Java-Diagnosemodule)");
+            configTitle.setText("Einstellungen (gelten für mehrere Module)");
         }
 
         this.formHolder = formHolder;

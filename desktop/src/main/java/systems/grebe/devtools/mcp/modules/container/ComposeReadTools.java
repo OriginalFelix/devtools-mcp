@@ -10,6 +10,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.Workspaces;
 
 /** Lesender Zugriff auf Compose-Projekte in freigegebenen Verzeichnissen. */
 public class ComposeReadTools {
@@ -27,6 +28,9 @@ public class ComposeReadTools {
     public String projects() {
         StringBuilder sb = new StringBuilder();
         env.composeProjects().forEach((n, p) -> sb.append("- ").append(n).append(": ").append(p).append('\n'));
+        if (Workspaces.unrestricted()) {
+            sb.append("Alle Verzeichnisse sind freigegeben – weitere Compose-Projekte per absolutem Pfad angeben.");
+        }
         return sb.isEmpty() ? "Keine Compose-Projekte konfiguriert." : sb.toString().strip();
     }
 

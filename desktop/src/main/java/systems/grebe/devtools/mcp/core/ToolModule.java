@@ -2,6 +2,7 @@ package systems.grebe.devtools.mcp.core;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 import org.springframework.ai.tool.ToolCallback;
@@ -83,6 +84,15 @@ public interface ToolModule {
      */
     default boolean hasTools() {
         return true;
+    }
+
+    /**
+     * Verzeichnislisten ({@link FieldType#DIRECTORY_LIST}), die zusätzlich die global freigegebenen Verzeichnisse aus
+     * dem Modul „Freigaben“ ({@link AccessModule}) bekommen – für Module, die über {@link Workspaces} auf
+     * Projektverzeichnisse zugreifen. Standard keine.
+     */
+    default Set<String> sharedDirectoryFields() {
+        return Set.of();
     }
 
     /** Sortierung in der Modulliste (aufsteigend, danach Anzeigename). */

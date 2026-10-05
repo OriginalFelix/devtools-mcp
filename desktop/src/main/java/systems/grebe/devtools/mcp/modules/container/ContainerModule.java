@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 import org.springframework.ai.support.ToolCallbacks;
@@ -15,6 +16,7 @@ import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
 
@@ -110,6 +112,11 @@ public class ContainerModule implements ToolModule {
     }
 
     @Override
+    public Set<String> sharedDirectoryFields() {
+        return Set.of(COMPOSE_PROJECTS);
+    }
+
+    @Override
     public List<ConfigField> configSchema() {
         List<String> runtimeOptions = new ArrayList<>(List.of("auto"));
         runtimes.providers().forEach(p -> runtimeOptions.add(p.id()));
@@ -154,7 +161,8 @@ public class ContainerModule implements ToolModule {
     public List<ToolCallback> createTools(ModuleConfig config) {
         ContainerEnvironment env = new ContainerEnvironment(runtimes, config);
         List<Object> beans = new ArrayList<>(List.of(new ContainerReadTools(env)));
-        if (!env.composeProjects().isEmpty()) {
+        boolean compose = !env.composeProjects().isEmpty() || Workspaces.unrestricted();
+        if (compose) {
             beans.add(new ComposeReadTools(env));
         }
         if (config.getBoolean(ALLOW_EXEC)) {
@@ -172,7 +180,7 @@ public class ContainerModule implements ToolModule {
         if (config.getBoolean(ALLOW_REMOVE)) {
             beans.add(new ContainerRemoveTools(env));
         }
-        if (config.getBoolean(ALLOW_COMPOSE) && !env.composeProjects().isEmpty()) {
+        if (config.getBoolean(ALLOW_COMPOSE) && compose) {
             beans.add(new ComposeWriteTools(env));
         }
         return List.of(ToolCallbacks.from(beans.toArray()));

@@ -40,6 +40,7 @@ public final class ToolScope implements AutoCloseable {
     private final String profileId;
     private final boolean admin;
     private volatile Predicate<Path> writable;
+    private volatile boolean unrestricted;
     private final Map<String, Object> state = new LinkedHashMap<>();
 
     public ToolScope(String id, String userId, String userName, String email, String profileId, boolean admin) {
@@ -99,6 +100,19 @@ public final class ToolScope implements AutoCloseable {
      */
     public void restrictWrites(Predicate<Path> value) {
         this.writable = value == null ? root -> true : value;
+    }
+
+    /**
+     * Ob Tools jedes Verzeichnis dieses Rechners verwenden dürfen statt nur der freigegebenen (Modul „Freigaben“).
+     * Der Schreibschutz aus {@link #restrictWrites} gilt trotzdem.
+     */
+    public boolean unrestricted() {
+        return unrestricted;
+    }
+
+    /** Hebt die Beschränkung auf freigegebene Verzeichnisse auf bzw. setzt sie wieder (siehe {@link Workspaces}). */
+    public void setUnrestricted(boolean value) {
+        this.unrestricted = value;
     }
 
     /**
