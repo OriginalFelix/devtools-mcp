@@ -200,7 +200,7 @@ class McpServerIntegrationTest {
                     Map.entry("decompile_", ShellHints.DECOMPILE), Map.entry("pr_", ShellHints.PR),
                     Map.entry("scripts_", ShellHints.SCRIPTS));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(171); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(172); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);

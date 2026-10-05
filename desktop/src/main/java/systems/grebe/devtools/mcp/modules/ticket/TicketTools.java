@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.ticket;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -282,6 +283,38 @@ public class TicketTools {
             }
             if (t.kind() != null) {
                 sb.append("  – ").append(t.kind());
+            }
+            sb.append('\n');
+        }
+        return Text.limitLines(sb.toString().strip(), env.maxLines());
+    }
+
+    @Tool(name = "worklogs", description = "Gebuchte Arbeitszeiten eines Tickets mit Tag, Dauer, Person, Tätigkeitsart "
+            + "und Beschreibung sowie der Summe: Jira-Worklogs, GitLab-Zeiterfassung, YouTrack-Arbeitselemente, "
+            + "OpenProject-Zeiteinträge." + ShellHints.TICKET)
+    public String worklogs(
+            @ToolParam(description = "Ticket-Schlüssel oder URL") String key,
+            @ToolParam(required = false, description = PROJECT) String project,
+            @ToolParam(required = false, description = PROVIDER) String provider) {
+        TicketEnvironment.Entry e = env.resolve(provider, key);
+        List<TicketSystem.WorkLogEntry> list = e.system().worklogs(key.trim(), e.project(project));
+        if (list.isEmpty()) {
+            return "Auf " + key.trim() + " ist keine Zeit gebucht.";
+        }
+        Duration total = list.stream().map(TicketSystem.WorkLogEntry::duration).reduce(Duration.ZERO, Duration::plus);
+        StringBuilder sb = new StringBuilder(list.size() + " Buchung(en) auf " + key.trim() + ", gesamt "
+                + TicketSystem.formatDuration(total) + ":\n");
+        for (TicketSystem.WorkLogEntry w : list) {
+            sb.append("- ").append(Text.orDash(w.date())).append("  ").append(TicketSystem.formatDuration(w.duration()))
+                    .append("  ").append(Text.orDash(w.author()));
+            if (w.activity() != null) {
+                sb.append("  [").append(w.activity()).append(']');
+            }
+            if (w.comment() != null && !w.comment().isBlank()) {
+                sb.append("  ").append(limit(w.comment().strip().replaceAll("\\s+", " "), 200));
+            }
+            if (w.id() != null) {
+                sb.append("  (Buchung ").append(w.id()).append(')');
             }
             sb.append('\n');
         }

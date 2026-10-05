@@ -1,5 +1,10 @@
 package systems.grebe.devtools.mcp.modules.ticket.spi;
 
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -70,6 +75,11 @@ public interface TicketSystem {
         throw unsupported("Verknüpfungen");
     }
 
+    /** Gebuchte Arbeitszeiten eines Tickets, chronologisch. Lesend – das Modul bietet es immer an. */
+    default List<WorkLogEntry> worklogs(String key, String project) {
+        throw unsupported("Zeiterfassung");
+    }
+
     // ------------------------------------------------------------------ Schreiben
     // Die Freigaben (allowComment, allowTransition …, Projekte) prüft das Modul vor dem Aufruf. Provider, die eine
     // Aktion nicht können, lassen den Default stehen – das Tool meldet es dann dem LLM.
@@ -103,6 +113,14 @@ public interface TicketSystem {
     /** Legt ein Ticket im Projekt an. */
     default WriteResult create(String project, NewTicket ticket) {
         throw unsupported("Anlegen");
+    }
+
+    /**
+     * Bucht Arbeitszeit auf ein Ticket (Jira-Worklog, GitLab-Timelog, YouTrack-Arbeitselement, OpenProject-Zeiteintrag).
+     * {@link WriteResult#id()} ist die ID der Buchung.
+     */
+    default WriteResult logTime(String key, String project, WorkLog work) {
+        throw unsupported("Zeiten buchen");
     }
 
     /** Löscht einen Kommentar eines Tickets. */
@@ -401,6 +419,51 @@ public interface TicketSystem {
             labels = labels == null ? List.of() : labels.stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
             assignees = assignees == null ? List.of() : assignees.stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
         }
+    }
+
+    /**
+     * Zu buchende Arbeitszeit.
+     *
+     * @param duration positiv, auf Minuten genau
+     * @param date Tag der Arbeit (nicht in der Zukunft)
+     * @param comment Beschreibung der Tätigkeit oder {@code null}
+     * @param activity Tätigkeitsart (YouTrack: Work Item Type, OpenProject: Aktivität) oder {@code null} für den Standard
+     */
+    record WorkLog(Duration duration, LocalDate date, String comment, String activity) {
+
+        /**
+         * Beginn der Arbeit für Systeme, die einen Zeitpunkt verlangen (lokale Zeitzone): heute = jetzt minus Dauer,
+         * frühestens 0 Uhr; andere Tage 9 Uhr.
+         */
+        public ZonedDateTime start() {
+            ZoneId zone = ZoneId.systemDefault();
+            ZonedDateTime now = ZonedDateTime.now(zone).truncatedTo(ChronoUnit.SECONDS);
+            if (date.equals(now.toLocalDate())) {
+                ZonedDateTime start = now.minus(duration);
+                ZonedDateTime midnight = date.atStartOfDay(zone);
+                return start.isBefore(midnight) ? midnight : start;
+            }
+            return date.atTime(9, 0).atZone(zone);
+        }
+    }
+
+    /**
+     * Eine gebuchte Arbeitszeit.
+     *
+     * @param date Tag der Arbeit als {@code yyyy-MM-dd}
+     * @param activity Tätigkeitsart oder {@code null}
+     */
+    record WorkLogEntry(String id, String author, String date, Duration duration, String comment, String activity) { }
+
+    /** {@code 1h 30m}, {@code 45m}, {@code 2h} – verstehen Menschen, GitLab und YouTrack gleichermaßen. */
+    static String formatDuration(Duration d) {
+        long minutes = d.toMinutes();
+        long h = minutes / 60;
+        long m = minutes % 60;
+        if (h == 0) {
+            return m + "m";
+        }
+        return m == 0 ? h + "h" : h + "h " + m + "m";
     }
 
     /** {@code me}/{@code ich}/{@code @me} als „angemeldeter Benutzer“. */
