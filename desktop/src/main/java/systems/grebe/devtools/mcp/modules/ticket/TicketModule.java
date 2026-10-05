@@ -42,6 +42,14 @@ public class TicketModule implements ToolModule {
     static final String COMMENT_SUFFIX = "commentSuffix";
     static final String ALLOW_DELETE = "allowDelete";
     static final String DELETE_ONLY_OWN = "deleteOnlyOwn";
+    static final String ALLOW_CLASSIFY = "allowClassify";
+    static final String CLASSIFY_API_KEY = "classifyApiKey";
+    static final String CLASSIFY_BASE_URL = "classifyBaseUrl";
+    static final String CLASSIFY_EFFORT = "classifyEffort";
+    static final String CLASSIFY_MODEL_SIMPLE = "classifyModelSimple";
+    static final String CLASSIFY_MODEL_NORMAL = "classifyModelNormal";
+    static final String CLASSIFY_MODEL_COMPLEX = "classifyModelComplex";
+    static final String CLASSIFY_RULES = "classifyRules";
 
     private final TicketProviders providers;
     /** Über alle Konfigurationsänderungen hinweg dieselbe Instanz – sonst ginge die Zuordnung beim Umschalten verloren. */
@@ -84,7 +92,8 @@ public class TicketModule implements ToolModule {
     public String description() {
         return "Jira, GitHub, GitLab, YouTrack, OpenProject und weitere Systeme (erweiterbar per ServiceLoader): Boards mit ihren Spalten, "
                 + "Tickets suchen, Status, Zuständige, Beschreibung, Kommentare und Verknüpfungen lesen; optional "
-                + "kommentieren, Status wechseln, zuweisen, bearbeiten und anlegen (einzeln schaltbar, je Projekt freigebbar).";
+                + "kommentieren, Status wechseln, zuweisen, bearbeiten und anlegen (einzeln schaltbar, je Projekt freigebbar) sowie "
+                + "die Komplexität einschätzen und das Modell für die Umsetzung empfehlen (Claude Opus 5.5).";
     }
 
     @Override
@@ -104,6 +113,9 @@ public class TicketModule implements ToolModule {
                 `ticket_delete` (standardmäßig nur selbst angelegte; Schließen ist meist richtiger). Nur auf ausdrückliche \
                 Anweisung des Nutzers schreiben und das Ergebnis mit Link melden. Fehlt ein schreibendes Tool, ist es \
                 abgeschaltet: dem Nutzer den Schalter nennen, nicht per `curl`/`gh`/`glab` ausweichen.
+                - `ticket_classify` (wenn angeboten): vor der Umsetzung eines Tickets dessen Komplexität einschätzen lassen \
+                (läuft immer auf Claude Opus 5.5) und das empfohlene Modell für die Umsetzung verwenden, z.B. als Modell des \
+                Subagenten. Architektur-Kontext aus dem Code (betroffene Module, Schichten) in `context` mitgeben.
                 Taucht ein Ticket-Schlüssel (ABC-123, owner/repo#12, #123, Issue-URL) in Branch-Namen, Commits oder der Aufgabe auf, \
                 das Ticket mit `ticket_get` lesen, bevor du es interpretierst.""";
     }
@@ -162,7 +174,28 @@ public class TicketModule implements ToolModule {
                         .withHelp("ticket_delete, ticket_delete_comment – endgültig, nicht wiederherstellbar."),
                 ConfigField.of(DELETE_ONLY_OWN, "Nur selbst angelegte löschen", FieldType.BOOLEAN).withDefault("true")
                         .withHelp("Nur Tickets/Kommentare, die über ticket_create bzw. ticket_comment angelegt wurden "
-                                + "(gemerkt in tickets-own.json).")));
+                                + "(gemerkt in tickets-own.json)."),
+                ConfigField.of(ALLOW_CLASSIFY, "Komplexität einschätzen (ticket_classify)", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("Pre-Classifier: schätzt Tickets mit Claude Opus 5.5 ein und empfiehlt das Modell für die "
+                                + "Umsetzung. Sendet Titel, Beschreibung, Kommentare und Kontext an die Claude API (kostenpflichtig)."),
+                ConfigField.of(CLASSIFY_API_KEY, "Claude API-Key", FieldType.SECRET)
+                        .withHelp("Für ticket_classify (console.anthropic.com → API Keys). Leer = ANTHROPIC_API_KEY bzw. "
+                                + "Anmeldung per `ant auth login`. Wird verschlüsselt gespeichert."),
+                ConfigField.of(CLASSIFY_BASE_URL, "Claude API-URL", FieldType.URL)
+                        .withHelp("Leer = https://api.anthropic.com. Nur für ein Gateway/Proxy der Firma."),
+                ConfigField.of(CLASSIFY_EFFORT, "Gründlichkeit der Einschätzung", FieldType.ENUM).withDefault("high")
+                        .withOptions(TicketClassifier.EFFORTS.toArray(String[]::new))
+                        .withHelp("Effort von Claude Opus 5.5: höher = gründlicher, langsamer und teurer."),
+                ConfigField.of(CLASSIFY_MODEL_SIMPLE, "Modell für einfache Tickets", FieldType.STRING)
+                        .withDefault(TicketClassifier.DEFAULT_SIMPLE),
+                ConfigField.of(CLASSIFY_MODEL_NORMAL, "Modell für normale Tickets", FieldType.STRING)
+                        .withDefault(TicketClassifier.DEFAULT_NORMAL)
+                        .withHelp("z.B. claude-sonnet-4-5 oder claude-sonnet-5-5"),
+                ConfigField.of(CLASSIFY_MODEL_COMPLEX, "Modell für komplexe Tickets", FieldType.STRING)
+                        .withDefault(TicketClassifier.DEFAULT_COMPLEX),
+                ConfigField.of(CLASSIFY_RULES, "Regeln für die Einschätzung", FieldType.STRING_LIST)
+                        .withHelp("Eine Regel je Zeile, gehen den allgemeinen Kriterien vor, z.B. „Änderungen am Lohnmodul "
+                                + "sind immer komplex“ oder „Reine Übersetzungs-Tickets sind einfach“.")));
         return fields;
     }
 
@@ -188,7 +221,18 @@ public class TicketModule implements ToolModule {
         if (config.getBoolean(ALLOW_DELETE)) {
             beans.add(new TicketDeleteTools(env, config.getBoolean(DELETE_ONLY_OWN)));
         }
+        if (config.getBoolean(ALLOW_CLASSIFY)) {
+            beans.add(new TicketClassifyTools(env, new TicketClassifier(classifierSettings(config))));
+        }
         return List.of(ToolCallbacks.from(beans.toArray()));
+    }
+
+    static TicketClassifier.Settings classifierSettings(ModuleConfig config) {
+        return new TicketClassifier.Settings(config.get(CLASSIFY_API_KEY).orElse(null),
+                config.get(CLASSIFY_BASE_URL).orElse(null), config.getString(CLASSIFY_EFFORT, "high"),
+                TicketClassifier.Settings.models(config.getString(CLASSIFY_MODEL_SIMPLE, ""),
+                        config.getString(CLASSIFY_MODEL_NORMAL, ""), config.getString(CLASSIFY_MODEL_COMPLEX, "")),
+                config.getList(CLASSIFY_RULES));
     }
 
     @Override

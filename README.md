@@ -17,7 +17,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Decompiler** (Vineflower, Fernflower-Fork) | `decompile_class` (Quelltext einer Klasse inkl. verschachtelter Klassen, seitenweise), `decompile_find` (Fundstellen im JDK und in Maven-/Gradle-Cache mit Version), `decompile_list` (Klassen eines JARs, Klassenverzeichnisses oder JDK-Moduls) |
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
-| **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), einschränkbar auf Projekte (Modul Standard: aus) |
+| **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), `ticket_classify` (Pre-Classifier: Komplexität mit Claude Opus 5.5 einschätzen, Modell für die Umsetzung empfehlen), einschränkbar auf Projekte (Modul Standard: aus) |
 | **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
@@ -103,6 +103,28 @@ einzige aktive. Sind Jira und YouTrack beide aktiv, ist `ABC-123` mehrdeutig –
 der Parameter `provider`. Ein weiteres System (z.B. Redmine) braucht eine `TicketProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`; `spi/HttpJson`
 (JSON über HTTP mit verständlichen Fehlermeldungen) steht Providern – auch aus Plugins – zur Verfügung.
+
+### Ticket-Komplexität einschätzen (`ticket_classify`)
+
+Pre-Classifier vor der Umsetzung: `ticket_classify` liest das Ticket (Titel, Beschreibung, Typ, Priorität, Status, Labels,
+Story Points, weitere Felder wie Komponenten, die neuesten 10 Kommentare und die Verknüpfungen) und lässt es **immer von
+Claude Opus 5.5** (`claude-opus-5-5`, offizielles Java-SDK, Structured Output) einschätzen. Das aufrufende LLM gibt in
+`context` den Architektur-Kontext aus dem Code mit (betroffene Module, Schichten, Technologien); ohne `key` lassen sich auch
+Aufgaben aus `title`/`description` einschätzen. Ergebnis: Stufe, Sicherheit, Begründung, Faktoren, Risiken, offene Fragen
+und das **empfohlene Modell** für die Umsetzung:
+
+| Stufe | Typisch | Modell (Standard, einstellbar) |
+|---|---|---|
+| einfach | lokale, eindeutige Änderung (Texte, Konfiguration, Bugfix mit bekannter Ursache) | `claude-haiku-4-5` |
+| normal | Feature/Bugfix über mehrere Dateien eines Moduls nach bestehenden Mustern | `claude-sonnet-4-5` |
+| komplex | modulübergreifend, Architektur, Migrationen, Nebenläufigkeit, Sicherheit, vage Anforderungen | `claude-opus-5-5` |
+
+Story Points zählen als Hinweis, nicht als Regel; zwischen zwei Stufen wählt der Classifier die höhere. Jira-Story-Points
+(Custom Field, je Instanz andere ID) erkennt das Modul über `/rest/api/2/field`, GitLab liefert das Gewicht, YouTrack und
+OpenProject ihre Felder. Eingeschaltet wird das Tool mit „Komplexität einschätzen“ (Standard aus – die Ticket-Inhalte gehen
+an die Claude API); dazu „Claude API-Key“ (leer = `ANTHROPIC_API_KEY` bzw. `ant auth login`), optional eine API-URL für ein
+Gateway, die Gründlichkeit (Effort, Standard `high`), die Modelle je Stufe und eigene **Regeln** des Teams (eine je Zeile,
+z.B. „Änderungen am Lohnmodul sind immer komplex“), die den allgemeinen Kriterien vorgehen.
 
 ### Git-Server und Pull Requests (ServiceLoader)
 
