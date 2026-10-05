@@ -73,6 +73,11 @@ public final class ManagedToolCallback implements ToolCallback {
 
     @Override
     public String call(String toolInput, ToolContext toolContext) {
+        // Tools wie die Fenstersteuerung halten Zustand je KI (MCP-Session)
+        return ToolSession.callIn(ToolSession.of(toolContext), () -> callInSession(toolInput, toolContext));
+    }
+
+    private String callInSession(String toolInput, ToolContext toolContext) {
         long start = System.nanoTime();
         try {
             String raw = toolContext == null ? delegate.call(toolInput) : delegate.call(toolInput, toolContext);
