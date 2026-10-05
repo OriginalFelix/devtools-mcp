@@ -50,7 +50,8 @@ public class ServerInstructions {
             nicht abdeckt oder mit einer Fehlermeldung ablehnt, die sich nicht beheben lässt. Sag dem Nutzer dann \
             kurz, warum du die Shell verwendest.
             - Meldet ein Tool „nicht freigegeben“, liegt das Ziel außerhalb der Freigaben in der DevTools-App. \
-            Nicht still per Shell umgehen, sondern den Nutzer darauf hinweisen.
+            Nicht still per Shell umgehen, sondern den Nutzer darauf hinweisen – oder, wenn angeboten, mit \
+            `permissions_check` prüfen, was fehlt, und es mit `permissions_request` beim Nutzer anfragen.
             - Tools nicht raten: welche angeboten werden, hängt von den Schaltern in der App ab und kann sich zur \
             Laufzeit ändern (notifications/tools/list_changed).
             """;

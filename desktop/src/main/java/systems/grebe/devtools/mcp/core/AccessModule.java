@@ -15,8 +15,8 @@ import org.springframework.stereotype.Component;
 public class AccessModule implements ToolModule {
 
     public static final String ID = "access";
-    static final String DIRECTORIES = "directories";
-    static final String UNRESTRICTED = "unrestricted";
+    public static final String DIRECTORIES = "directories";
+    public static final String UNRESTRICTED = "unrestricted";
 
     @Override
     public String id() {

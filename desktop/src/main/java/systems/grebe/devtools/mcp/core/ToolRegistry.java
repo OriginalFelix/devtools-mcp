@@ -205,6 +205,28 @@ public class ToolRegistry {
         return local.tools(moduleId).stream().map(ToolCallback::getToolDefinition).toList();
     }
 
+    /**
+     * Namen der Tools, die das Modul mit geänderten Werten anbieten würde – etwa um zu zeigen, welcher Schalter welche
+     * Tools freischaltet. Registriert nichts; was das Modul dabei an Zustand anlegt, liegt in einem eigenen Scope und
+     * wird gleich wieder geschlossen. Kann das Modul seine Tools so nicht bauen, ist das Ergebnis leer.
+     */
+    public Set<String> probeTools(String moduleId, Map<String, String> overrides) {
+        ModuleState s = state(moduleId);
+        Map<String, String> values = new LinkedHashMap<>(toolSettings(s).values());
+        values.putAll(overrides);
+        ModuleConfig cfg = ModuleConfig.of(s.module.configSchema(), values);
+        ToolScope probe = new ToolScope("probe:" + moduleId, null, null, null, null, local.scope().admin());
+        probe.setUnrestricted(local.scope().unrestricted());
+        try (probe) {
+            return ToolScope.callIn(probe, () -> s.module.createTools(cfg, probe)).stream()
+                    .map(cb -> ManagedToolCallback.prefixed(moduleId, cb.getToolDefinition().name()))
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+        } catch (RuntimeException e) {
+            LOG.debug("Tools von {} mit {} nicht ermittelbar", moduleId, overrides.keySet(), e);
+            return Set.of();
+        }
+    }
+
     /** Fehler beim Erzeugen der Tools, falls vorhanden. */
     public Optional<String> moduleError(String moduleId) {
         state(moduleId);
@@ -249,6 +271,11 @@ public class ToolRegistry {
 
     public void updateConfig(String moduleId, Map<String, String> values) {
         update(moduleId, s -> s.withValues(values));
+    }
+
+    /** Ändert einzelne Werte; die übrigen bleiben, wie sie sind (anders als {@link #updateConfig}). */
+    public void updateValues(String moduleId, java.util.function.UnaryOperator<Map<String, String>> change) {
+        update(moduleId, s -> s.withValues(change.apply(new LinkedHashMap<>(s.values()))));
     }
 
     public ConnectionTestResult testConnection(String moduleId, Map<String, String> values) {

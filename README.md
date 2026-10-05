@@ -22,6 +22,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
+| **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
@@ -37,6 +38,21 @@ Sammelordner auf, die Git, Build, Code-Graph, Pull Requests und Compose zusätzl
 jedes Modul übernimmt, was zu ihm passt (Git-Repositories, Gradle-/Maven-Projekte …). Der Schalter *Beschränkung
 aufheben* lässt die Tools jeden absoluten Pfad verwenden (aufgelöst zum nächsten passenden Verzeichnis darüber, z.B.
 dem Repository); nur lesend freigegebene Projekte des Team-Servers und die Schalter der Module gelten weiter.
+
+### Berechtigungen an das LLM übermitteln
+
+Das Modul **Berechtigungen** zeigt dem LLM, was es darf, und lässt es fehlende Rechte beim Nutzer anfragen:
+
+* `permissions_overview` und `permissions_check` lesen nur: Module an/aus, in der App abgeschaltete Tools, Schalter
+  (welcher Schalter welche Tools freischaltet, ermittelt das Modul durch probeweises Bauen der Tools), Einstellungen
+  (Geheimnisse nur als gesetzt/leer; Werte per Schalter *Einstellungswerte zeigen* ausblendbar), freigegebene
+  Verzeichnisse und Sperren des Administrators.
+* `permissions_request` (Schalter *Berechtigungen anfragen erlauben*) bittet um ein Tool, einen Schalter, ein Modul oder
+  ein Verzeichnis (unter *Freigaben*). Gefragt wird der Nutzer – je nach *Rückfrage über*: im MCP-Client per
+  Elicitation (`elicitation/create`, z.B. Claude Code), sonst bzw. bei `app` als Dialog dieser App (5 Minuten, dann gilt
+  es als abgelehnt). Erst nach Zustimmung wird gespeichert, wie beim Speichern im Formular (aktives Profil);
+  Einstellungen, die der Administrator gesperrt hat, lehnt das Tool ohne Rückfrage ab. Anfrage und Antwort stehen im
+  Tab *Aufrufe*.
 
 ### Container-Laufzeiten erweitern (ServiceLoader)
 
