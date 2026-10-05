@@ -4,6 +4,7 @@ import java.awt.image.BufferedImage;
 import java.util.List;
 import java.util.Optional;
 
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -27,10 +28,13 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.shape.FillRule;
+import javafx.scene.shape.SVGPath;
 import javafx.scene.text.TextAlignment;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
+import javafx.util.Duration;
 import systems.grebe.devtools.mcp.modules.window.WindowCandidates;
 import systems.grebe.devtools.mcp.modules.window.WindowCandidates.Candidate;
 
@@ -135,23 +139,45 @@ final class WindowPickerDialog {
         root.setBottom(buttons(back, add));
     }
 
-    /** Eine Zeile „Beschriftung · Wert · Kopieren“; der Wert ist markierbar, der Button kopiert ihn ganz. */
+    /** Zwei überlappende Blätter – das übliche Kopier-Symbol. */
+    private static final String COPY_ICON = "M5 1h8a2 2 0 0 1 2 2v8h-2V3H5z M1 5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H3"
+            + "a2 2 0 0 1-2-2z M3 5v9h7V5z";
+    private static final String CHECK_ICON = "M1 8l2-2 4 4 7-7 2 2-9 9z";
+
+    /**
+     * Eine Zeile „Beschriftung · Wert“; der Wert ist markierbar, das Kopier-Symbol im Feld kopiert ihn ganz und zeigt kurz
+     * einen Haken.
+     */
     private static void copyable(GridPane grid, int row, String label, String value) {
         Label name = new Label(label);
         name.getStyleClass().add("form-label");
         TextField field = new TextField(value);
         field.setEditable(false);
         field.setFocusTraversable(false);
-        GridPane.setHgrow(field, Priority.ALWAYS);
-        Button copy = new Button("Kopieren");
-        copy.setTooltip(new Tooltip(label + " in die Zwischenablage kopieren"));
+        field.setStyle("-fx-padding: 4 30 4 7;"); // Platz für das Symbol rechts im Feld
+
+        SVGPath icon = new SVGPath();
+        icon.setContent(COPY_ICON);
+        icon.setFillRule(FillRule.EVEN_ODD); // vorderes Blatt hohl
+        icon.getStyleClass().add("copy-icon");
+        Button copy = new Button(null, icon);
+        copy.getStyleClass().add("copy-button");
+        copy.setFocusTraversable(false);
+        copy.setTooltip(new Tooltip(label + " kopieren"));
+        PauseTransition reset = new PauseTransition(Duration.seconds(1.5));
+        reset.setOnFinished(e -> icon.setContent(COPY_ICON));
         copy.setOnAction(e -> {
             ClipboardContent content = new ClipboardContent();
             content.putString(value);
             Clipboard.getSystemClipboard().setContent(content);
-            copy.setText("Kopiert");
+            icon.setContent(CHECK_ICON);
+            reset.playFromStart();
         });
-        grid.addRow(row, name, field, copy);
+        StackPane.setAlignment(copy, Pos.CENTER_RIGHT);
+        StackPane.setMargin(copy, new Insets(0, 4, 0, 0));
+        StackPane cell = new StackPane(field, copy);
+        GridPane.setHgrow(cell, Priority.ALWAYS);
+        grid.addRow(row, name, cell);
     }
 
     private static HBox buttons(Button... buttons) {
