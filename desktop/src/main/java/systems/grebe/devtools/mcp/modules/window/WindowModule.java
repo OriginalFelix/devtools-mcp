@@ -1,11 +1,15 @@
 package systems.grebe.devtools.mcp.modules.window;
 
 import java.awt.GraphicsEnvironment;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
@@ -34,6 +38,9 @@ public class WindowModule implements ToolModule {
 
     static final String INCLUDE = "includeProcesses";
     static final String EXCLUDE = "excludeProcesses";
+    /** Global freigegebene Ordner (Modul „Freigaben“), von der ToolRegistry eingefügt – nicht im Formular. */
+    static final String SHARED = "sharedDirectories";
+    private static final Pattern NAMED = Pattern.compile("([A-Za-z0-9._@ -]+)=(.+)");
     static final String ALLOW_INPUT = "allowInput";
     static final String ALLOW_KEYBOARD = "allowKeyboard";
     static final String ALLOW_LAUNCH = "allowLaunch";
@@ -124,6 +131,34 @@ public class WindowModule implements ToolModule {
     }
 
     @Override
+    public Set<String> sharedDirectoryFields() {
+        return Set.of(SHARED);
+    }
+
+    /** Freigegebene Ordner; Einträge {@code name=pfad} werden auf den Pfad reduziert, ungültige übersprungen. */
+    static List<Path> sharedDirectories(ModuleConfig config) {
+        List<Path> out = new ArrayList<>();
+        for (String line : config.getList(SHARED)) {
+            Matcher named = NAMED.matcher(line);
+            String path = named.matches() && !absolute(line) ? named.group(2) : line;
+            try {
+                out.add(Path.of(path.strip()));
+            } catch (InvalidPathException e) {
+                // ungültiger Eintrag: ignorieren
+            }
+        }
+        return out;
+    }
+
+    private static boolean absolute(String path) {
+        try {
+            return Path.of(path.strip()).isAbsolute();
+        } catch (InvalidPathException e) {
+            return false;
+        }
+    }
+
+    @Override
     public List<ConfigField> configSchema() {
         return List.of(
                 ConfigField.of(INCLUDE, "Nur diese Prozesse", FieldType.STRING)
@@ -203,7 +238,7 @@ public class WindowModule implements ToolModule {
                 config.getBoolean(ABORT_ON_MOUSE), Duration.ofSeconds(Math.max(0, config.getInt(COOLDOWN, 10))),
                 config.getBoolean(ALLOW_SIBLINGS));
         ProcessFilter filter = new ProcessFilter(pattern(config, INCLUDE), pattern(config, EXCLUDE),
-                ProcessHandle.current().pid(), launched);
+                ProcessHandle.current().pid(), launched, sharedDirectories(config));
         boolean ownPointer = !POINTER_MOUSE.equals(config.getString(POINTER_MODE, POINTER_OWN));
         boolean ownKeyboard = !KEYBOARD_REAL.equals(config.getString(KEYBOARD_MODE, KEYBOARD_OWN));
         overlay.hint(ownPointer ? "KI steuert dieses Fenster mit eigenem Zeiger"
@@ -277,7 +312,7 @@ public class WindowModule implements ToolModule {
         ProcessFilter filter;
         try {
             filter = new ProcessFilter(pattern(config, INCLUDE), pattern(config, EXCLUDE), ProcessHandle.current().pid(),
-                    launched);
+                    launched, sharedDirectories(config));
         } catch (IllegalStateException e) {
             return ConnectionTestResult.failed(e.getMessage());
         }

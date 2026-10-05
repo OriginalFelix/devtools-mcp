@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.window;
 
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
@@ -14,6 +15,9 @@ import java.util.regex.Pattern;
  * Systems und Passwortmanager; ebenso Prozesse, deren Kommando nicht lesbar ist (fremder Benutzer, erhöhte Rechte).
  * Ausnahme: Programme, die die KI per {@code window_launch} gestartet hat ({@link #launched(long)}), sind zwar
  * Kindprozesse dieser App, gehören aber nicht zu ihr – für sie gelten die übrigen Regeln.
+ *
+ * <p>Programme in global freigegebenen Ordnern (Modul „Freigaben“) sind freigegeben, auch gegen Include/Exclude – nicht
+ * aber gegen die immer ausgeschlossenen Prozesse und diese App.
  */
 final class ProcessFilter {
 
@@ -29,14 +33,29 @@ final class ProcessFilter {
             "keepass", "1password", "bitwarden", "lastpass", "dashlane", "enpass", "keeper", "nordpass", "roboform",
             "proton pass");
 
-    /** Ein Prozess mit Name und Kommandozeile. */
-    record Info(long pid, String name, String commandLine) {
+    /**
+     * Ein Prozess mit Name, Kommandozeile und – sofern bekannt – Pfad der ausführbaren Datei.
+     *
+     * @param command Pfad der ausführbaren Datei oder {@code null}
+     */
+    record Info(long pid, String name, String commandLine, String command) {
+
+        Info(long pid, String name, String commandLine) {
+            this(pid, name, commandLine, null);
+        }
+
+        /** Eine Programmdatei, als wäre sie gestartet (für die Prüfung beim Speichern). */
+        static Info ofExecutable(Path file) {
+            String path = file.toString();
+            return new Info(0, ProcessFilter.name(path), path, path);
+        }
     }
 
     private final Pattern include;
     private final Pattern exclude;
     private final long self;
     private final Set<Long> launched;
+    private final List<Path> shared;
 
     ProcessFilter(Pattern include, Pattern exclude) {
         this(include, exclude, ProcessHandle.current().pid());
@@ -48,10 +67,16 @@ final class ProcessFilter {
 
     /** @param launched von der KI gestartete Programme – geteilt, damit alle Filter des Moduls sie kennen */
     ProcessFilter(Pattern include, Pattern exclude, long self, Set<Long> launched) {
+        this(include, exclude, self, launched, List.of());
+    }
+
+    /** @param shared global freigegebene Ordner (Modul „Freigaben“): Programme darin sind immer freigegeben */
+    ProcessFilter(Pattern include, Pattern exclude, long self, Set<Long> launched, List<Path> shared) {
         this.include = include;
         this.exclude = exclude;
         this.self = self;
         this.launched = launched;
+        this.shared = shared.stream().map(p -> p.toAbsolutePath().normalize()).toList();
     }
 
     /** Merkt ein per {@code window_launch} gestartetes Programm: es zählt nicht als Teil dieser App. */
@@ -65,7 +90,7 @@ final class ProcessFilter {
 
     static Optional<Info> info(ProcessHandle p) {
         ProcessHandle.Info i = p.info();
-        return i.command().map(cmd -> new Info(p.pid(), name(cmd), i.commandLine().orElse(cmd)));
+        return i.command().map(cmd -> new Info(p.pid(), name(cmd), i.commandLine().orElse(cmd), cmd));
     }
 
     /** Dateiname ohne {@code .exe}/{@code .app}-Endung. */
@@ -95,6 +120,9 @@ final class ProcessFilter {
                         + "(Anmeldung, Berechtigungsdialog oder Passwortmanager).");
             }
         }
+        if (shared(p.command())) {
+            return Optional.empty(); // global freigegebener Ordner überschreibt „Nur diese Prozesse“ und Ausschlüsse
+        }
         String hay = p.name() + " " + p.commandLine();
         if (include != null && !include.matcher(hay).find()) {
             return Optional.of(p.name() + " ist nicht freigegeben (passt nicht zu „Nur diese Prozesse“).");
@@ -103,6 +131,19 @@ final class ProcessFilter {
             return Optional.of(p.name() + " ist ausgeschlossen („Prozesse ausschließen“).");
         }
         return Optional.empty();
+    }
+
+    /** Ob die ausführbare Datei in einem global freigegebenen Ordner (oder einem Unterordner davon) liegt. */
+    boolean shared(String command) {
+        if (command == null || shared.isEmpty()) {
+            return false;
+        }
+        try {
+            Path exe = Path.of(command).toAbsolutePath().normalize();
+            return shared.stream().anyMatch(exe::startsWith); // unter Windows ohne Groß-/Kleinschreibung
+        } catch (InvalidPathException e) {
+            return false;
+        }
     }
 
     boolean allowed(long pid) {

@@ -1,5 +1,7 @@
 package systems.grebe.devtools.mcp.modules.window;
 
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -50,7 +52,9 @@ public class WindowLaunchTools {
         List<String> args = arguments == null ? List.of() : List.copyOf(arguments);
         String name = ProcessFilter.name(program.strip());
         String commandLine = program.strip() + (args.isEmpty() ? "" : " " + String.join(" ", args));
-        support.filter().rejection(new ProcessFilter.Info(0, name, commandLine)).ifPresent(reason -> {
+        // nur ein absoluter Pfad kann in einem freigegebenen Ordner liegen ("winword" nicht)
+        String executable = absolutePath(program.strip());
+        support.filter().rejection(new ProcessFilter.Info(0, name, commandLine, executable)).ifPresent(reason -> {
             throw new IllegalArgumentException(reason + " Starten nicht erlaubt.");
         });
 
@@ -84,5 +88,13 @@ public class WindowLaunchTools {
                 + first.map(w -> "Fenster: " + WindowReadTools.describe(w))
                 .orElse("Noch kein Fenster sichtbar – gleich mit window_windows nachsehen.")
                 + "\nDas Fenster hat keinen Fokus; Eingaben des Nutzers landen erst dort, wenn er es anklickt.";
+    }
+
+    private static String absolutePath(String program) {
+        try {
+            return Path.of(program).isAbsolute() ? program : null;
+        } catch (InvalidPathException e) {
+            return null;
+        }
     }
 }

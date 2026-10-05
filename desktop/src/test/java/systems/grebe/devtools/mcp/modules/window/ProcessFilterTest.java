@@ -1,5 +1,8 @@
 package systems.grebe.devtools.mcp.modules.window;
 
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.junit.jupiter.api.Test;
@@ -56,5 +59,39 @@ class ProcessFilterTest {
     void nameDropsExtension() {
         assertThat(ProcessFilter.name("C:\\Program Files\\App\\App.exe")).isEqualTo("App");
         assertThat(ProcessFilter.name("/usr/bin/gedit")).isEqualTo("gedit");
+    }
+
+    private static ProcessFilter sharing(Pattern include, Pattern exclude, Path dir) {
+        return new ProcessFilter(include, exclude, -1, Set.of(), List.of(dir));
+    }
+
+    private static ProcessFilter.Info program(Path exe) {
+        return ProcessFilter.Info.ofExecutable(exe);
+    }
+
+    @Test
+    void programsInSharedDirectoriesOverrideIncludeAndExclude() {
+        Path tmp = Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath();
+        ProcessFilter f = sharing(Pattern.compile("(?i)notepad"), Pattern.compile("(?i)foo"), tmp.resolve("tools"));
+
+        assertThat(f.rejection(program(tmp.resolve("tools").resolve("sub").resolve("deep").resolve("foo.exe"))))
+                .isEmpty();
+        assertThat(f.rejection(program(tmp.resolve("other").resolve("foo.exe")))).isPresent();
+        assertThat(f.rejection(program(tmp.resolve("toolsX").resolve("foo.exe")))).isPresent(); // kein Namenspräfix
+    }
+
+    @Test
+    void sharedDirectoriesNeverUnlockPasswordManagers() {
+        Path dir = Path.of(System.getProperty("java.io.tmpdir"), "tools").toAbsolutePath();
+
+        assertThat(sharing(null, null, dir).rejection(program(dir.resolve("KeePass.exe")))).isPresent();
+    }
+
+    @Test
+    void infoOfAnExecutableUsesNameWithoutExtension() {
+        ProcessFilter.Info i = program(Path.of("Tools", "Foo.exe"));
+
+        assertThat(i.name()).isEqualTo("Foo");
+        assertThat(i.command()).endsWith("Foo.exe");
     }
 }
