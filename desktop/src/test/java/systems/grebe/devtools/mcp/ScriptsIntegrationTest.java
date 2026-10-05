@@ -38,7 +38,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Instructions für neue Sessions.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "devtools.local-user.email=scripts@example.com")
+        properties = {"devtools.local-user.email=scripts@example.com", "devtools.login.username=tester",
+                "devtools.login.password=tester-passwort"})
 class ScriptsIntegrationTest {
 
     @TempDir

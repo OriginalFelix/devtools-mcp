@@ -23,9 +23,10 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
+import systems.grebe.devtools.mcp.api.Grants;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.backend.SkillCaller;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
-import systems.grebe.devtools.mcp.backend.account.Role;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.backend.scripts.ScriptService;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptTemplates;
@@ -47,6 +48,8 @@ public class ScriptsView extends VerticalLayout {
     private final AccountService accounts;
     private final long userId;
     private final boolean admin;
+    private final boolean canSave;
+    private final boolean canDelete;
     private final Grid<ScriptViews.Summary> grid = new Grid<>();
     private final H3 title = new H3();
     private final Span meta = new Span();
@@ -67,7 +70,11 @@ public class ScriptsView extends VerticalLayout {
         this.scripts = scripts;
         this.accounts = accounts;
         this.userId = auth.getAuthenticatedUser(AccountPrincipal.class).orElseThrow().id();
-        this.admin = auth.hasRole(Role.ADMIN.name());
+        this.admin = auth.hasRole(Permission.TEMPLATES_PUBLISH.name());
+        // wie in der Desktop-App: Anlegen/Ändern und Löschen brauchen das Recht auf scripts_save bzw. scripts_delete
+        Grants grants = accounts.user(userId).orElseThrow().grants();
+        this.canSave = grants.tool("scripts", "scripts_save");
+        this.canDelete = grants.tool("scripts", "scripts_delete");
         setSizeFull();
 
         grid.addColumn(ScriptViews.Summary::name).setHeader("Name").setAutoWidth(true);
@@ -81,6 +88,7 @@ public class ScriptsView extends VerticalLayout {
 
         Button create = new Button("Neues Skript", e -> create());
         create.addThemeVariants(ButtonVariant.PRIMARY);
+        create.setVisible(canSave);
 
         buildDetail();
         SplitLayout split = new SplitLayout(new VerticalLayout(create, grid), detail);
@@ -116,6 +124,8 @@ public class ScriptsView extends VerticalLayout {
                 () -> scripts.unpublish(current), true));
         publish.setVisible(admin);
         unpublish.setVisible(admin);
+        save.setVisible(canSave);
+        delete.setVisible(canDelete);
         HorizontalLayout actions = new HorizontalLayout(save, delete, publish, unpublish);
         actions.setAlignItems(FlexComponent.Alignment.CENTER);
 

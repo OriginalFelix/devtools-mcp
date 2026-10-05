@@ -17,7 +17,7 @@ public class GraphQlErrors extends DataFetcherExceptionResolverAdapter {
     /** Keine oder ungültige Anmeldung. */
     public static class Unauthorized extends RuntimeException {
         public Unauthorized() {
-            super("Desktop-Token fehlt oder ist ungültig");
+            super("Nicht angemeldet oder Anmeldung abgelaufen");
         }
     }
 

@@ -40,7 +40,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Speichert einen Screenshot nach {@code build/ui-snapshots/}. Übersprungen ohne JavaFX-Toolkit.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "devtools.local-user.email=ui@example.com")
+        properties = {"devtools.local-user.email=ui@example.com", "devtools.login.username=tester",
+                "devtools.login.password=tester-passwort"})
 class ModuleActionPanelTest {
 
     @TempDir

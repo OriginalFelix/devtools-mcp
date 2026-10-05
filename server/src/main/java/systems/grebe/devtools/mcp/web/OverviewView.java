@@ -25,8 +25,10 @@ public class OverviewView extends VerticalLayout {
         url.setWidth("32rem");
         add(url);
 
-        add(new Paragraph("Der MCP-Server läuft in deiner Desktop-App; dort unter „Server“ diese Adresse und ein "
-                + "Desktop-Token eintragen. Tokens erzeugst du unter "), new RouterLink("Mein Konto", AccountView.class));
+        add(new Paragraph("Der MCP-Server läuft in deiner Desktop-App: dort beim Start bzw. im Tab „Backend“ diese "
+                + "Adresse eintragen und mit Benutzername und Passwort anmelden. Was du darfst, bestimmen deine Rollen; "
+                + "Anmeldungen und Tokens für den Start ohne Anmeldedialog unter "),
+                new RouterLink("Mein Konto", AccountView.class));
         add(new Paragraph("Hier verwaltest du Profile, Einstellungen, Projekte und Skills – die Desktop-App holt sie "
                 + "sich regelmäßig. " + catalog.modules().size() + " Module bekannt."));
     }

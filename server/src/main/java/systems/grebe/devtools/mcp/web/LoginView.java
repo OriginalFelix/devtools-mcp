@@ -28,7 +28,8 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
         i18n.getForm().setPassword("Passwort");
         i18n.getForm().setSubmit("Anmelden");
         i18n.getErrorMessage().setTitle("Anmeldung fehlgeschlagen");
-        i18n.getErrorMessage().setMessage("Benutzername oder Passwort stimmt nicht, oder das Konto ist gesperrt.");
+        i18n.getErrorMessage().setMessage("Benutzername oder Passwort stimmt nicht, das Konto ist gesperrt oder nach "
+                + "mehreren Fehlversuchen vorübergehend blockiert.");
         form.setI18n(i18n);
         form.setAction("login");
         form.setForgotPasswordButtonVisible(false);

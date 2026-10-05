@@ -114,9 +114,29 @@ public class ToolRegistry {
         ids.forEach(this::rebuild);
     }
 
-    /** Gesperrte Schlüssel eines Moduls (siehe {@link SettingsResolver#locked}). */
+    /**
+     * Gesperrte Schlüssel eines Moduls (siehe {@link SettingsResolver#locked}); ohne Recht auf das Modul auch der
+     * Schalter und die Tools.
+     */
     public java.util.Set<String> lockedKeys(String moduleId) {
-        return resolver().locked(state(moduleId).module);
+        Set<String> locked = new LinkedHashSet<>(resolver().locked(state(moduleId).module));
+        if (!modulePermitted(moduleId)) {
+            locked.add("@enabled");
+            locked.add("@tools");
+        }
+        return locked;
+    }
+
+    /** Ob der angemeldete Benutzer das Tool nutzen darf (siehe {@link SettingsResolver#permitted}). */
+    public boolean toolPermitted(String moduleId, String toolName) {
+        return resolver().permitted(state(moduleId).module, toolName);
+    }
+
+    /** Ob das Modul nutzbar ist: es hat keine Tools oder der Benutzer darf mindestens eines davon nutzen. */
+    public boolean modulePermitted(String moduleId) {
+        ToolModule m = state(moduleId).module;
+        List<ToolDefinition> tools = availableTools(moduleId);
+        return tools.isEmpty() || tools.stream().anyMatch(t -> resolver().permitted(m, t.name()));
     }
 
     /** Wohin Änderungen an Einstellungen gehen (Anzeige). */
@@ -353,7 +373,8 @@ public class ToolRegistry {
             if (AccessModule.ID.equals(moduleId)) {
                 local.scope().setUnrestricted(accessConfig().getBoolean(AccessModule.UNRESTRICTED));
             }
-            local.rebuild(s.module, toolSettings(s), callListeners());
+            SettingsResolver resolver = resolver();
+            local.rebuild(s.module, toolSettings(s), callListeners(), tool -> resolver.permitted(s.module, tool));
         }
         // Kein explizites notifyToolsListChanged(): addTool/removeTool benachrichtigen die Clients bereits selbst
         // (spring.ai.mcp.server.tool-change-notification=true), LiveInstructionsTransport bündelt sie zu einer Meldung.

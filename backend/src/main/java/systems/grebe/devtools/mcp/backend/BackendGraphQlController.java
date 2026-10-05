@@ -17,6 +17,7 @@ import systems.grebe.devtools.mcp.api.Catalog;
 import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.api.ModuleDescriptor;
 import systems.grebe.devtools.mcp.api.ModuleOverlay;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.api.SettingsSnapshot;
 import systems.grebe.devtools.mcp.backend.catalog.ModuleCatalog;
@@ -69,11 +70,12 @@ public class BackendGraphQlController {
 
     @QueryMapping
     public Me me(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
-        UserAccount u = require(user);
+        UserAccount u = GraphQlAuth.requireSignedIn(user);
         long active = profiles.activeProfile(u.id()).id();
         List<Me.ProfileInfo> list = profiles.profiles(u.id()).stream()
                 .map(p -> new Me.ProfileInfo(p.id(), p.name(), p.description())).toList();
-        return new Me(u.id(), u.username(), u.displayName(), u.email(), u.admin(), list, active);
+        return new Me(u.id(), u.username(), u.displayName(), u.email(), u.admin(), list, active, u.roles(),
+                u.grants().list(), u.passwordChangeRequired());
     }
 
     @QueryMapping
@@ -118,11 +120,10 @@ public class BackendGraphQlController {
         UserAccount u = require(user);
         Overrides o = new Overrides(input.enabled(), input.toolMap(), input.valueMap());
         if (level == Overrides.Level.GLOBAL) {
-            if (!u.admin()) {
-                throw new GraphQlErrors.Forbidden("Globale Einstellungen ändern nur Administratoren.");
-            }
+            GraphQlAuth.require(u, Permission.SETTINGS_GLOBAL);
             profiles.saveGlobal(moduleId, o);
         } else {
+            GraphQlAuth.require(u, Permission.SETTINGS_OWN);
             profiles.saveOverrides(u.id(), level, levelId(u, level), moduleId, o);
         }
         return snapshot(u);
@@ -209,8 +210,9 @@ public class BackendGraphQlController {
                               @Argument String name, @Argument String description, @Argument String content,
                               @Argument String category, @Argument List<String> tags,
                               @Argument List<String> triggers, @Argument Integer maxContentChars) {
-        return as(user, () -> skills.create(name, description, content, category, tags, triggers,
-                max(maxContentChars)));
+        return asTool(user, "skills", "skills_create",
+                () -> skills.create(name, description, content, category, tags, triggers,
+                        max(maxContentChars)));
     }
 
     @MutationMapping
@@ -219,8 +221,9 @@ public class BackendGraphQlController {
                               @Argument String category, @Argument List<String> tags,
                               @Argument List<String> triggers, @Argument String note,
                               @Argument Integer expectedRevision, @Argument Integer maxContentChars) {
-        return as(user, () -> skills.update(name, description, content, category, tags, triggers, note,
-                expectedRevision, max(maxContentChars)));
+        return asTool(user, "skills", "skills_update",
+                () -> skills.update(name, description, content, category, tags, triggers, note,
+                        expectedRevision, max(maxContentChars)));
     }
 
     @MutationMapping
@@ -228,27 +231,29 @@ public class BackendGraphQlController {
                              @Argument String name, @Argument String oldString, @Argument String newString,
                              @Argument Boolean replaceAll, @Argument String filePath, @Argument String note,
                              @Argument Integer expectedRevision, @Argument Integer maxContentChars) {
-        return as(user, () -> skills.patch(name, oldString, newString, replaceAll, filePath, note, expectedRevision,
-                max(maxContentChars)));
+        return asTool(user, "skills", "skills_patch",
+                () -> skills.patch(name, oldString, newString, replaceAll, filePath, note, expectedRevision,
+                        max(maxContentChars)));
     }
 
     @MutationMapping
     public String writeSkillFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                                  @Argument String name, @Argument String filePath, @Argument String content,
                                  @Argument String note, @Argument Integer maxContentChars) {
-        return as(user, () -> skills.writeFile(name, filePath, content, note, max(maxContentChars)));
+        return asTool(user, "skills", "skills_write_file",
+                () -> skills.writeFile(name, filePath, content, note, max(maxContentChars)));
     }
 
     @MutationMapping
     public String removeSkillFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                                   @Argument String name, @Argument String filePath, @Argument String note) {
-        return as(user, () -> skills.removeFile(name, filePath, note));
+        return asTool(user, "skills", "skills_remove_file", () -> skills.removeFile(name, filePath, note));
     }
 
     @MutationMapping
     public String deleteSkill(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                               @Argument String name) {
-        return as(user, () -> skills.delete(name));
+        return asTool(user, "skills", "skills_delete", () -> skills.delete(name));
     }
 
     @MutationMapping
@@ -314,8 +319,9 @@ public class BackendGraphQlController {
                              @Argument String title, @Argument String content, @Argument String project,
                              @Argument String skill, @Argument String reference, @Argument List<String> tags,
                              @Argument Integer maxContentChars) {
-        return as(user, () -> memories.save(title, content, project, skill, reference, tags,
-                maxMemory(maxContentChars)));
+        return asTool(user, "memories", "memories_save",
+                () -> memories.save(title, content, project, skill, reference, tags,
+                        maxMemory(maxContentChars)));
     }
 
     @MutationMapping
@@ -324,14 +330,15 @@ public class BackendGraphQlController {
                                @Argument String append, @Argument String project, @Argument String skill,
                                @Argument String reference, @Argument List<String> tags,
                                @Argument Integer maxContentChars) {
-        return as(user, () -> memories.update(id, title, content, append, project, skill, reference, tags,
-                maxMemory(maxContentChars)));
+        return asTool(user, "memories", "memories_update",
+                () -> memories.update(id, title, content, append, project, skill, reference, tags,
+                        maxMemory(maxContentChars)));
     }
 
     @MutationMapping
     public String deleteMemory(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                                @Argument long id) {
-        return as(user, () -> memories.delete(id));
+        return asTool(user, "memories", "memories_delete", () -> memories.delete(id));
     }
 
     private static int maxMemory(Integer requested) {
@@ -357,13 +364,14 @@ public class BackendGraphQlController {
                              @Argument String name, @Argument ScriptViews.Language language,
                              @Argument String description, @Argument String content, @Argument String note,
                              @Argument Integer expectedRevision) {
-        return as(user, () -> scripts.save(name, language, description, content, note, expectedRevision));
+        return asTool(user, "scripts", "scripts_save",
+                () -> scripts.save(name, language, description, content, note, expectedRevision));
     }
 
     @MutationMapping
     public String deleteScript(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                                @Argument String name) {
-        return as(user, () -> scripts.delete(name));
+        return asTool(user, "scripts", "scripts_delete", () -> scripts.delete(name));
     }
 
     @MutationMapping
@@ -379,7 +387,12 @@ public class BackendGraphQlController {
     }
 
     private static <T> T as(UserAccount user, Supplier<T> body) {
-        return SkillCaller.as(require(user), body);
+        return SkillCaller.as(GraphQlAuth.require(user), body);
+    }
+
+    /** Schreibende Operationen brauchen das Recht auf das gleichnamige Tool – auch aus der Oberfläche heraus. */
+    private static <T> T asTool(UserAccount user, String moduleId, String tool, Supplier<T> body) {
+        return SkillCaller.as(GraphQlAuth.requireTool(user, moduleId, tool), body);
     }
 
     private static int max(Integer requested) {
@@ -430,9 +443,6 @@ public class BackendGraphQlController {
     }
 
     private static UserAccount require(UserAccount user) {
-        if (user == null) {
-            throw new GraphQlErrors.Unauthorized();
-        }
-        return user;
+        return GraphQlAuth.require(user);
     }
 }

@@ -38,7 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * verweigerte das Löschen von {@code plugins/startup.jar}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "devtools.local-user.email=plugin@example.com")
+        properties = {"devtools.local-user.email=plugin@example.com", "devtools.login.username=tester",
+                "devtools.login.password=tester-passwort"})
 @DirtiesContext
 class PluginIntegrationTest {
 

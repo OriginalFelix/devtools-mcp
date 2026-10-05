@@ -365,7 +365,10 @@ claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
 
 ## Bedienung
 
-* **Module** (links): an/aus, Status (grün aktiv · grau aus · rot Fehler).
+* **Anmeldung:** Beim Start fragt die App nach Benutzername und Passwort – ohne Anmeldung gibt es keine Tools. Beim
+  ersten Start mit eingebettetem Backend richtet man dort das erste Konto ein (siehe
+  [Benutzer, Rollen und Rechte](#benutzer-rollen-und-rechte)). *Backend ändern…* trägt einen Team-Server ein.
+* **Module** (links): an/aus, Status (grün aktiv · grau aus · rot Fehler · „keine Berechtigung“).
 * **Konfiguration** (rechts): Formular wird aus dem Modul-Schema erzeugt; *Speichern* registriert die Tools
   sofort neu, verbundene Clients erhalten `notifications/tools/list_changed`. *Verbindung testen* prüft
   die ungespeicherten Eingaben. Gespeichert wird im Backend als Überschreibung im aktiven Profil; gesperrte
@@ -374,19 +377,25 @@ claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
 * **Aufrufe**: Live-Protokoll aller Tool-Aufrufe mit Argumenten, Ergebnis, Dauer und Fehlern.
 * **Skills**: Übersicht der gespeicherten Skills mit Inhalt, Zusatzdateien und Historie.
 * **Memories**: die vom LLM festgehaltenen früheren Aktionen mit Suche (wie `memories_search`) und Löschen.
-* **Backend**: eingebettet oder Team-Server, Status, aktives Profil, Projekte mit lokalem Verzeichnis (siehe unten).
+* **Backend**: eingebettet oder Team-Server, Status, angemeldeter Benutzer mit Rollen (*Abmelden*, *Passwort
+  ändern…*), aktives Profil, Projekte mit lokalem Verzeichnis (siehe unten).
+* **Benutzer** (nur mit dem Recht „Benutzer und Rollen verwalten“): Benutzer und Rollen samt Rechten verwalten – wie
+  in der Web-UI des Team-Servers, auch für das eingebettete Backend.
 * **Einstellungen**: Port (nach Neustart), optionales Bearer-Token (sofort wirksam), Tray-Verhalten.
 * Fenster schließen → läuft im System-Tray weiter; *Beenden* über das Tray-Menü.
 
 Die Modul-Einstellungen liegen im Backend (eingebettet: `core.mv.db` im Datenordner). `~/.devtools-mcp/settings.json`
 (Pfad per `DEVTOOLS_MCP_HOME` bzw. `-Ddevtools.mcp.home` änderbar) hält nur noch App-Einstellungen: Port,
-Zugriffstoken, Tray, Team-Server (Adresse + Desktop-Token), Plugins und die lokalen Projektverzeichnisse. Beim ersten
-eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen aus `settings.json` als globale Vorgaben
-(Marker `backend-import.done`). Geheimnisse werden mit AES-GCM verschlüsselt, der Schlüssel liegt in `secret.key`.
+Zugriffstoken, Tray, Team-Server (Adresse, zuletzt angemeldeter Benutzer), Plugins und die lokalen
+Projektverzeichnisse. Beim ersten eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen aus
+`settings.json` als globale Vorgaben (Marker `backend-import.done`, sobald sich jemand mit dem Recht „Globale
+Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der Schlüssel liegt in `secret.key`.
 
 ### Sicherheit
 
 * Nur `127.0.0.1`; Clients auf demselben Rechner ohne Token oder mit dem Zugriffstoken aus den Einstellungen.
+* Tools gibt es nur mit angemeldetem Benutzer, und nur die, auf die seine Rollen ein Recht geben (siehe
+  [Benutzer, Rollen und Rechte](#benutzer-rollen-und-rechte)).
 * Git/Build arbeiten ausschließlich in den freigegebenen Verzeichnissen (im Modul oder global unter **Freigaben**);
   Pfade außerhalb werden abgewiesen – außer die Beschränkung ist unter **Freigaben** bewusst aufgehoben.
 * Build: nur freigegebene Tasks/Goals, Argumente werden gegen eine Zeichen-Whitelist geprüft (kein Shell-Injection
@@ -416,38 +425,45 @@ Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills
 HTTP, Subscriptions über WebSocket).
 
 * **Eingebettet** (Standard, kein Team-Server eingetragen): Das Backend läuft in der Desktop-App auf
-  `http://127.0.0.1:<port>/graphql`, mit Core- und Skill-Datenbank im Datenordner. Angemeldet ist ohne Login der
-  lokale Benutzer `local` (Administrator; E-Mail = frühere Einstellung „Benutzer-E-Mail“ des Skill-Moduls, sonst
-  Git-E-Mail), die App erzeugt dafür bei jedem Start ein Token.
-* **Team-Server** (`server`): dasselbe Backend plus Web-UI, für mehrere Entwickler. Tab *Backend* → Server-Adresse und
-  Desktop-Token → *Server eintragen*; gilt nach einem Neustart der App (dann läuft kein eingebettetes Backend, keine
-  lokalen Datenbanken). *Eingebettet verwenden* stellt zurück.
+  `http://127.0.0.1:<port>/graphql`, mit Core- und Skill-Datenbank im Datenordner. Beim ersten Start richtet man im
+  Anmeldefenster das erste Konto ein (Administrator; E-Mail vorbelegt mit der früheren Einstellung „Benutzer-E-Mail“
+  des Skill-Moduls, sonst der Git-E-Mail).
+* **Team-Server** (`server`): dasselbe Backend plus Web-UI, für mehrere Entwickler. Im Anmeldefenster *Backend
+  ändern…* bzw. im Tab *Backend* die Server-Adresse eintragen; gilt nach einem Neustart der App (dann läuft kein
+  eingebettetes Backend, keine lokalen Datenbanken), angemeldet wird mit dem Konto des Servers. *Eingebettet
+  verwenden* stellt zurück.
 
 ```bash
 java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL unter /graphql
 ```
 
-* **Abgleich:** Die App meldet dem Backend ihre Module samt Feldern und Tools (`reportCatalog`; daraus baut die Web-UI
-  die Formulare), lädt Benutzer, Vorgaben und Projekte und abonniert `settingsChanged`, `projectsChanged`,
-  `skillsChanged` und `memoriesChanged`. Änderungen – auch aus der Web-UI oder von einer anderen Desktop-App – kommen sofort an; die Tools
+* **Abgleich:** Nach der Anmeldung meldet die App dem Backend ihre Module samt Feldern und Tools (`reportCatalog`;
+  daraus baut die Web-UI die Formulare), lädt Benutzer (mit Rollen und Rechten), Vorgaben und Projekte und abonniert
+  `settingsChanged`, `projectsChanged`, `skillsChanged` und `memoriesChanged`. Änderungen – auch aus der Web-UI oder von einer anderen Desktop-App – kommen sofort an; die Tools
   werden neu gebaut, MCP-Clients bekommen `tools/list_changed`. Bricht die Verbindung ab, verbinden sich die
-  Subscriptions mit wachsendem Abstand neu; dazwischen gilt der letzte Stand (beim Team-Server auch über einen
-  Neustart: verschlüsselte Cache-Datei `team-cache.json`). Überholte Stände erkennt die App am Änderungszähler
-  (`revision`).
-* **Benutzer** (Rolle Administrator/Benutzer) liegen in der Core-Datenbank `core.mv.db` (Server: `devtools.server.home`
+  Subscriptions mit wachsendem Abstand neu; dazwischen gilt der letzte Stand. Beim Team-Server übersteht er auch einen
+  Neustart (verschlüsselte Cache-Datei `team-cache.json` mit Stand und Passwort-Hash der letzten Anmeldung): Ist der
+  Server beim Start nicht erreichbar, prüft die App das Passwort dagegen, arbeitet mit dem letzten Stand und meldet
+  sich an, sobald er wieder antwortet (nur so lange bleibt das Passwort im Speicher). Überholte Stände erkennt die App
+  am Änderungszähler (`revision`).
+* **Benutzer** mit ihren Rollen liegen in der Core-Datenbank `core.mv.db` (Server: `devtools.server.home`
   bzw. `DEVTOOLS_SERVER_HOME`, sonst `~/.devtools-server` – getrennt vom Ordner der Desktop-App, damit beide auf einem
   Rechner laufen; H2, Schema per Flyway aus `db/core`; andere Datenbank über
-  `devtools.core.datasource.url/username/password`). Beim ersten Start des Servers wird `admin` angelegt – Passwort aus
-  `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log. Der letzte aktive Administrator lässt sich weder
-  sperren, herabstufen noch löschen.
+  `devtools.core.datasource.url/username/password`). Beim ersten Start des Servers wird `admin` (Rolle Administrator)
+  angelegt – Passwort aus `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log; ein zufälliges muss bei
+  der ersten Anmeldung geändert werden.
 * **Passwörter:** PBKDF2 mit HMAC-SHA3-512, 16 Byte Zufalls-Salt, 210.000 Iterationen
   (`pbkdf2-sha3-512$<iterationen>$<salt>$<hash>`); wird die Iterationszahl angehoben, rechnet die nächste Anmeldung
   den Hash neu.
-* **Desktop-Tokens:** Jeder Benutzer erzeugt unter *Mein Konto* persönliche Tokens (JWT, HS512, Schlüssel
-  `jwt.key`; Gültigkeit 30/90/365 Tage oder unbegrenzt). Das Token wird nur einmal angezeigt, gespeichert wird nur
-  seine ID; Widerruf, Sperren oder Löschen des Benutzers wirken sofort. Die GraphQL-API erwartet es als
-  `Authorization: Bearer …` (HTTP) bzw. im Payload von `connection_init` (WebSocket); ohne gültiges Token antwortet
-  jede Operation mit `UNAUTHORIZED`, fachliche Fehler kommen als `BAD_REQUEST` mit lesbarer Meldung.
+* **Anmeldung an der API:** Die Desktop-App meldet sich mit Benutzername und Passwort an (Mutation `login`, ohne
+  Token aufrufbar) und bekommt ein Sitzungs-Token (JWT, HS512, Schlüssel `jwt.key`, 30 Tage); beim Beenden oder
+  *Abmelden* endet die Sitzung (`logout`). Die GraphQL-API erwartet das Token als `Authorization: Bearer …` (HTTP)
+  bzw. im Payload von `connection_init` (WebSocket); ohne gültiges Token antwortet jede Operation außer `login` mit
+  `UNAUTHORIZED`, ohne nötiges Recht mit `FORBIDDEN`, fachliche Fehler kommen als `BAD_REQUEST` mit lesbarer Meldung.
+  Gespeichert wird nur die ID eines Tokens; Abmelden, Sperren oder Löschen des Benutzers wirken sofort.
+* **Desktop-Tokens:** Für den Start ohne Fenster erzeugt ein Benutzer mit dem Recht „Desktop-Tokens erzeugen“ unter
+  *Mein Konto* persönliche Tokens (Gültigkeit 30/90/365 Tage oder unbegrenzt; nur einmal angezeigt). Dort stehen auch
+  die Anmeldungen der Desktop-Apps, einzeln abmeldbar.
 * Die Vorgaben enthalten entschlüsselte Geheimnisse – den Team-Server deshalb nur über HTTPS erreichbar machen. TLS
   übernimmt ein Reverse-Proxy (`server.forward-headers-strategy=native`; WebSocket-Upgrade für `/graphql` durchreichen).
 * Entwicklung der Web-UI mit Hot-Reload: `./gradlew :server:bootRun -Pvaadin.productionMode=false`.
@@ -466,21 +482,67 @@ Alternativ zum Jar läuft der Team-Server als WAR in einem externen WildFly (Jak
 * **Datenverzeichnis:** `~/.devtools-server` des WildFly-Benutzers, oder `-Ddevtools.server.home=…`.
   Admin-Passwort wie oben über `DEVTOOLS_MCP_ADMIN_PASSWORD`.
 
+### Benutzer, Rollen und Rechte
+
+Benutzer, Rollen und Rechte liegen im Backend (Core-Datenbank, Tabellen `app_user`, `app_role`, `role_permission`,
+`user_role`) – eingebettet wie auf dem Team-Server. Verwaltet werden sie in der Web-UI (*Benutzer*, *Rollen*) bzw. im
+Tab **Benutzer** der Desktop-App, beides mit dem Recht „Benutzer und Rollen verwalten“.
+
+* **Anmeldung beim Start:** Die Desktop-App zeigt vor dem Hauptfenster das Anmeldefenster; ohne Anmeldung sind alle
+  Module aus (MCP-Clients sehen keine Tools). *Abmelden* (Tab *Backend*) oder eine abgelaufene bzw. widerrufene
+  Anmeldung führen zurück ins Anmeldefenster; beim Benutzerwechsel bekommt der neue Benutzer seine Einstellungen,
+  Skripte, Skills und Memories. Ein vom Administrator gesetztes Passwort muss zuerst geändert werden (Desktop-App:
+  Anmeldefenster, Web-UI: nur *Mein Konto* erreichbar, API: alles außer `me`, `changePassword`, `logout` → `FORBIDDEN`).
+* **Erstes Konto (eingebettet):** Beim ersten Start legt man im Anmeldefenster das Konto des Administrators an. Lief
+  die App vorher ohne Anmeldung als `local`, übernimmt die Einrichtung dieses Konto (neuer Name, Passwort, Rolle
+  Administrator) – Profile, Einstellungen, Projekte, Skills und Memories bleiben (Marker `account-setup.done`).
+* **Ohne Fenster** (`--headless`): Anmeldung über `DEVTOOLS_MCP_TOKEN` (persönliches Desktop-Token) oder
+  `DEVTOOLS_MCP_USER` + `DEVTOOLS_MCP_PASSWORD`; ein früher in `settings.json` eingetragenes Desktop-Token gilt
+  weiter. Ohne Konto im eingebetteten Backend legt die erste Anmeldung über Benutzer + Passwort den Administrator an.
+  Fehlt die Anmeldung, läuft der MCP-Server ohne Tools.
+* **Rollen:** Ein Benutzer hat beliebig viele Rollen, ihre Rechte addieren sich. Eingebaut ist **Administrator** (alle
+  Rechte, nicht änderbar, nicht löschbar); vorbelegt **Benutzer** (alle Module, eigene Einstellungen, Projekte anlegen,
+  Desktop-Tokens), frei änderbar. Weitere Rollen lassen sich anlegen, kopieren und löschen.
+* **Systemrechte:**
+
+  | Recht | Schlüssel | erlaubt |
+  |---|---|---|
+  | Benutzer und Rollen verwalten | `users.manage` | Benutzer anlegen, sperren, löschen, Passwörter setzen; Rollen festlegen |
+  | Globale Einstellungen | `settings.global` | Vorgaben für alle setzen, Felder sperren |
+  | Eigene Einstellungen | `settings.own` | Überschreibungen für sich und in Profilen, Profile anlegen/ändern/löschen |
+  | Projekte anlegen | `projects.create` | eigene Projekte anlegen, ändern, freigeben |
+  | Alle Projekte verwalten | `projects.manage-all` | Projekte anderer ändern, freigeben, löschen |
+  | Vorlagen veröffentlichen | `templates.publish` | Skills und Skripte als globale Vorlage veröffentlichen/zurückziehen |
+  | Desktop-Tokens erzeugen | `tokens.create` | persönliche Tokens für den Start ohne Anmeldedialog |
+
+* **Module und Tools:** `module:*` (alle Module und Tools, auch künftige aus Plugins und Skripten), `module:<id>` (ein
+  Modul mit allen Tools, z.B. `module:git`) oder `tool:<name>` (ein einzelnes Tool, z.B. `tool:git_status`). Module
+  ohne Tools (Grundeinstellungen, Freigaben) brauchen kein Recht; die Module der Skripte deckt auch `module:scripts`
+  ab. Nicht erlaubte Tools registriert die Desktop-App gar nicht, ihr Modul steht als „keine Berechtigung“ in der
+  Liste. Die Tools laufen auf dem Rechner des Entwicklers – durchgesetzt werden diese Rechte deshalb in der App;
+  schreibende Skill-, Memory- und Skript-Operationen (`skills_create`, `memories_save`, `scripts_save` …) prüft
+  zusätzlich das Backend.
+* **Sofort wirksam:** Geänderte Rollen und Rechte kommen per Subscription in den Desktop-Apps an (Tools werden neu
+  aufgebaut), die Web-UI liest Rechte und Status bei jeder Anfrage neu. Es bleibt immer mindestens ein aktiver Benutzer
+  mit „Benutzer und Rollen verwalten“ – Sperren, Löschen oder Rechteentzug des letzten wird abgelehnt.
+* **Passwörter raten:** Nach 5 Fehlversuchen für einen Benutzernamen ist er 30 s gesperrt, danach jeweils doppelt so
+  lange (höchstens 15 min) – für Desktop-Apps und Web-UI gemeinsam.
+
 ### Profile und Einstellungs-Ebenen
 
 Die wirksamen Modul-Einstellungen sind die Vorbelegung des Moduls, darüber die Ebenen **Global → Benutzer → Profil**;
 jede Ebene speichert nur, was sie vorgibt bzw. überschreibt. Speichern in der Desktop-App schreibt ins aktive Profil
 (nur geänderte Werte).
 
-* **Global:** Vorgaben des Administrators für alle (Web → *Globale Einstellungen*; je Feld „vorgeben“).
+* **Global:** Vorgaben für alle (Recht „Globale Einstellungen“; Web → *Globale Einstellungen*; je Feld „vorgeben“).
 * **Benutzer** („Alle meine Profile“) und **Profil** (z.B. Work, Home) überschreiben einzelne Felder, Modul an/aus
   und einzelne Tools (*Einstellungen*: je Feld „überschreiben“, sonst geerbt mit Herkunft). Geheimnisse liegen
   verschlüsselt (`secret.key`) in der Core-Datenbank (`module_override`).
 * **Aktives Profil** wird oben in der Web-UI oder im Tab *Backend* der Desktop-App umgeschaltet (Verwaltung in der
   Web-UI unter *Profile*: anlegen, kopieren samt Überschreibungen, umbenennen, löschen – das letzte bleibt). Jeder
   Benutzer startet mit „Standard“. Die Desktop-Apps übernehmen den Wechsel sofort (gleiche MCP-Session, neue Tools).
-* **Sperren:** Administratoren sperren unter *Globale Einstellungen* einzelne Felder, „Modul an/aus“ oder alle
-  Tool-Schalter eines Moduls. Gesperrtes gilt nur global; Überschreibungen werden beim Speichern abgelehnt und beim
+* **Sperren:** Mit dem Recht „Globale Einstellungen“ sperrt man unter *Globale Einstellungen* einzelne Felder,
+  „Modul an/aus“ oder alle Tool-Schalter eines Moduls. Gesperrtes gilt nur global; Überschreibungen werden beim Speichern abgelehnt und beim
   Auflösen ignoriert (auch bestehende).
 * Die Formulare der Web-UI entstehen aus den Modulen, die die Desktop-Apps melden (Tabelle `module_catalog`) – auch
   aus Plugins. Solange sich keine App verbunden hat, zeigt die Web-UI keine Module.
@@ -492,8 +554,8 @@ jede Ebene speichert nur, was sie vorgibt bzw. überschreibt. Speichern in der D
 * Das **Verzeichnis** ordnet jeder in seiner Desktop-App zu (Tab *Backend* → *Verzeichnis wählen…*). Projekte mit
   Verzeichnis ergänzen die Verzeichnis-Felder von **Git** (`repositories`), **Build** und **Code-Graph**
   (`projects`); eigene heißen in den Tools wie angelegt, freigegebene `name@eigentümer`.
-* **Freigaben** vergibt der Eigentümer (oder ein Administrator) je Benutzer: *nur lesen* oder *lesen + schreiben*.
-  Nur lesend lehnen `git_create_branch`/`checkout`/`stage`/`unstage`/`commit`, `build_run`/`build_test` (führen Code
+* **Freigaben** vergibt der Eigentümer (oder wer „Alle Projekte verwalten“ darf) je Benutzer: *nur lesen* oder
+  *lesen + schreiben*. Nur lesend lehnen `git_create_branch`/`checkout`/`stage`/`unstage`/`commit`, `build_run`/`build_test` (führen Code
   des Projekts aus) und ein nötiger Neuaufbau des Code-Graphen ab (`Workspaces.requireWritable`, Prüfung bei jedem
   Aufruf).
 * `projects_list` zeigt dem LLM die Projekte mit Zugriff, lokalem Verzeichnis, erkanntem Git/Gradle/Maven,
@@ -600,7 +662,7 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
 * **Historie:** jede Änderung erzeugt eine Revision mit Aktion und Notiz (`skills_history`). Mit
   `expected_revision` lehnt ein Patch ab, wenn der Skill inzwischen woanders geändert wurde.
 * **Ablage im Backend:** Skills liegen im Backend (eingebettet oder Team-Server) und gehören der E-Mail des
-  Benutzerkontos; globale Vorlagen verwalten Administratoren (eingebettet: der lokale Benutzer). Die App erreicht sie
+  Benutzerkontos; globale Vorlagen verwaltet, wer das Recht „Vorlagen veröffentlichen“ hat. Die App erreicht sie
   über GraphQL, Änderungen meldet `skillsChanged` (die Skills-Ansicht aktualisiert sich live).
 * **Persistenz:** Spring Data JPA (`SkillRepository`, `SkillRevisionRepository`; Zusatzdateien hängen per Cascade am
   Skill) auf Hibernate ORM 7 und HikariCP, Transaktionen per `@Transactional` im `SkillService`. Standard ist die
@@ -866,8 +928,8 @@ Funktionalität: Schnellcheck
   `gherkin`; ohne Angabe bleibt sie, neue Skripte sind Groovy).
 * **Ablage im Backend** (eingebettet oder Team-Server, Tabellen `script`/`script_revision` in der Skill-Datenbank):
   Quelltext, Beschreibung und **Historie** je Änderung. Eigentümer wie bei den Skills: eigene Skripte je
-  Konto-E-Mail, dazu **globale Vorlagen**, die Administratoren im Tab **Skripte** veröffentlichen und zurückziehen – sie
-  laufen danach in den Desktop-Apps *aller* Benutzer. Ein eigenes Skript verdeckt die Vorlage gleichen Namens. Das
+  Konto-E-Mail, dazu **globale Vorlagen**, die Benutzer mit dem Recht „Vorlagen veröffentlichen“ im Tab **Skripte**
+  veröffentlichen und zurückziehen – sie laufen danach in den Desktop-Apps *aller* Benutzer. Ein eigenes Skript verdeckt die Vorlage gleichen Namens. Das
   Backend übersetzt nichts; ausgeführt wird nur in der Desktop-App. Änderungen (auch aus anderen Desktop-Apps) meldet die
   Subscription `scriptsChanged`, die App lädt dann nur geänderte Skripte neu.
 * **Namen:** 2–32 Kleinbuchstaben/Ziffern (`jira`, `deploy2`) – der Name ist Modul-ID und Tool-Präfix und darf
@@ -876,16 +938,18 @@ Funktionalität: Schnellcheck
   Name und Sprache, Editor (*Prüfen*, *Speichern*), Historie (früheren Stand in den Editor übernehmen) und Referenz.
   Ungespeicherte Änderungen bleiben erhalten, wenn ein Skript woanders geändert wird.
 * **Web-UI des Team-Servers:** Seite **Skripte** – eigene Skripte und globale Vorlagen ansehen, anlegen (Groovy, Java
-  oder Gherkin), bearbeiten (mit Syntaxprüfung), Historie, löschen; Administratoren veröffentlichen und ziehen Vorlagen zurück.
+  oder Gherkin), bearbeiten (mit Syntaxprüfung), Historie, löschen; mit dem Recht „Vorlagen veröffentlichen“ auch
+  Vorlagen veröffentlichen und zurückziehen.
   Ohne Ausführung ermittelt der Server die Beschreibung aus dem Quelltext (fester Text, sonst bleibt die bisherige).
   Ob ein Skript lädt und welche Tools entstehen, zeigt die Desktop-App, die Änderungen sofort übernimmt.
 * **Ohne erreichbaren Team-Server:** Nach jedem Abgleich speichert die App den Stand verschlüsselt in
-  `scripts-cache.json` (nur für den Server, von dem er stammt). Ist der Server beim Start nicht erreichbar, lädt sie
-  die Skripte von dort („offline“ in Liste und `scripts_list`) und gleicht ab, sobald er wieder antwortet.
+  `scripts-cache.json` (nur für den Server und Benutzer, von dem er stammt). Ist der Server beim Start nicht
+  erreichbar, lädt sie die Skripte von dort („offline“ in Liste und `scripts_list`) und gleicht ab, sobald er wieder antwortet.
 * **Sicherheit:** Skripte laufen ohne Sandbox mit allen Rechten der App (Dateisystem, Netz, Prozesse, alle
   Bibliotheken der App). Deshalb darf das LLM Skripte nur mit den Schaltern *LLM darf Skripte anlegen und ändern* bzw.
   *… löschen* (Standard aus) schreiben; Lesen (`scripts_list`, `scripts_view`) ist immer dabei. Auf einem Team-Server
-  bedeutet eine globale Vorlage Code auf allen angebundenen Rechnern – nur Administratoren veröffentlichen.
+  bedeutet eine globale Vorlage Code auf allen angebundenen Rechnern – das Recht „Vorlagen veröffentlichen“ daher
+  sparsam vergeben.
   Gherkin-Skripte führen keinen eigenen Code aus, können aber jedes aktive Tool aufrufen – also auch schreibende wie
   `container_rm` oder `git_reset`, soweit sie eingeschaltet sind.
 * **Zeitlimit** je Tool-Aufruf (Modul *Skripte*, Standard 300 s): danach wird der Aufruf unterbrochen. Groovy-Skripte
@@ -1107,7 +1171,8 @@ desktop/
   core/ManagedToolCallback── Präfix, Protokollierung, Klartext-Ergebnisse
   config/SettingsStore    ── settings.json (App-Einstellungen), SecretCipher (AES-GCM)
   server/BearerTokenFilter── optionaler Token-Schutz für /mcp
-  remote/                 ── EmbeddedBackend + LocalUser, BackendConnection (GraphQL-Client, Subscriptions, Cache),
+  remote/                 ── EmbeddedBackend + EmbeddedAccounts (erstes Konto), BackendConnection (Anmeldung,
+                             GraphQL-Client, Subscriptions, Cache),
                              BackendSettingsResolver, BackendSkills, BackendMemories, BackendScripts, ScriptCacheFile
   modules/{git,sonar,build,graph,skills,memories,…} ── skills/RecallHints: Hinweise auf Skills und Memories
   modules/scripts/        ── Skripte: ScriptManager (Abgleich mit dem Backend, Registrierung zur Laufzeit),

@@ -1,6 +1,9 @@
 # GraphQL-API des Backends (Team-Server oder eingebettet in der Desktop-App).
-# Anmeldung: Header „Authorization: Bearer <Desktop-Token>“ (HTTP) bzw. gleichnamiger Eintrag im Payload von
-# connection_init (WebSocket). Ohne gültiges Token antwortet jede Operation mit einem Fehler vom Typ UNAUTHORIZED.
+# Anmeldung: Mutation login (Benutzername + Passwort) liefert ein Sitzungs-Token; alternativ ein persönliches
+# Desktop-Token aus „Mein Konto“. Das Token geht als Header „Authorization: Bearer <Token>“ (HTTP) bzw. gleichnamiger
+# Eintrag im Payload von connection_init (WebSocket) mit. Ohne gültiges Token antwortet jede Operation außer login
+# mit einem Fehler vom Typ UNAUTHORIZED, ohne nötiges Recht mit FORBIDDEN. Solange ein vom Administrator gesetztes
+# Passwort nicht geändert ist, gehen nur me, changePassword und logout.
 # Zeitpunkte sind ISO-8601-Strings (UTC).
 
 type Query {
@@ -39,9 +42,34 @@ type Query {
     "Sichtbare Skripte, Groovy oder Java (eigene und nicht verdeckte globale Vorlagen)."
     scripts: [ScriptSummary!]!
     script(name: String!): ScriptDetails
+
+    "Alle Benutzer (Recht users.manage)."
+    users: [User!]!
+    "Alle Rollen mit ihren Rechten (Recht users.manage)."
+    roles: [Role!]!
+    "Die Systemrechte, die Rollen vergeben können (dazu module:*, module:<id>, tool:<name>)."
+    permissionCatalog: [PermissionInfo!]!
 }
 
 type Mutation {
+    "Anmeldung mit Benutzername und Passwort – ohne Token aufrufbar. client: Bezeichnung des Geräts, z.B. Desktop-App (rechner)."
+    login(username: String!, password: String!, client: String): LoginResult!
+    "Beendet die Anmeldung des verwendeten Sitzungs-Tokens."
+    logout: Boolean!
+    changePassword(currentPassword: String!, newPassword: String!): Boolean!
+
+    "Verwaltung (Recht users.manage). Ohne passwordChangeRequired muss der neue Benutzer das Passwort zuerst ändern."
+    createUser(username: String!, displayName: String, email: String, roles: [String!]!, password: String!,
+               passwordChangeRequired: Boolean): User!
+    "roles: Namen der Rollen; ersetzt die bisherigen."
+    updateUser(id: Int!, displayName: String, email: String, roles: [String!]!, enabled: Boolean!): User!
+    setUserPassword(id: Int!, password: String!, passwordChangeRequired: Boolean): Boolean!
+    deleteUser(id: Int!): Boolean!
+    "permissions: Systemrechte (users.manage …), module:*, module:<id>, tool:<name>."
+    createRole(name: String!, description: String, permissions: [String!]!): Role!
+    updateRole(id: Int!, name: String!, description: String, permissions: [String!]!): Role!
+    deleteRole(id: Int!): Boolean!
+
     "Meldet die Module einer Desktop-App; ersetzt deren bisherige Beschreibung."
     reportCatalog(modules: [ModuleInput!]!): Boolean!
     activateProfile(profileId: Int!): Settings!
@@ -97,9 +125,49 @@ type Me {
     username: String!
     displayName: String
     email: String
+    "Hat alle Rechte (Rolle Administrator)."
     admin: Boolean!
     profiles: [Profile!]!
     activeProfileId: Int!
+    roles: [String!]!
+    "Wirksame Rechte aller Rollen: *, Systemrechte, module:*, module:<id>, tool:<name>."
+    permissions: [String!]!
+    passwordChangeRequired: Boolean!
+}
+
+type LoginResult {
+    token: String!
+    expiresAt: String
+    passwordChangeRequired: Boolean!
+}
+
+type User {
+    id: Int!
+    username: String!
+    displayName: String
+    email: String
+    enabled: Boolean!
+    passwordChangeRequired: Boolean!
+    createdAt: String
+    roles: [String!]!
+}
+
+type Role {
+    id: Int!
+    name: String!
+    description: String
+    "Eingebaut (Administrator): alle Rechte, nicht änderbar."
+    builtin: Boolean!
+    permissions: [String!]!
+    "Anzahl der Benutzer mit dieser Rolle."
+    users: Int!
+}
+
+type PermissionInfo {
+    key: String!
+    name: String!
+    label: String!
+    description: String
 }
 
 type Profile {

@@ -197,7 +197,8 @@ public class ScriptService implements ScriptBackend {
 
     private String requireAdmin() {
         if (!users.admin()) {
-            throw new IllegalStateException("Globale Skript-Vorlagen verwalten nur Administratoren.");
+            throw new IllegalStateException("Globale Skript-Vorlagen verwalten: dafür fehlt das Recht „Vorlagen "
+                    + "veröffentlichen“.");
         }
         return users.email();
     }

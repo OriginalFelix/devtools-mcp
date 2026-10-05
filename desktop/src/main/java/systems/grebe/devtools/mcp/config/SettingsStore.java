@@ -75,7 +75,7 @@ public class SettingsStore implements DataHome {
         return team;
     }
 
-    /** Speichert die Anbindung an den Team-Server; das Token wird verschlüsselt abgelegt. */
+    /** Speichert die Anbindung an das Backend; das Token wird verschlüsselt abgelegt. */
     public synchronized void saveTeam(TeamSettings value) {
         this.team = value;
         persist();
@@ -143,7 +143,7 @@ public class SettingsStore implements DataHome {
                     }
                 });
                 team = new TeamSettings(t.path("url").asString(""), cipher.decrypt(t.path("token").asString("")),
-                        paths);
+                        t.path("username").asString(""), paths);
             }
             JsonNode p = root.path("plugins");
             if (p.isObject()) {
@@ -181,6 +181,7 @@ public class SettingsStore implements DataHome {
         ObjectNode t = root.putObject("team");
         t.put("url", team.url());
         t.put("token", cipher.encrypt(team.token()));
+        t.put("username", team.username());
         ObjectNode paths = t.putObject("projectPaths");
         team.projectPaths().forEach((id, path) -> paths.put(Long.toString(id), path));
         writePlugins(root.putObject("plugins"));

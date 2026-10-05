@@ -33,6 +33,9 @@ public class BackendScripts implements ScriptBackend {
 
     @Override
     public List<ScriptViews.Summary> overview() {
+        if (!backend.signedIn()) {
+            return List.of(); // abgemeldet: keine Skripte, ihre Module verschwinden
+        }
         return backend.queryList("{ scripts { " + SUMMARY + " } }", "scripts", ScriptViews.Summary.class);
     }
 

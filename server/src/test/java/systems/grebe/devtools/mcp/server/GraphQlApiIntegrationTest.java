@@ -16,12 +16,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.ApplicationContext;
 import org.springframework.graphql.ResponseError;
 import org.springframework.graphql.client.ClientGraphQlResponse;
 import org.springframework.graphql.client.HttpSyncGraphQlClient;
 import org.springframework.graphql.client.WebSocketGraphQlClient;
 import org.springframework.graphql.client.WebSocketGraphQlClientInterceptor;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.authentication.AuthenticationEventPublisher;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.authentication.event.AuthenticationFailureBadCredentialsEvent;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.client.RestClient;
@@ -33,8 +38,13 @@ import systems.grebe.devtools.mcp.api.ModuleDescriptor;
 import systems.grebe.devtools.mcp.api.ModuleOverlay;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.api.SettingsSnapshot;
+import systems.grebe.devtools.mcp.api.LoginResult;
+import systems.grebe.devtools.mcp.api.Permission;
+import systems.grebe.devtools.mcp.api.RoleInfo;
+import systems.grebe.devtools.mcp.api.UserInfo;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
 import systems.grebe.devtools.mcp.backend.account.Role;
+import systems.grebe.devtools.mcp.backend.account.RoleService;
 import systems.grebe.devtools.mcp.backend.account.TokenService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.backend.profile.Profile;
@@ -44,13 +54,15 @@ import systems.grebe.devtools.mcp.backend.project.ProjectService;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.profile.Overrides;
+import systems.grebe.devtools.mcp.web.WebLogin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * GraphQL-API des Backends im Team-Server: Anmeldung per Desktop-Token, Modul-Katalog, Einstellungs-Ebenen Global →
- * Benutzer → Profil mit Sperren, Profilwechsel, Projekte, Skills und Subscriptions über WebSocket.
+ * GraphQL-API des Backends im Team-Server: Anmeldung mit Passwort oder Desktop-Token, Rollen und Rechte, Verwaltung,
+ * Modul-Katalog, Einstellungs-Ebenen Global → Benutzer → Profil mit Sperren, Profilwechsel, Projekte, Skills und
+ * Subscriptions über WebSocket.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class GraphQlApiIntegrationTest {
@@ -75,6 +87,9 @@ class GraphQlApiIntegrationTest {
     TokenService tokens;
 
     @Autowired
+    RoleService roles;
+
+    @Autowired
     ProfileService profiles;
 
     @Autowired
@@ -83,6 +98,9 @@ class GraphQlApiIntegrationTest {
     @Autowired
     @Qualifier("coreJdbc")
     JdbcClient jdbc;
+
+    @Autowired
+    ApplicationContext context;
 
     static final List<ModuleDescriptor> CATALOG = List.of(
             new ModuleDescriptor("sonar", "SonarQube", "Befunde", false, true, 10, List.of(
@@ -118,8 +136,12 @@ class GraphQlApiIntegrationTest {
     }
 
     private UserAccount newUser() {
+        return newUser(Role.USER);
+    }
+
+    private UserAccount newUser(String... roleNames) {
         return accounts.create("gqluser" + USERS.incrementAndGet(), null, "u" + USERS.get() + "@example.com",
-                Role.USER, "passwort-123");
+                List.of(roleNames), "passwort-123", false);
     }
 
     private String token(UserAccount u) {
@@ -159,8 +181,129 @@ class GraphQlApiIntegrationTest {
                 .isEqualTo("UNAUTHORIZED");
         UserAccount u = newUser();
         String jwt = token(u);
-        accounts.update(u.id(), null, null, Role.USER, false); // gesperrt
+        accounts.update(u.id(), null, null, null, false); // gesperrt
         assertThat(errorType(client(jwt).document("{ me { id } }").executeSync())).isEqualTo("UNAUTHORIZED");
+    }
+
+    private static final String LOGIN = """
+            mutation($u: String!, $p: String!) { login(username: $u, password: $p, client: "Test") {
+              token expiresAt passwordChangeRequired } }""";
+
+    private LoginResult login(String username, String password) {
+        return client(null).document(LOGIN).variables(Map.of("u", username, "p", password))
+                .retrieveSync("login").toEntity(LoginResult.class);
+    }
+
+    @Test
+    void loginWithPasswordAndLogout() {
+        UserAccount u = newUser();
+        ClientGraphQlResponse wrong = client(null).document(LOGIN)
+                .variables(Map.of("u", u.username(), "p", "falsch")).executeSync();
+        assertThat(errorType(wrong)).isEqualTo("BAD_REQUEST");
+        assertThat(wrong.getErrors().getFirst().getMessage()).contains("falsch");
+
+        LoginResult r = login(u.username().toUpperCase(), "passwort-123");
+        assertThat(r.passwordChangeRequired()).isFalse();
+        assertThat(r.expiresAt()).isNotBlank();
+        Me me = client(r.token()).document("{ me { id username admin roles permissions passwordChangeRequired "
+                + "profiles { id } activeProfileId } }").retrieveSync("me").toEntity(Me.class);
+        assertThat(me.username()).isEqualTo(u.username());
+        assertThat(me.admin()).isFalse();
+        assertThat(me.roles()).containsExactly(Role.USER);
+        assertThat(me.grants().allModules()).isTrue();
+        assertThat(me.grants().has(Permission.USERS_MANAGE)).isFalse();
+        assertThat(tokens.tokens(u.id())).singleElement().satisfies(t -> assertThat(t.name()).isEqualTo("Test"));
+
+        assertThat(client(r.token()).document("mutation { logout }").retrieveSync("logout").toEntity(Boolean.class))
+                .isTrue();
+        assertThat(errorType(client(r.token()).document("{ me { id } }").executeSync())).isEqualTo("UNAUTHORIZED");
+        assertThat(tokens.tokens(u.id())).isEmpty(); // beendete Anmeldungen bleiben nicht stehen
+    }
+
+    @Test
+    void passwordSetByAnAdministratorMustBeChangedFirst() {
+        UserAccount u = accounts.create("gqlnew" + USERS.incrementAndGet(), null, null, List.of(Role.USER),
+                "start-passwort", true);
+        LoginResult r = login(u.username(), "start-passwort");
+        assertThat(r.passwordChangeRequired()).isTrue();
+        assertThat(errorType(client(r.token()).document(SETTINGS).executeSync())).isEqualTo("FORBIDDEN");
+        assertThat(client(r.token()).document("{ me { passwordChangeRequired } }")
+                .retrieveSync("me.passwordChangeRequired").toEntity(Boolean.class)).isTrue();
+
+        assertThat(client(r.token()).document("""
+                        mutation { changePassword(currentPassword: "start-passwort", newPassword: "mein-passwort") }""")
+                .retrieveSync("changePassword").toEntity(Boolean.class)).isTrue();
+        assertThat(settings(r.token()).profileName()).isEqualTo(ProfileService.DEFAULT_PROFILE);
+    }
+
+    @Test
+    void failedWebLoginsBlockTheDesktopLoginToo() {
+        // Spring Security meldet Fehlversuche der Formular-Anmeldung als Ereignis – dafür braucht es den Publisher
+        assertThat(context.getBeansOfType(AuthenticationEventPublisher.class)).isNotEmpty();
+        UserAccount u = newUser();
+        WebLogin web = context.getBean(WebLogin.class);
+        assertThat(web.loadUserByUsername(u.username()).isAccountNonLocked()).isTrue();
+        for (int i = 0; i < 5; i++) {
+            web.onFailure(new AuthenticationFailureBadCredentialsEvent(
+                    UsernamePasswordAuthenticationToken.unauthenticated(u.username(), "falsch"),
+                    new BadCredentialsException("falsch")));
+        }
+        assertThat(web.loadUserByUsername(u.username()).isAccountNonLocked()).isFalse();
+        ClientGraphQlResponse r = client(null).document(LOGIN)
+                .variables(Map.of("u", u.username(), "p", "passwort-123")).executeSync();
+        assertThat(r.getErrors()).singleElement()
+                .satisfies(e -> assertThat(e.getMessage()).contains("Zu viele Fehlversuche"));
+    }
+
+    @Test
+    void administrationNeedsThePermission() {
+        String plain = token(newUser());
+        assertThat(errorType(client(plain).document("{ users { id } }").executeSync())).isEqualTo("FORBIDDEN");
+        assertThat(errorType(client(plain).document("""
+                mutation { createRole(name: "x", permissions: []) { id } }""").executeSync())).isEqualTo("FORBIDDEN");
+
+        String admin = token(newUser(Role.ADMINISTRATOR));
+        RoleInfo reviewer = client(admin).document("""
+                        mutation { createRole(name: "Reviewer", description: "nur lesen",
+                          permissions: ["module:git", "tool:sonar_issues"]) {
+                          id name description builtin permissions users } }""")
+                .retrieveSync("createRole").toEntity(RoleInfo.class);
+        assertThat(reviewer.permissions()).containsExactly("module:git", "tool:sonar_issues");
+        try {
+            UserInfo created = client(admin).document("""
+                            mutation($n: String!) { createUser(username: $n, roles: ["Reviewer"],
+                              password: "passwort-123") { id username enabled passwordChangeRequired roles } }""")
+                    .variable("n", "gqlrev" + USERS.incrementAndGet())
+                    .retrieveSync("createUser").toEntity(UserInfo.class);
+            assertThat(created.passwordChangeRequired()).isTrue(); // Standard beim Anlegen durch die Verwaltung
+            assertThat(created.roles()).containsExactly("Reviewer");
+
+            List<RoleInfo> all = client(admin).document("{ roles { id name builtin permissions users } }")
+                    .retrieveSync("roles").toEntityList(RoleInfo.class);
+            assertThat(all).filteredOn(RoleInfo::builtin).singleElement()
+                    .satisfies(r -> assertThat(r.permissions()).containsExactly("*"));
+            assertThat(all).filteredOn(r -> r.name().equals("Reviewer")).singleElement()
+                    .satisfies(r -> assertThat(r.users()).isEqualTo(1));
+
+            // Rechte des Reviewers: keinen Skill schreiben, kein Projekt anlegen
+            accounts.resetPassword(created.id(), "passwort-456", false);
+            String rev = login(created.username(), "passwort-456").token();
+            ClientGraphQlResponse skill = client(rev).document("""
+                    mutation { createSkill(name: "x", description: "d", content: "c") }""").executeSync();
+            assertThat(errorType(skill)).isEqualTo("FORBIDDEN");
+            assertThat(skill.getErrors().getFirst().getMessage()).contains("skills_create");
+            assertThat(errorType(client(rev).document("""
+                    mutation { createProject(name: "p") { id } }""").executeSync())).isEqualTo("BAD_REQUEST");
+
+            long adminId = client(admin).document("{ me { id } }").retrieveSync("me.id").toEntity(Long.class);
+            ClientGraphQlResponse self = client(admin).document("mutation($id: Int!) { deleteUser(id: $id) }")
+                    .variable("id", adminId).executeSync();
+            assertThat(errorType(self)).isEqualTo("BAD_REQUEST");
+            assertThat(client(admin).document("mutation($id: Int!) { deleteUser(id: $id) }")
+                    .variable("id", created.id()).retrieveSync("deleteUser").toEntity(Boolean.class)).isTrue();
+        } finally {
+            roles.delete(reviewer.id());
+        }
     }
 
     @Test
@@ -168,7 +311,7 @@ class GraphQlApiIntegrationTest {
         UserAccount u = newUser();
         String jwt = token(u);
         Me me = client(jwt).document("{ me { id username displayName email admin profiles { id name description } "
-                + "activeProfileId } }").retrieveSync("me").toEntity(Me.class);
+                + "activeProfileId roles permissions passwordChangeRequired } }").retrieveSync("me").toEntity(Me.class);
         assertThat(me.username()).isEqualTo(u.username());
         assertThat(me.profiles()).extracting(Me.ProfileInfo::name).containsExactly(ProfileService.DEFAULT_PROFILE);
 

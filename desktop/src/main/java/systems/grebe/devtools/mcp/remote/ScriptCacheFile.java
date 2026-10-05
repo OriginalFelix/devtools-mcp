@@ -16,8 +16,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Skripte des Team-Servers als verschlüsselte Datei {@code scripts-cache.json} im Einstellungsordner – wie
- * {@code team-cache.json} für die Einstellungen. Gilt nur für den Server, von dem der Stand stammt; das eingebettete
- * Backend braucht keinen Cache (es ist immer da).
+ * {@code team-cache.json} für die Einstellungen. Gilt nur für den Server und Benutzer, von dem der Stand stammt; das
+ * eingebettete Backend braucht keinen Cache (es ist immer da).
  */
 @Component
 public class ScriptCacheFile implements ScriptCache {
@@ -25,18 +25,22 @@ public class ScriptCacheFile implements ScriptCache {
     private static final Logger LOG = LoggerFactory.getLogger(ScriptCacheFile.class);
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
-    /** Inhalt der Datei. */
+    /**
+     * Inhalt der Datei.
+     *
+     * @param url Server und Benutzer ({@link BackendConnection#cacheKey()})
+     */
     record Stored(String url, List<Entry> scripts) {
     }
 
     private final SettingsStore store;
     private final Path file;
-    /** Adresse des Team-Servers; {@code null} = eingebettetes Backend (kein Cache). */
+    /** Team-Server und Benutzer; {@code null} = eingebettetes Backend oder niemand angemeldet (kein Cache). */
     private final Supplier<String> teamUrl;
 
     @Autowired
     public ScriptCacheFile(SettingsStore store, BackendConnection backend) {
-        this(store, () -> backend.embedded() ? null : backend.url());
+        this(store, backend::cacheKey);
     }
 
     ScriptCacheFile(SettingsStore store, Supplier<String> teamUrl) {

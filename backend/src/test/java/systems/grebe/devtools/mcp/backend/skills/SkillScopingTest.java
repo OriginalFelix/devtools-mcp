@@ -196,11 +196,11 @@ class SkillScopingTest {
     }
 
     @Test
-    void managingTemplatesNeedsTheAdminSwitch() {
+    void managingTemplatesNeedsThePublishPermission() {
         SkillService bernd = app(BERND, false);
         bernd.create("x", "d", "c", null, null, 5_000);
-        assertThatThrownBy(() -> bernd.publish("x")).hasMessageContaining("nicht freigegeben");
-        assertThatThrownBy(() -> bernd.unpublish("x")).hasMessageContaining("nicht freigegeben");
+        assertThatThrownBy(() -> bernd.publish("x")).hasMessageContaining("Vorlagen veröffentlichen");
+        assertThatThrownBy(() -> bernd.unpublish("x")).hasMessageContaining("Vorlagen veröffentlichen");
         assertThat(jdbc().queryForObject("select count(*) from skill where owner = ?", Long.class,
                 SkillOwner.GLOBAL)).isZero();
 

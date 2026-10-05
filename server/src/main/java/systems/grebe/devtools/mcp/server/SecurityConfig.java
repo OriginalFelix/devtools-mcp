@@ -8,16 +8,21 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
+import systems.grebe.devtools.mcp.backend.account.AccountService;
 import systems.grebe.devtools.mcp.web.LoginView;
+import systems.grebe.devtools.mcp.web.SessionRefreshFilter;
 
 /**
  * Zwei Filterketten:
  *
  * <ol>
  *   <li>{@code /graphql}: GraphQL-API für die Desktop-Apps – zustandslos, ohne CSRF und Session; angemeldet wird per
- *       Desktop-Token im GraphQL-Interceptor ({@link systems.grebe.devtools.mcp.backend.GraphQlAuth}).</li>
+ *       Token im GraphQL-Interceptor ({@link systems.grebe.devtools.mcp.backend.GraphQlAuth}).</li>
  *   <li>alles andere: Vaadin-Web-UI mit Formular-Anmeldung gegen die Benutzerkonten ({@link
- *       systems.grebe.devtools.mcp.web.WebLogin}); Zugriff je View per {@code @PermitAll} / {@code @RolesAllowed}.</li>
+ *       systems.grebe.devtools.mcp.web.WebLogin}); Zugriff je View per {@code @PermitAll} bzw.
+ *       {@code @RolesAllowed} mit dem Namen eines Systemrechts (z.B. {@code USERS_MANAGE}). Rechte und Status liest
+ *       {@link SessionRefreshFilter} bei jeder Anfrage neu.</li>
  * </ol>
  */
 @Configuration(proxyBeanMethods = false)
@@ -37,7 +42,9 @@ public class SecurityConfig {
 
     @Bean
     @Order(2)
-    SecurityFilterChain webSecurity(HttpSecurity http) throws Exception {
-        return http.with(VaadinSecurityConfigurer.vaadin(), c -> c.loginView(LoginView.class)).build();
+    SecurityFilterChain webSecurity(HttpSecurity http, AccountService accounts) throws Exception {
+        return http.with(VaadinSecurityConfigurer.vaadin(), c -> c.loginView(LoginView.class))
+                .addFilterAfter(new SessionRefreshFilter(accounts), SecurityContextHolderFilter.class)
+                .build();
     }
 }

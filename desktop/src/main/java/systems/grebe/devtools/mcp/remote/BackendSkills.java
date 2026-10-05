@@ -35,6 +35,9 @@ public class BackendSkills implements SkillBackend {
 
     @Override
     public List<SkillViews.Summary> overview() {
+        if (!backend.signedIn()) {
+            return List.of();
+        }
         return backend.queryList("{ skills { " + SUMMARY + " } }", "skills", SkillViews.Summary.class);
     }
 
@@ -76,6 +79,9 @@ public class BackendSkills implements SkillBackend {
 
     @Override
     public int visibleCount() {
+        if (!backend.signedIn()) {
+            return 0;
+        }
         Integer n = backend.query("{ skillCount }", Map.of(), "skillCount", Integer.class);
         return n == null ? 0 : n;
     }
