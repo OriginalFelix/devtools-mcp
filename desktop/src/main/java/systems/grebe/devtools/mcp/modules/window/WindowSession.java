@@ -1,13 +1,22 @@
 package systems.grebe.devtools.mcp.modules.window;
 
+import java.awt.Color;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import systems.grebe.devtools.mcp.modules.window.cursor.CursorImage;
 
 /**
- * Zustand eines Benutzers ({@code ToolScope}): welcher Prozess gebunden ist und mit welchem Faktor der letzte
- * Screenshot je Fenster verkleinert wurde (Klickkoordinaten beziehen sich auf diesen Screenshot).
+ * Zustand einer KI (MCP-Session, siehe {@link WindowSessions}): welcher Prozess gebunden ist, mit welchem Faktor der
+ * letzte Screenshot je Fenster verkleinert wurde (Klickkoordinaten beziehen sich auf diesen Screenshot), die Farbe der
+ * KI und ihre Anzeige- und Eingaberessourcen (Rahmen, eigener Zeiger).
  */
 final class WindowSession {
 
@@ -46,12 +55,73 @@ final class WindowSession {
         }
     }
 
+    private static final Logger LOG = Logger.getLogger(WindowSession.class.getName());
+
+    private final String id;
+    private final String client;
+    private final Color color;
+    private final Function<Binding, Optional<String>> conflict;
+    private final Map<String, Object> resources = new ConcurrentHashMap<>();
     private volatile Binding binding;
     private final Map<Long, Double> imageScale = new ConcurrentHashMap<>();
 
+    /** Eine einzelne KI ohne Konkurrenz – für Tests und Aufrufe ohne MCP-Session. */
+    WindowSession() {
+        this("local", null, CursorImage.ACCENT, b -> Optional.empty());
+    }
+
+    /**
+     * @param client   Name der KI für den Hinweis, {@code null} = „KI“
+     * @param conflict Grund, warum eine Bindung nicht erlaubt ist (z.B. weil eine andere KI den Prozess steuert)
+     */
+    WindowSession(String id, String client, Color color, Function<Binding, Optional<String>> conflict) {
+        this.id = id;
+        this.client = client;
+        this.color = color;
+        this.conflict = conflict;
+    }
+
+    String id() {
+        return id;
+    }
+
+    /** Name der KI, z.B. „Claude Code“. */
+    String client() {
+        return client == null ? "KI" : client;
+    }
+
+    Color color() {
+        return color;
+    }
+
+    /** Bindet den Prozess; wirft, wenn eine andere KI ihn (oder einen Prozess seines Baums) steuert. */
     void bind(Binding value) {
+        conflict.apply(value).ifPresent(reason -> {
+            throw new IllegalStateException(reason);
+        });
         binding = value;
         imageScale.clear();
+    }
+
+    /** Ressource dieser KI (z.B. Rahmen, Eingabegerät) – beim ersten Zugriff mit {@code factory} erzeugt. */
+    @SuppressWarnings("unchecked")
+    <T> T resource(String key, Supplier<T> factory) {
+        return (T) resources.computeIfAbsent(key, k -> factory.get());
+    }
+
+    /** Hebt die Bindung auf und schließt alle Ressourcen (Zeiger, Rahmen). */
+    void close() {
+        unbind();
+        for (Object r : resources.values()) {
+            if (r instanceof AutoCloseable c) {
+                try {
+                    c.close();
+                } catch (Exception e) {
+                    LOG.log(Level.WARNING, "Ressource der KI-Session " + id + " nicht geschlossen", e);
+                }
+            }
+        }
+        resources.clear();
     }
 
     void unbind() {
