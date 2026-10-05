@@ -4,6 +4,8 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javafx.application.Application;
 import org.springframework.boot.SpringBootConfiguration;
@@ -51,10 +53,17 @@ public class DevToolsMcpApplication {
             "org.springframework.boot.graphql.autoconfigure.GraphQlAutoConfiguration",
             "org.springframework.boot.graphql.autoconfigure.servlet.GraphQlWebMvcAutoConfiguration");
 
+    /**
+     * JavaFX warnt beim Start, wenn es vom Classpath statt als Modul geladen wird – im Fat-Jar geht es nicht anders.
+     * Fest referenziert, weil java.util.logging Logger nur schwach hält (sonst ginge der Level wieder verloren).
+     */
+    private static final Logger FX_PLATFORM_LOG = Logger.getLogger("com.sun.javafx.application.PlatformImpl");
+
     public static void main(String[] args) {
         if (headless(args)) {
             startSpring(args, true);
         } else {
+            FX_PLATFORM_LOG.setLevel(Level.SEVERE);
             Application.launch(FxApp.class, args);
         }
     }
