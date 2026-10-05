@@ -70,6 +70,26 @@ class Win32ZOrderTest {
     }
 
     @Test
+    void leavesOverlaysAloneThatAlreadySitDirectlyAboveTheTarget() {
+        HWND target = window();
+        HWND strip1 = window();
+        HWND strip2 = window();
+        HWND other = window(); // anderes Fenster obenauf
+        long[] strips = {id(strip1), id(strip2)};
+        Win32ZOrder.stackAbove(strips, id(target));
+        HWND first = prev(target);
+        HWND second = prev(first);
+        assertThat(java.util.Set.of(first, second)).containsExactlyInAnyOrder(strip1, strip2);
+        assertThat(isAbove(other, second)).isTrue();
+
+        // beim Nachführen nichts umsortieren – beide liegen schon direkt über dem Ziel
+        Win32ZOrder.stackAbove(strips, id(target));
+
+        assertThat(prev(target)).isEqualTo(first);
+        assertThat(prev(first)).isEqualTo(second);
+    }
+
+    @Test
     void followsWhenAnotherWindowMovesOverTheTarget() {
         HWND target = window();
         HWND overlay = window();

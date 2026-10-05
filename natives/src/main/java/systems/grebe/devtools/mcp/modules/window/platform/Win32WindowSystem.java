@@ -260,11 +260,11 @@ final class Win32WindowSystem implements WindowSystem {
     }
 
     @Override
-    public void stackAbove(java.awt.Window overlay, NativeWindow target) {
-        com.sun.jna.Pointer own = com.sun.jna.Native.getWindowPointer(overlay);
-        if (own != null) {
-            Win32ZOrder.stackAbove(com.sun.jna.Pointer.nativeValue(own), target.id());
-        }
+    public boolean stackAbove(List<java.awt.Window> overlays, NativeWindow target) {
+        // geht schon, bevor die Fenster sichtbar sind (natives Fenster nach addNotify) – nichts blitzt vorn auf
+        long[] own = overlays.stream().map(com.sun.jna.Native::getWindowPointer).filter(java.util.Objects::nonNull)
+                .mapToLong(com.sun.jna.Pointer::nativeValue).toArray();
+        return own.length == overlays.size() && Win32ZOrder.stackAbove(own, target.id());
     }
 
     /** {@code PrintWindow} über {@link Win32Messages} – das Fenster bleibt, wo es ist. */

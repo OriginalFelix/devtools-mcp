@@ -266,31 +266,61 @@ final class MacWindowSystem implements WindowSystem {
     }
 
     /**
-     * Sucht die Fensternummer des eigenen Fensters über die Fensterliste (eigene PID, gleiche Grenzen) und ordnet es
-     * per AppKit direkt über das Ziel ({@link MacZOrder}).
+     * Sucht die Fensternummern der eigenen Fenster über die Fensterliste (eigene PID, gleiche Grenzen) und ordnet sie
+     * per AppKit direkt über das Ziel ({@link MacZOrder}) – nur, wenn sie dort nicht schon zusammenhängend liegen.
+     * Fenster, die noch nicht auf dem Bildschirm sind, haben keine Nummer: dann {@code false}.
      */
     @Override
-    public void stackAbove(java.awt.Window overlay, NativeWindow target) {
-        Long own;
+    public boolean stackAbove(List<java.awt.Window> overlays, NativeWindow target) {
+        List<NativeWindow> all = windows(); // von vorn nach hinten
+        java.util.Set<Long> own = new java.util.HashSet<>();
+        for (java.awt.Window overlay : overlays) {
+            Long n = ownNumber(overlay, all);
+            if (n != null) {
+                own.add(n);
+            }
+        }
+        int at = -1;
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).id() == target.id()) {
+                at = i;
+                break;
+            }
+        }
+        if (own.size() == overlays.size() && at >= own.size()) {
+            boolean placed = true;
+            for (int i = at - own.size(); i < at; i++) {
+                placed &= own.contains(all.get(i).id());
+            }
+            if (placed) {
+                return true; // liegen schon direkt vor dem Ziel
+            }
+        }
+        own.forEach(n -> MacZOrder.stackAbove(n, target.id()));
+        return own.size() == overlays.size();
+    }
+
+    /** Fensternummer eines eigenen Fensters – gemerkt, sobald es einmal in der Fensterliste auftaucht. */
+    private Long ownNumber(java.awt.Window overlay, List<NativeWindow> all) {
         synchronized (ownNumbers) {
-            own = ownNumbers.get(overlay);
-        }
-        if (own == null) {
-            Rectangle want = overlay.getBounds();
-            long self = ProcessHandle.current().pid();
-            own = windows().stream()
-                    .filter(w -> w.pid() == self && Math.abs(w.bounds().x - want.x) <= 1
-                            && Math.abs(w.bounds().y - want.y) <= 1 && Math.abs(w.bounds().width - want.width) <= 1
-                            && Math.abs(w.bounds().height - want.height) <= 1)
-                    .map(NativeWindow::id).findFirst().orElse(null);
-            if (own == null) {
-                return; // noch nicht auf dem Bildschirm – beim nächsten Nachführen
+            Long known = ownNumbers.get(overlay);
+            if (known != null) {
+                return known;
             }
+        }
+        Rectangle want = overlay.getBounds();
+        long self = ProcessHandle.current().pid();
+        Long n = all.stream()
+                .filter(w -> w.pid() == self && Math.abs(w.bounds().x - want.x) <= 1
+                        && Math.abs(w.bounds().y - want.y) <= 1 && Math.abs(w.bounds().width - want.width) <= 1
+                        && Math.abs(w.bounds().height - want.height) <= 1)
+                .map(NativeWindow::id).findFirst().orElse(null);
+        if (n != null) {
             synchronized (ownNumbers) {
-                ownNumbers.put(overlay, own);
+                ownNumbers.put(overlay, n);
             }
         }
-        MacZOrder.stackAbove(own, target.id());
+        return n;
     }
 
     /** Die Fensterliste ist von vorn nach hinten sortiert: das erste normale Fenster liegt im Vordergrund. */

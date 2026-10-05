@@ -50,11 +50,15 @@ public interface WindowSystem {
     }
 
     /**
-     * Legt ein eigenes Anzeige-Fenster in der Z-Reihenfolge direkt über {@code target} – auf dieselbe Ebene: Fenster,
-     * die über dem Ziel liegen, verdecken auch die Anzeige. Nur auf dem EDT aufrufen; nachführen, wenn sich die
-     * Reihenfolge ändert.
+     * Legt eigene Anzeige-Fenster (alle Teile eines Rahmens) in der Z-Reihenfolge direkt über {@code target} – auf
+     * dieselbe Ebene: Fenster, die über dem Ziel liegen, verdecken auch die Anzeige. Liegen sie schon dort, bleibt
+     * alles unverändert. Nur auf dem EDT aufrufen; regelmäßig nachführen.
+     *
+     * @return ob die Fenster jetzt auf der Ebene des Ziels liegen; {@code false}, wenn das (noch) nicht feststeht –
+     *         z.B. weil ein Fenster erst auf dem Bildschirm sein muss
      */
-    default void stackAbove(java.awt.Window overlay, NativeWindow target) {
+    default boolean stackAbove(List<java.awt.Window> overlays, NativeWindow target) {
+        return false;
     }
 
     /** Wirft mit verständlicher Meldung, wenn Eingaben per Robot nicht ankommen würden (fehlende Berechtigung). */

@@ -276,15 +276,39 @@ final class X11WindowSystem implements WindowSystem {
     }
 
     /**
-     * Bittet den Fenstermanager per {@code _NET_RESTACK_WINDOW} (EWMH), das eigene Fenster direkt über das Ziel zu
-     * legen – der Fenstermanager setzt das für die Rahmen seiner Fenster um.
+     * Bittet den Fenstermanager per {@code _NET_RESTACK_WINDOW} (EWMH), die eigenen Fenster direkt über das Ziel zu
+     * legen – der Fenstermanager setzt das für die Rahmen seiner Fenster um. Liegen sie laut
+     * {@code _NET_CLIENT_LIST_STACKING} schon dort, bleibt alles, wie es ist.
+     *
+     * @return {@code true} erst, wenn der Fenstermanager die Reihenfolge bestätigt
      */
     @Override
-    public synchronized void stackAbove(java.awt.Window overlay, NativeWindow target) {
-        long own = com.sun.jna.Native.getWindowID(overlay);
-        if (own == 0) {
-            return;
+    public synchronized boolean stackAbove(List<java.awt.Window> overlays, NativeWindow target) {
+        java.util.Set<Long> own = new java.util.HashSet<>();
+        for (java.awt.Window w : overlays) {
+            long id = com.sun.jna.Native.getWindowID(w);
+            if (id != 0) {
+                own.add(id);
+            }
         }
+        long[] stack = guarded(() -> longs(root, netClientList)); // von unten nach oben
+        for (int i = 0; i < stack.length; i++) {
+            if (stack[i] == target.id()) {
+                boolean placed = own.size() == overlays.size();
+                for (int k = 1; placed && k <= own.size(); k++) {
+                    placed = i + k < stack.length && own.contains(stack[i + k]);
+                }
+                if (placed) {
+                    return true;
+                }
+                break;
+            }
+        }
+        own.forEach(id -> restack(id, target.id()));
+        return false;
+    }
+
+    private void restack(long own, long target) {
         guarded(() -> {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment ev = arena.allocate(XEVENT_SIZE, 8);
@@ -295,7 +319,7 @@ final class X11WindowSystem implements WindowSystem {
                 ev.set(JAVA_LONG, 40, netRestackWindow);  // message_type
                 ev.set(JAVA_INT, 48, 32);                 // format
                 ev.set(JAVA_LONG, 56, 2);                 // Quelle: Pager/Werkzeug
-                ev.set(JAVA_LONG, 64, target.id());       // Geschwister: das Ziel
+                ev.set(JAVA_LONG, 64, target);            // Geschwister: das Ziel
                 ev.set(JAVA_LONG, 72, ABOVE);             // darüber
                 Natives.call(xSendEvent, "XSendEvent", display, root, 0, SUBSTRUCTURE_MASK, ev);
             }

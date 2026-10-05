@@ -48,6 +48,10 @@ final class ControlOverlay implements AutoCloseable {
     private static final int BORDER = 4;
     private static final int FOLLOW_MILLIS = 400;
     static final long IDLE_MILLIS = 60_000;
+    /** Ob Fenster durchsichtig sein können – dann bleibt ein Rahmen unsichtbar, bis er richtig eingeordnet ist. */
+    private static final boolean TRANSLUCENT = !GraphicsEnvironment.isHeadless()
+            && GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice()
+            .isWindowTranslucencySupported(java.awt.GraphicsDevice.WindowTranslucency.TRANSLUCENT);
 
     private final Supplier<CursorController> cursors;
     private final ScreenMapper.Mode mode;
@@ -234,19 +238,42 @@ final class ControlOverlay implements AutoCloseable {
         frame.get(1).setBounds(r.x - BORDER, r.y + r.height, r.width + 2 * BORDER, BORDER);
         frame.get(2).setBounds(r.x - BORDER, r.y, BORDER, r.height);
         frame.get(3).setBounds(r.x + r.width, r.y, BORDER, r.height);
-        frame.forEach(w -> w.setVisible(true));
         label.pack();
         int labelY = r.y - BORDER - label.getHeight();
         if (labelY < screenTop(r)) {
             labelY = r.y; // kein Platz über dem Fenster: innen oben
         }
         label.setLocation(r.x + r.width - label.getWidth(), labelY);
-        label.setVisible(!hint.isEmpty());
-        if (stacking != null) {
-            // auf die Ebene des Fensters: was darüber liegt, verdeckt auch den Rahmen
-            frame.forEach(w -> stacking.stackAbove(w, window.get()));
-            if (label.isVisible()) {
-                stacking.stackAbove(label, window.get());
+        List<JWindow> shown = new ArrayList<>(frame);
+        if (hint.isEmpty()) {
+            label.setVisible(false);
+        } else {
+            shown.add(label);
+        }
+        reveal(shown, window.get());
+    }
+
+    /**
+     * Zeigt die Anzeige-Fenster auf der Ebene des Ziels, ohne dass sie je darüber aufblitzen: zuerst einordnen (unter
+     * Windows schon vor dem Einblenden), sonst unsichtbar einblenden, bis die Einordnung bestätigt ist.
+     * {@code setVisible(true)} nur auf unsichtbaren Fenstern – auf sichtbaren holt AWT sie sonst nach vorn
+     * ({@code toFront}).
+     */
+    private void reveal(List<JWindow> shown, NativeWindow target) {
+        if (stacking == null) {
+            shown.stream().filter(w -> !w.isVisible()).forEach(w -> w.setVisible(true));
+            return;
+        }
+        shown.stream().filter(w -> !w.isDisplayable()).forEach(JWindow::addNotify); // natives Fenster, unsichtbar
+        boolean stacked = stacking.stackAbove(List.copyOf(shown), target);
+        for (JWindow w : shown) {
+            if (!w.isVisible()) {
+                if (!stacked && TRANSLUCENT) {
+                    w.setOpacity(0f); // erst sichtbar machen, wenn es auf der richtigen Ebene liegt
+                }
+                w.setVisible(true);
+            } else if (stacked && TRANSLUCENT && w.getOpacity() < 1f) {
+                w.setOpacity(1f);
             }
         }
     }
