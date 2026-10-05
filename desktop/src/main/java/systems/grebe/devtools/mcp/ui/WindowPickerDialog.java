@@ -22,10 +22,12 @@ import javafx.scene.image.WritableImage;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.FillRule;
@@ -47,8 +49,6 @@ final class WindowPickerDialog {
 
     private static final double TILE_W = 240;
     private static final double TILE_H = 150;
-    private static final double PREVIEW_W = 820;
-    private static final double PREVIEW_H = 360;
 
     private final Stage stage = new Stage();
     private final BorderPane root = new BorderPane();
@@ -63,6 +63,8 @@ final class WindowPickerDialog {
         stage.setTitle("Fenster wählen – " + field);
         root.setPadding(new Insets(12));
         Scene scene = new Scene(root, 860, 600);
+        stage.setMinWidth(480);
+        stage.setMinHeight(400);
         if (owner != null && owner.getScene() != null) {
             scene.getStylesheets().setAll(owner.getScene().getStylesheets());
         }
@@ -82,8 +84,11 @@ final class WindowPickerDialog {
         FlowPane tiles = new FlowPane(12, 12);
         tiles.setPadding(new Insets(4));
         for (Candidate c : list) {
-            StackPane image = placeholder(c, TILE_W, TILE_H);
-            loadPreview(c, image, TILE_W, TILE_H);
+            StackPane image = placeholder(c);
+            image.setMinSize(TILE_W, TILE_H);
+            image.setPrefSize(TILE_W, TILE_H);
+            image.setMaxSize(TILE_W, TILE_H);
+            loadPreview(c, image);
             Label title = new Label(title(c));
             title.getStyleClass().add("window-title");
             title.setMaxWidth(TILE_W);
@@ -114,13 +119,25 @@ final class WindowPickerDialog {
     }
 
     private void showPreview(Candidate c) {
-        StackPane image = placeholder(c, PREVIEW_W, PREVIEW_H);
-        loadPreview(c, image, PREVIEW_W, PREVIEW_H);
+        // wächst und schrumpft mit dem Fenster: nimmt den Platz, den Titel und Angaben übrig lassen
+        StackPane image = placeholder(c);
+        image.setMinSize(0, 0);
+        image.setPrefSize(1, 1);
+        image.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        VBox.setVgrow(image, Priority.ALWAYS);
+        loadPreview(c, image);
         Label title = new Label(title(c));
         title.getStyleClass().add("window-title");
         GridPane details = new GridPane();
         details.setHgap(8);
         details.setVgap(4);
+        details.setMaxWidth(Double.MAX_VALUE);
+        ColumnConstraints labels = new ColumnConstraints();
+        labels.setMinWidth(Region.USE_PREF_SIZE);
+        ColumnConstraints values = new ColumnConstraints();
+        values.setHgrow(Priority.ALWAYS);
+        values.setFillWidth(true);
+        details.getColumnConstraints().setAll(labels, values);
         copyable(details, 0, "Name", c.processName());
         copyable(details, 1, "PID", String.valueOf(c.pid()));
         copyable(details, 2, "Pfad", c.executable() == null ? "(unbekannt)" : c.executable());
@@ -191,32 +208,41 @@ final class WindowPickerDialog {
         return c.window().title().isBlank() ? "(ohne Titel)" : c.window().title();
     }
 
-    /** Platzhalter mit Prozessname und PID; die Vorschau ersetzt ihn, sobald sie geladen ist. */
-    private static StackPane placeholder(Candidate c, double w, double h) {
+    /** Platzhalter mit Prozessname und PID; die Vorschau ersetzt ihn, sobald sie geladen ist. Größe setzt der Aufrufer. */
+    private static StackPane placeholder(Candidate c) {
         Label name = new Label(c.processName() + "\nPID " + c.pid());
         name.setWrapText(true);
         name.setTextAlignment(TextAlignment.CENTER);
         StackPane box = new StackPane(name);
         box.getStyleClass().add("window-placeholder");
-        box.setMinSize(w, h);
-        box.setPrefSize(w, h);
-        box.setMaxSize(w, h);
         return box;
     }
 
     /** Lädt die Vorschau im Hintergrund, ohne das Fenster zu aktivieren; ohne Bild bleibt der Platzhalter. */
-    private void loadPreview(Candidate c, StackPane target, double w, double h) {
+    private void loadPreview(Candidate c, StackPane target) {
         Thread.ofVirtual().start(() -> candidates.preview(c).ifPresent(img -> {
             Image fx = toFx(img);
             Platform.runLater(() -> {
                 ImageView view = new ImageView(fx);
                 view.setPreserveRatio(true);
                 view.setSmooth(true);
-                view.setFitWidth(w);
-                view.setFitHeight(h);
+                // passt sich der Größe des Platzhalters an (Seitenverhältnis bleibt)
+                view.fitWidthProperty().bind(target.widthProperty());
+                view.fitHeightProperty().bind(target.heightProperty());
+                view.setManaged(false); // keine Rückwirkung der Bildgröße auf das Layout
                 target.getChildren().setAll(view);
+                target.widthProperty().addListener((o, a, b) -> center(view, target));
+                target.heightProperty().addListener((o, a, b) -> center(view, target));
+                view.layoutBoundsProperty().addListener((o, a, b) -> center(view, target));
+                center(view, target);
             });
         }));
+    }
+
+    /** Nicht verwaltete Bilder legt das Layout nicht selbst ab – mittig in den Platzhalter setzen. */
+    private static void center(ImageView view, StackPane target) {
+        view.relocate((target.getWidth() - view.getLayoutBounds().getWidth()) / 2,
+                (target.getHeight() - view.getLayoutBounds().getHeight()) / 2);
     }
 
     /** AWT-Bild → JavaFX (ohne das Modul javafx-swing). */
