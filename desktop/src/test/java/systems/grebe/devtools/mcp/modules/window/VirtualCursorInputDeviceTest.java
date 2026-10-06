@@ -26,6 +26,7 @@ class VirtualCursorInputDeviceTest {
     /** Protokolliert die nativen Schritte. */
     static final class Cursors extends AbstractCursorController<String> {
         final List<String> log = new ArrayList<>();
+        boolean confirms;
 
         @Override
         public String name() {
@@ -60,8 +61,9 @@ class VirtualCursorInputDeviceTest {
         }
 
         @Override
-        protected void typeText(String cursor, Point at, String text) {
+        protected boolean typeText(String cursor, Point at, String text) {
             log.add("type " + text);
+            return confirms;
         }
 
         @Override
@@ -103,7 +105,7 @@ class VirtualCursorInputDeviceTest {
     void keyboardIsTheOwnPointersKeyboard() {
         device.keyPress(65);   // noch kein Zeiger: er entsteht in der Mitte des Zielfensters (200,200 → nativ 400,400)
         device.keyRelease(65);
-        device.typeChar('ü');
+        device.typeText("ü");
 
         assertThat(device.independentKeyboard()).isTrue();
         assertThat(device.typesDirectly()).isTrue();
@@ -115,7 +117,7 @@ class VirtualCursorInputDeviceTest {
     void keyboardWithoutClickRefusesWhenAForeignWindowCoversTheCenter() {
         desktop.windows.addFirst(new NativeWindow(0x99, OTHER, 2L, "Fremd", new Rectangle(150, 150, 100, 100), false));
 
-        assertThatThrownBy(() -> device.typeChar('x')).hasMessageContaining("„Fremd“");
+        assertThatThrownBy(() -> device.typeText("x")).hasMessageContaining("„Fremd“");
     }
 
     @Test
@@ -126,7 +128,7 @@ class VirtualCursorInputDeviceTest {
         desktop.windows.add(other);
 
         device.target(other, Set.of(APP));
-        device.typeChar('a');
+        device.typeText("a");
 
         assertThat(cursors.log).containsSubsequence("create 20,20", "destroy", "create 1100,100", "type a");
     }
@@ -155,7 +157,7 @@ class VirtualCursorInputDeviceTest {
         d.move(10, 20);
         d.click(InputEvent.BUTTON1_DOWN_MASK, 1);
         d.keyPress(65);
-        d.typeChar('x');
+        d.typeText("x");
 
         assertThat(d.independentPointer()).isFalse();
         assertThat(d.independentKeyboard()).isTrue();

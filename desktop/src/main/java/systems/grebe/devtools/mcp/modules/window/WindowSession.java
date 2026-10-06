@@ -2,11 +2,11 @@ package systems.grebe.devtools.mcp.modules.window;
 
 import java.awt.Color;
 import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -27,20 +27,36 @@ final class WindowSession {
     record Binding(ProcessHandle process, String name, boolean includeChildren) {
 
         /**
+         * Elternprozesse, unter denen praktisch alle Programme des Nutzers laufen (macOS {@code launchd}, Windows
+         * {@code explorer.exe} bzw. Dienste, Linux {@code init}/{@code systemd}) – deren Kinder sind keine
+         * zusammengehörigen Geschwister.
+         */
+        private static final Set<String> SYSTEM_PARENTS = Set.of("launchd", "init", "systemd", "explorer", "services",
+                "svchost", "wininit", "winlogon", "userinit", "sihost", "runtimebroker", "kernel_task");
+
+        /**
          * Prozesse, deren Fenster angesprochen werden dürfen – bei jedem Aufruf neu ermittelt.
          *
          * @param siblings auch die anderen Kinder des Elternprozesses (mit ihren Nachfahren, wenn
-         *                 {@link #includeChildren}); der Elternprozess selbst nie
+         *                 {@link #includeChildren}); der Elternprozess selbst nie. Ist der Elternprozess ein
+         *                 Systemprozess ({@link #systemParent}) oder unbekannt, gibt es keine Geschwister.
          */
         Set<Long> pids(boolean siblings) {
             Set<Long> out = new LinkedHashSet<>();
             addTree(process, out);
             if (siblings) {
-                process.parent().ifPresent(parent -> parent.children()
+                process.parent().filter(parent -> !systemParent(parent)).ifPresent(parent -> parent.children()
                         .filter(p -> p.pid() != process.pid())
                         .forEach(p -> addTree(p, out)));
             }
             return out;
+        }
+
+        /** PID 1, ein Prozess aus {@link #SYSTEM_PARENTS} – oder einer, dessen Programm sich nicht lesen lässt. */
+        static boolean systemParent(ProcessHandle parent) {
+            return parent.pid() <= 1 || parent.info().command()
+                    .map(c -> SYSTEM_PARENTS.contains(ProcessFilter.name(c).toLowerCase(Locale.ROOT)))
+                    .orElse(true);
         }
 
         private void addTree(ProcessHandle root, Set<Long> out) {
@@ -60,25 +76,45 @@ final class WindowSession {
     private final String id;
     private final String client;
     private final Color color;
-    private final Function<Binding, Optional<String>> conflict;
+    private final Peers peers;
     private final Map<String, Object> resources = new ConcurrentHashMap<>();
     private volatile Binding binding;
     private final Map<Long, Double> imageScale = new ConcurrentHashMap<>();
 
-    /** Eine einzelne KI ohne Konkurrenz – für Tests und Aufrufe ohne MCP-Session. */
-    WindowSession() {
-        this("local", null, CursorImage.ACCENT, b -> Optional.empty());
+    /** Die anderen KIs: welche Prozesse sie steuern ({@link WindowSessions}). */
+    interface Peers {
+
+        /** Keine anderen KIs. */
+        Peers NONE = new Peers() {
+            @Override
+            public Optional<String> conflict(Binding wanted, boolean siblings) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Set<Long> claimed() {
+                return Set.of();
+            }
+        };
+
+        /** Grund, warum die Bindung nicht erlaubt ist – weil eine andere KI einen der Prozesse steuert. */
+        Optional<String> conflict(Binding wanted, boolean siblings);
+
+        /** Prozesse, die andere KIs direkt gebunden haben (samt Kindprozessen) – nie für diese KI erreichbar. */
+        Set<Long> claimed();
     }
 
-    /**
-     * @param client   Name der KI für den Hinweis, {@code null} = „KI“
-     * @param conflict Grund, warum eine Bindung nicht erlaubt ist (z.B. weil eine andere KI den Prozess steuert)
-     */
-    WindowSession(String id, String client, Color color, Function<Binding, Optional<String>> conflict) {
+    /** Eine einzelne KI ohne Konkurrenz – für Tests und Aufrufe ohne MCP-Session. */
+    WindowSession() {
+        this("local", null, CursorImage.ACCENT, Peers.NONE);
+    }
+
+    /** @param client Name der KI für den Hinweis, {@code null} = „KI“ */
+    WindowSession(String id, String client, Color color, Peers peers) {
         this.id = id;
         this.client = client;
         this.color = color;
-        this.conflict = conflict;
+        this.peers = peers;
     }
 
     String id() {
@@ -94,13 +130,24 @@ final class WindowSession {
         return color;
     }
 
-    /** Bindet den Prozess; wirft, wenn eine andere KI ihn (oder einen Prozess seines Baums) steuert. */
-    void bind(Binding value) {
-        conflict.apply(value).ifPresent(reason -> {
+    /**
+     * Bindet den Prozess; wirft, wenn eine andere KI ihn, einen Prozess seines Baums oder – mit {@code siblings} – einen
+     * seiner Geschwister steuert.
+     */
+    void bind(Binding value, boolean siblings) {
+        peers.conflict(value, siblings).ifPresent(reason -> {
             throw new IllegalStateException(reason);
         });
         binding = value;
         imageScale.clear();
+    }
+
+    /** Erlaubte Prozesse der Bindung ({@link Binding#pids}) ohne die, die eine andere KI steuert. */
+    Set<Long> pids(Binding b, boolean siblings) {
+        Set<Long> out = b.pids(siblings);
+        out.removeAll(peers.claimed());
+        out.add(b.process().pid());
+        return out;
     }
 
     /** Ressource dieser KI (z.B. Rahmen, Eingabegerät) – beim ersten Zugriff mit {@code factory} erzeugt. */

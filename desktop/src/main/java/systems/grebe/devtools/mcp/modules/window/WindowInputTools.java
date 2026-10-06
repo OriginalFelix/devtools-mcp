@@ -63,7 +63,7 @@ public class WindowInputTools {
                 releaseAll(g, heldKeys);
             }
             return (clicks == 2 ? "Doppelklick" : clicks + "× Klick") + " (" + name(mask) + ") bei " + x + "," + y
-                    + " in " + g.window().hexId() + " „" + g.window().title() + "“.";
+                    + " in " + g.window().hexId() + " „" + g.window().title() + "“." + g.unverified();
         });
     }
 
@@ -81,7 +81,8 @@ public class WindowInputTools {
             for (int i = 0; i < Math.abs(notches); i++) {
                 g.step(() -> g.device().wheel(step));
             }
-            return "Gescrollt um " + notches + " Rasten bei " + x + "," + y + " in " + g.window().hexId() + ".";
+            return "Gescrollt um " + notches + " Rasten bei " + x + "," + y + " in " + g.window().hexId() + "."
+                    + g.unverified();
         });
     }
 
@@ -108,7 +109,8 @@ public class WindowInputTools {
             } finally {
                 g.device().release(mask);
             }
-            return "Gezogen von " + fromX + "," + fromY + " nach " + toX + "," + toY + " in " + g.window().hexId() + ".";
+            return "Gezogen von " + fromX + "," + fromY + " nach " + toX + "," + toY + " in " + g.window().hexId() + "."
+                    + g.unverified();
         });
     }
 

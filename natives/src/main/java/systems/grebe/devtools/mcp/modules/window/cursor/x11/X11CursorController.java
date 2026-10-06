@@ -50,8 +50,9 @@ final class X11CursorController extends AbstractCursorController<X11MasterPointe
     }
 
     @Override
-    protected void typeText(X11MasterPointer cursor, Point at, String text) {
+    protected boolean typeText(X11MasterPointer cursor, Point at, String text) {
         cursor.type(text);
+        return false;
     }
 
     @Override

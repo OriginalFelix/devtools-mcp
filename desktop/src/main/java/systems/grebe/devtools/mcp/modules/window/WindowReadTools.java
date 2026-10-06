@@ -95,7 +95,8 @@ public class WindowReadTools {
             throw new IllegalArgumentException(r);
         });
         String name = ProcessFilter.info(handle).map(ProcessFilter.Info::name).orElse("?");
-        support.session().bind(new WindowSession.Binding(handle, name, includeChildren == null || includeChildren));
+        support.session().bind(new WindowSession.Binding(handle, name, includeChildren == null || includeChildren),
+                support.settings().allowSiblings());
         return "Gebunden: " + support.session().current().describe() + scope() + "\n\n" + windowList();
     }
 

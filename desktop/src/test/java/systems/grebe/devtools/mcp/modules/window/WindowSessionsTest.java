@@ -39,19 +39,19 @@ class WindowSessionsTest {
 
     @Test
     void aProcessBelongsToOneAiOnly() {
-        in(claude).bind(me());
+        in(claude).bind(me(), false);
 
-        assertThatThrownBy(() -> in(codex).bind(me())).hasMessage("java wird gerade von Claude Code gesteuert.");
+        assertThatThrownBy(() -> in(codex).bind(me(), false)).hasMessage("java wird gerade von Claude Code gesteuert.");
 
-        in(claude).bind(me()); // dieselbe KI darf neu binden
+        in(claude).bind(me(), false); // dieselbe KI darf neu binden
         in(claude).unbind();
-        in(codex).bind(me()); // frei geworden
+        in(codex).bind(me(), false); // frei geworden
         assertThat(in(codex).current()).isNotNull();
     }
 
     @Test
     void idleSessionsAreClosedAndTheirColorIsFreed() {
-        in(claude).bind(me());
+        in(claude).bind(me(), false);
         in(codex);
         now.addAndGet(Duration.ofMinutes(20).toMillis());
         in(codex); // Codex bleibt aktiv
@@ -62,6 +62,6 @@ class WindowSessionsTest {
         assertThat(sessions.size()).isEqualTo(1);
         WindowSession again = in(new ToolSession("s3", null));
         assertThat(again.color()).isEqualTo(AiColors.color(0)); // Rot ist wieder frei
-        in(codex).bind(me()); // die Bindung von Claude ist aufgehoben
+        in(codex).bind(me(), false); // die Bindung von Claude ist aufgehoben
     }
 }

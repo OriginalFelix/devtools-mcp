@@ -135,7 +135,7 @@ final class OverlayInputDevice implements InputDevice, AutoCloseable {
     }
 
     @Override
-    public void typeChar(char c) {
-        delegate.typeChar(c);
+    public boolean typeText(String text) {
+        return delegate.typeText(text);
     }
 }

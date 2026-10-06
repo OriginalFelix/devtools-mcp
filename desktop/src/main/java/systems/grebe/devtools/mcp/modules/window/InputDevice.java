@@ -49,12 +49,17 @@ interface InputDevice {
         return capture(window.bounds());
     }
 
-    /** Ob {@link #typeChar} Zeichen direkt (ohne Tastaturlayout und Zwischenablage) eingeben kann. */
+    /** Ob {@link #typeText} Zeichen direkt (ohne Tastaturlayout und Zwischenablage) eingeben kann. */
     default boolean typesDirectly() {
         return false;
     }
 
-    default void typeChar(char c) {
+    /**
+     * Gibt Text direkt in den Fokus ein.
+     *
+     * @return ob der Text nachweislich angekommen ist; {@code false}, wenn nur Ereignisse verschickt wurden
+     */
+    default boolean typeText(String text) {
         throw new UnsupportedOperationException("Direkte Zeicheneingabe nicht verfügbar");
     }
 
@@ -68,7 +73,7 @@ interface InputDevice {
 
     /**
      * Ob die Tastatur des Geräts unabhängig von der des Nutzers ist (eigene Tastatur des eigenen Zeigers). Dann brauchen
-     * Tastatur-Eingaben den Vordergrund nicht; Text geht über {@link #typeChar}.
+     * Tastatur-Eingaben den Vordergrund nicht; Text geht über {@link #typeText}.
      */
     default boolean independentKeyboard() {
         return false;

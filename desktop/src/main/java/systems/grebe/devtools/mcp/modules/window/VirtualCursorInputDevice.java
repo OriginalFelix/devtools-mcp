@@ -201,12 +201,8 @@ final class VirtualCursorInputDevice implements InputDevice, AutoCloseable {
     }
 
     @Override
-    public synchronized void typeChar(char c) {
-        if (ownKeyboard) {
-            cursors.get().type(keyboardCursor(), String.valueOf(c));
-        } else {
-            real.typeChar(c);
-        }
+    public synchronized boolean typeText(String text) {
+        return ownKeyboard ? cursors.get().type(keyboardCursor(), text) : real.typeText(text);
     }
 
     // --- Ziel und Kontrolle

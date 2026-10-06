@@ -83,7 +83,7 @@ public class WindowLaunchTools {
             }
         }
         WindowSession.Binding binding = new WindowSession.Binding(process, name, true);
-        support.session().bind(binding);
+        support.session().bind(binding, support.settings().allowSiblings());
         return "Gestartet im Hintergrund und gebunden: " + binding.describe() + "\n"
                 + first.map(w -> "Fenster: " + WindowReadTools.describe(w))
                 .orElse("Noch kein Fenster sichtbar – gleich mit window_windows nachsehen.")

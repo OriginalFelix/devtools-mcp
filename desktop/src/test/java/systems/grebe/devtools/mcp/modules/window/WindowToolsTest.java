@@ -195,8 +195,8 @@ class WindowToolsTest {
         desktop.foreground = 0x99; // der Nutzer arbeitet in einem anderen Fenster
         desktop.events.clear();
 
-        keys.type("Aü!", null, "0x3C4D");
-        keys.key("ctrl+s", null, "0x3C4D");
+        assertThat(keys.type("Aü!", null, "0x3C4D")).contains("getippt", "Wirkung nicht geprüft");
+        assertThat(keys.key("ctrl+s", null, "0x3C4D")).contains("Wirkung nicht geprüft");
         input.click(10, 10, null, null, "ctrl", "0x3C4D");
 
         assertThat(desktop.events).noneMatch(e -> e.startsWith("activate"));
@@ -204,6 +204,25 @@ class WindowToolsTest {
         assertThat(desktop.events).containsSubsequence("char A", "char ü", "char !", "down Ctrl", "down S", "up S",
                 "up Ctrl");
         assertThat(desktop.clipboard).isNull(); // nichts über die Zwischenablage
+    }
+
+    @Test
+    void confirmedTextIsReportedAsArrived() {
+        bind();
+        desktop.independent = true;
+        desktop.independentKeys = true;
+        desktop.confirmsTyping = true; // wie die Bedienungshilfen unter macOS
+
+        String text = "x".repeat(WindowKeyboardTools.CHUNK * 2 + 1);
+        assertThat(keys.type(text, null, "0x3C4D")).contains("eingefügt (über die Bedienungshilfen bestätigt)")
+                .doesNotContain("nicht geprüft");
+        assertThat(desktop.events).filteredOn(e -> e.startsWith("char ")).hasSize(text.length());
+    }
+
+    @Test
+    void inputIntoTheForegroundWindowNeedsNoCheckHint() {
+        bind();
+        assertThat(keys.type("abc", null, "0x3C4D")).doesNotContain("nicht geprüft");
     }
 
     @Test
@@ -253,7 +272,7 @@ class WindowToolsTest {
         Process p = new ProcessBuilder(java, "-version").redirectErrorStream(true).start();
         p.getInputStream().readAllBytes();
         p.waitFor();
-        session.bind(new WindowSession.Binding(p.toHandle(), "java", false));
+        session.bind(new WindowSession.Binding(p.toHandle(), "java", false), false);
         assertThatThrownBy(() -> read.windows()).hasMessageContaining("ist beendet");
         assertThat(session.current()).isNull();
     }

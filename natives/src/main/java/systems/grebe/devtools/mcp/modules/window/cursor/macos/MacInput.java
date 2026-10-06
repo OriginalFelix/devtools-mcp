@@ -6,8 +6,10 @@ import java.util.Set;
 
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.IntByReference;
+import com.sun.jna.ptr.PointerByReference;
 
 import systems.grebe.devtools.mcp.modules.window.cursor.MouseButton;
+import systems.grebe.devtools.mcp.modules.window.cursor.macos.MacNatives.ApplicationServices;
 import systems.grebe.devtools.mcp.modules.window.cursor.macos.MacNatives.CGPoint;
 import systems.grebe.devtools.mcp.modules.window.cursor.macos.MacNatives.CGRect;
 import systems.grebe.devtools.mcp.modules.window.cursor.macos.MacNatives.CoreFoundation;
@@ -15,7 +17,7 @@ import systems.grebe.devtools.mcp.modules.window.cursor.macos.MacNatives.CoreGra
 
 /**
  * Mauseingaben als {@code CGEvent}, per {@code CGEventPostToPid} direkt an den Prozess des Fensters unter dem Punkt –
- * der Systemzeiger bewegt sich nicht. Das Fenster dazu kommt aus {@code CGWindowListCopyWindowInfo} (vorderstes zuerst).
+ * der Systemzeiger bewegt sich nicht. Text geht bevorzugt über die Bedienungshilfen ({@link #insert}). Das Fenster dazu kommt aus {@code CGWindowListCopyWindowInfo} (vorderstes zuerst).
  *
  * <p>Voraussetzung: die App hat die Berechtigung „Bedienungshilfen“. Grenzen: Anwendungen, die Ereignisse nur aus dem
  * HID-Strom lesen, reagieren nicht; Klicks in inaktive Fenster aktivieren diese je nach Anwendung zuerst.
@@ -38,11 +40,15 @@ final class MacInput {
     private final Pointer keyPid = MacNatives.cgConstant("kCGWindowOwnerPID");
     private final Pointer keyNumber = MacNatives.cgConstant("kCGWindowNumber");
     private final Pointer keyBounds = MacNatives.cgConstant("kCGWindowBounds");
+    private static final Pointer AX_FOCUSED = MacNatives.cfString("AXFocusedUIElement");
+    private static final Pointer AX_VALUE = MacNatives.cfString("AXValue");
+    private static final Pointer AX_SELECTED_TEXT = MacNatives.cfString("AXSelectedText");
 
     void requireTrusted() {
         if (!MacNatives.ApplicationServices.INSTANCE.AXIsProcessTrusted()) {
             throw new IllegalStateException("Für Klicks braucht die App die Berechtigung „Bedienungshilfen“ "
-                    + "(Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen).");
+                    + "(Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen) – aus einer IDE oder einem "
+                    + "Terminal gestartet: dieses Programm.");
         }
     }
 
@@ -110,14 +116,18 @@ final class MacInput {
     private static final long FLAG_ALTERNATE = 0x80000;
     private static final long FLAG_COMMAND = 0x100000;
 
-    /** Text als Unicode-Zeichenfolge, unabhängig vom Tastaturlayout. */
-    void type(int pid, String text) {
+    /**
+     * Text in das fokussierte Element des Prozesses: zuerst über die Bedienungshilfen ({@link #insert}), sonst als
+     * Unicode-Tastenereignisse, unabhängig vom Tastaturlayout.
+     *
+     * @return ob der Text nachweislich angekommen ist – bei Tastenereignissen ist das ungeprüft ({@code false})
+     */
+    boolean type(int pid, String text) {
+        if (insert(pid, text)) {
+            return true;
+        }
         for (int i = 0; i < text.length(); i += UNICODE_CHUNK) {
-            String part = text.substring(i, Math.min(text.length(), i + UNICODE_CHUNK));
-            short[] units = new short[part.length()];
-            for (int j = 0; j < units.length; j++) {
-                units[j] = (short) part.charAt(j);
-            }
+            short[] units = MacNatives.utf16(text.substring(i, Math.min(text.length(), i + UNICODE_CHUNK)));
             for (boolean down : new boolean[]{true, false}) {
                 Pointer event = CoreGraphics.INSTANCE.CGEventCreateKeyboardEvent(null, (short) 0, down);
                 if (event != null) {
@@ -125,6 +135,66 @@ final class MacInput {
                 }
                 post(pid, event, 0);
             }
+        }
+        return false;
+    }
+
+    /**
+     * Setzt den Text als Auswahl des fokussierten Elements ({@code AXSelectedText}) – wie Einfügen an der Schreibmarke,
+     * ohne das Fenster zu aktivieren. Normaler Text geht als Tastenereignis nur an das Key-Fenster einer aktiven App;
+     * im Hintergrund verwerfen viele Apps ihn.
+     *
+     * @return ob das Element den Text übernommen hat; {@code false}, wenn es kein fokussiertes Element gibt, die App
+     *         die Bedienungshilfen nicht unterstützt oder sich der Wert nachweislich nicht geändert hat
+     */
+    boolean insert(int pid, String text) {
+        CoreFoundation cf = CoreFoundation.INSTANCE;
+        ApplicationServices ax = ApplicationServices.INSTANCE;
+        Pointer app = ax.AXUIElementCreateApplication(pid);
+        if (app == null) {
+            return false;
+        }
+        try {
+            PointerByReference ref = new PointerByReference();
+            if (ax.AXUIElementCopyAttributeValue(app, AX_FOCUSED, ref) != ApplicationServices.kAXErrorSuccess
+                    || ref.getValue() == null) {
+                return false;
+            }
+            Pointer focused = ref.getValue();
+            Pointer before = copy(focused, AX_VALUE);
+            Pointer value = cf.CFStringCreateWithCharacters(null, MacNatives.utf16(text), text.length());
+            try {
+                if (ax.AXUIElementSetAttributeValue(focused, AX_SELECTED_TEXT, value) != ApplicationServices.kAXErrorSuccess) {
+                    return false;
+                }
+                if (before == null) {
+                    return true; // Wert nicht lesbar – dem Rückgabewert vertrauen
+                }
+                Pointer after = copy(focused, AX_VALUE);
+                try {
+                    return after == null || cf.CFEqual(before, after) == 0;
+                } finally {
+                    release(after);
+                }
+            } finally {
+                cf.CFRelease(value);
+                release(before);
+                cf.CFRelease(focused);
+            }
+        } finally {
+            cf.CFRelease(app);
+        }
+    }
+
+    private static Pointer copy(Pointer element, Pointer attribute) {
+        PointerByReference ref = new PointerByReference();
+        return ApplicationServices.INSTANCE.AXUIElementCopyAttributeValue(element, attribute, ref)
+                == ApplicationServices.kAXErrorSuccess ? ref.getValue() : null;
+    }
+
+    private static void release(Pointer object) {
+        if (object != null) {
+            CoreFoundation.INSTANCE.CFRelease(object);
         }
     }
 

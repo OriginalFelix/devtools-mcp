@@ -53,8 +53,9 @@ class AbstractCursorControllerTest {
         }
 
         @Override
-        protected void typeText(String cursor, Point at, String text) {
+        protected boolean typeText(String cursor, Point at, String text) {
             log.add("type " + cursor + " " + text);
+            return false;
         }
 
         @Override

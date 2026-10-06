@@ -46,8 +46,12 @@ public abstract class AbstractCursorController<C> implements CursorController {
     /** Mausrad; positiv = nach unten. */
     protected abstract void wheel(C cursor, Point at, int notches, Set<MouseButton> held);
 
-    /** Tippt Text in den Fokus des Zeigers (zuletzt angeklicktes Element, sonst das Fenster unter ihm). */
-    protected abstract void typeText(C cursor, Point at, String text);
+    /**
+     * Tippt Text in den Fokus des Zeigers (zuletzt angeklicktes Element, sonst das Fenster unter ihm).
+     *
+     * @return ob der Text nachweislich angekommen ist; {@code false}, wenn nur Ereignisse verschickt wurden
+     */
+    protected abstract boolean typeText(C cursor, Point at, String text);
 
     /**
      * Drückt oder lässt eine Taste los ({@link java.awt.event.KeyEvent}{@code .VK_*}), im Fokus des Zeigers.
@@ -160,11 +164,9 @@ public abstract class AbstractCursorController<C> implements CursorController {
     }
 
     @Override
-    public synchronized void type(VirtualCursor cursor, String text) {
+    public synchronized boolean type(VirtualCursor cursor, String text) {
         Handle h = open(cursor);
-        if (text != null && !text.isEmpty()) {
-            typeText(h.nativeCursor, h.position, text);
-        }
+        return text != null && !text.isEmpty() && typeText(h.nativeCursor, h.position, text);
     }
 
     @Override

@@ -27,6 +27,8 @@ final class FakeDesktop implements WindowSystem, InputDevice {
     boolean independent;
     /** Wie eine eigene Tastatur: Tastatur-Eingaben ohne Vordergrund, Text direkt. */
     boolean independentKeys;
+    /** Ob {@link #typeText} den Text als angekommen bestätigt (wie die Bedienungshilfen unter macOS). */
+    boolean confirmsTyping;
     /** Bild für {@link #captureInBackground}; {@code null} = kann das System nicht. */
     BufferedImage backgroundImage;
     long foreground;
@@ -197,7 +199,8 @@ final class FakeDesktop implements WindowSystem, InputDevice {
     }
 
     @Override
-    public void typeChar(char c) {
-        events.add("char " + c);
+    public boolean typeText(String text) {
+        text.chars().forEach(c -> events.add("char " + (char) c));
+        return confirmsTyping;
     }
 }

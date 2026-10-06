@@ -74,9 +74,9 @@ final class MacCursorController extends AbstractCursorController<MacCursorContro
     }
 
     @Override
-    protected void typeText(MacCursor cursor, Point at, String text) {
+    protected boolean typeText(MacCursor cursor, Point at, String text) {
         input.requireTrusted();
-        input.type(keyPid(cursor, at), text);
+        return input.type(keyPid(cursor, at), text);
     }
 
     @Override

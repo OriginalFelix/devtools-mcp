@@ -1,9 +1,13 @@
 package systems.grebe.devtools.mcp.modules.window;
 
 import java.time.Duration;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -52,7 +56,7 @@ final class WindowSessions implements AutoCloseable {
     WindowSession current() {
         ToolSession ts = ToolSession.current();
         Entry e = sessions.computeIfAbsent(ts.id(), id -> new Entry(new WindowSession(id, ts.client(),
-                AiColors.color(colors.assign(id)), b -> conflict(id, b)), new long[1]));
+                AiColors.color(colors.assign(id)), peers(id)), new long[1]));
         synchronized (e.lastUsed) {
             e.lastUsed[0] = clock.getAsLong();
         }
@@ -78,19 +82,51 @@ final class WindowSessions implements AutoCloseable {
         return sessions.size();
     }
 
-    /** Steuert eine andere KI den Prozess – oder einen aus seinem Baum bzw. er einen aus ihrem? */
-    private Optional<String> conflict(String self, WindowSession.Binding wanted) {
-        for (Map.Entry<String, Entry> e : sessions.entrySet()) {
-            WindowSession other = e.getValue().session;
-            WindowSession.Binding theirs = other.current();
-            if (e.getKey().equals(self) || theirs == null || !theirs.process().isAlive()) {
-                continue;
+    /** Die anderen KIs aus Sicht der Session {@code self}. */
+    private WindowSession.Peers peers(String self) {
+        return new WindowSession.Peers() {
+            @Override
+            public Optional<String> conflict(WindowSession.Binding wanted, boolean siblings) {
+                return WindowSessions.this.conflict(self, wanted, siblings);
             }
-            if (theirs.pids(false).contains(wanted.process().pid()) || wanted.pids(false).contains(theirs.process().pid())) {
-                return Optional.of(wanted.name() + " wird gerade von " + other.client() + " gesteuert.");
+
+            @Override
+            public Set<Long> claimed() {
+                Set<Long> out = new HashSet<>();
+                others(self).forEach((other, theirs) -> out.addAll(theirs.pids(false)));
+                return out;
+            }
+        };
+    }
+
+    /**
+     * Überschneidet sich die gewünschte Bindung mit der einer anderen KI? Geschwister zählen auf beiden Seiten mit: wer
+     * über Geschwister an einen fremden Prozess käme, darf nicht binden – und auch nicht den Geschwisterprozess einer
+     * fremden Bindung.
+     */
+    private Optional<String> conflict(String self, WindowSession.Binding wanted, boolean siblings) {
+        Set<Long> mine = wanted.pids(false);
+        Set<Long> mineReach = wanted.pids(siblings);
+        for (Map.Entry<WindowSession, WindowSession.Binding> e : others(self).entrySet()) {
+            Set<Long> theirs = e.getValue().pids(false);
+            if (!Collections.disjoint(mineReach, theirs) || !Collections.disjoint(mine, e.getValue().pids(siblings))) {
+                return Optional.of(wanted.name() + " wird gerade von " + e.getKey().client() + " gesteuert"
+                        + (Collections.disjoint(mine, theirs) ? " (Geschwisterprozess)" : "") + ".");
             }
         }
         return Optional.empty();
+    }
+
+    /** Lebende Bindungen der anderen KIs. */
+    private Map<WindowSession, WindowSession.Binding> others(String self) {
+        Map<WindowSession, WindowSession.Binding> out = new HashMap<>();
+        for (Map.Entry<String, Entry> e : sessions.entrySet()) {
+            WindowSession.Binding theirs = e.getValue().session.current();
+            if (!e.getKey().equals(self) && theirs != null && theirs.process().isAlive()) {
+                out.put(e.getValue().session, theirs);
+            }
+        }
+        return out;
     }
 
     @Override

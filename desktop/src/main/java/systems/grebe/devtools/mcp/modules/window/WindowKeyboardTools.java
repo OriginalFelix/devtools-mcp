@@ -48,9 +48,10 @@ public class WindowKeyboardTools {
         }
         return support.keyboardInput(window, g -> {
             int[] done = {0};
+            boolean confirmed = false;
             try {
                 if (g.device().typesDirectly()) {
-                    typeDirectly(g, text, done); // eigene Tastatur: jedes Zeichen direkt, keine Zwischenablage nötig
+                    confirmed = typeDirectly(g, text, done); // eigene Tastatur: direkt, keine Zwischenablage nötig
                 } else if (m.equals("paste")) {
                     paste(g, text);
                     done[0] = text.length();
@@ -61,19 +62,29 @@ public class WindowKeyboardTools {
                 throw new IllegalStateException(e.getMessage() + " Bis dahin getippt: " + done[0] + " von "
                         + text.length() + " Zeichen.", e);
             }
-            return text.length() + " Zeichen in " + g.window().hexId() + " „" + g.window().title() + "“ getippt.";
+            return text.length() + " Zeichen in " + g.window().hexId() + " „" + g.window().title() + "“ "
+                    + (confirmed ? "eingefügt (über die Bedienungshilfen bestätigt)." : "getippt." + g.unverified());
         });
     }
 
-    /** Tippt jedes Zeichen direkt in den Fokus der eigenen Tastatur; alle {@link #CHUNK} Zeichen eine Prüfung. */
-    private void typeDirectly(InputGuard g, String text, int[] done) {
-        for (int i = 0; i < text.length(); i++) {
-            if (i % CHUNK == 0) {
-                g.checkpoint();
+    /**
+     * Gibt den Text in Stücken von {@link #CHUNK} Zeichen direkt in den Fokus der eigenen Tastatur ein, vor jedem Stück
+     * eine Prüfung.
+     *
+     * @return ob alle Stücke nachweislich angekommen sind
+     */
+    private boolean typeDirectly(InputGuard g, String text, int[] done) {
+        boolean confirmed = true;
+        while (done[0] < text.length()) {
+            g.checkpoint();
+            int end = Math.min(text.length(), done[0] + CHUNK);
+            if (end < text.length() && Character.isHighSurrogate(text.charAt(end - 1))) {
+                end--; // Ersatzzeichenpaar nicht teilen
             }
-            g.device().typeChar(text.charAt(i));
-            done[0] = i + 1;
+            confirmed &= g.device().typeText(text.substring(done[0], end));
+            done[0] = end;
         }
+        return confirmed;
     }
 
     /**
@@ -172,7 +183,7 @@ public class WindowKeyboardTools {
                 }
             }
             return "Gedrückt: " + keys + (times > 1 ? " (" + times + "×)" : "") + " in " + g.window().hexId() + " „"
-                    + g.window().title() + "“.";
+                    + g.window().title() + "“." + g.unverified();
         });
     }
 }

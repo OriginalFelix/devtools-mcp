@@ -82,10 +82,11 @@ final class WindowSupport {
 
     /**
      * Prozesse, auf deren Fenster zugegriffen werden darf: der gebundene, seine Nachfahren und – nur wenn erlaubt –
-     * seine Geschwister. Nie der Elternprozess.
+     * seine Geschwister. Nie der Elternprozess und nie Prozesse, die eine andere KI gebunden hat.
      */
     Set<Long> boundPids() {
-        return session().require().pids(settings.allowSiblings());
+        WindowSession s = session();
+        return s.pids(s.require(), settings.allowSiblings());
     }
 
     /** Sichtbare Fenster der erlaubten Prozesse, vorderstes zuerst. */
@@ -95,11 +96,12 @@ final class WindowSupport {
     }
 
     /**
-     * Das angesprochene Fenster: mit ID genau dieses (muss zum gebundenen Prozess gehören), ohne ID das
-     * Vordergrundfenster des Prozesses, sonst sein größtes.
+     * Das angesprochene Fenster: mit ID genau dieses (muss zum gebundenen Prozess gehören, Geschwister erlaubt), ohne ID
+     * das Vordergrundfenster des gebundenen Prozesses oder seiner Nachfahren, sonst das größte davon. Fenster von
+     * Geschwisterprozessen nur mit ID – sonst träfe ein Aufruf ohne ID z.B. die Vordergrund-App eines Geschwisters.
      */
     NativeWindow resolve(String windowId) {
-        List<NativeWindow> own = boundWindows();
+        List<NativeWindow> reachable = boundWindows();
         if (windowId != null && !windowId.isBlank()) {
             long id;
             try {
@@ -108,13 +110,16 @@ final class WindowSupport {
                 throw new IllegalArgumentException("Ungültige Fenster-ID \"" + windowId + "\" – IDs wie 0x1A2B aus "
                         + "window_windows verwenden.");
             }
-            return own.stream().filter(w -> w.id() == id).findFirst().orElseThrow(() -> new IllegalArgumentException(
+            return reachable.stream().filter(w -> w.id() == id).findFirst().orElseThrow(() -> new IllegalArgumentException(
                     "Fenster " + windowId + " gehört nicht zum gebundenen Prozess oder ist nicht mehr sichtbar. "
                             + "window_windows zeigt die aktuellen Fenster."));
         }
+        Set<Long> tree = session().require().pids(false);
+        List<NativeWindow> own = reachable.stream().filter(w -> tree.contains(w.pid())).toList();
         if (own.isEmpty()) {
             throw new IllegalStateException("Der gebundene Prozess " + session().require().describe()
-                    + " hat kein sichtbares Fenster.");
+                    + " hat kein sichtbares Fenster." + (reachable.isEmpty() ? "" : " Fenster von Geschwisterprozessen "
+                    + "nur mit Fenster-ID aus window_windows."));
         }
         OptionalLong fg = windows.foreground();
         if (fg.isPresent()) {

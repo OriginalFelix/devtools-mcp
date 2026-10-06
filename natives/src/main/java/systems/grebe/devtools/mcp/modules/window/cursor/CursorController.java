@@ -62,8 +62,13 @@ public interface CursorController extends AutoCloseable {
     /** Mausrad in Rasten an der aktuellen Position; positiv = nach unten. */
     void scroll(VirtualCursor cursor, int notches);
 
-    /** Tippt Text in den Fokus dieses Zeigers. */
-    void type(VirtualCursor cursor, String text);
+    /**
+     * Tippt Text in den Fokus dieses Zeigers.
+     *
+     * @return ob der Text nachweislich im fokussierten Element steht (macOS über die Bedienungshilfen); {@code false},
+     *         wenn nur Tastenereignisse verschickt wurden – ob die Anwendung sie verarbeitet, ist dann ungeprüft
+     */
+    boolean type(VirtualCursor cursor, String text);
 
     /** Drückt eine Taste ({@link java.awt.event.KeyEvent}{@code .VK_*}) der Tastatur dieses Zeigers. */
     void keyPress(VirtualCursor cursor, int keyCode);

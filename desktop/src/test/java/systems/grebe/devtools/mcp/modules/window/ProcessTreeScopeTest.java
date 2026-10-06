@@ -7,6 +7,7 @@ import java.util.Locale;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import systems.grebe.devtools.mcp.core.ToolSession;
 import systems.grebe.devtools.mcp.modules.window.platform.NativeWindow;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,7 +56,7 @@ class ProcessTreeScopeTest {
             desktop.windows.add(new NativeWindow(pid, pid, 1L, "Fenster " + pid, new Rectangle(0, 0, 100, 100), false));
         }
         WindowSession session = new WindowSession();
-        session.bind(new WindowSession.Binding(a.toHandle(), "A", true));
+        session.bind(new WindowSession.Binding(a.toHandle(), "A", true), false);
         return desktop.support(session, new ProcessFilter(null, null, -1), siblings);
     }
 
@@ -77,9 +78,159 @@ class ProcessTreeScopeTest {
     }
 
     @Test
+    void withoutWindowIdOnlyWindowsOfTheBoundTreeEvenIfASiblingIsInFront() {
+        FakeDesktop desktop = new FakeDesktop();
+        WindowSupport support = bindA(desktop, true);
+        desktop.foreground = b.pid();
+
+        assertThat(support.resolve(null).pid()).isIn(a.pid(), grandchild);
+        assertThat(support.resolve(Long.toString(b.pid())).pid()).isEqualTo(b.pid()); // mit ID weiter erreichbar
+    }
+
+    @Test
+    void siblingOfAnotherAisProcessIsNeitherBindableNorReachable() {
+        WindowSessions sessions = new WindowSessions(new AiColors(), java.time.Duration.ofMinutes(30), () -> 0);
+        ToolSession claude = new ToolSession("s1", "Claude");
+        ToolSession codex = new ToolSession("s2", "Codex");
+        WindowSession first = ToolSession.callIn(claude, sessions::current);
+        WindowSession second = ToolSession.callIn(codex, sessions::current);
+        first.bind(new WindowSession.Binding(a.toHandle(), "A", true), false);
+
+        assertThatThrownBy(() -> second.bind(new WindowSession.Binding(b.toHandle(), "B", true), true))
+                .hasMessage("B wird gerade von Claude gesteuert (Geschwisterprozess).");
+
+        second.bind(new WindowSession.Binding(b.toHandle(), "B", true), false); // ohne Geschwister kein Konflikt
+        FakeDesktop desktop = new FakeDesktop();
+        WindowSupport support = desktop.support(second, new ProcessFilter(null, null, -1), true);
+        assertThat(support.boundPids()).contains(b.pid()).doesNotContain(a.pid(), grandchild); // Schalter später an
+    }
+
+    @Test
+    void noSiblingsUnderASystemParent() {
+        assertThat(WindowSession.Binding.systemParent(new FakeProcess(1, null))).isTrue();
+        assertThat(WindowSession.Binding.systemParent(new FakeProcess(300, "/sbin/launchd"))).isTrue();
+        assertThat(WindowSession.Binding.systemParent(new FakeProcess(300, "Explorer.EXE"))).isTrue();
+        assertThat(WindowSession.Binding.systemParent(new FakeProcess(300, "/usr/lib/systemd/systemd"))).isTrue();
+        assertThat(WindowSession.Binding.systemParent(new FakeProcess(300, null))).as("unbekannt").isTrue();
+        assertThat(WindowSession.Binding.systemParent(ProcessHandle.current())).isFalse();
+
+        FakeProcess launchd = new FakeProcess(1, null);
+        FakeProcess calculator = new FakeProcess(500, "/System/Applications/Calculator.app", launchd);
+        new FakeProcess(501, "/Applications/IntelliJ IDEA.app", launchd);
+        assertThat(new WindowSession.Binding(calculator, "Calculator", true).pids(true)).containsExactly(500L);
+    }
+
+    /** Prozess mit festem Programm und Elternprozess, ohne echten Prozess dahinter. */
+    private static final class FakeProcess implements ProcessHandle {
+        private final long pid;
+        private final String command;
+        private final FakeProcess parent;
+        private final List<ProcessHandle> children = new java.util.ArrayList<>();
+
+        FakeProcess(long pid, String command) {
+            this(pid, command, null);
+        }
+
+        FakeProcess(long pid, String command, FakeProcess parent) {
+            this.pid = pid;
+            this.command = command;
+            this.parent = parent;
+            if (parent != null) {
+                parent.children.add(this);
+            }
+        }
+
+        @Override
+        public long pid() {
+            return pid;
+        }
+
+        @Override
+        public java.util.Optional<ProcessHandle> parent() {
+            return java.util.Optional.ofNullable(parent);
+        }
+
+        @Override
+        public java.util.stream.Stream<ProcessHandle> children() {
+            return children.stream();
+        }
+
+        @Override
+        public java.util.stream.Stream<ProcessHandle> descendants() {
+            return children.stream().flatMap(c -> java.util.stream.Stream.concat(java.util.stream.Stream.of(c),
+                    c.descendants()));
+        }
+
+        @Override
+        public Info info() {
+            return new Info() {
+                @Override
+                public java.util.Optional<String> command() {
+                    return java.util.Optional.ofNullable(command);
+                }
+
+                @Override
+                public java.util.Optional<String> commandLine() {
+                    return command();
+                }
+
+                @Override
+                public java.util.Optional<String[]> arguments() {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public java.util.Optional<java.time.Instant> startInstant() {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public java.util.Optional<java.time.Duration> totalCpuDuration() {
+                    return java.util.Optional.empty();
+                }
+
+                @Override
+                public java.util.Optional<String> user() {
+                    return java.util.Optional.empty();
+                }
+            };
+        }
+
+        @Override
+        public java.util.concurrent.CompletableFuture<ProcessHandle> onExit() {
+            return new java.util.concurrent.CompletableFuture<>();
+        }
+
+        @Override
+        public boolean supportsNormalTermination() {
+            return false;
+        }
+
+        @Override
+        public boolean destroy() {
+            return false;
+        }
+
+        @Override
+        public boolean destroyForcibly() {
+            return false;
+        }
+
+        @Override
+        public boolean isAlive() {
+            return true;
+        }
+
+        @Override
+        public int compareTo(ProcessHandle other) {
+            return Long.compare(pid, other.pid());
+        }
+    }
+
+    @Test
     void withoutChildrenOnlyTheProcessItself() {
         WindowSession session = new WindowSession();
-        session.bind(new WindowSession.Binding(a.toHandle(), "A", false));
+        session.bind(new WindowSession.Binding(a.toHandle(), "A", false), false);
         assertThat(session.require().pids(false)).containsExactly(a.pid());
         assertThat(session.require().pids(true)).contains(a.pid(), b.pid()).doesNotContain(grandchild, PARENT);
     }

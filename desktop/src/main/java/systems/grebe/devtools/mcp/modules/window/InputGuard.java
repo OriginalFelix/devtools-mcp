@@ -38,6 +38,16 @@ final class InputGuard {
         return window;
     }
 
+    /**
+     * Zusatz für die Antwort, wenn die Eingabe ohne Vordergrund lief (eigener Zeiger bzw. eigene Tastatur): die
+     * Ereignisse gehen direkt an den Prozess, ob er sie verarbeitet, ist ungeprüft – manche Programme verwerfen sie im
+     * Hintergrund. Leer bei Eingaben ins Vordergrundfenster.
+     */
+    String unverified() {
+        return requireForeground ? "" : " Wirkung nicht geprüft – im Hintergrund verwerfen manche Programme Eingaben; "
+                + "mit window_screenshot kontrollieren.";
+    }
+
     InputDevice device() {
         return device;
     }

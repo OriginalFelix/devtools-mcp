@@ -215,8 +215,9 @@ final class WindowsCursorController extends AbstractCursorController<WindowsCurs
     }
 
     @Override
-    protected void typeText(WinCursor cursor, Point at, String text) {
+    protected boolean typeText(WinCursor cursor, Point at, String text) {
         keyboard.type(keyTarget(cursor, at), text);
+        return false;
     }
 
     @Override

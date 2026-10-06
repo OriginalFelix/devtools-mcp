@@ -16,6 +16,7 @@ import com.sun.jna.NativeLibrary;
 import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
 import com.sun.jna.ptr.IntByReference;
+import com.sun.jna.ptr.PointerByReference;
 
 /**
  * JNA-Bindungen für macOS: ObjC-Runtime, CoreGraphics, CoreFoundation, libdispatch – und die Regel, dass AppKit nur
@@ -147,13 +148,27 @@ final class MacNatives {
 
         boolean CFNumberGetValue(Pointer number, int type, IntByReference value);
 
+        /** UTF-16-Zeichen ({@code UniChar}) als {@code CFStringRef}; der Aufrufer gibt ihn mit {@link #CFRelease} frei. */
+        Pointer CFStringCreateWithCharacters(Pointer allocator, short[] chars, long length);
+
+        /** {@code Boolean} (ein Byte) – als {@code byte}, damit keine Restbits des Registers mitzählen. */
+        byte CFEqual(Pointer a, Pointer b);
+
         void CFRelease(Pointer object);
     }
 
     interface ApplicationServices extends Library {
         ApplicationServices INSTANCE = Native.load("ApplicationServices", ApplicationServices.class);
 
+        int kAXErrorSuccess = 0;
+
         boolean AXIsProcessTrusted();
+
+        Pointer AXUIElementCreateApplication(int pid);
+
+        int AXUIElementCopyAttributeValue(Pointer element, Pointer attribute, PointerByReference value);
+
+        int AXUIElementSetAttributeValue(Pointer element, Pointer attribute, Pointer value);
     }
 
     interface Dispatch extends Library {
@@ -177,6 +192,19 @@ final class MacNatives {
     /** Globale {@code CFStringRef}-Konstante aus CoreGraphics, z.B. {@code kCGWindowOwnerPID}. */
     static Pointer cgConstant(String name) {
         return NativeLibrary.getInstance("CoreGraphics").getGlobalVariableAddress(name).getPointer(0);
+    }
+
+    /** Unveränderlicher {@code CFStringRef} für {@code text} (nicht freigegeben – nur für Konstanten verwenden). */
+    static Pointer cfString(String text) {
+        return CoreFoundation.INSTANCE.CFStringCreateWithCharacters(null, utf16(text), text.length());
+    }
+
+    static short[] utf16(String text) {
+        short[] units = new short[text.length()];
+        for (int i = 0; i < units.length; i++) {
+            units[i] = (short) text.charAt(i);
+        }
+        return units;
     }
 
     static Pointer cls(String name) {

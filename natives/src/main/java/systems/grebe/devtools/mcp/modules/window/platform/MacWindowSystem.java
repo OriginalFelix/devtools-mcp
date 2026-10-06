@@ -155,20 +155,27 @@ final class MacWindowSystem implements WindowSystem {
     public List<String> warnings() {
         List<String> out = new ArrayList<>();
         if (!inputTrusted()) {
-            out.add("Bedienungshilfen nicht freigegeben – Klicks und Tastatureingaben kommen nicht an.");
+            out.add("Bedienungshilfen nicht freigegeben – Klicks und Tastatureingaben kommen nicht an." + LAUNCHER_HINT);
         }
         if (!captureAllowed()) {
-            out.add("Bildschirmaufnahme nicht freigegeben – keine Fenstertitel und Screenshots.");
+            out.add("Bildschirmaufnahme nicht freigegeben – keine Fenstertitel und Screenshots." + LAUNCHER_HINT);
         }
         return out;
     }
+
+    /**
+     * Gestartet aus einer IDE oder einem Terminal, prüft macOS die Berechtigung beim startenden Programm, nicht bei
+     * {@code java}.
+     */
+    private static final String LAUNCHER_HINT = " Läuft sie aus einer IDE oder einem Terminal, braucht stattdessen "
+            + "dieses Programm (z.B. IntelliJ, Terminal) die Berechtigung.";
 
     @Override
     public void requireInputPermission() {
         if (!inputTrusted()) {
             throw new IllegalStateException("macOS: Die DevTools-App braucht die Berechtigung „Bedienungshilfen“ "
                     + "(Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen), sonst kommen Klicks und "
-                    + "Tastatureingaben nicht an. Danach die App neu starten.");
+                    + "Tastatureingaben nicht an." + LAUNCHER_HINT + " Danach die App neu starten.");
         }
     }
 
@@ -176,8 +183,8 @@ final class MacWindowSystem implements WindowSystem {
     public void requireCapturePermission() {
         if (!captureAllowed()) {
             throw new IllegalStateException("macOS: Die DevTools-App braucht die Berechtigung „Bildschirmaufnahme“ "
-                    + "(Systemeinstellungen → Datenschutz & Sicherheit → Bildschirm- & Systemaudioaufnahme). Danach die "
-                    + "App neu starten.");
+                    + "(Systemeinstellungen → Datenschutz & Sicherheit → Bildschirm- & Systemaudioaufnahme)."
+                    + LAUNCHER_HINT + " Danach die App neu starten.");
         }
     }
 
