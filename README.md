@@ -1166,15 +1166,19 @@ Maven: dieselbe Koordinate mit `<scope>provided</scope>`. Das POM nennt feste Ve
   erhalten), `logger()` (`plugin.<name>`), `plugin(name)` (andere aktive Plugins), `apiVersion()`.
 * **ClassLoader:** je Plugin ein eigener; Reihenfolge *App → Plugin → depend/softdepend*. App-Bibliotheken (Spring AI,
   Jackson, SLF4J …) gibt es damit genau einmal in der Version der App, eigene `libraries` nur für Klassen, die die App
-  nicht mitbringt. Bei jedem Aufruf in Plugin-Code (Tools, Formular, Aktionen, Verbindungstest) ist der
-  Thread-Context-ClassLoader der des Plugins – `ServiceLoader` und Jackson finden die Plugin-Klassen.
+  nicht mitbringt. Bei jedem Aufruf in Plugin-Code (Tools, Formular, Aktionen, Verbindungstest, Provider und die von
+  ihnen erzeugten Systeme) ist der Thread-Context-ClassLoader der des Plugins – `ServiceLoader` und Jackson finden die
+  Plugin-Klassen.
 * **Modul-IDs** sind app-weit eindeutig (2–32 Kleinbuchstaben/Ziffern); eingebaute IDs sind gesperrt. Einstellungen
   und Schalter eines Plugin-Moduls liegen wie bei eingebauten in `settings.json` und überleben Updates.
 * **Provider:** Ein Plugin kann Ticket-Systeme, Chat-Systeme, Git-Server und Container-Laufzeiten beisteuern – wie
   eingebaute über eine Zeile in `META-INF/services/<SPI>` (z.B.
   `META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`). Sie erscheinen im jeweiligen
   Modul (Formular, `provider`-Parameter), sobald das Plugin aktiv ist, und verschwinden mit ihm; der Tab **Plugins**
-  zeigt sie unter „Provider“. Eine ID, die ein eingebauter Provider belegt, wird ignoriert.
+  zeigt sie unter „Provider“. Eine ID, die ein eingebauter Provider belegt, wird ignoriert. Provider und die Objekte,
+  die sie liefern (`TicketSystem`, `ChatSystem`, `GitServer`, `ContainerRuntime`), sind in eine Hülle
+  (`core/ContextLoaderProxy`) gesetzt, die den ClassLoader des Plugins setzt; `instanceof AutoCloseable` und
+  Exceptions bleiben erhalten.
 * **Tools:** `ToolBeans.callbacks(…)` statt `ToolCallbacks.from(…)` übernimmt `@ToolHints` als MCP-Tool-Annotations,
   `ToolProgress.report(…)` meldet Zwischenstände an den Client – beides funktioniert in Plugin-Tools wie in eingebauten.
 * **Instructions:** `instructions()` aktiver Plugin-Module stehen ab der nächsten Client-Session in den
