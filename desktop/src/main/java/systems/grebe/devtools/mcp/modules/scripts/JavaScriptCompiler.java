@@ -31,7 +31,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
-import systems.grebe.devtools.mcp.core.ToolBeans;
+import systems.grebe.devtools.mcp.core.McpToolHints;
 import systems.grebe.devtools.mcp.core.ToolModule;
 
 /**
@@ -105,8 +105,8 @@ public final class JavaScriptCompiler {
         @Override
         public List<ToolCallback> tools(ModuleConfig config, Supplier<Duration> timeout) {
             List<ToolCallback> tools = withLoader(() -> module.createTools(config));
-            return tools.stream().map(cb -> ToolBeans.withAnnotations(
-                    new TimedCallback(cb, loader, timeout, scriptName, fileName), ToolBeans.annotations(cb))).toList();
+            return tools.stream().map(cb -> McpToolHints.withAnnotations(
+                    new TimedCallback(cb, loader, timeout, scriptName, fileName), McpToolHints.annotations(cb))).toList();
         }
 
         @Override

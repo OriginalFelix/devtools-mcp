@@ -422,6 +422,6 @@ class PluginManagerTest {
     }
 
     private static PluginDescriptor parse(String yml) {
-        return PluginDescriptor.parse(new ByteArrayInputStream(yml.getBytes(StandardCharsets.UTF_8)));
+        return PluginDescriptorReader.parse(new ByteArrayInputStream(yml.getBytes(StandardCharsets.UTF_8)));
     }
 }

@@ -126,7 +126,7 @@ minus Dauer“, sonst 9 Uhr in der lokalen Zeitzone.
 
 Provider implementieren Schreiben über `default`-Methoden von `TicketSystem` (`comment`, `transition`, `assign`, `update`,
 `create`, `logTime`, `links`, `transitions`, `worklogs`) – was ein Provider nicht kann, meldet das Tool als „nicht unterstützt“; bestehende
-Plugin-Provider kompilieren unverändert.
+Plugin-Provider kompilieren unverändert. Provider können auch aus Plugins kommen (siehe [Plugins](#plugins)).
 
 In der UI wählt „Aktiv“ (Mehrfachauswahl) die Systeme; darunter stehen die Felder und das Standardprojekt des gerade
 gewählten aktiven Systems, ein Umschalter wechselt zwischen ihnen. Ohne `provider` wählt das Modul das System, das
@@ -220,7 +220,8 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
   Nonce ist zufällig (64 Bit), damit sich kein Exit-Code fälschen lässt – beides nach dem Vorbild von
   [ssh-mcp](https://github.com/tufantunc/ssh-mcp).
 * Während `ssh_exec`, `ssh_shell_exec` und `ssh_shell_read` warten, sendet der Server die jeweils letzte Ausgabezeile als
-  `notifications/progress`, sofern der Client ein `progressToken` mitschickt (`core/ToolProgress`, für alle Module nutzbar).
+  `notifications/progress`, sofern der Client ein `progressToken` mitschickt (`core/ToolProgress` aus der Plugin-API,
+  für alle Module und Plugins nutzbar; die MCP-Anbindung macht `core/McpProgress`).
   Das sieht nur der Nutzer im Client – das LLM bekommt Ausgabe ausschließlich über die Tool-Ergebnisse. Jede Shell hat eine eigene SSH-Sitzung; höchstens „Max. offene Shells“, geschlossen nach
   „Shells schließen nach“ Minuten ohne Nutzung, bei geänderter Konfiguration und beim Beenden.
 * Abbrechen ist ehrlich: bei Zeitüberschreitung von `ssh_exec` und bei `ssh_shell_close` (^C, `exit`) folgt die
@@ -422,7 +423,8 @@ Gradle-Multiprojekt:
 | `desktop` | Desktop-App: MCP-Server, alle Module, Plugins, JavaFX-Oberfläche; Backend eingebettet oder Anbindung an einen Team-Server | `desktop/build/libs/devtools-mcp-<version>.jar` |
 | `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories, Skripte mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
-| `shared` | Gemeinsam: Einstellungs-Modell, Datenklassen der GraphQL-API (`api`) | – |
+| `shared` | Gemeinsam: Einstellungs-Ablage, Datenklassen der GraphQL-API (`api`) | – |
+| `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
 
 MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
 im Team-Server, und in der Desktop-App eingebettet – außer dort ist ein Team-Server eingetragen, dann nutzt sie dessen
@@ -1111,7 +1113,7 @@ class JiraModule implements ToolModule {
     @PreDestroy void close() { … }
 
     public String id() { return "jira"; }                   // → Tools jira_*
-    public List<ToolCallback> createTools(ModuleConfig c) { return List.of(ToolCallbacks.from(new JiraTools(client))); }
+    public List<ToolCallback> createTools(ModuleConfig c) { return ToolBeans.callbacks(new JiraTools(client)); }
     …
 }
 ```
@@ -1119,7 +1121,8 @@ class JiraModule implements ToolModule {
 * **Scan:** Paket der Hauptklasse samt Unterpaketen, nur im Plugin-Jar (nicht in `libraries` oder der App). Ein
   `@ComponentScan` auf der Hauptklasse ersetzt das; `@Import`, `@Configuration`, `@Bean` wirken wie gewohnt.
 * **Injizierbar:** alle eigenen Beans, `PluginContext`, `PluginDescriptor` und die Beans der App (`SettingsStore`,
-  `ToolRegistry`, `JavaEnvironmentProvider`, `SkillService` …). `@Value` sieht die Properties der App. Eltern ist die
+  `ToolRegistry`, `JavaEnvironmentProvider`, `SkillService` …). Die App-Beans sind Implementierung, nicht Teil der
+  Plugin-API – wer sie nutzt, kompiliert gegen das App-Jar und muss bei App-Updates mit Änderungen rechnen. `@Value` sieht die Properties der App. Eltern ist die
   BeanFactory der App, nicht ihr Kontext: Plugin-Beans sind für die App unsichtbar, Ereignisse des Plugin-Kontexts
   erreichen sie nicht.
 * **Ohne Spring:** geht weiter wie bei Bukkit – `registerModule(new JiraModule(dataFolder()))` in `onEnable()`.
@@ -1127,13 +1130,32 @@ class JiraModule implements ToolModule {
 * **Fehler** beim Aufbau (fehlende Bean, Exception in `@PostConstruct`) lassen nur dieses Plugin scheitern; die
   Meldung von Spring steht im Tab **Plugins**.
 
-Build (Gradle) – die App stellt die API bereit, ins Jar gehört nur der eigene Code:
+Build – Plugins kompilieren nur gegen die **Plugin-API** (`plugin-api`, Maven `systems.grebe:devtools-mcp-plugin-api`).
+Sie enthält, was ein Plugin braucht, und reicht Spring AI (`@Tool`, `ToolCallback`), Spring-Context und
+`jakarta.annotation` zum Kompilieren durch:
+
+| Bereich | Typen |
+|---|---|
+| Plugin | `DevToolsPlugin`, `PluginContext`, `PluginDescriptor`, `PluginApi` |
+| Module | `ToolModule`, `ModuleAction`, `ConnectionTestResult`, `ToolScope`, `ConfigField`, `ConfigGroup`, `FieldType`, `ModuleConfig` |
+| Tools | `ToolBeans` (Callbacks mit Hinweisen), `@ToolHints`, `ToolProgress` (Fortschritt an den Client), `DelegatingToolCallback` |
+| Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `ContainerRuntimeProvider`/`ContainerRuntime`/`RuntimeSettings` |
+ Die App stellt all das zur Laufzeit bereit, ins Jar
+gehört nur der eigene Code. Die Pakete sind dieselben wie vorher im App-Jar: bereits gebaute Plugins laufen unverändert.
+
+```bash
+./gradlew :plugin-api:publishToMavenLocal          # oder in ein eigenes Repository:
+./gradlew :plugin-api:publish -PpluginApiRepository=https://nexus.acme.de/repository/maven-releases \
+    -PpluginApiRepositoryUser=… -PpluginApiRepositoryPassword=…
+```
 
 ```kotlin
 dependencies {
-    compileOnly("systems.grebe:devtools-mcp:0.1.0-SNAPSHOT") // ./gradlew publishToMavenLocal in diesem Repo
+    compileOnly("systems.grebe:devtools-mcp-plugin-api:0.1.0-SNAPSHOT")
 }
 ```
+
+Maven: dieselbe Koordinate mit `<scope>provided</scope>`. Das POM nennt feste Versionen (keine BOM nötig).
 
 * **Lebenszyklus:** Kontext aufbauen (`@PostConstruct`) → `onLoad()` → `ToolModule`-Beans aufnehmen → `onEnable()`;
   beim Abschalten, Entfernen, Aktualisieren und Beenden `onDisable()` → Module entfernen → Kontext schließen
@@ -1148,10 +1170,48 @@ dependencies {
   Thread-Context-ClassLoader der des Plugins – `ServiceLoader` und Jackson finden die Plugin-Klassen.
 * **Modul-IDs** sind app-weit eindeutig (2–32 Kleinbuchstaben/Ziffern); eingebaute IDs sind gesperrt. Einstellungen
   und Schalter eines Plugin-Moduls liegen wie bei eingebauten in `settings.json` und überleben Updates.
+* **Provider:** Ein Plugin kann Ticket-Systeme, Chat-Systeme, Git-Server und Container-Laufzeiten beisteuern – wie
+  eingebaute über eine Zeile in `META-INF/services/<SPI>` (z.B.
+  `META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`). Sie erscheinen im jeweiligen
+  Modul (Formular, `provider`-Parameter), sobald das Plugin aktiv ist, und verschwinden mit ihm; der Tab **Plugins**
+  zeigt sie unter „Provider“. Eine ID, die ein eingebauter Provider belegt, wird ignoriert.
+* **Tools:** `ToolBeans.callbacks(…)` statt `ToolCallbacks.from(…)` übernimmt `@ToolHints` als MCP-Tool-Annotations,
+  `ToolProgress.report(…)` meldet Zwischenstände an den Client – beides funktioniert in Plugin-Tools wie in eingebauten.
 * **Instructions:** `instructions()` aktiver Plugin-Module stehen ab der nächsten Client-Session in den
   MCP-Instructions – ohne Neustart (siehe „Instructions für das LLM“). Die Tools sind sofort in `tools/list`.
 * **Sicherheit:** Plugins laufen im Prozess der App mit denselben Rechten – kein Sandboxing. Nur Plugins aus
-  vertrauenswürdigen Quellen installieren; der Store prüft Prüfsummen, keine Signaturen.
+  vertrauenswürdigen Quellen installieren; der Store prüft Prüfsummen, die App zusätzlich die Signatur (unten).
+
+### Signatur (`plugin.jwt`)
+
+Plugins können signiert werden: `plugin.jwt` neben der `plugin.yml` ist ein JWS mit den Claims `name`, `version`,
+`author`, `iat` (Signierdatum) und `sha256` (Prüfsumme des Jar-Inhalts). Signiert wird mit einem EC- (ES256/384/512)
+oder RSA-Schlüssel (RS256):
+
+```bash
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out plugin-signing.pem    # privat, PKCS#8
+openssl pkey -in plugin-signing.pem -pubout -out plugin-signing.pub.pem                   # öffentlich
+java -jar devtools-mcp.jar sign-plugin --key plugin-signing.pem [--author "Team Tools"] build/libs/jira-plugin.jar
+```
+
+Name und Version kommen aus der `plugin.yml` im Jar, der Autor ohne `--author` ebenfalls; erneutes Signieren ersetzt
+das Token. Die öffentlichen Schlüssel trägt man im Tab **Plugins → Signaturen** ein (`settings.json`,
+`plugins.trustedKeys`). Beim Laden prüft die App:
+
+| Ergebnis | Anzeige | Warnung im Log und unter „Installiert“ |
+|---|---|---|
+| keine `plugin.jwt` | „nicht signiert“ | – (noch nicht Pflicht) |
+| Signatur eines eingetragenen Schlüssels | „gültig · Autor · Datum“ | – |
+| kein Schlüssel eingetragen | „signiert, nicht geprüft“ | – |
+| von keinem eingetragenen Schlüssel | „Schlüssel nicht vertrauenswürdig“ | ja |
+| kein lesbares JWS (auch `alg: none`) oder `name`/`version` fehlt | „ungültig“ | ja |
+| Jar-Inhalt ≠ `sha256` im Token | „Inhalt nach dem Signieren verändert“ | ja |
+| Token ohne `sha256` | wie oben | ja: „Signatur ohne Prüfsumme …“ |
+| `name` oder `version` im Token ≠ `plugin.yml` | wie oben | ja: „Signatur passt nicht zum Plugin …“ |
+
+`sha256` ist die SHA-256-Prüfsumme über alle Dateien des Jars außer `plugin.jwt`, sortiert nach Name (je Eintrag Name,
+Null-Byte, Länge, Inhalt) – Zeitstempel, Kompression und Reihenfolge im Zip zählen nicht. Ein Token lässt sich damit
+nicht in ein anderes Jar übertragen. Geladen wird das Plugin in allen Fällen; Warnungen blockieren nichts.
 
 ### Plugin-Store (Maven)
 
@@ -1185,9 +1245,9 @@ JVM-Einstellungen, `file:`-Repositories. Heruntergeladenes landet in `plugins/.r
 
 ```
 desktop/
-  DevToolsMcpApplication ── main() → JavaFX; Backend-Paket nur über remote/EmbeddedBackend
+  DevToolsMcpApplication ── main() → JavaFX (oder sign-plugin); Backend-Paket nur über remote/EmbeddedBackend
   fx/FxApp                ── init(): Spring-Kontext starten · start(): Fenster + Tray · stop(): Kontext schließen
-  core/ToolModule         ── Erweiterungspunkt (SPI)
+  core/ToolModule         ── Erweiterungspunkt (SPI) – liegt in plugin-api, ebenso ModuleConfig, ConfigField …
   core/ToolRegistry       ── Module ⇄ McpSyncServer (addTool/removeTool zur Laufzeit, notifyToolsListChanged)
   core/SettingsResolver   ── wirksame Einstellungen lesen/speichern (Backend, vorher settings.json)
   core/ManagedToolCallback── Präfix, Protokollierung, Klartext-Ergebnisse
@@ -1200,7 +1260,9 @@ desktop/
                              ScriptCompiler + DevToolsScript (Groovy-DSL), JavaScriptCompiler + JavaClasspath (javac),
                              GherkinScriptCompiler + GherkinSteps + ScenarioRun (Gherkin, Tools über
                              RegistryToolCaller), ScriptToolModule/ScriptToolCallback, ScriptsModule
-  plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
+  plugin/PluginManager    ── Plugin-Ordner, plugin.yml (PluginDescriptorReader), ClassLoader je Plugin, Lebenszyklus,
+                             depend-Reihenfolge
+  plugin/PluginSignature  ── plugin.jwt prüfen (PluginKeys: PEM), PluginSigner: signieren (sign-plugin)
   plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
   ui/                     ── MainView, ModuleDetailPane, ConfigForm, InvocationLogView, PluginsView, BackendView, Dialoge
 backend/
@@ -1214,7 +1276,12 @@ server/
   server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI
 shared/
   api/                    ── Datenklassen der GraphQL-API
-  core/ConfigField, config/ModuleSettings, profile/Overrides, modules/{skills,memories,scripts}/{…Backend,…Views}
+  config/ModuleSettings, profile/Overrides, modules/{skills,memories,scripts}/{…Backend,…Views}
+plugin-api/
+  core/                   ── ToolModule, ModuleAction, ConnectionTestResult, ToolScope, ConfigField, ConfigGroup,
+                             FieldType, ModuleConfig, ToolBeans + ToolHints, ToolProgress, ServiceProvider
+  modules/*/spi/          ── Provider-SPIs: ticket, chat, pr (Git-Server), container
+  plugin/                 ── DevToolsPlugin, PluginContext, PluginDescriptor, PluginApi
 ```
 
 MCP-Server: Spring AI `spring-ai-starter-mcp-server-webflux` 2.0.1 (MCP Java SDK 2.0.0), Protokoll `STREAMABLE`.

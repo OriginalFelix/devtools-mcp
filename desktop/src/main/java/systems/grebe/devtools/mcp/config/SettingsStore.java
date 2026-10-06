@@ -227,9 +227,11 @@ public class SettingsStore implements DataHome {
                 r.path("enabled").asBoolean(true))));
         Map<String, String> sources = new LinkedHashMap<>();
         p.path("sources").properties().forEach(e -> sources.put(e.getKey(), e.getValue().asString()));
+        List<String> trustedKeys = new ArrayList<>();
+        p.path("trustedKeys").forEach(n -> trustedKeys.add(n.asString()));
         // "repositories" fehlt nur vor dem ersten Speichern – eine bewusst geleerte Liste bleibt leer
         return new PluginSettings(disabled, p.has("repositories") ? repos : PluginSettings.defaults().repositories(),
-                sources);
+                sources, trustedKeys);
     }
 
     private void writePlugins(ObjectNode p) {
@@ -249,6 +251,8 @@ public class SettingsStore implements DataHome {
         }
         ObjectNode sources = p.putObject("sources");
         new TreeMap<>(plugins.sources()).forEach(sources::put);
+        var trustedKeys = p.putArray("trustedKeys");
+        plugins.trustedKeys().forEach(trustedKeys::add);
     }
 
     private void backupBroken() {

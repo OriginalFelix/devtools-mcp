@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import io.modelcontextprotocol.spec.McpSchema;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
@@ -16,41 +15,61 @@ import org.springframework.ai.tool.metadata.ToolMetadata;
 
 /**
  * Erzeugt Tool-Callbacks aus Objekten mit {@code @Tool}-Methoden wie {@link ToolCallbacks#from}, übernimmt aber
- * zusätzlich die {@link ToolHints} als MCP-Tool-Annotations.
+ * zusätzlich die {@link ToolHints} – die App meldet sie dem Client als MCP-Tool-Annotations.
+ *
+ * <pre>{@code
+ * public List<ToolCallback> createTools(ModuleConfig config) {
+ *     return ToolBeans.callbacks(new JiraTools(config));
+ * }
+ * }</pre>
  */
 public final class ToolBeans {
 
     private ToolBeans() {
     }
 
-    /** Callbacks aller {@code @Tool}-Methoden der Objekte, mit Annotations aus {@link ToolHints}. */
+    /**
+     * Hinweise eines Tools (Werte wie bei MCP-Tool-Annotations, {@code null} = keine Angabe).
+     *
+     * @param title optionaler Anzeigename
+     */
+    public record Hints(String title, Boolean readOnly, Boolean destructive, Boolean idempotent, Boolean openWorld) {
+
+        /** Aus der Annotation; destructive/idempotent sind laut Spezifikation nur bei nicht lesenden Tools bedeutsam. */
+        public static Hints of(ToolHints h) {
+            return new Hints(null, h.readOnly(), h.readOnly() ? null : h.destructive(),
+                    h.readOnly() ? null : h.idempotent(), h.openWorld());
+        }
+    }
+
+    /** Callbacks aller {@code @Tool}-Methoden der Objekte, mit Hinweisen aus {@link ToolHints}. */
     public static List<ToolCallback> callbacks(Object... beans) {
         List<ToolCallback> out = new ArrayList<>();
         for (Object bean : beans) {
             Map<String, ToolHints> hints = hints(bean.getClass());
             for (ToolCallback cb : ToolCallbacks.from(bean)) {
                 ToolHints h = hints.get(cb.getToolDefinition().name());
-                out.add(h == null ? cb : new Hinted(cb, annotations(h)));
+                out.add(h == null ? cb : new Hinted(cb, Hints.of(h)));
             }
         }
         return out;
     }
 
     /**
-     * Versieht einen Callback mit MCP-Tool-Annotations – für Tools ohne {@code @Tool}-Methode (z.B. aus Skripten).
-     * {@code null} lässt den Callback unverändert.
+     * Versieht einen Callback mit Hinweisen – für Tools ohne {@code @Tool}-Methode. {@code null} lässt den Callback
+     * unverändert.
      */
-    public static ToolCallback withAnnotations(ToolCallback cb, McpSchema.ToolAnnotations annotations) {
-        return annotations == null ? cb : new Hinted(cb, annotations);
+    public static ToolCallback withHints(ToolCallback cb, Hints hints) {
+        return hints == null ? cb : new Hinted(cb, hints);
     }
 
-    /** Annotations eines Callbacks (auch durch Dekoratoren wie {@link ManagedToolCallback} hindurch) oder {@code null}. */
-    public static McpSchema.ToolAnnotations annotations(ToolCallback cb) {
+    /** Hinweise eines Callbacks (auch durch {@link DelegatingToolCallback Hüllen} hindurch) oder {@code null}. */
+    public static Hints hints(ToolCallback cb) {
         if (cb instanceof Hinted h) {
-            return h.annotations;
+            return h.hints;
         }
-        if (cb instanceof ManagedToolCallback m) {
-            return annotations(m.delegate());
+        if (cb instanceof DelegatingToolCallback d) {
+            return hints(d.delegate());
         }
         return null;
     }
@@ -74,21 +93,8 @@ public final class ToolBeans {
         return out;
     }
 
-    private static McpSchema.ToolAnnotations annotations(ToolHints h) {
-        // destructive/idempotent sind laut Spezifikation nur bei nicht lesenden Tools bedeutsam
-        return new McpSchema.ToolAnnotations(null, h.readOnly(), h.readOnly() ? null : h.destructive(),
-                h.readOnly() ? null : h.idempotent(), h.openWorld(), null);
-    }
-
-    /** Callback mit Annotations; ansonsten unverändert. */
-    private static final class Hinted implements ToolCallback {
-        private final ToolCallback delegate;
-        private final McpSchema.ToolAnnotations annotations;
-
-        Hinted(ToolCallback delegate, McpSchema.ToolAnnotations annotations) {
-            this.delegate = delegate;
-            this.annotations = annotations;
-        }
+    /** Callback mit Hinweisen; ansonsten unverändert. */
+    private record Hinted(ToolCallback delegate, Hints hints) implements ToolCallback {
 
         @Override
         public ToolDefinition getToolDefinition() {

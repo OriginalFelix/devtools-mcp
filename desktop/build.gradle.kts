@@ -14,7 +14,22 @@ val javafxPlatform = when {
     else -> if (osArch.contains("aarch64")) "linux-aarch64" else "linux"
 }
 
+// Compile-Classpath eines Plugins, das nur die Plugin-API kennt (für PluginApiOnlyTest)
+val pluginApiClasspath by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_API))
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
+        attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
+    }
+}
+
 dependencies {
+    // Plugin-API: Modul-Vertrag und Plugin-Basisklasse; die App stellt sie Plugins zur Laufzeit bereit
+    implementation(project(":plugin-api"))
+    pluginApiClasspath(project(":plugin-api"))
+
     // Backend (GraphQL, Benutzer, Profile, Projekte, Skills): eingebettet ohne eingetragenen Team-Server
     implementation(project(":backend"))
     // GraphQL-Client für Subscriptions (WebSocketGraphQlClient über den Jakarta-WebSocket-Client von Jetty)
@@ -46,6 +61,8 @@ dependencies {
     // Plugins: plugin.yml (SnakeYAML, Version aus der Boot-BOM) und Plugin-Store über Maven-Repositories
     // (Maven Resolver: Auflösung, Versionen aus maven-metadata.xml, Prüfsummen, Zugangsdaten, file://-Repositories).
     implementation("org.yaml:snakeyaml")
+    // Plugin-Signaturen: plugin.jwt (JWS, ES256/384/512 oder RS256) – dieselbe Bibliothek wie im Backend
+    implementation("com.nimbusds:nimbus-jose-jwt:10.3.1")
     implementation("org.apache.maven.resolver:maven-resolver-supplier-mvn3:2.0.23")
 
     // Decompiler-Modul: Vineflower (gepflegter Fernflower-Fork, versteht aktuelle Java-Features, ohne Abhängigkeiten)
@@ -90,6 +107,13 @@ tasks.named<Jar>("bootJar") {
     archiveBaseName = "devtools-mcp"
     // Native Zugriffe (JavaFX, tree-sitter über FFM) ohne Warnung beim Start mit java -jar
     manifest.attributes("Enable-Native-Access" to "ALL-UNNAMED")
+}
+
+tasks.test {
+    inputs.files(pluginApiClasspath).withPropertyName("pluginApiClasspath").withNormalizer(ClasspathNormalizer::class)
+    jvmArgumentProviders.add(CommandLineArgumentProvider {
+        listOf("-Ddevtools.test.pluginApiClasspath=${pluginApiClasspath.asPath}")
+    })
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {

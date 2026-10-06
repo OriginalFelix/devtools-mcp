@@ -19,6 +19,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -27,12 +29,18 @@ import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ConfigurableApplicationContext;
 import systems.grebe.devtools.mcp.config.PluginSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ManagedToolCallback;
+import systems.grebe.devtools.mcp.core.ServiceProvider;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider;
+import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
+import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
+import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.plugin.store.MavenPluginResolver;
 
 /**
@@ -52,6 +60,10 @@ public class PluginManager implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(PluginManager.class);
     private static final String BROKEN_PREFIX = "file:";
 
+    /** Provider-Schnittstellen, deren Implementierungen Plugins über {@code META-INF/services} beisteuern können. */
+    public static final List<Class<? extends ServiceProvider>> PROVIDER_TYPES = List.of(TicketProvider.class,
+            ChatProvider.class, GitServerProvider.class, ContainerRuntimeProvider.class);
+
     public enum State {
         /** Geladen und aktiv, Module registriert. */
         ENABLED,
@@ -63,11 +75,14 @@ public class PluginManager implements AutoCloseable {
 
     /**
      * Anzeige-Sicht auf ein Plugin. {@code name} ist bei einem Jar ohne gültige {@code plugin.yml} der Dateiname,
-     * {@code source} die Maven-Koordinate bei Installation aus dem Store.
+     * {@code source} die Maven-Koordinate bei Installation aus dem Store, {@code signature} das Ergebnis der Prüfung
+     * von {@code plugin.jwt} ({@code null} bei ungültigem Jar), {@code providers} die beigesteuerten Provider
+     * ({@code TicketProvider redmine}).
      */
     public record PluginInfo(String name, String version, String description, List<String> authors, String website,
                              String file, State state, String error, List<String> modules, String source,
-                             List<String> depend, List<String> softDepend, List<String> libraries, boolean valid) {
+                             List<String> depend, List<String> softDepend, List<String> libraries, boolean valid,
+                             PluginSignature signature, List<String> providers) {
     }
 
     private final Path directory;
@@ -82,6 +97,7 @@ public class PluginManager implements AutoCloseable {
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private volatile List<PluginInfo> snapshot = List.of();
     private volatile List<ToolModule> activeSnapshot = List.of();
+    private volatile Map<Class<?>, List<?>> providerSnapshot = Map.of();
     private ToolRegistry registry;
     private boolean loaded;
 
@@ -106,6 +122,48 @@ public class PluginManager implements AutoCloseable {
         this.registrySupplier = registry;
         this.resolver = resolver;
         this.app = app;
+    }
+
+    /**
+     * Provider der aktiven Plugins für eine Schnittstelle aus {@link #PROVIDER_TYPES}, in Ladereihenfolge. Ohne Sperre
+     * und ohne zu laden (wie {@link #activeModules()}); bei unverändertem Stand dieselbe Liste.
+     */
+    @SuppressWarnings("unchecked")
+    public <T> List<T> activeProviders(Class<T> type) {
+        return (List<T>) providerSnapshot.getOrDefault(type, List.of());
+    }
+
+    /** Lieferant der Plugin-Provider für eine {@code ProviderRegistry}; leer, solange es keinen Manager gibt. */
+    public static <T> Supplier<List<T>> providers(ObjectProvider<PluginManager> manager, Class<T> type) {
+        return () -> {
+            PluginManager m = manager.getIfAvailable();
+            return m == null ? List.of() : m.activeProviders(type);
+        };
+    }
+
+    /** Öffentliche Schlüssel (PEM), gegen die Plugin-Signaturen geprüft werden. */
+    public List<String> trustedKeys() {
+        return store.plugins().trustedKeys();
+    }
+
+    /**
+     * Ersetzt die vertrauenswürdigen Schlüssel und prüft die Signaturen aller Plugins neu (ohne sie neu zu laden).
+     *
+     * @throws IllegalArgumentException wenn ein Eintrag keinen lesbaren öffentlichen Schlüssel enthält
+     */
+    public synchronized void setTrustedKeys(List<String> pems) {
+        List<String> keys = pems.stream().map(String::strip).filter(k -> !k.isEmpty()).toList();
+        keys.forEach(PluginKeys::publicKeys);
+        store.savePlugins(store.plugins().withTrustedKeys(keys));
+        if (!loaded) {
+            return;
+        }
+        for (Loaded l : plugins.values()) {
+            if (l.descriptor != null) {
+                l.signature = PluginSignature.check(l.jar, l.descriptor, keys);
+            }
+        }
+        publish();
     }
 
     /** {@code <Einstellungsordner>/plugins}. */
@@ -230,7 +288,7 @@ public class PluginManager implements AutoCloseable {
      */
     public synchronized PluginInfo install(Path jar, String coordinates) {
         ensureLoaded();
-        PluginDescriptor d = PluginDescriptor.read(jar);
+        PluginDescriptor d = PluginDescriptorReader.read(jar);
         checkApiVersion(d);
         Path target = directory.resolve(d.name() + "-" + d.version().replaceAll("[^A-Za-z0-9._-]", "_") + ".jar");
         apply(Set.of(d.name()), removed -> {
@@ -331,13 +389,14 @@ public class PluginManager implements AutoCloseable {
             }
             Loaded l;
             try {
-                PluginDescriptor d = PluginDescriptor.read(jar);
+                PluginDescriptor d = PluginDescriptorReader.read(jar);
                 Loaded existing = plugins.get(d.name());
                 if (existing != null) {
                     l = Loaded.broken(jar, "Doppelter Plugin-Name '" + d.name() + "' (auch in "
                             + existing.jar.getFileName() + ") – eine der beiden Dateien entfernen.");
                 } else {
                     l = new Loaded(d.name(), jar, d);
+                    l.signature = PluginSignature.check(jar, d, store.plugins().trustedKeys());
                 }
             } catch (RuntimeException e) {
                 l = Loaded.broken(jar, ManagedToolCallback.describe(e));
@@ -434,15 +493,17 @@ public class PluginManager implements AutoCloseable {
         PluginDescriptor d = l.descriptor;
         try {
             checkApiVersion(d);
+            l.signature = PluginSignature.check(l.jar, d, store.plugins().trustedKeys());
+            l.signature.warnings().forEach(w -> LOG.warn("Plugin {} {}: {}", d.name(), d.version(), w));
             List<PluginClassLoader> depLoaders = new ArrayList<>();
             for (String dep : d.depend()) {
                 Loaded other = plugins.get(dep);
                 if (other == null) {
-                    throw new PluginDescriptor.InvalidPluginException("Benötigt das Plugin '" + dep
+                    throw new InvalidPluginException("Benötigt das Plugin '" + dep
                             + "', das nicht installiert ist.");
                 }
                 if (other.state != State.ENABLED) {
-                    throw new PluginDescriptor.InvalidPluginException("Benötigt das Plugin '" + dep
+                    throw new InvalidPluginException("Benötigt das Plugin '" + dep
                             + "', das nicht aktiv ist.");
                 }
                 depLoaders.add(other.loader);
@@ -463,15 +524,15 @@ public class PluginManager implements AutoCloseable {
             try {
                 main = Class.forName(d.main(), true, l.loader);
             } catch (ClassNotFoundException e) {
-                throw new PluginDescriptor.InvalidPluginException("Hauptklasse " + d.main()
+                throw new InvalidPluginException("Hauptklasse " + d.main()
                         + " (plugin.yml: main) nicht im Plugin-Jar gefunden.", e);
             }
             if (main.getClassLoader() != l.loader) {
-                throw new PluginDescriptor.InvalidPluginException("Hauptklasse " + d.main()
+                throw new InvalidPluginException("Hauptklasse " + d.main()
                         + " liegt nicht im Plugin-Jar.");
             }
             if (!DevToolsPlugin.class.isAssignableFrom(main)) {
-                throw new PluginDescriptor.InvalidPluginException("Hauptklasse " + d.main() + " erweitert nicht "
+                throw new InvalidPluginException("Hauptklasse " + d.main() + " erweitert nicht "
                         + DevToolsPlugin.class.getName() + ".");
             }
             l.starting = true; // ab hier dürfen Beans (@PostConstruct) und onEnable Module registrieren
@@ -485,6 +546,7 @@ public class PluginManager implements AutoCloseable {
                     registerModule(l, module);
                 }
                 instance.onEnable();
+                loadProviders(l);
                 return null;
             });
             l.starting = false;
@@ -495,6 +557,28 @@ public class PluginManager implements AutoCloseable {
             LOG.error("Plugin {} konnte nicht aktiviert werden", d.name(), e);
             l.starting = false;
             shutdown(l, State.FAILED, describe(e));
+        }
+    }
+
+    /**
+     * Provider aus {@code META-INF/services} des Plugin-Jars (nur Klassen des Plugins selbst – die Dateien der App
+     * sieht der ClassLoader über den Parent mit). Ein defekter Eintrag wird gemeldet und lässt das Plugin weiterlaufen.
+     */
+    private void loadProviders(Loaded l) {
+        for (Class<? extends ServiceProvider> type : PROVIDER_TYPES) {
+            List<ServiceProvider> found = new ArrayList<>();
+            try {
+                ServiceLoader.load(type, l.loader).stream()
+                        .filter(p -> p.type().getClassLoader() == l.loader)
+                        .forEach(p -> found.add(p.get()));
+            } catch (ServiceConfigurationError e) {
+                LOG.warn("Plugin {}: {} nicht ladbar: {}", l.key, type.getSimpleName(), e.getMessage());
+            }
+            if (!found.isEmpty()) {
+                l.providers.put(type, List.copyOf(found));
+                LOG.info("Plugin {} stellt {} bereit: {}", l.key, type.getSimpleName(),
+                        found.stream().map(ServiceProvider::id).toList());
+            }
         }
     }
 
@@ -516,6 +600,7 @@ public class PluginManager implements AutoCloseable {
             }
         }
         l.modules.clear();
+        l.providers.clear();
         if (l.spring != null) {
             try {
                 PluginToolModule.withLoader(l.loader, () -> {
@@ -573,6 +658,22 @@ public class PluginManager implements AutoCloseable {
         snapshot = list;
         activeSnapshot = plugins.values().stream().filter(l -> l.state == State.ENABLED)
                 .flatMap(l -> l.modules.stream()).<ToolModule>map(m -> m).toList();
+        Map<Class<?>, List<?>> providers = new LinkedHashMap<>();
+        for (Class<?> type : PROVIDER_TYPES) {
+            List<ServiceProvider> all = plugins.values().stream().filter(l -> l.state == State.ENABLED)
+                    .flatMap(l -> l.providers.getOrDefault(type, List.of()).stream())
+                    .<ServiceProvider>map(p -> p).toList();
+            if (!all.isEmpty()) {
+                providers.put(type, all);
+            }
+        }
+        boolean providersChanged = !providers.equals(providerSnapshot);
+        if (providersChanged) {
+            providerSnapshot = Map.copyOf(providers);
+            if (registry != null) {
+                registry.refreshAll(); // Formulare und Tools der Module mit Providern (Tickets, Chat …) neu aufbauen
+            }
+        }
         listeners.forEach(r -> {
             try {
                 r.run();
@@ -591,11 +692,11 @@ public class PluginManager implements AutoCloseable {
 
     private static void checkApiVersion(PluginDescriptor d) {
         if (d.apiVersion() > PluginApi.VERSION) {
-            throw new PluginDescriptor.InvalidPluginException("Plugin " + d.name() + " braucht Plugin-API "
+            throw new InvalidPluginException("Plugin " + d.name() + " braucht Plugin-API "
                     + d.apiVersion() + ", diese App bietet " + PluginApi.VERSION + " – App aktualisieren.");
         }
         if (d.apiVersion() < 1) {
-            throw new PluginDescriptor.InvalidPluginException("'api-version' muss mindestens 1 sein.");
+            throw new InvalidPluginException("'api-version' muss mindestens 1 sein.");
         }
     }
 
@@ -605,7 +706,7 @@ public class PluginManager implements AutoCloseable {
                     + " (gegen eine andere App-/Bibliotheksversion gebaut?)";
         }
         // eigene Meldungen (Plugin ungültig, Bibliothek nicht auflösbar) sind aussagekräftiger als die Ursache
-        if (e instanceof PluginDescriptor.InvalidPluginException || e instanceof MavenPluginResolver.ResolutionException) {
+        if (e instanceof InvalidPluginException || e instanceof MavenPluginResolver.ResolutionException) {
             return e.getMessage();
         }
         return ManagedToolCallback.describe(e);
@@ -640,6 +741,8 @@ public class PluginManager implements AutoCloseable {
         org.springframework.context.annotation.AnnotationConfigApplicationContext spring;
         DevToolsPlugin instance;
         boolean starting;
+        PluginSignature signature = PluginSignature.NONE;
+        final Map<Class<?>, List<? extends ServiceProvider>> providers = new LinkedHashMap<>();
 
         Loaded(String key, Path jar, PluginDescriptor descriptor) {
             this.key = key;
@@ -659,11 +762,13 @@ public class PluginManager implements AutoCloseable {
             if (descriptor == null) {
                 return new PluginInfo(jar.getFileName().toString(), "", "", List.of(), null,
                         jar.getFileName().toString(), state, error, List.of(), source, List.of(), List.of(), List.of(),
-                        false);
+                        false, null, List.of());
             }
             return new PluginInfo(descriptor.name(), descriptor.version(), descriptor.description(),
                     descriptor.authors(), descriptor.website(), jar.getFileName().toString(), state, error, moduleIds,
-                    source, descriptor.depend(), descriptor.softDepend(), descriptor.libraries(), true);
+                    source, descriptor.depend(), descriptor.softDepend(), descriptor.libraries(), true, signature,
+                    providers.entrySet().stream().flatMap(e -> e.getValue().stream()
+                            .map(p -> e.getKey().getSimpleName() + " " + p.id())).toList());
         }
     }
 

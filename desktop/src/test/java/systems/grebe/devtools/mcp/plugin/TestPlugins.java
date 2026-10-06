@@ -34,6 +34,7 @@ public final class TestPlugins {
         final Map<String, String> sources = new LinkedHashMap<>();
         final Map<String, String> files = new LinkedHashMap<>();
         final List<Path> classpath = new ArrayList<>();
+        boolean apiOnly;
 
         public JarSpec source(String className, String code) {
             sources.put(className, code);
@@ -55,6 +56,15 @@ public final class TestPlugins {
             return this;
         }
 
+        /**
+         * Kompiliert nur gegen die Plugin-API (samt ihrer Abhängigkeiten zum Kompilieren) statt gegen den ganzen
+         * Test-Classpath – wie ein Plugin, das nur {@code devtools-mcp-plugin-api} einbindet.
+         */
+        public JarSpec apiOnly() {
+            apiOnly = true;
+            return this;
+        }
+
         public Path build(Path jar) {
             try {
                 Path work = Files.createTempDirectory("plugin-build");
@@ -69,7 +79,8 @@ public final class TestPlugins {
                 }
                 if (!files.isEmpty()) {
                     JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
-                    StringBuilder cp = new StringBuilder(System.getProperty("java.class.path"));
+                    StringBuilder cp = new StringBuilder(apiOnly ? pluginApiClasspath()
+                            : System.getProperty("java.class.path"));
                     classpath.forEach(p -> cp.append(java.io.File.pathSeparator).append(p));
                     List<String> args = new ArrayList<>(List.of("-d", out.toString(), "-cp", cp.toString(),
                             "-encoding", "UTF-8", "-parameters", "-proc:none"));
@@ -100,6 +111,15 @@ public final class TestPlugins {
                 throw new UncheckedIOException(e);
             }
         }
+    }
+
+    /** Classpath „nur Plugin-API“, vom Gradle-Build gesetzt (Konfiguration {@code pluginApiClasspath}). */
+    static String pluginApiClasspath() {
+        String cp = System.getProperty("devtools.test.pluginApiClasspath");
+        if (cp == null || cp.isBlank()) {
+            throw new IllegalStateException("devtools.test.pluginApiClasspath fehlt – Test über Gradle starten.");
+        }
+        return cp;
     }
 
     public static JarSpec jar() {
