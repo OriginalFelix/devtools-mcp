@@ -62,7 +62,10 @@ public final class ShellHints {
     public static final String SSH =" Konfigurierte SSH-Server immer über die ssh_*-Tools ansprechen, nicht mit "
             + "`ssh`, `scp` oder `sftp` in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
 
-    public static final String CHAT = " Chat-Nachrichten (Matrix, Teams) immer über die chat_*-Tools senden und lesen, "
+    public static final String JDBC = " Konfigurierte Datenbanken immer über die jdbc_*-Tools ansprechen, nicht mit "
+            + "`psql`, `mysql`, `sqlplus`, `sqlcmd` o.ä. in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
+
+    public static final String CHAT =" Chat-Nachrichten (Matrix, Teams) immer über die chat_*-Tools senden und lesen, "
             + "nicht per `curl` gegen die APIs – die Zugangsdaten liegen nur in der DevTools-App.";
 
     public static final String PROJECTS = " Welche Projekte (Repositories, Build-, Graph-Projekte) zur Verfügung stehen, "

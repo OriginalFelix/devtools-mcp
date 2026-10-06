@@ -18,6 +18,7 @@ import systems.grebe.devtools.mcp.core.AccessModule;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 
@@ -439,8 +440,9 @@ final class Permissions {
         return sb.toString();
     }
 
+    /** Einzeilig, gekürzt, Zugangsdaten in URLs maskiert (z.B. eine JDBC-URL mit {@code password=…}). */
     private static String shorten(String s) {
-        String one = s.replace('\n', ' ');
+        String one = Text.maskCredentials(s).replace('\n', ' ');
         return one.length() > MAX_VALUE ? one.substring(0, MAX_VALUE) + " …" : one;
     }
 

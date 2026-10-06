@@ -702,4 +702,61 @@ class McpServerIntegrationTest {
             });
         }
     }
+
+    @Test
+    void jdbcSwitchesArePermissionsTheUserGrants() throws Exception {
+        String url = "jdbc:h2:mem:mcp" + java.util.UUID.randomUUID().toString().replace("-", "") + ";DB_CLOSE_DELAY=-1";
+        try (java.sql.Connection keep = java.sql.DriverManager.getConnection(url, "sa", "pw-4711");
+             java.sql.Statement st = keep.createStatement()) {
+            st.execute("CREATE TABLE notiz (id INT PRIMARY KEY, text VARCHAR(100))");
+            st.execute("INSERT INTO notiz VALUES (1, 'eins'), (2, 'zwei')");
+
+            assertThat(toolNames()).noneMatch(n -> n.startsWith("jdbc_")); // Standard: aus
+            assertThat(text(client.callTool(callRequest("permissions_check", Map.of("tool", "jdbc_delete")))))
+                    .contains("jdbc_delete: nicht verfügbar",
+                            "den Schalter „Datensätze löschen (DELETE)“ (allowDelete) einschalten",
+                            "Modul „Datenbanken (JDBC)“ (jdbc) einschalten");
+
+            registry.updateConfig("jdbc", Map.of("connections", systems.grebe.devtools.mcp.core.ModuleConfig.formatRecords(
+                    List.of(Map.of("name", "notizen", "url", url, "username", "sa", "password", "pw-4711")))));
+            registry.setModuleEnabled("jdbc", true);
+            var transport = HttpClientStreamableHttpTransport.builder("http://127.0.0.1:" + port).endpoint("/mcp").build();
+            McpSyncClient eliciting = McpClient.sync(transport).requestTimeout(java.time.Duration.ofSeconds(30))
+                    .clientInfo(new McpSchema.Implementation("test-client", "1.0"))
+                    .capabilities(McpSchema.ClientCapabilities.builder().elicitation().build())
+                    .elicitation(req -> new McpSchema.ElicitResult(McpSchema.ElicitResult.Action.ACCEPT,
+                            Map.of("grant", true)))
+                    .build();
+            try {
+                assertThat(toolNames()).contains("jdbc_connections", "jdbc_databases", "jdbc_tables", "jdbc_describe",
+                        "jdbc_query").doesNotContain("jdbc_insert", "jdbc_update", "jdbc_delete", "jdbc_ddl", "jdbc_execute");
+                assertThat(client.listTools().tools()).filteredOn(t -> t.name().startsWith("jdbc_"))
+                        .allSatisfy(t -> assertThat(t.description()).endsWith(ShellHints.JDBC));
+                assertThat(text(client.callTool(callRequest("permissions_overview", Map.of("module", "jdbc")))))
+                        .contains("(allowQuery): an – bietet: jdbc_query",
+                                "(allowDelete): aus – würde freischalten: jdbc_delete",
+                                "(allowExecute): aus – würde freischalten: jdbc_execute")
+                        .doesNotContain("pw-4711");
+                assertThat(text(client.callTool(callRequest("jdbc_query",
+                        Map.of("sql", "SELECT text FROM notiz WHERE id = ?", "params", List.of(2))))))
+                        .contains("1 Zeile (notizen,", "zwei");
+
+                eliciting.initialize();
+                assertThat(text(eliciting.callTool(callRequest("permissions_request",
+                        Map.of("tool", "jdbc_delete", "reason", "Veraltete Notiz löschen")))))
+                        .contains("Vom Nutzer erteilt (test-client)", "Neu verfügbar: jdbc_delete");
+                assertThat(text(eliciting.callTool(callRequest("jdbc_delete",
+                        Map.of("connection", "notizen", "sql", "DELETE FROM notiz WHERE id = ?", "params", List.of(1))))))
+                        .startsWith("1 Zeile betroffen (notizen,");
+                McpSchema.CallToolResult all = eliciting.callTool(callRequest("jdbc_delete",
+                        Map.of("sql", "DELETE FROM notiz")));
+                assertThat(all.isError()).isTrue();
+                assertThat(text(all)).contains("ohne WHERE", "allRows=true");
+            } finally {
+                eliciting.closeGracefully();
+                registry.setModuleEnabled("jdbc", false);
+                registry.updateConfig("jdbc", Map.of());
+            }
+        }
+    }
 }
