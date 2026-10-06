@@ -243,7 +243,7 @@ class SshToolsTest {
     void toolsCarryMcpAnnotations() {
         Map<String, io.modelcontextprotocol.spec.McpSchema.ToolAnnotations> hints = new java.util.HashMap<>();
         module.createTools(config("geheim", Map.of(SshModule.ALLOW_WRITE, "true", SshModule.ALLOW_SUDO, "true")))
-                .forEach(t -> hints.put(t.getToolDefinition().name(), systems.grebe.devtools.mcp.core.ToolBeans.annotations(t)));
+                .forEach(t -> hints.put(t.getToolDefinition().name(), systems.grebe.devtools.mcp.core.McpToolHints.annotations(t)));
         assertThat(hints.get("connections").readOnlyHint()).isTrue();
         assertThat(hints.get("read_file").readOnlyHint()).isTrue();
         assertThat(hints.get("shell_read").readOnlyHint()).isTrue();

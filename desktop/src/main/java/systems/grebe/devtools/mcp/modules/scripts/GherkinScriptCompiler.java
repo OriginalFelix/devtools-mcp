@@ -17,7 +17,7 @@ import systems.grebe.devtools.mcp.backend.scripts.GherkinScripts;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ManagedToolCallback;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
-import systems.grebe.devtools.mcp.core.ToolBeans;
+import systems.grebe.devtools.mcp.core.McpToolHints;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -214,7 +214,7 @@ public final class GherkinScriptCompiler {
         @Override
         public List<ToolCallback> tools(ModuleConfig config, Supplier<Duration> timeout) {
             return scenarios.stream()
-                    .map(s -> ToolBeans.withAnnotations(new ScenarioTool(scriptName, s, caller, timeout),
+                    .map(s -> McpToolHints.withAnnotations(new ScenarioTool(scriptName, s, caller, timeout),
                             annotations(s.scenario().hints())))
                     .toList();
         }

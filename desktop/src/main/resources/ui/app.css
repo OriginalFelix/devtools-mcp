@@ -149,3 +149,90 @@
     -fx-background-radius: 6;
     -fx-font-size: 12px;
 }
+
+/* Skript-Editor (RichTextFX) – Farben wie das IntelliJ-Schema „IntelliJ Light“ */
+.code-editor { -fx-background-color: #ffffff; -fx-font-size: 13px; }
+.code-editor .text { -fx-fill: #080808; }
+.code-editor .caret { -fx-stroke: #000000; }
+.code-editor .selection { -fx-fill: #a6d2ff; }
+.code-editor .paragraph-box:has-caret { -fx-background-color: #fcfaed; }
+.code-editor .lineno {
+    -fx-background-color: #ffffff;
+    -fx-text-fill: #aeb3c2;
+    -fx-padding: 0 12 0 10;
+    -fx-font-size: 12px;
+}
+.code-editor .lineno .text { -fx-fill: #aeb3c2; } /* sonst gilt .code-editor .text auch für die Nummern */
+.code-editor .lineno-error .text { -fx-fill: #e55757; -fx-font-weight: bold; }
+.code-editor .text.kw { -fx-fill: #0033b3; }
+.code-editor .text.str { -fx-fill: #067d17; }
+.code-editor .text.esc { -fx-fill: #0037a6; }
+.code-editor .text.interp { -fx-fill: #0037a6; -fx-font-weight: bold; }
+.code-editor .text.num { -fx-fill: #1750eb; }
+.code-editor .text.cmt, .code-editor .text.doc { -fx-fill: #8c8c8c; -fx-font-style: italic; }
+.code-editor .text.directive { -fx-fill: #8c8c8c; -fx-font-style: italic; -fx-font-weight: bold; }
+.code-editor .text.ann { -fx-fill: #9e880d; }
+.code-editor .text.const { -fx-fill: #871094; -fx-font-style: italic; }
+.code-editor .text.field { -fx-fill: #871094; }
+.code-editor .text.decl { -fx-fill: #00627a; }
+.code-editor .text.dsl { -fx-fill: #00627a; -fx-font-weight: bold; }
+.code-editor .text.bracket { -rtfx-background-color: #93d9d9; -fx-font-weight: bold; }
+.code-editor .text.error {
+    -rtfx-underline-color: #e55757;
+    -rtfx-underline-width: 1px;
+    -rtfx-underline-wave-radius: 2px;
+}
+/* Gherkin */
+.code-editor .text.g-kw, .code-editor .text.g-step { -fx-fill: #0033b3; -fx-font-weight: bold; }
+.code-editor .text.g-title { -fx-font-weight: bold; }
+.code-editor .text.tag { -fx-fill: #9e880d; }
+.code-editor .text.ph { -fx-fill: #871094; -fx-font-weight: bold; }
+.code-editor .text.var { -fx-fill: #0037a6; -fx-font-weight: bold; }
+.code-editor .text.pipe { -fx-fill: #8c8c8c; }
+.code-editor .text.docstr { -fx-fill: #067d17; }
+
+/* Lookup-Liste der Vervollständigung */
+.completion-popup {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #c9ccd6;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.18), 12, 0, 0, 3);
+}
+.completion-list { -fx-background-color: #ffffff; -fx-background-insets: 0; -fx-padding: 2; }
+.completion-list .list-cell { -fx-padding: 0 10 0 6; -fx-background-color: #ffffff; }
+.completion-list .list-cell:hover { -fx-background-color: #f2f5fb; }
+.completion-list .list-cell:selected { -fx-background-color: #d5e1ff; }
+.completion-list .scroll-bar:vertical { -fx-pref-width: 10; }
+.completion-icon {
+    -fx-min-width: 16; -fx-pref-width: 16; -fx-max-width: 16;
+    -fx-min-height: 16; -fx-pref-height: 16; -fx-max-height: 16;
+    -fx-alignment: center;
+    -fx-background-radius: 8;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #ffffff;
+    -fx-background-color: #a0a8b8;
+}
+.icon-method { -fx-background-color: #e05555; }
+.icon-field, .icon-constant { -fx-background-color: #d9932b; }
+.icon-property { -fx-background-color: #a55bc4; }
+.icon-variable, .icon-parameter { -fx-background-color: #59a869; }
+.icon-class { -fx-background-color: #3574f0; }
+.icon-interface { -fx-background-color: #3d9a50; }
+.icon-enum { -fx-background-color: #a87f57; }
+.icon-annotation, .icon-tag { -fx-background-color: #9e880d; }
+.icon-package { -fx-background-color: #8a8f99; }
+.icon-snippet { -fx-background-color: #d9932b; }
+.icon-step, .icon-tool { -fx-background-color: #00838f; }
+.icon-keyword { -fx-background-color: transparent; -fx-text-fill: #0033b3; }
+.completion-list Text { -fx-font-size: 13px; }
+.completion-label { -fx-fill: #080808; }
+.completion-keyword { -fx-fill: #0033b3; -fx-font-weight: bold; }
+.completion-match { -fx-fill: #2f65ca; -fx-font-weight: bold; }
+.completion-tail { -fx-fill: #8c8c8c; }
+.completion-detail { -fx-text-fill: #8c8c8c; -fx-font-size: 12px; }
+.completion-doc-pane, .completion-doc-pane > .viewport {
+    -fx-background-color: #f7f8fa;
+    -fx-background-insets: 0;
+    -fx-border-color: transparent transparent transparent #e4e6eb;
+}
+.completion-doc { -fx-padding: 8 10 8 10; -fx-text-fill: #303030; -fx-font-size: 12px; }

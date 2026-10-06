@@ -5,7 +5,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
-import systems.grebe.devtools.mcp.core.ToolBeans;
+import systems.grebe.devtools.mcp.core.McpToolHints;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,7 +31,7 @@ class ScriptsModuleTest {
     @Test
     void readToolsAreMarkedReadOnly() {
         for (ToolCallback t : module.createTools(config(Map.of()))) {
-            assertThat(ToolBeans.annotations(t).readOnlyHint()).as(t.getToolDefinition().name()).isTrue();
+            assertThat(McpToolHints.annotations(t).readOnlyHint()).as(t.getToolDefinition().name()).isTrue();
         }
     }
 }

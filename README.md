@@ -20,8 +20,10 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions`, `ticket_worklogs` (gebuchte Zeiten mit Summe) · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_log_time` (Zeit buchen), `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), `ticket_classify` (Pre-Classifier: Komplexität einschätzen, Modell für die Umsetzung empfehlen), einschränkbar auf Projekte (Modul Standard: aus) |
 | **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
+| **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
+| **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
@@ -37,6 +39,21 @@ Sammelordner auf, die Git, Build, Code-Graph, Pull Requests und Compose zusätzl
 jedes Modul übernimmt, was zu ihm passt (Git-Repositories, Gradle-/Maven-Projekte …). Der Schalter *Beschränkung
 aufheben* lässt die Tools jeden absoluten Pfad verwenden (aufgelöst zum nächsten passenden Verzeichnis darüber, z.B.
 dem Repository); nur lesend freigegebene Projekte des Team-Servers und die Schalter der Module gelten weiter.
+
+### Berechtigungen an das LLM übermitteln
+
+Das Modul **Berechtigungen** zeigt dem LLM, was es darf, und lässt es fehlende Rechte beim Nutzer anfragen:
+
+* `permissions_overview` und `permissions_check` lesen nur: Module an/aus, in der App abgeschaltete Tools, Schalter
+  (welcher Schalter welche Tools freischaltet, ermittelt das Modul durch probeweises Bauen der Tools), Einstellungen
+  (Geheimnisse nur als gesetzt/leer; Werte per Schalter *Einstellungswerte zeigen* ausblendbar), freigegebene
+  Verzeichnisse und Sperren des Administrators.
+* `permissions_request` (Schalter *Berechtigungen anfragen erlauben*) bittet um ein Tool, einen Schalter, ein Modul oder
+  ein Verzeichnis (unter *Freigaben*). Gefragt wird der Nutzer – je nach *Rückfrage über*: im MCP-Client per
+  Elicitation (`elicitation/create`, z.B. Claude Code), sonst bzw. bei `app` als Dialog dieser App (5 Minuten, dann gilt
+  es als abgelehnt). Erst nach Zustimmung wird gespeichert, wie beim Speichern im Formular (aktives Profil);
+  Einstellungen, die der Administrator gesperrt hat, lehnt das Tool ohne Rückfrage ab. Anfrage und Antwort stehen im
+  Tab *Aufrufe*.
 
 ### Container-Laufzeiten erweitern (ServiceLoader)
 
@@ -109,7 +126,7 @@ minus Dauer“, sonst 9 Uhr in der lokalen Zeitzone.
 
 Provider implementieren Schreiben über `default`-Methoden von `TicketSystem` (`comment`, `transition`, `assign`, `update`,
 `create`, `logTime`, `links`, `transitions`, `worklogs`) – was ein Provider nicht kann, meldet das Tool als „nicht unterstützt“; bestehende
-Plugin-Provider kompilieren unverändert.
+Plugin-Provider kompilieren unverändert. Provider können auch aus Plugins kommen (siehe [Plugins](#plugins)).
 
 In der UI wählt „Aktiv“ (Mehrfachauswahl) die Systeme; darunter stehen die Felder und das Standardprojekt des gerade
 gewählten aktiven Systems, ein Umschalter wechselt zwischen ihnen. Ohne `provider` wählt das Modul das System, das
@@ -203,7 +220,8 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
   Nonce ist zufällig (64 Bit), damit sich kein Exit-Code fälschen lässt – beides nach dem Vorbild von
   [ssh-mcp](https://github.com/tufantunc/ssh-mcp).
 * Während `ssh_exec`, `ssh_shell_exec` und `ssh_shell_read` warten, sendet der Server die jeweils letzte Ausgabezeile als
-  `notifications/progress`, sofern der Client ein `progressToken` mitschickt (`core/ToolProgress`, für alle Module nutzbar).
+  `notifications/progress`, sofern der Client ein `progressToken` mitschickt (`core/ToolProgress` aus der Plugin-API,
+  für alle Module und Plugins nutzbar; die MCP-Anbindung macht `core/McpProgress`).
   Das sieht nur der Nutzer im Client – das LLM bekommt Ausgabe ausschließlich über die Tool-Ergebnisse. Jede Shell hat eine eigene SSH-Sitzung; höchstens „Max. offene Shells“, geschlossen nach
   „Shells schließen nach“ Minuten ohne Nutzung, bei geänderter Konfiguration und beim Beenden.
 * Abbrechen ist ehrlich: bei Zeitüberschreitung von `ssh_exec` und bei `ssh_shell_close` (^C, `exit`) folgt die
@@ -220,6 +238,71 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
 * Host-Keys: `accept-new` (Standard) merkt sich den Schlüssel beim ersten Verbinden in `~/.devtools-mcp/ssh_known_hosts`
   und lehnt einen geänderten ab; `strict` akzeptiert nur Hosts, die schon in der Datei stehen. *Verbindung testen*
   verbindet sich mit jeder Verbindung und zeigt Server-Version und Fingerprint.
+
+### Datenbanken (JDBC)
+
+Verbindungen werden unter Module → Datenbanken (JDBC) als Tabelle gepflegt: Name, JDBC-URL, Benutzer, Passwort,
+*Zugriff höchstens*, optional Treiber, Treiberklasse und eine Beschreibung für das LLM. Die Liste liegt verschlüsselt in
+`settings.json`; das LLM sieht Name, URL (Passwort-Parameter und `benutzer:passwort@` darin maskiert – auch in
+`permissions_overview`), Benutzer und Beschreibung. Alle Tools nehmen `connection` (Name, ohne Groß-/Kleinschreibung;
+leer = die einzige Verbindung).
+
+**Berechtigungen.** Jede Art von Anweisung hat einen eigenen Schalter und ein eigenes Tool – damit kennt das Modul
+*Berechtigungen* sie (`permissions_overview module=jdbc` zeigt, welcher Schalter welches Tool freischaltet), und das LLM
+kann eine fehlende mit `permissions_request tool=jdbc_delete` beim Nutzer anfragen:
+
+| Schalter | Tool | Standard |
+|---|---|---|
+| — | `jdbc_connections`, `jdbc_databases`, `jdbc_tables`, `jdbc_describe`, `jdbc_disconnect` | an (mit dem Modul) |
+| *Datensätze lesen* (`allowQuery`) | `jdbc_query` – SELECT, WITH, VALUES, SHOW, EXPLAIN | an |
+| *Datensätze einfügen* (`allowInsert`) | `jdbc_insert` – Zeilen als JSON-Objekte oder INSERT-Anweisung | aus |
+| *Datensätze ändern* (`allowUpdate`) | `jdbc_update` – UPDATE, MERGE, REPLACE | aus |
+| *Datensätze löschen* (`allowDelete`) | `jdbc_delete` – DELETE | aus |
+| *Struktur ändern* (`allowDdl`) | `jdbc_ddl` – CREATE, ALTER, DROP, TRUNCATE, RENAME, COMMENT | aus |
+| *Beliebiges SQL ausführen* (`allowExecute`) | `jdbc_execute` – Prozeduren, PL/SQL- und T-SQL-Blöcke, GRANT, SET … | aus |
+
+Zusätzlich deckelt *Zugriff höchstens* jede Verbindung: `read` (nur lesen – die Verbindung wird außerdem
+schreibgeschützt geöffnet, z.B. für Produktion), `write` (lesen und Datensätze ändern) oder `all` (was die Schalter
+erlauben). Den Deckel kann das LLM nicht anfragen.
+
+**Einordnung der Anweisungen.** Jedes Tool führt genau eine Anweisung aus und nur die Arten, für die es freigegeben ist
+(`SqlStatements`): ein Tokenizer überspringt Zeichenketten, Kommentare und quotierte Bezeichner und ordnet nach dem
+ersten Schlüsselwort ein. Eingebettete Änderungen brauchen ihre eigene Berechtigung – ein Upsert
+(`INSERT … ON CONFLICT DO UPDATE`) auch *ändern*, ein datenverändernder CTE (`WITH d AS (DELETE …) SELECT …`) auch
+*löschen*, `SELECT … INTO` gilt als freies SQL. Weil Datenbanken Text unterschiedlich lesen (`\'` in MySQL, `#`- und
+`/*! */`-Kommentare, `//` in H2, `$tag$` in PostgreSQL, `q'[…]'` in Oracle), wird jede Anweisung in drei Lesarten
+untersucht und die mit den meisten Rechten genommen – eine zweite Anweisung lässt sich so nicht in einer Zeichenkette
+verstecken. Die Kehrseite: ein `;` in PostgreSQL-`$tag$`- oder `E'…'`-Zeichenketten zählt als Trenner (dafür `$$`
+oder `jdbc_execute` verwenden).
+
+* `jdbc_query` läuft in einer schreibgeschützten Transaktion (`Connection.setReadOnly`, bei PostgreSQL
+  `BEGIN READ ONLY`), die immer zurückgerollt wird. Funktionen mit Nebenwirkungen kann das nicht bei jeder Datenbank
+  verhindern – für strikten Schutz einen Datenbankbenutzer mit Leserechten hinterlegen. Ergebnisse als Tabelle, CSV
+  oder JSON, begrenzt auf *Max. Zeilen je Ergebnis* und *Max. Zeichen je Wert*.
+* Werte gehen als Platzhalter `?` mit `params` an die Datenbank, gebunden mit dem Typ des Platzhalters bzw. der Spalte
+  (`ParameterMetaData`, Spalten-Metadaten): `"2024-05-01"` wird ein DATE, `"42"` ein INTEGER – auch bei streng
+  typisierten Datenbanken wie PostgreSQL.
+* `jdbc_insert` nimmt Zeilen als `[{"spalte": wert}]` (bis 1000 je Aufruf); Tabellen- und Spaltennamen werden über die
+  Metadaten aufgelöst (Groß-/Kleinschreibung egal) und quotiert, erzeugte Schlüssel kommen zurück.
+* `jdbc_insert`/`jdbc_update`/`jdbc_delete` laufen in einer Transaktion: ein Fehler ändert nichts, `dryRun=true` führt
+  aus, meldet die Zeilenzahl und rollt zurück. UPDATE und DELETE ohne WHERE nur mit `allRows=true`.
+* `jdbc_ddl` und `jdbc_execute` laufen im Autocommit (manches geht nicht in einer Transaktion, etwa `VACUUM` oder
+  `CREATE INDEX CONCURRENTLY`); `jdbc_execute` gibt den Text unverändert an den Treiber und liefert alle
+  Ergebnismengen und Update-Zählungen.
+* Fehler kommen mit Meldung, SQLState und Hinweis (Anmeldung, Netzwerk, fehlende Rechte, Zeitlimit) zurück; Passwörter
+  werden aus jeder Meldung entfernt.
+
+**Treiber.** Ohne Angabe nimmt das Modul einen Treiber aus dem Klassenpfad, der die URL annimmt (H2 ist eingebaut),
+sonst den bekannten Treiber zum Subprotokoll der URL – PostgreSQL, MySQL, MariaDB, SQL Server (auch jTDS), Oracle, DB2,
+AS/400, Informix, SAP HANA, SQLite, HSQLDB, Firebird, DuckDB, ClickHouse, Redshift, Snowflake, Trino, Exasol – in der
+neuesten stabilen Version aus den Maven-Repositories des Plugin-Stores (Maven Central oder ein eigener Mirror, mit
+Prüfsummen, Download nur beim ersten Zugriff). Im Feld *Treiber* lassen sich stattdessen Maven-Koordinaten
+`groupId:artifactId[:version]` angeben (z.B. eine ältere Version für einen alten Server; mit Version auch ohne
+Netzwerk aus dem Cache) oder Pfade zu JAR-Dateien bzw. Verzeichnissen, getrennt durch `;`. Jeder Treiber bekommt einen
+eigenen Class-Loader, sodass verschiedene Versionen nebeneinander laufen. Verbindungen werden je Datenbank
+wiederverwendet (höchstens zwei freie, geschlossen nach 10 Minuten Leerlauf, bei geänderter Konfiguration oder mit
+`jdbc_disconnect`). *Verbindung testen* verbindet sich mit jeder Verbindung und zeigt Produkt, Version, Treiber und was
+erlaubt ist.
 
 ### Chat-Systeme (ServiceLoader)
 
@@ -340,7 +423,8 @@ Gradle-Multiprojekt:
 | `desktop` | Desktop-App: MCP-Server, alle Module, Plugins, JavaFX-Oberfläche; Backend eingebettet oder Anbindung an einen Team-Server | `desktop/build/libs/devtools-mcp-<version>.jar` |
 | `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories, Skripte mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
-| `shared` | Gemeinsam: Einstellungs-Modell, Datenklassen der GraphQL-API (`api`) | – |
+| `shared` | Gemeinsam: Einstellungs-Ablage, Datenklassen der GraphQL-API (`api`) | – |
+| `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
 
 MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
 im Team-Server, und in der Desktop-App eingebettet – außer dort ist ein Team-Server eingetragen, dann nutzt sie dessen
@@ -413,6 +497,10 @@ Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der S
 * SSH: Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; Host-Key-Prüfung gegen eine eigene
   known_hosts-Datei (geänderte Schlüssel werden immer abgelehnt). `ssh_exec` läuft mit den vollen Rechten des
   hinterlegten Benutzers – dafür einen eingeschränkten Benutzer anlegen oder den Schalter abschalten.
+* Datenbanken (JDBC): Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; nur Lesen ist
+  standardmäßig an, jede ändernde Art von Anweisung hat einen eigenen Schalter, und je Verbindung lässt sich der Zugriff
+  auf „nur lesen“ deckeln. Die Einordnung der Anweisungen ist vorsichtig, aber kein vollständiger SQL-Parser – die
+  wirksamste Grenze bleibt ein Datenbankbenutzer, der nur die nötigen Rechte hat.
 * Chat: Token, Passwörter und das Teams-Refresh-Token verschlüsselt und nie in Tool-Ausgaben. Chat-Nachrichten sind
   Eingaben, die das LLM wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Mitglied
   einer freigegebenen Unterhaltung Anweisungen geben), für Matrix ein eigenes Bot-Konto verwenden und Unterhaltungen
@@ -937,6 +1025,30 @@ Funktionalität: Schnellcheck
 * **Bearbeiten in der App:** Tab **Skripte** – links die Skripte mit Sprache, Herkunft, Revision und Zustand, rechts
   Name und Sprache, Editor (*Prüfen*, *Speichern*), Historie (früheren Stand in den Editor übernehmen) und Referenz.
   Ungespeicherte Änderungen bleiben erhalten, wenn ein Skript woanders geändert wird.
+* **Editor wie in IntelliJ** (RichTextFX, `ui.code.CodeEditor`, Logik ohne Oberfläche in `modules.scripts.assist`):
+  Syntaxhervorhebung in den Farben von „IntelliJ Light“ (Groovy mit DSL, `args.x`/`cfg.x` und GString-Code; Java;
+  Gherkin je `# language:`), Zeilennummern, aktuelle Zeile, passende Klammer; Fehler aus *Prüfen*/*Speichern* mit
+  „Zeile N“ werden in der Zeile rot unterwellt, bis sich der Text ändert. **Autovervollständigung** öffnet sich beim
+  ersten Buchstaben eines Wortes, nach `.` und in Gherkin nach dem Schritt-Schlüsselwort (sonst Strg+Leertaste; bei
+  genau einem Treffer fügt Strg+Leertaste ihn direkt ein). Gefiltert wird wie in IntelliJ mit CamelHumps (`gSN` →
+  `getScriptName`), Enter fügt ein, Tab ersetzt das Wort bis zum Ende, Klassen werden dabei importiert.
+  * *Groovy:* je Block die passende DSL (`module`/`tool` oben, `description`/`setting` …, `param`/`execute` …),
+    Feldtypen und Optionen an Argumentstellen, in `execute` Variablen, `progress`, `log`, Klassen; nach `args.` die
+    Parameter des Tools, nach `cfg.` die Einstellungen. Nach einem Punkt die Member des Typs davor samt GDK-Methoden
+    (`each`, `collect` …) und Groovy-Eigenschaften – Typen aus Deklarationen, `new`, Literalen, Casts und ganzen
+    Aufrufketten.
+  * *Java:* semantisch über javac (Analyse mit Platzhalter an der Schreibmarke, auch bei halbfertigem Code): Member mit
+    Generics und Sichtbarkeit, Variablen und Felder im Gültigkeitsbereich, Pakete in Imports, Annotationen.
+  * *Gherkin:* Schlüsselwörter, die eingebauten Schritte in der passenden Satzstellung (`Wenn ich das Tool … aufrufe`,
+    `Dann enthält das Ergebnis …`), Tool-Namen der aktiven Tools in `Tool "…"`, ihre Parameter in der Tabelle darunter,
+    Platzhalter `<name>`, Variablen `${name}`, Tags und Sprachen.
+
+  Typen kommen aus dem Symbolmodell von javac über die Klassendateien – es werden keine Klassen geladen und keine
+  Reflection verwendet; ohne JDK fallen nur die Typinformationen weg. Beim Öffnen des Tabs wärmt die App Klassenindex
+  (~39 000 Klassen, ~0,5 s), javac (~1 s) und die Liste im Hintergrund vor; danach braucht eine Groovy-Liste wenige
+  Millisekunden, eine Java-Liste (volle Analyse) etwa 70–300 ms. Weitere Kürzel: Enter rückt passend ein (`{|}` wird
+  aufgeklappt), Klammern und Anführungszeichen paarweise, Tab/Umschalt+Tab, Strg+/ (auch Strg+#) kommentiert,
+  Strg+D verdoppelt.
 * **Web-UI des Team-Servers:** Seite **Skripte** – eigene Skripte und globale Vorlagen ansehen, anlegen (Groovy, Java
   oder Gherkin), bearbeiten (mit Syntaxprüfung), Historie, löschen; mit dem Recht „Vorlagen veröffentlichen“ auch
   Vorlagen veröffentlichen und zurückziehen.
@@ -1040,7 +1152,7 @@ MCP-Tool-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `open
 Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die Callbacks mit
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
-zerstörerisch. Bisher annotiert: SSH, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
+zerstörerisch. Bisher annotiert: SSH, Datenbanken (JDBC), Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
 Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`.
 
 ## Plugins
@@ -1089,7 +1201,7 @@ class JiraModule implements ToolModule {
     @PreDestroy void close() { … }
 
     public String id() { return "jira"; }                   // → Tools jira_*
-    public List<ToolCallback> createTools(ModuleConfig c) { return List.of(ToolCallbacks.from(new JiraTools(client))); }
+    public List<ToolCallback> createTools(ModuleConfig c) { return ToolBeans.callbacks(new JiraTools(client)); }
     …
 }
 ```
@@ -1097,7 +1209,8 @@ class JiraModule implements ToolModule {
 * **Scan:** Paket der Hauptklasse samt Unterpaketen, nur im Plugin-Jar (nicht in `libraries` oder der App). Ein
   `@ComponentScan` auf der Hauptklasse ersetzt das; `@Import`, `@Configuration`, `@Bean` wirken wie gewohnt.
 * **Injizierbar:** alle eigenen Beans, `PluginContext`, `PluginDescriptor` und die Beans der App (`SettingsStore`,
-  `ToolRegistry`, `JavaEnvironmentProvider`, `SkillService` …). `@Value` sieht die Properties der App. Eltern ist die
+  `ToolRegistry`, `JavaEnvironmentProvider`, `SkillService` …). Die App-Beans sind Implementierung, nicht Teil der
+  Plugin-API – wer sie nutzt, kompiliert gegen das App-Jar und muss bei App-Updates mit Änderungen rechnen. `@Value` sieht die Properties der App. Eltern ist die
   BeanFactory der App, nicht ihr Kontext: Plugin-Beans sind für die App unsichtbar, Ereignisse des Plugin-Kontexts
   erreichen sie nicht.
 * **Ohne Spring:** geht weiter wie bei Bukkit – `registerModule(new JiraModule(dataFolder()))` in `onEnable()`.
@@ -1105,13 +1218,32 @@ class JiraModule implements ToolModule {
 * **Fehler** beim Aufbau (fehlende Bean, Exception in `@PostConstruct`) lassen nur dieses Plugin scheitern; die
   Meldung von Spring steht im Tab **Plugins**.
 
-Build (Gradle) – die App stellt die API bereit, ins Jar gehört nur der eigene Code:
+Build – Plugins kompilieren nur gegen die **Plugin-API** (`plugin-api`, Maven `systems.grebe:devtools-mcp-plugin-api`).
+Sie enthält, was ein Plugin braucht, und reicht Spring AI (`@Tool`, `ToolCallback`), Spring-Context und
+`jakarta.annotation` zum Kompilieren durch:
+
+| Bereich | Typen |
+|---|---|
+| Plugin | `DevToolsPlugin`, `PluginContext`, `PluginDescriptor`, `PluginApi` |
+| Module | `ToolModule`, `ModuleAction`, `ConnectionTestResult`, `ToolScope`, `ConfigField`, `ConfigGroup`, `FieldType`, `ModuleConfig` |
+| Tools | `ToolBeans` (Callbacks mit Hinweisen), `@ToolHints`, `ToolProgress` (Fortschritt an den Client), `DelegatingToolCallback` |
+| Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `ContainerRuntimeProvider`/`ContainerRuntime`/`RuntimeSettings` |
+ Die App stellt all das zur Laufzeit bereit, ins Jar
+gehört nur der eigene Code. Die Pakete sind dieselben wie vorher im App-Jar: bereits gebaute Plugins laufen unverändert.
+
+```bash
+./gradlew :plugin-api:publishToMavenLocal          # oder in ein eigenes Repository:
+./gradlew :plugin-api:publish -PpluginApiRepository=https://nexus.acme.de/repository/maven-releases \
+    -PpluginApiRepositoryUser=… -PpluginApiRepositoryPassword=…
+```
 
 ```kotlin
 dependencies {
-    compileOnly("systems.grebe:devtools-mcp:0.1.0-SNAPSHOT") // ./gradlew publishToMavenLocal in diesem Repo
+    compileOnly("systems.grebe:devtools-mcp-plugin-api:0.1.0-SNAPSHOT")
 }
 ```
+
+Maven: dieselbe Koordinate mit `<scope>provided</scope>`. Das POM nennt feste Versionen (keine BOM nötig).
 
 * **Lebenszyklus:** Kontext aufbauen (`@PostConstruct`) → `onLoad()` → `ToolModule`-Beans aufnehmen → `onEnable()`;
   beim Abschalten, Entfernen, Aktualisieren und Beenden `onDisable()` → Module entfernen → Kontext schließen
@@ -1122,14 +1254,56 @@ dependencies {
   erhalten), `logger()` (`plugin.<name>`), `plugin(name)` (andere aktive Plugins), `apiVersion()`.
 * **ClassLoader:** je Plugin ein eigener; Reihenfolge *App → Plugin → depend/softdepend*. App-Bibliotheken (Spring AI,
   Jackson, SLF4J …) gibt es damit genau einmal in der Version der App, eigene `libraries` nur für Klassen, die die App
-  nicht mitbringt. Bei jedem Aufruf in Plugin-Code (Tools, Formular, Aktionen, Verbindungstest) ist der
-  Thread-Context-ClassLoader der des Plugins – `ServiceLoader` und Jackson finden die Plugin-Klassen.
+  nicht mitbringt. Bei jedem Aufruf in Plugin-Code (Tools, Formular, Aktionen, Verbindungstest, Provider und die von
+  ihnen erzeugten Systeme) ist der Thread-Context-ClassLoader der des Plugins – `ServiceLoader` und Jackson finden die
+  Plugin-Klassen.
 * **Modul-IDs** sind app-weit eindeutig (2–32 Kleinbuchstaben/Ziffern); eingebaute IDs sind gesperrt. Einstellungen
   und Schalter eines Plugin-Moduls liegen wie bei eingebauten in `settings.json` und überleben Updates.
+* **Provider:** Ein Plugin kann Ticket-Systeme, Chat-Systeme, Git-Server und Container-Laufzeiten beisteuern – wie
+  eingebaute über eine Zeile in `META-INF/services/<SPI>` (z.B.
+  `META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`). Sie erscheinen im jeweiligen
+  Modul (Formular, `provider`-Parameter), sobald das Plugin aktiv ist, und verschwinden mit ihm; der Tab **Plugins**
+  zeigt sie unter „Provider“. Eine ID, die ein eingebauter Provider belegt, wird ignoriert. Provider und die Objekte,
+  die sie liefern (`TicketSystem`, `ChatSystem`, `GitServer`, `ContainerRuntime`), sind in eine Hülle
+  (`core/ContextLoaderProxy`) gesetzt, die den ClassLoader des Plugins setzt; `instanceof AutoCloseable` und
+  Exceptions bleiben erhalten.
+* **Tools:** `ToolBeans.callbacks(…)` statt `ToolCallbacks.from(…)` übernimmt `@ToolHints` als MCP-Tool-Annotations,
+  `ToolProgress.report(…)` meldet Zwischenstände an den Client – beides funktioniert in Plugin-Tools wie in eingebauten.
 * **Instructions:** `instructions()` aktiver Plugin-Module stehen ab der nächsten Client-Session in den
   MCP-Instructions – ohne Neustart (siehe „Instructions für das LLM“). Die Tools sind sofort in `tools/list`.
 * **Sicherheit:** Plugins laufen im Prozess der App mit denselben Rechten – kein Sandboxing. Nur Plugins aus
-  vertrauenswürdigen Quellen installieren; der Store prüft Prüfsummen, keine Signaturen.
+  vertrauenswürdigen Quellen installieren; der Store prüft Prüfsummen, die App zusätzlich die Signatur (unten).
+
+### Signatur (`plugin.jwt`)
+
+Plugins können signiert werden: `plugin.jwt` neben der `plugin.yml` ist ein JWS mit den Claims `name`, `version`,
+`author`, `iat` (Signierdatum) und `sha256` (Prüfsumme des Jar-Inhalts). Signiert wird mit einem EC- (ES256/384/512)
+oder RSA-Schlüssel (RS256):
+
+```bash
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out plugin-signing.pem    # privat, PKCS#8
+openssl pkey -in plugin-signing.pem -pubout -out plugin-signing.pub.pem                   # öffentlich
+java -jar devtools-mcp.jar sign-plugin --key plugin-signing.pem [--author "Team Tools"] build/libs/jira-plugin.jar
+```
+
+Name und Version kommen aus der `plugin.yml` im Jar, der Autor ohne `--author` ebenfalls; erneutes Signieren ersetzt
+das Token. Die öffentlichen Schlüssel trägt man im Tab **Plugins → Signaturen** ein (`settings.json`,
+`plugins.trustedKeys`). Beim Laden prüft die App:
+
+| Ergebnis | Anzeige | Warnung im Log und unter „Installiert“ |
+|---|---|---|
+| keine `plugin.jwt` | „nicht signiert“ | – (noch nicht Pflicht) |
+| Signatur eines eingetragenen Schlüssels | „gültig · Autor · Datum“ | – |
+| kein Schlüssel eingetragen | „signiert, nicht geprüft“ | – |
+| von keinem eingetragenen Schlüssel | „Schlüssel nicht vertrauenswürdig“ | ja |
+| kein lesbares JWS (auch `alg: none`) oder `name`/`version` fehlt | „ungültig“ | ja |
+| Jar-Inhalt ≠ `sha256` im Token | „Inhalt nach dem Signieren verändert“ | ja |
+| Token ohne `sha256` | wie oben | ja: „Signatur ohne Prüfsumme …“ |
+| `name` oder `version` im Token ≠ `plugin.yml` | wie oben | ja: „Signatur passt nicht zum Plugin …“ |
+
+`sha256` ist die SHA-256-Prüfsumme über alle Dateien des Jars außer `plugin.jwt`, sortiert nach Name (je Eintrag Name,
+Null-Byte, Länge, Inhalt) – Zeitstempel, Kompression und Reihenfolge im Zip zählen nicht. Ein Token lässt sich damit
+nicht in ein anderes Jar übertragen. Geladen wird das Plugin in allen Fällen; Warnungen blockieren nichts.
 
 ### Plugin-Store (Maven)
 
@@ -1163,9 +1337,9 @@ JVM-Einstellungen, `file:`-Repositories. Heruntergeladenes landet in `plugins/.r
 
 ```
 desktop/
-  DevToolsMcpApplication ── main() → JavaFX; Backend-Paket nur über remote/EmbeddedBackend
+  DevToolsMcpApplication ── main() → JavaFX (oder sign-plugin); Backend-Paket nur über remote/EmbeddedBackend
   fx/FxApp                ── init(): Spring-Kontext starten · start(): Fenster + Tray · stop(): Kontext schließen
-  core/ToolModule         ── Erweiterungspunkt (SPI)
+  core/ToolModule         ── Erweiterungspunkt (SPI) – liegt in plugin-api, ebenso ModuleConfig, ConfigField …
   core/ToolRegistry       ── Module ⇄ McpSyncServer (addTool/removeTool zur Laufzeit, notifyToolsListChanged)
   core/SettingsResolver   ── wirksame Einstellungen lesen/speichern (Backend, vorher settings.json)
   core/ManagedToolCallback── Präfix, Protokollierung, Klartext-Ergebnisse
@@ -1179,7 +1353,9 @@ desktop/
                              ScriptCompiler + DevToolsScript (Groovy-DSL), JavaScriptCompiler + JavaClasspath (javac),
                              GherkinScriptCompiler + GherkinSteps + ScenarioRun (Gherkin, Tools über
                              RegistryToolCaller), ScriptToolModule/ScriptToolCallback, ScriptsModule
-  plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
+  plugin/PluginManager    ── Plugin-Ordner, plugin.yml (PluginDescriptorReader), ClassLoader je Plugin, Lebenszyklus,
+                             depend-Reihenfolge
+  plugin/PluginSignature  ── plugin.jwt prüfen (PluginKeys: PEM), PluginSigner: signieren (sign-plugin)
   plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
   ui/                     ── MainView, ModuleDetailPane, ConfigForm, InvocationLogView, PluginsView, BackendView, Dialoge
 backend/
@@ -1193,7 +1369,12 @@ server/
   server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI
 shared/
   api/                    ── Datenklassen der GraphQL-API
-  core/ConfigField, config/ModuleSettings, profile/Overrides, modules/{skills,memories,scripts}/{…Backend,…Views}
+  config/ModuleSettings, profile/Overrides, modules/{skills,memories,scripts}/{…Backend,…Views}
+plugin-api/
+  core/                   ── ToolModule, ModuleAction, ConnectionTestResult, ToolScope, ConfigField, ConfigGroup,
+                             FieldType, ModuleConfig, ToolBeans + ToolHints, ToolProgress, ServiceProvider
+  modules/*/spi/          ── Provider-SPIs: ticket, chat, pr (Git-Server), container
+  plugin/                 ── DevToolsPlugin, PluginContext, PluginDescriptor, PluginApi
 ```
 
 MCP-Server: Spring AI `spring-ai-starter-mcp-server-webflux` 2.0.1 (MCP Java SDK 2.0.0), Protokoll `STREAMABLE`.

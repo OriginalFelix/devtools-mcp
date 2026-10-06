@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.tool.ToolCallback;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
-import systems.grebe.devtools.mcp.core.ToolBeans;
+import systems.grebe.devtools.mcp.core.McpToolHints;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -45,7 +45,7 @@ class JavaScriptCompilerTest {
             assertThat(module.id()).isEqualTo("hello");
             ToolCallback hello = module.createTools(ModuleConfig.of(module.configSchema(),
                     Map.of("greeting", "Moin"))).getFirst();
-            assertThat(ToolBeans.annotations(hello).readOnlyHint()).isTrue();
+            assertThat(McpToolHints.annotations(hello).readOnlyHint()).isTrue();
             assertThat(hello.getToolDefinition().inputSchema()).contains("\"who\"", "Wen begrüßen");
             assertThat(hello.call("{\"who\":\"Welt\"}")).contains("Moin Welt!");
         }

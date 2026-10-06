@@ -1,70 +1,39 @@
 package systems.grebe.devtools.mcp.modules.ticket;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import systems.grebe.devtools.mcp.core.ProviderRegistry;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
+import systems.grebe.devtools.mcp.plugin.PluginManager;
 
 /**
- * Findet alle {@link TicketProvider} über {@link ServiceLoader} – geladen mit dem ClassLoader der SPI-Schnittstelle,
- * damit es auch im Spring-Boot-Fat-Jar funktioniert (wie {@code ContainerRuntimes}).
+ * Alle {@link TicketProvider}: die eingebauten über {@link ServiceLoader} – geladen mit dem ClassLoader der
+ * SPI-Schnittstelle, damit es auch im Spring-Boot-Fat-Jar funktioniert – plus die aus aktiven Plugins.
  */
 @Component
-public class TicketProviders {
+public class TicketProviders extends ProviderRegistry<TicketProvider> {
 
-    private static final Logger LOG = LoggerFactory.getLogger(TicketProviders.class);
-
-    private final Map<String, TicketProvider> providers;
-    private final List<String> order;
-
+    /** Nur die eingebauten Provider (Tests, Verbindungsprüfungen). */
     public TicketProviders() {
-        this(ServiceLoader.load(TicketProvider.class, TicketProvider.class.getClassLoader()));
+        this(builtin());
     }
 
     /** Für Tests: eigene Provider-Quelle. */
     public TicketProviders(Iterable<TicketProvider> source) {
-        List<TicketProvider> found = new ArrayList<>();
-        var it = source.iterator();
-        while (true) {
-            try {
-                if (!it.hasNext()) {
-                    break;
-                }
-                found.add(it.next());
-            } catch (ServiceConfigurationError e) {
-                // ein defekter Provider soll die übrigen nicht verhindern
-                LOG.warn("Ticket-Provider konnte nicht geladen werden: {}", e.getMessage());
-            }
-        }
-        Map<String, TicketProvider> map = new LinkedHashMap<>();
-        found.stream()
-                .sorted(Comparator.comparingInt(TicketProvider::priority).thenComparing(TicketProvider::id))
-                .forEach(p -> {
-                    if (!p.id().matches("[a-z][a-z0-9-]*")) {
-                        LOG.warn("Ticket-Provider mit ungültiger ID ignoriert: '{}' ({})", p.id(), p.getClass().getName());
-                    } else if (map.putIfAbsent(p.id(), p) != null) {
-                        LOG.warn("Doppelte Ticket-Provider-ID '{}' ignoriert: {}", p.id(), p.getClass().getName());
-                    }
-                });
-        this.providers = Map.copyOf(map);
-        this.order = List.copyOf(map.keySet());
-        LOG.info("Ticket-Provider gefunden: {}", order);
+        super("Ticket-Provider", source, List::of);
     }
 
-    /** Provider in Auswahlreihenfolge (Priorität, dann ID). */
-    public List<TicketProvider> providers() {
-        return order.stream().map(providers::get).toList();
+    /** In der App: eingebaute Provider plus die aus aktiven Plugins. */
+    @Autowired
+    public TicketProviders(ObjectProvider<PluginManager> plugins) {
+        super("Ticket-Provider", builtin(), PluginManager.providers(plugins, TicketProvider.class));
     }
 
-    public TicketProvider provider(String id) {
-        return providers.get(id);
+    private static Iterable<TicketProvider> builtin() {
+        return ServiceLoader.load(TicketProvider.class, TicketProvider.class.getClassLoader());
     }
 }

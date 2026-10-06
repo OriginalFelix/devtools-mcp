@@ -20,6 +20,7 @@ import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.fx.FxApp;
 import systems.grebe.devtools.mcp.modules.skills.SkillsModule;
+import systems.grebe.devtools.mcp.plugin.PluginSigner;
 import systems.grebe.devtools.mcp.remote.EmbeddedAccounts;
 import systems.grebe.devtools.mcp.remote.EmbeddedBackend;
 
@@ -61,6 +62,10 @@ public class DevToolsMcpApplication {
     private static final Logger FX_PLATFORM_LOG = Logger.getLogger("com.sun.javafx.application.PlatformImpl");
 
     public static void main(String[] args) {
+        if (args.length > 0 && PluginSigner.COMMAND.equals(args[0])) {
+            PluginSigner.main(Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         if (headless(args)) {
             startSpring(args, true);
         } else {

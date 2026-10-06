@@ -2,11 +2,14 @@ package systems.grebe.devtools.mcp.fx;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TextArea;
 import javafx.stage.Stage;
@@ -19,6 +22,7 @@ import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.core.UserConfirmation;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
 import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
@@ -84,10 +88,17 @@ public class FxApp extends Application {
         backend = context.getBean(BackendConnection.class);
         UsersAdminView usersView = new UsersAdminView(backend, registry);
         Tab usersTab = new Tab("Benutzer", usersView);
+        ScriptsView scripts = scriptsView(backend, registry);
+        Tab scriptsTab = new Tab("Skripte", scripts);
+        scriptsTab.selectedProperty().addListener((o, was, selected) -> {
+            if (selected) {
+                scripts.prepareEditor();
+            }
+        });
         MainView view = new MainView(registry, log, store, endpoint, stage, List.of(
                 new Tab("Skills", skillsView(backend)),
                 new Tab("Memories", memoriesView(backend)),
-                new Tab("Skripte", scriptsView(backend, registry)),
+                scriptsTab,
                 new Tab("Artefakte", new ArtifactsView(context.getBean(JavaEnvironmentProvider.class), getHostServices(),
                         context.getBean(VisualVmModule.class)::openFile)),
                 new Tab("Plugins", new PluginsView(context.getBean(PluginManager.class),
@@ -141,6 +152,7 @@ public class FxApp extends Application {
                 stage.show();
             }
         });
+        context.getBean(UserConfirmation.class).setDesktopHandler((title, message) -> confirm(stage, title, message));
     }
 
     /** Führt {@code then} aus, sobald jemand angemeldet ist – sonst erst nach dem Anmeldefenster. */
@@ -158,6 +170,32 @@ public class FxApp extends Application {
                     loginOpen = false;
                     exit();
                 });
+    }
+
+    /**
+     * Rückfrage an den Nutzer als Dialog (z.B. Berechtigung erteilen); holt das Fenster dafür nach vorn. Bricht der
+     * Aufrufer ab (Zeitüberschreitung), schließt sich der Dialog.
+     */
+    private static CompletableFuture<Boolean> confirm(Stage stage, String title, String message) {
+        CompletableFuture<Boolean> answer = new CompletableFuture<>();
+        Platform.runLater(() -> {
+            if (answer.isDone()) {
+                return;
+            }
+            stage.show();
+            stage.setIconified(false);
+            stage.toFront();
+            ButtonType grant = new ButtonType("Erteilen", ButtonBar.ButtonData.YES);
+            ButtonType decline = new ButtonType("Ablehnen", ButtonBar.ButtonData.NO);
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION, message, grant, decline);
+            alert.initOwner(stage);
+            alert.setTitle("DevTools MCP");
+            alert.setHeaderText(title);
+            alert.getDialogPane().setMinWidth(560);
+            answer.whenComplete((r, e) -> Platform.runLater(alert::close));
+            alert.showAndWait().ifPresentOrElse(b -> answer.complete(b == grant), () -> answer.complete(false));
+        });
+        return answer;
     }
 
     /** Skills-Ansicht; lädt neu, wenn sich Konto oder Verbindung ändern. */
