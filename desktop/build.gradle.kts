@@ -99,6 +99,9 @@ dependencies {
     // Eingebetteter SSH-/SFTP-Server für die Tests des SSH-Moduls
     testImplementation("org.apache.sshd:sshd-core:2.15.0")
     testImplementation("org.apache.sshd:sshd-sftp:2.15.0")
+    // Tests des Dolt-Moduls gegen Dolt-/Doltgres-Container: Treiber, die die App sonst per Maven lädt (Boot-BOM)
+    testRuntimeOnly("com.mysql:mysql-connector-j")
+    testRuntimeOnly("org.postgresql:postgresql")
 }
 
 springBoot {
@@ -116,6 +119,8 @@ tasks.test {
     jvmArgumentProviders.add(CommandLineArgumentProvider {
         listOf("-Ddevtools.test.pluginApiClasspath=${pluginApiClasspath.asPath}")
     })
+    // Doltlite-Tests: Programm per -Pdoltlite=<pfad zu doltlite(.exe)>, sonst aus dem PATH; ohne beides übersprungen
+    providers.gradleProperty("doltlite").orNull?.let { systemProperty("devtools.test.doltlite", it) }
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {

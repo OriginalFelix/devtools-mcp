@@ -79,6 +79,31 @@ public class JdbcModule implements ToolModule {
     }
 
     /**
+     * Baut eine Verbindung mit den Treibern dieses Moduls auf (Klassenpfad, sonst per Maven) – für Module, die eigene
+     * Datenbanken pflegen (z.B. Dolt). Ohne Pool und unabhängig von den Verbindungen und Schaltern dieses Moduls;
+     * schließen muss der Aufrufer.
+     *
+     * @param timeoutSeconds Abbruch eines hängenden Verbindungsaufbaus
+     */
+    public Connection connect(JdbcConnection connection, int timeoutSeconds) throws SQLException {
+        ModuleConfig cfg = ModuleConfig.of(configSchema(), Map.of(CONNECT_TIMEOUT, String.valueOf(timeoutSeconds)));
+        return new JdbcEnvironment(cfg, new JdbcSessions(), drivers).open(connection);
+    }
+
+    /**
+     * Schließt die freien Verbindungen des laufenden Scopes, auf die {@code filter} passt – etwa nachdem eine Datenbank
+     * auf einen anderen Branch umgestellt wurde, damit der nächste Aufruf neu verbindet.
+     *
+     * @return Anzahl der geschlossenen Verbindungen
+     */
+    public int disconnectIdle(java.util.function.Predicate<JdbcConnection> filter) {
+        ScopeState s = state(ToolScope.current());
+        synchronized (s) {
+            return s.sessions.evictWhere(filter);
+        }
+    }
+
+    /**
      * Freie Verbindungen je Benutzer/Profil. Bei geänderten Werten (andere URL, anderes Passwort …) wird der Pool
      * ersetzt; das An- und Abschalten einzelner Tools baut die Tools ebenfalls neu, behält aber die Verbindungen.
      */

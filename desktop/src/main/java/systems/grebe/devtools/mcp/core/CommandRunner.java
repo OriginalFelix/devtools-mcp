@@ -61,6 +61,16 @@ public final class CommandRunner {
      */
     public static Result run(List<String> command, Duration timeout, Charset charset, java.nio.file.Path workDir,
                              java.util.Map<String, String> env) {
+        return run(command, timeout, charset, workDir, env, null);
+    }
+
+    /**
+     * Wie {@link #run(List, Duration, Charset, java.nio.file.Path, java.util.Map)}; {@code input} geht (in
+     * {@code charset}) an die Standardeingabe, die danach geschlossen wird – z.B. SQL, das sonst als Argument unter
+     * Windows gequotet werden müsste.
+     */
+    public static Result run(List<String> command, Duration timeout, Charset charset, java.nio.file.Path workDir,
+                             java.util.Map<String, String> env, String input) {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         if (workDir != null) {
             pb.directory(workDir.toFile());
@@ -72,9 +82,11 @@ public final class CommandRunner {
         } catch (IOException e) {
             throw new IllegalStateException("Programm nicht startbar: " + command.getFirst() + " (" + e.getMessage() + ")", e);
         }
-        if (!env.isEmpty()) {
-            try {
-                p.getOutputStream().close();
+        if (input != null || !env.isEmpty()) {
+            try (var stdin = p.getOutputStream()) {
+                if (input != null) {
+                    stdin.write(input.getBytes(charset));
+                }
             } catch (IOException ignored) {
                 // Prozess liest nicht – egal
             }

@@ -65,6 +65,10 @@ public final class ShellHints {
     public static final String JDBC = " Konfigurierte Datenbanken immer über die jdbc_*-Tools ansprechen, nicht mit "
             + "`psql`, `mysql`, `sqlplus`, `sqlcmd` o.ä. in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
 
+    public static final String DOLT = " Branches verknüpfter Dolt-, Doltgres- und Doltlite-Datenbanken nicht mit `dolt`, "
+            + "`doltlite`, `mysql` oder `psql` in der Shell umschalten – DevTools stellt sie beim Wechsel des Git-Branches "
+            + "selbst um (dolt_status, dolt_sync).";
+
     public static final String CHAT =" Chat-Nachrichten (Matrix, Teams) immer über die chat_*-Tools senden und lesen, "
             + "nicht per `curl` gegen die APIs – die Zugangsdaten liegen nur in der DevTools-App.";
 
