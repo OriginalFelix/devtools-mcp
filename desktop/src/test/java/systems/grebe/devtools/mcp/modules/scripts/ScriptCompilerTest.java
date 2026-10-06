@@ -10,7 +10,7 @@ import org.springframework.ai.tool.ToolCallback;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
-import systems.grebe.devtools.mcp.core.ToolBeans;
+import systems.grebe.devtools.mcp.core.McpToolHints;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -94,7 +94,7 @@ class ScriptCompilerTest {
             List<ToolCallback> tools = module.createTools(ModuleConfig.of(module.configSchema(),
                     Map.of("baseUrl", "https://jira.example.com")));
             assertThat(tools).hasSize(3);
-            assertThat(ToolBeans.annotations(tool(tools, "open_issues")).readOnlyHint()).isTrue();
+            assertThat(McpToolHints.annotations(tool(tools, "open_issues")).readOnlyHint()).isTrue();
 
             JsonNode schema = JSON.readTree(tool(tools, "open_issues").getToolDefinition().inputSchema());
             assertThat(schema.get("required").toString()).isEqualTo("[\"project\"]");

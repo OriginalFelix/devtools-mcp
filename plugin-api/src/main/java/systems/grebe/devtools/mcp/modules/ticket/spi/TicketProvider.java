@@ -3,17 +3,19 @@ package systems.grebe.devtools.mcp.modules.ticket.spi;
 import java.util.List;
 
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ServiceProvider;
 
 /**
  * Service-Provider-Schnittstelle für Ticket-Systeme (Jira, GitHub, GitLab, YouTrack, OpenProject, …).
  *
- * <p>Implementierungen werden über {@link java.util.ServiceLoader} gefunden. Ein neues System benötigt nur eine Klasse
+ * <p>Implementierungen werden über {@link java.util.ServiceLoader} gefunden – in der App und in Plugin-Jars (siehe
+ * {@link ServiceProvider}). Ein neues System benötigt nur eine Klasse
  * mit öffentlichem No-Arg-Konstruktor und einen Eintrag in
  * {@code META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider}. Das Ticket-Modul erzeugt
  * daraus automatisch Konfigurationsfelder (Präfix {@code <id>.}), einen Aktivierungsschalter und ein Standardprojekt
  * und bietet das System in allen {@code ticket_*}-Tools über den Parameter {@code provider} an.
  */
-public interface TicketProvider {
+public interface TicketProvider extends ServiceProvider {
 
     /** Stabile technische ID (Kleinbuchstaben), z.B. {@code jira}. Wird als Parameter {@code provider} verwendet. */
     String id();

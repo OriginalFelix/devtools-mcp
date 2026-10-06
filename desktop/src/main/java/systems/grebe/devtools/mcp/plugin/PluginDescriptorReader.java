@@ -17,46 +17,16 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 import org.yaml.snakeyaml.error.YAMLException;
 
-/**
- * Inhalt der {@code plugin.yml} im Wurzelverzeichnis eines Plugin-Jars – angelehnt an Bukkit:
- *
- * <pre>{@code
- * name: jira                       # Pflicht, [a-z][a-z0-9-]*, eindeutig
- * version: 1.2.0                   # Pflicht
- * main: com.acme.jira.JiraPlugin   # Pflicht, Unterklasse von DevToolsPlugin
- * api-version: 1                   # optional (Standard 1), höchstens PluginApi.VERSION
- * description: Tickets lesen
- * author: Felix                    # oder authors: [a, b]
- * website: https://…
- * depend: [git-extras]             # Pflicht-Abhängigkeiten (werden vorher geladen, Klassen sichtbar)
- * softdepend: [sonar-extras]       # optionale Abhängigkeiten
- * libraries:                       # Maven-Koordinaten, beim Laden samt transitiver Abhängigkeiten aufgelöst
- *   - com.squareup.okhttp3:okhttp:4.12.0
- * }</pre>
- */
-public record PluginDescriptor(
-        String name,
-        String version,
-        String main,
-        int apiVersion,
-        String description,
-        List<String> authors,
-        String website,
-        List<String> depend,
-        List<String> softDepend,
-        List<String> libraries) {
+import static systems.grebe.devtools.mcp.plugin.PluginDescriptor.FILE_NAME;
 
-    public static final String FILE_NAME = "plugin.yml";
+/** Liest und prüft die {@code plugin.yml} eines Plugins (Format siehe {@link PluginDescriptor}). */
+public final class PluginDescriptorReader {
 
     private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9-]{0,63}");
     private static final Pattern CLASS_NAME = Pattern.compile("[\\p{L}_$][\\p{L}\\p{N}_$]*(\\.[\\p{L}_$][\\p{L}\\p{N}_$]*)+");
     private static final Pattern COORDINATES = Pattern.compile("[^:\\s]+:[^:\\s]+(:[^:\\s]+){1,3}");
 
-    public PluginDescriptor {
-        authors = List.copyOf(authors == null ? List.of() : authors);
-        depend = List.copyOf(depend == null ? List.of() : depend);
-        softDepend = List.copyOf(softDepend == null ? List.of() : softDepend);
-        libraries = List.copyOf(libraries == null ? List.of() : libraries);
+    private PluginDescriptorReader() {
     }
 
     /** Liest und prüft die {@code plugin.yml} eines Jars. */
@@ -124,13 +94,6 @@ public record PluginDescriptor(
                 libraries);
     }
 
-    /** Alle Abhängigkeiten (Pflicht und optional). */
-    public List<String> allDependencies() {
-        List<String> all = new ArrayList<>(depend);
-        softDepend.stream().filter(d -> !all.contains(d)).forEach(all::add);
-        return all;
-    }
-
     private static String required(Map<?, ?> map, String key) {
         String v = optional(map, key);
         if (v == null) {
@@ -166,16 +129,5 @@ public record PluginDescriptor(
             }
         }
         return names.stream().distinct().toList();
-    }
-
-    /** Ungültiges Plugin (Beschreibung, Klasse, API-Version, Abhängigkeiten). Die Meldung ist für die UI gedacht. */
-    public static class InvalidPluginException extends RuntimeException {
-        public InvalidPluginException(String message) {
-            super(message);
-        }
-
-        public InvalidPluginException(String message, Throwable cause) {
-            super(message, cause);
-        }
     }
 }

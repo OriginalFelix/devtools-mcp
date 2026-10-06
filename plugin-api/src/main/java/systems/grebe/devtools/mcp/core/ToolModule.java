@@ -30,7 +30,7 @@ public interface ToolModule {
     /**
      * Nutzungshinweise für das LLM: wann die Tools dieses Moduls zu verwenden sind – insbesondere statt welcher
      * Shell-Befehle oder anderer Werkzeuge des Clients. Wird beim Verbindungsaufbau als Teil der
-     * MCP-{@code instructions} an den Client gesendet (siehe {@link ServerInstructions}).
+     * MCP-{@code instructions} an den Client gesendet (siehe {@code ServerInstructions}).
      *
      * <p>Die Instructions werden einmal beim Start des Servers gebaut und ändern sich danach nicht mehr – anders als
      * die Tool-Liste. Formulierungen deshalb bedingt halten („wenn {@code git_status} angeboten wird …“), damit sie
@@ -88,7 +88,7 @@ public interface ToolModule {
 
     /**
      * Verzeichnislisten ({@link FieldType#DIRECTORY_LIST}), die zusätzlich die global freigegebenen Verzeichnisse aus
-     * dem Modul „Freigaben“ ({@link AccessModule}) bekommen – für Module, die über {@link Workspaces} auf
+     * dem Modul „Freigaben“ ({@code AccessModule}) bekommen – für Module, die über {@code Workspaces} auf
      * Projektverzeichnisse zugreifen. Standard keine.
      */
     default Set<String> sharedDirectoryFields() {

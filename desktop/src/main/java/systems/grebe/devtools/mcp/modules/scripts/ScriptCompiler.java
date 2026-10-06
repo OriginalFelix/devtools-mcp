@@ -29,7 +29,7 @@ import systems.grebe.devtools.mcp.backend.scripts.ScriptSyntax;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
-import systems.grebe.devtools.mcp.core.ToolBeans;
+import systems.grebe.devtools.mcp.core.McpToolHints;
 
 /**
  * Übersetzt ein Groovy-Skript und wertet es aus: Der Code auf oberster Ebene läuft genau einmal und legt über die DSL
@@ -116,7 +116,7 @@ public final class ScriptCompiler {
         public List<ToolCallback> tools(ModuleConfig config, Supplier<Duration> timeout) {
             Map<String, Object> values = typedSettings(definition.settings(), config);
             return definition.tools().stream()
-                    .map(t -> ToolBeans.withAnnotations(new ScriptToolCallback(scriptName, t, values, timeout),
+                    .map(t -> McpToolHints.withAnnotations(new ScriptToolCallback(scriptName, t, values, timeout),
                             t.annotations()))
                     .toList();
         }

@@ -11,7 +11,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
-import systems.grebe.devtools.mcp.core.ToolBeans;
+import systems.grebe.devtools.mcp.core.McpToolHints;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -97,7 +97,7 @@ class GherkinScriptCompilerTest {
         assertThat(schema.get("properties").get("repo").get("description").asString()).isEqualTo("Repository-Name");
         assertThat(schema.get("properties").get("branch")).isNull(); // Variable, kein Parameter
         assertThat(schema.get("required").values()).extracting(JsonNode::asString).containsExactly("repo");
-        McpSchema.ToolAnnotations hints = ToolBeans.annotations(t);
+        McpSchema.ToolAnnotations hints = McpToolHints.annotations(t);
         assertThat(hints.readOnlyHint()).isTrue();
     }
 

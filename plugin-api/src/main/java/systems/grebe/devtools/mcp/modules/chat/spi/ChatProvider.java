@@ -3,18 +3,20 @@ package systems.grebe.devtools.mcp.modules.chat.spi;
 import java.util.List;
 
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ServiceProvider;
 
 /**
  * Service-Provider-Schnittstelle für Chat-Systeme (Matrix, Microsoft Teams, …).
  *
- * <p>Implementierungen werden über {@link java.util.ServiceLoader} gefunden. Ein neues System benötigt nur eine Klasse
+ * <p>Implementierungen werden über {@link java.util.ServiceLoader} gefunden – in der App und in Plugin-Jars (siehe
+ * {@link ServiceProvider}). Ein neues System benötigt nur eine Klasse
  * mit öffentlichem No-Arg-Konstruktor und einen Eintrag in
  * {@code META-INF/services/systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider}. Das Chat-Modul erzeugt daraus
  * Konfigurationsfelder (Präfix {@code <id>.}), einen Aktivierungsschalter und eine Standard-Unterhaltung und bietet das
  * System in allen {@code chat_*}-Tools über den Parameter {@code provider} an. Eingang (was ist neu, Warten auf
  * Antworten), Markdown und Ausgabe übernimmt das Modul.
  */
-public interface ChatProvider {
+public interface ChatProvider extends ServiceProvider {
 
     /** Stabile technische ID (Kleinbuchstaben), z.B. {@code matrix}. Wird als Parameter {@code provider} verwendet. */
     String id();

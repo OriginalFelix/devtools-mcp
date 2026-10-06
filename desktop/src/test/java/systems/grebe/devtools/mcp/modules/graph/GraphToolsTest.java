@@ -418,16 +418,18 @@ class GraphToolsTest {
         }
     }
 
-    /** Echter Code: die Quellen dieses Servers. Prüft Robustheit und einige bekannte Kanten. */
+    /** Echter Code: die Quellen dieses Servers samt Plugin-API. Prüft Robustheit und einige bekannte Kanten. */
     @Test
     void graphOfOwnSources() throws Exception {
-        Path own = Path.of("src/main/java").toAbsolutePath();
         Path copy = project.resolve("self");
-        try (Stream<Path> files = Files.walk(own)) {
-            for (Path p : files.filter(Files::isRegularFile).toList()) {
-                Path target = copy.resolve("src/main/java").resolve(own.relativize(p).toString());
-                Files.createDirectories(target.getParent());
-                Files.copy(p, target);
+        for (Path own : List.of(Path.of("src/main/java"), Path.of("../plugin-api/src/main/java"))) {
+            Path root = own.toAbsolutePath().normalize();
+            try (Stream<Path> files = Files.walk(root)) {
+                for (Path p : files.filter(Files::isRegularFile).toList()) {
+                    Path target = copy.resolve("src/main/java").resolve(root.relativize(p).toString());
+                    Files.createDirectories(target.getParent());
+                    Files.copy(p, target);
+                }
             }
         }
         Files.writeString(copy.resolve("build.gradle.kts"), "");

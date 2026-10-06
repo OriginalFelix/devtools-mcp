@@ -22,7 +22,7 @@ class ToolProgressTest {
             new McpSchema.JsonSchema("object", Map.of(), List.of(), null, null, null)).build();
 
     private static McpServerFeatures.SyncToolSpecification spec() {
-        return ToolProgress.wrap(new McpServerFeatures.SyncToolSpecification(TOOL, (exchange, request) -> {
+        return McpProgress.wrap(new McpServerFeatures.SyncToolSpecification(TOOL, (exchange, request) -> {
             ToolProgress.report("erste Zeile");
             ToolProgress.report("verworfen – zu kurz nach der ersten");
             return McpSchema.CallToolResult.builder().addTextContent(String.valueOf(ToolProgress.active())).build();

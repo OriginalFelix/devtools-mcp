@@ -17,7 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
  * liefert String-Ergebnisse als Klartext statt als JSON-String-Literal und reicht erfolgreiche
  * Aufrufe an die {@link ToolCallListener} weiter.
  */
-public final class ManagedToolCallback implements ToolCallback {
+public final class ManagedToolCallback implements DelegatingToolCallback {
 
     private static final Logger LOG = LoggerFactory.getLogger(ManagedToolCallback.class);
     private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -52,6 +52,7 @@ public final class ManagedToolCallback implements ToolCallback {
     }
 
     /** Das eingehüllte Modul-Tool. */
+    @Override
     public ToolCallback delegate() {
         return delegate;
     }

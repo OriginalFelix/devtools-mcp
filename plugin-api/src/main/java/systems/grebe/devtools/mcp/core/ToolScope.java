@@ -14,7 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Für wen Tools gebaut werden und laufen: ein Benutzer mit seinem aktiven Profil. Jede {@link McpRuntime} hat genau
+ * Für wen Tools gebaut werden und laufen: ein Benutzer mit seinem aktiven Profil. Jede {@code McpRuntime} hat genau
  * einen Scope; der Desktop-Betrieb kennt nur {@link #LOCAL}.
  *
  * <p>Zustandsbehaftete Module (offene SSH-Sitzungen, Debugger-Verbindungen …) legen ihren Zustand über
@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
  * Profilwechsel oder Ende der Runtime schließt {@link #close()} alles, was {@link AutoCloseable} ist.
  *
  * <p>Während eines Tool-Aufrufs ist der Scope über {@link #current()} erreichbar (gleicher Thread wie der Handler,
- * wie bei {@link ToolProgress}). Code, der zur Laufzeit Einstellungen oder den Benutzer braucht, fragt dort nach.
+ * wie bei {@code ToolProgress}). Code, der zur Laufzeit Einstellungen oder den Benutzer braucht, fragt dort nach.
  */
 public final class ToolScope implements AutoCloseable {
 
@@ -89,7 +89,7 @@ public final class ToolScope implements AutoCloseable {
         return admin;
     }
 
-    /** Ob in diesem Projektverzeichnis geschrieben werden darf (siehe {@link Workspaces#requireWritable}). */
+    /** Ob in diesem Projektverzeichnis geschrieben werden darf (siehe {@code Workspaces.requireWritable}). */
     public boolean canWrite(Path root) {
         return writable.test(root);
     }
@@ -110,7 +110,7 @@ public final class ToolScope implements AutoCloseable {
         return unrestricted;
     }
 
-    /** Hebt die Beschränkung auf freigegebene Verzeichnisse auf bzw. setzt sie wieder (siehe {@link Workspaces}). */
+    /** Hebt die Beschränkung auf freigegebene Verzeichnisse auf bzw. setzt sie wieder (siehe {@code Workspaces}). */
     public void setUnrestricted(boolean value) {
         this.unrestricted = value;
     }

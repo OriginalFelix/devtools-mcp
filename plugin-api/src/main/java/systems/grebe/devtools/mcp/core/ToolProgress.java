@@ -1,11 +1,7 @@
 package systems.grebe.devtools.mcp.core;
 
-import java.util.Map;
-import java.util.function.BiFunction;
+import java.util.function.Supplier;
 
-import io.modelcontextprotocol.server.McpServerFeatures;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
-import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,9 +10,16 @@ import org.slf4j.LoggerFactory;
  * des Wartens an (z.B. die letzte Zeile eines laufenden Befehls); das LLM sieht sie nicht – was es wissen muss, gehört
  * ins Ergebnis des Tools.
  *
- * <p>Gemeldet wird nur, wenn der Client im Aufruf ein {@code _meta.progressToken} mitschickt. Spring AI reicht das Token
- * nicht an die Tools durch; deshalb hüllt {@link #wrap} jede Tool-Spezifikation ein und legt Exchange und Token für die
- * Dauer des Aufrufs in einen {@link ThreadLocal} (das Tool läuft im selben Thread wie der Handler).
+ * <pre>{@code
+ * for (Path file : files) {
+ *     ToolProgress.report("Lese " + file.getFileName());
+ *     …
+ * }
+ * }</pre>
+ *
+ * <p>Gemeldet wird nur, wenn der Client im Aufruf ein {@code _meta.progressToken} mitschickt. Die App legt dafür für
+ * die Dauer des Aufrufs ein Ziel ({@link Sink}) in einen {@link ThreadLocal} – das Tool läuft im selben Thread wie der
+ * Handler. Außerhalb eines Tool-Aufrufs (oder in einem anderen Thread) sind alle Methoden wirkungslos.
  */
 public final class ToolProgress {
 
@@ -24,15 +27,23 @@ public final class ToolProgress {
     private static final long MIN_INTERVAL_MILLIS = 500;
     private static final int MAX_MESSAGE = 300;
 
+    /** Wohin Meldungen gehen; die App verbindet es mit dem MCP-Client. */
+    @FunctionalInterface
+    public interface Sink {
+        /**
+         * @param message gekürzter Text
+         * @param count   laufende Nummer der Meldung in diesem Aufruf (ab 1)
+         */
+        void send(String message, int count);
+    }
+
     private static final class Target {
-        final McpSyncServerExchange exchange;
-        final Object token;
+        final Sink sink;
         int count;
         long last;
 
-        Target(McpSyncServerExchange exchange, Object token) {
-            this.exchange = exchange;
-            this.token = token;
+        Target(Sink sink) {
+            this.sink = sink;
         }
     }
 
@@ -41,30 +52,19 @@ public final class ToolProgress {
     private ToolProgress() {
     }
 
-    /** Hüllt den Handler so ein, dass Tools während des Aufrufs {@link #report} verwenden können. */
-    public static McpServerFeatures.SyncToolSpecification wrap(McpServerFeatures.SyncToolSpecification spec) {
-        BiFunction<McpSyncServerExchange, McpSchema.CallToolRequest, McpSchema.CallToolResult> handler = spec.callHandler();
-        return new McpServerFeatures.SyncToolSpecification(spec.tool(), (exchange, request) -> {
-            Object token = progressToken(request.meta());
-            if (token == null || exchange == null) {
-                return handler.apply(exchange, request);
+    /** Für die App: führt {@code body} so aus, dass {@link #report} an {@code sink} meldet. */
+    public static <T> T callWith(Sink sink, Supplier<T> body) {
+        Target previous = CURRENT.get();
+        CURRENT.set(new Target(sink));
+        try {
+            return body.get();
+        } finally {
+            if (previous == null) {
+                CURRENT.remove();
+            } else {
+                CURRENT.set(previous);
             }
-            Target previous = CURRENT.get();
-            CURRENT.set(new Target(exchange, token));
-            try {
-                return handler.apply(exchange, request);
-            } finally {
-                if (previous == null) {
-                    CURRENT.remove();
-                } else {
-                    CURRENT.set(previous);
-                }
-            }
-        });
-    }
-
-    private static Object progressToken(Map<String, Object> meta) {
-        return meta == null ? null : meta.get("progressToken");
+        }
     }
 
     /** Ob der laufende Aufruf Fortschritt empfangen kann. */
@@ -97,7 +97,7 @@ public final class ToolProgress {
             text = text.substring(0, MAX_MESSAGE) + " …";
         }
         try {
-            t.exchange.progressNotification(new McpSchema.ProgressNotification(t.token, ++t.count, null, text));
+            t.sink.send(text, ++t.count);
         } catch (RuntimeException e) {
             LOG.debug("Fortschritt nicht gesendet", e);
         }

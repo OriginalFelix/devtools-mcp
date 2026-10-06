@@ -3,19 +3,21 @@ package systems.grebe.devtools.mcp.modules.pr.spi;
 import java.util.List;
 
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ServiceProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.ProviderSettings;
 
 /**
  * Service-Provider-Schnittstelle für Git-Server mit Pull/Merge Requests (GitHub, GitLab, Bitbucket, …).
  *
- * <p>Implementierungen werden über {@link java.util.ServiceLoader} gefunden. Ein neuer Server braucht nur eine Klasse
+ * <p>Implementierungen werden über {@link java.util.ServiceLoader} gefunden – in der App und in Plugin-Jars (siehe
+ * {@link ServiceProvider}). Ein neuer Server braucht nur eine Klasse
  * mit öffentlichem No-Arg-Konstruktor und einen Eintrag in
  * {@code META-INF/services/systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider}. Das Modul Pull Requests
  * erzeugt daraus automatisch Konfigurationsfelder (Präfix {@code <id>.}) und einen Aktivierungsschalter und bietet den
  * Server in allen {@code pr_*}-Tools über den Parameter {@code provider} an. Einstellungen und HTTP-Client
  * ({@link systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson}) teilen sich Git-Server- und Ticket-Provider.
  */
-public interface GitServerProvider {
+public interface GitServerProvider extends ServiceProvider {
 
     /** Stabile technische ID (Kleinbuchstaben), z.B. {@code github}. Wird als Parameter {@code provider} verwendet. */
     String id();
