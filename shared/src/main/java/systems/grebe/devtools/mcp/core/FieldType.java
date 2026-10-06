@@ -1,8 +1,16 @@
 package systems.grebe.devtools.mcp.core;
 
-/** Typen von Konfigurationsfeldern. Jeder Typ hat einen passenden Editor in der UI. */
+import com.fasterxml.jackson.annotation.JsonEnumDefaultValue;
+
+/**
+ * Typen von Konfigurationsfeldern. Jeder Typ hat einen passenden Editor in der UI.
+ *
+ * <p>Typen, die erst eine andere App-Version kennt (neuere Version, anderer Branch, Plugin), liest der Modulkatalog
+ * des Backends als {@link #STRING} – mit {@code EnumFeature.READ_UNKNOWN_ENUM_VALUES_USING_DEFAULT_VALUE}.
+ */
 public enum FieldType {
-    /** Einzeiliger Text. */
+    /** Einzeiliger Text; auch Ersatz für unbekannte Typen. */
+    @JsonEnumDefaultValue
     STRING,
     /** Geheimnis (Token, Passwort) – maskiert angezeigt und verschlüsselt gespeichert. */
     SECRET,
