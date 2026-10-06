@@ -11,7 +11,7 @@ import org.eclipse.aether.version.InvalidVersionSpecificationException;
 import org.eclipse.aether.version.Version;
 
 /** Versionsvergleich nach Maven-Regeln (wie {@code maven-metadata.xml} sortiert) und grobe SemVer-Einordnung. */
-final class MavenVersions {
+public final class MavenVersions {
 
     private static final GenericVersionScheme SCHEME = new GenericVersionScheme();
     private static final Pattern PRERELEASE = Pattern.compile(
@@ -37,12 +37,12 @@ final class MavenVersions {
     }
 
     /** Snapshots, Alphas, Betas, Milestones, Release Candidates … */
-    static boolean isPrerelease(String version) {
+    public static boolean isPrerelease(String version) {
         return PRERELEASE.matcher(version.toLowerCase(Locale.ROOT)).find();
     }
 
     /** Neueste Version der Liste (optional ohne Vorabversionen) oder {@code null}. */
-    static String latest(List<String> versions, boolean includePrereleases) {
+    public static String latest(List<String> versions, boolean includePrereleases) {
         return versions.stream().filter(v -> includePrereleases || !isPrerelease(v)).max(ORDER).orElse(null);
     }
 

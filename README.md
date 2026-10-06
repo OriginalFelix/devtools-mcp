@@ -20,6 +20,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions`, `ticket_worklogs` (gebuchte Zeiten mit Summe) · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_log_time` (Zeit buchen), `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), `ticket_classify` (Pre-Classifier: Komplexität einschätzen, Modell für die Umsetzung empfehlen), einschränkbar auf Projekte (Modul Standard: aus) |
 | **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
+| **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
@@ -237,6 +238,71 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
   und lehnt einen geänderten ab; `strict` akzeptiert nur Hosts, die schon in der Datei stehen. *Verbindung testen*
   verbindet sich mit jeder Verbindung und zeigt Server-Version und Fingerprint.
 
+### Datenbanken (JDBC)
+
+Verbindungen werden unter Module → Datenbanken (JDBC) als Tabelle gepflegt: Name, JDBC-URL, Benutzer, Passwort,
+*Zugriff höchstens*, optional Treiber, Treiberklasse und eine Beschreibung für das LLM. Die Liste liegt verschlüsselt in
+`settings.json`; das LLM sieht Name, URL (Passwort-Parameter und `benutzer:passwort@` darin maskiert – auch in
+`permissions_overview`), Benutzer und Beschreibung. Alle Tools nehmen `connection` (Name, ohne Groß-/Kleinschreibung;
+leer = die einzige Verbindung).
+
+**Berechtigungen.** Jede Art von Anweisung hat einen eigenen Schalter und ein eigenes Tool – damit kennt das Modul
+*Berechtigungen* sie (`permissions_overview module=jdbc` zeigt, welcher Schalter welches Tool freischaltet), und das LLM
+kann eine fehlende mit `permissions_request tool=jdbc_delete` beim Nutzer anfragen:
+
+| Schalter | Tool | Standard |
+|---|---|---|
+| — | `jdbc_connections`, `jdbc_databases`, `jdbc_tables`, `jdbc_describe`, `jdbc_disconnect` | an (mit dem Modul) |
+| *Datensätze lesen* (`allowQuery`) | `jdbc_query` – SELECT, WITH, VALUES, SHOW, EXPLAIN | an |
+| *Datensätze einfügen* (`allowInsert`) | `jdbc_insert` – Zeilen als JSON-Objekte oder INSERT-Anweisung | aus |
+| *Datensätze ändern* (`allowUpdate`) | `jdbc_update` – UPDATE, MERGE, REPLACE | aus |
+| *Datensätze löschen* (`allowDelete`) | `jdbc_delete` – DELETE | aus |
+| *Struktur ändern* (`allowDdl`) | `jdbc_ddl` – CREATE, ALTER, DROP, TRUNCATE, RENAME, COMMENT | aus |
+| *Beliebiges SQL ausführen* (`allowExecute`) | `jdbc_execute` – Prozeduren, PL/SQL- und T-SQL-Blöcke, GRANT, SET … | aus |
+
+Zusätzlich deckelt *Zugriff höchstens* jede Verbindung: `read` (nur lesen – die Verbindung wird außerdem
+schreibgeschützt geöffnet, z.B. für Produktion), `write` (lesen und Datensätze ändern) oder `all` (was die Schalter
+erlauben). Den Deckel kann das LLM nicht anfragen.
+
+**Einordnung der Anweisungen.** Jedes Tool führt genau eine Anweisung aus und nur die Arten, für die es freigegeben ist
+(`SqlStatements`): ein Tokenizer überspringt Zeichenketten, Kommentare und quotierte Bezeichner und ordnet nach dem
+ersten Schlüsselwort ein. Eingebettete Änderungen brauchen ihre eigene Berechtigung – ein Upsert
+(`INSERT … ON CONFLICT DO UPDATE`) auch *ändern*, ein datenverändernder CTE (`WITH d AS (DELETE …) SELECT …`) auch
+*löschen*, `SELECT … INTO` gilt als freies SQL. Weil Datenbanken Text unterschiedlich lesen (`\'` in MySQL, `#`- und
+`/*! */`-Kommentare, `//` in H2, `$tag$` in PostgreSQL, `q'[…]'` in Oracle), wird jede Anweisung in drei Lesarten
+untersucht und die mit den meisten Rechten genommen – eine zweite Anweisung lässt sich so nicht in einer Zeichenkette
+verstecken. Die Kehrseite: ein `;` in PostgreSQL-`$tag$`- oder `E'…'`-Zeichenketten zählt als Trenner (dafür `$$`
+oder `jdbc_execute` verwenden).
+
+* `jdbc_query` läuft in einer schreibgeschützten Transaktion (`Connection.setReadOnly`, bei PostgreSQL
+  `BEGIN READ ONLY`), die immer zurückgerollt wird. Funktionen mit Nebenwirkungen kann das nicht bei jeder Datenbank
+  verhindern – für strikten Schutz einen Datenbankbenutzer mit Leserechten hinterlegen. Ergebnisse als Tabelle, CSV
+  oder JSON, begrenzt auf *Max. Zeilen je Ergebnis* und *Max. Zeichen je Wert*.
+* Werte gehen als Platzhalter `?` mit `params` an die Datenbank, gebunden mit dem Typ des Platzhalters bzw. der Spalte
+  (`ParameterMetaData`, Spalten-Metadaten): `"2024-05-01"` wird ein DATE, `"42"` ein INTEGER – auch bei streng
+  typisierten Datenbanken wie PostgreSQL.
+* `jdbc_insert` nimmt Zeilen als `[{"spalte": wert}]` (bis 1000 je Aufruf); Tabellen- und Spaltennamen werden über die
+  Metadaten aufgelöst (Groß-/Kleinschreibung egal) und quotiert, erzeugte Schlüssel kommen zurück.
+* `jdbc_insert`/`jdbc_update`/`jdbc_delete` laufen in einer Transaktion: ein Fehler ändert nichts, `dryRun=true` führt
+  aus, meldet die Zeilenzahl und rollt zurück. UPDATE und DELETE ohne WHERE nur mit `allRows=true`.
+* `jdbc_ddl` und `jdbc_execute` laufen im Autocommit (manches geht nicht in einer Transaktion, etwa `VACUUM` oder
+  `CREATE INDEX CONCURRENTLY`); `jdbc_execute` gibt den Text unverändert an den Treiber und liefert alle
+  Ergebnismengen und Update-Zählungen.
+* Fehler kommen mit Meldung, SQLState und Hinweis (Anmeldung, Netzwerk, fehlende Rechte, Zeitlimit) zurück; Passwörter
+  werden aus jeder Meldung entfernt.
+
+**Treiber.** Ohne Angabe nimmt das Modul einen Treiber aus dem Klassenpfad, der die URL annimmt (H2 ist eingebaut),
+sonst den bekannten Treiber zum Subprotokoll der URL – PostgreSQL, MySQL, MariaDB, SQL Server (auch jTDS), Oracle, DB2,
+AS/400, Informix, SAP HANA, SQLite, HSQLDB, Firebird, DuckDB, ClickHouse, Redshift, Snowflake, Trino, Exasol – in der
+neuesten stabilen Version aus den Maven-Repositories des Plugin-Stores (Maven Central oder ein eigener Mirror, mit
+Prüfsummen, Download nur beim ersten Zugriff). Im Feld *Treiber* lassen sich stattdessen Maven-Koordinaten
+`groupId:artifactId[:version]` angeben (z.B. eine ältere Version für einen alten Server; mit Version auch ohne
+Netzwerk aus dem Cache) oder Pfade zu JAR-Dateien bzw. Verzeichnissen, getrennt durch `;`. Jeder Treiber bekommt einen
+eigenen Class-Loader, sodass verschiedene Versionen nebeneinander laufen. Verbindungen werden je Datenbank
+wiederverwendet (höchstens zwei freie, geschlossen nach 10 Minuten Leerlauf, bei geänderter Konfiguration oder mit
+`jdbc_disconnect`). *Verbindung testen* verbindet sich mit jeder Verbindung und zeigt Produkt, Version, Treiber und was
+erlaubt ist.
+
 ### Chat-Systeme (ServiceLoader)
 
 Das LLM schreibt dem Nutzer über einen Chat und bekommt von dort Antworten und Anweisungen – etwa Rückfragen und
@@ -420,6 +486,10 @@ eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen au
 * SSH: Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; Host-Key-Prüfung gegen eine eigene
   known_hosts-Datei (geänderte Schlüssel werden immer abgelehnt). `ssh_exec` läuft mit den vollen Rechten des
   hinterlegten Benutzers – dafür einen eingeschränkten Benutzer anlegen oder den Schalter abschalten.
+* Datenbanken (JDBC): Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; nur Lesen ist
+  standardmäßig an, jede ändernde Art von Anweisung hat einen eigenen Schalter, und je Verbindung lässt sich der Zugriff
+  auf „nur lesen“ deckeln. Die Einordnung der Anweisungen ist vorsichtig, aber kein vollständiger SQL-Parser – die
+  wirksamste Grenze bleibt ein Datenbankbenutzer, der nur die nötigen Rechte hat.
 * Chat: Token, Passwörter und das Teams-Refresh-Token verschlüsselt und nie in Tool-Ausgaben. Chat-Nachrichten sind
   Eingaben, die das LLM wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Mitglied
   einer freigegebenen Unterhaltung Anweisungen geben), für Matrix ein eigenes Bot-Konto verwenden und Unterhaltungen
@@ -992,7 +1062,7 @@ MCP-Tool-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `open
 Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die Callbacks mit
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
-zerstörerisch. Bisher annotiert: SSH, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
+zerstörerisch. Bisher annotiert: SSH, Datenbanken (JDBC), Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
 Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`.
 
 ## Plugins

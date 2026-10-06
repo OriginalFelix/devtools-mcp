@@ -1,11 +1,33 @@
 package systems.grebe.devtools.mcp.core;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 /** Hilfen für LLM-freundliche, begrenzte Textausgaben. */
 public final class Text {
 
+    /** {@code password=…}, {@code trustStorePassword=…}, {@code PWD={…}} in URLs und Verbindungszeichenketten. */
+    private static final Pattern SECRET_PARAM = Pattern.compile(
+            "(?i)([\\w.-]*(?:password|passwd|pwd|secret|token|apikey|api_key)\\s*=\\s*)(\\{[^}]*}|[^;&,\\s]+)");
+    /** {@code //benutzer:passwort@host} */
+    private static final Pattern USER_INFO = Pattern.compile("(//[^/@\\s:;?]+:)[^@/\\s]+@");
+    /** Oracle {@code jdbc:oracle:thin:benutzer/passwort@host} */
+    private static final Pattern ORACLE_USER = Pattern.compile("(?i)(jdbc:oracle:\\w+:[^/@:\\s]+/)[^@\\s]+@");
+
     private Text() {
+    }
+
+    /**
+     * Maskiert Zugangsdaten in URLs und Verbindungszeichenketten (Passwort-Parameter, {@code benutzer:passwort@}) –
+     * für Ausgaben an das LLM, falls jemand ein Passwort in eine URL statt in das Geheimnis-Feld geschrieben hat.
+     */
+    public static String maskCredentials(String s) {
+        if (s == null || s.isEmpty()) {
+            return s;
+        }
+        String out = SECRET_PARAM.matcher(s).replaceAll("$1****");
+        out = USER_INFO.matcher(out).replaceAll("$1****@");
+        return ORACLE_USER.matcher(out).replaceAll("$1****@");
     }
 
     /** Kürzt auf maximal {@code maxLines} Zeilen und hängt einen Hinweis an. */
