@@ -72,10 +72,10 @@ public class ProviderRegistry<T extends ServiceProvider> {
         builtin.forEach(p -> map.put(p.id(), p));
         for (T p : fromPlugins) {
             if (!valid(p)) {
-                LOG.warn("{} aus Plugin mit ungültiger ID ignoriert: '{}' ({})", kind, p.id(), p.getClass().getName());
+                LOG.warn("{} aus Plugin mit ungültiger ID ignoriert: '{}' ({})", kind, p.id(), className(p));
             } else if (map.putIfAbsent(p.id(), p) != null) {
                 LOG.warn("{}-ID '{}' aus Plugin ist schon vergeben – ignoriert: {}", kind, p.id(),
-                        p.getClass().getName());
+                        className(p));
             }
         }
         List<T> ordered = map.values().stream()
@@ -100,12 +100,17 @@ public class ProviderRegistry<T extends ServiceProvider> {
         Map<String, T> map = new LinkedHashMap<>();
         found.stream().sorted(Comparator.comparingInt(T::priority).thenComparing(T::id)).forEach(p -> {
             if (!valid(p)) {
-                LOG.warn("{} mit ungültiger ID ignoriert: '{}' ({})", kind, p.id(), p.getClass().getName());
+                LOG.warn("{} mit ungültiger ID ignoriert: '{}' ({})", kind, p.id(), className(p));
             } else if (map.putIfAbsent(p.id(), p) != null) {
-                LOG.warn("Doppelte {}-ID '{}' ignoriert: {}", kind, p.id(), p.getClass().getName());
+                LOG.warn("Doppelte {}-ID '{}' ignoriert: {}", kind, p.id(), className(p));
             }
         });
         return List.copyOf(map.values());
+    }
+
+    /** Klasse des Providers – bei Plugin-Providern die echte, nicht die der {@link ContextLoaderProxy Hülle}. */
+    private static String className(ServiceProvider p) {
+        return ContextLoaderProxy.unwrap(p).getClass().getName();
     }
 
     private static boolean valid(ServiceProvider p) {

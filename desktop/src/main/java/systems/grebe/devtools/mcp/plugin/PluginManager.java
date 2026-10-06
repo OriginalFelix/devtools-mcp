@@ -33,6 +33,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ConfigurableApplicationContext;
 import systems.grebe.devtools.mcp.config.PluginSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.core.ContextLoaderProxy;
 import systems.grebe.devtools.mcp.core.ManagedToolCallback;
 import systems.grebe.devtools.mcp.core.ServiceProvider;
 import systems.grebe.devtools.mcp.core.ToolModule;
@@ -563,6 +564,8 @@ public class PluginManager implements AutoCloseable {
     /**
      * Provider aus {@code META-INF/services} des Plugin-Jars (nur Klassen des Plugins selbst – die Dateien der App
      * sieht der ClassLoader über den Parent mit). Ein defekter Eintrag wird gemeldet und lässt das Plugin weiterlaufen.
+     * Die Provider sind in eine {@link ContextLoaderProxy} gehüllt: Aufrufe der Module laufen mit dem ClassLoader des
+     * Plugins als Thread-Context-ClassLoader, ebenso die erzeugten Systeme ({@code TicketSystem} …).
      */
     private void loadProviders(Loaded l) {
         for (Class<? extends ServiceProvider> type : PROVIDER_TYPES) {
@@ -570,7 +573,7 @@ public class PluginManager implements AutoCloseable {
             try {
                 ServiceLoader.load(type, l.loader).stream()
                         .filter(p -> p.type().getClassLoader() == l.loader)
-                        .forEach(p -> found.add(p.get()));
+                        .forEach(p -> found.add(wrapProvider(type, p.get(), l.loader)));
             } catch (ServiceConfigurationError e) {
                 LOG.warn("Plugin {}: {} nicht ladbar: {}", l.key, type.getSimpleName(), e.getMessage());
             }
@@ -580,6 +583,11 @@ public class PluginManager implements AutoCloseable {
                         found.stream().map(ServiceProvider::id).toList());
             }
         }
+    }
+
+    private static <T extends ServiceProvider> T wrapProvider(Class<T> type, ServiceProvider provider,
+                                                              ClassLoader loader) {
+        return ContextLoaderProxy.wrap(type, type.cast(provider), loader);
     }
 
     /** Deaktiviert (onDisable nur, wenn aktiv), entfernt Module und schließt den ClassLoader. */

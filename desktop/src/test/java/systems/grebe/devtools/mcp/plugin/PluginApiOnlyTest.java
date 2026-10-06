@@ -2,9 +2,11 @@ package systems.grebe.devtools.mcp.plugin;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
@@ -14,13 +16,16 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.ContextLoaderProxy;
 import systems.grebe.devtools.mcp.core.McpToolHints;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolProgress;
 import systems.grebe.devtools.mcp.modules.ticket.TicketModule;
 import systems.grebe.devtools.mcp.modules.ticket.TicketProviders;
+import systems.grebe.devtools.mcp.modules.ticket.spi.ProviderSettings;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
+import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 import systems.grebe.devtools.mcp.plugin.PluginManager.State;
 import systems.grebe.devtools.mcp.plugin.store.MavenPluginResolver;
 
@@ -94,7 +99,32 @@ class PluginApiOnlyTest {
                             public List<ConfigField> configFields() {
                                 return List.of(ConfigField.of("baseUrl", "Server-URL", FieldType.URL));
                             }
-                            public TicketSystem create(ProviderSettings settings) { return null; }
+                            public String projectHelp() { return Loaders.current(); }
+                            public TicketSystem create(ProviderSettings settings) { return new RedmineSystem(); }
+                        }
+                        """)
+                .source("com.acme.redmine.Loaders", """
+                        package com.acme.redmine;
+                        final class Loaders {
+                            static String current() { return Thread.currentThread().getContextClassLoader().getName(); }
+                        }
+                        """)
+                .source("com.acme.redmine.RedmineSystem", """
+                        package com.acme.redmine;
+                        import java.util.List;
+                        import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
+                        public class RedmineSystem implements TicketSystem, AutoCloseable {
+                            public static volatile String closedWith;
+                            public String id() { return "redmine"; }
+                            public Availability probe() { return new Availability(true, Loaders.current(), "u", null); }
+                            public List<Board> boards(String project) { return List.of(); }
+                            public BoardView board(String board, String project, BoardOptions options) { return null; }
+                            public TicketPage search(TicketQuery query) {
+                                throw new IllegalStateException("Redmine-Suche: " + Loaders.current());
+                            }
+                            public TicketDetails ticket(String key, String project, int maxComments) { return null; }
+                            public void close() { closedWith = Loaders.current(); }
+                            @Override public String toString() { return "RedmineSystem"; }
                         }
                         """)
                 .source("com.acme.redmine.Main", """
@@ -139,6 +169,21 @@ class PluginApiOnlyTest {
         assertThat(providers.provider("jira")).isNotNull(); // eingebaute bleiben
         assertThat(new TicketModule(providers).configSchema()).extracting(ConfigField::key)
                 .contains("redmine.enabled", "redmine.baseUrl");
+
+        // Aufrufe in Provider und erzeugtes System laufen mit dem ClassLoader des Plugins
+        TicketProvider redmine = providers.provider("redmine");
+        assertThat(redmine.projectHelp()).isEqualTo("plugin-redmine");
+        TicketSystem system = redmine.create(new ProviderSettings(k -> Optional.empty(), Duration.ofSeconds(5)));
+        assertThat(system.probe().version()).isEqualTo("plugin-redmine");
+        assertThat(system.boards("X")).isEmpty();
+        assertThatThrownBy(() -> system.search(null)).isInstanceOf(IllegalStateException.class)
+                .hasMessage("Redmine-Suche: plugin-redmine");
+        assertThat(system).isInstanceOf(AutoCloseable.class).hasToString("RedmineSystem");
+        ((AutoCloseable) system).close();
+        Class<?> impl = ContextLoaderProxy.unwrap(system).getClass();
+        assertThat(impl.getName()).isEqualTo("com.acme.redmine.RedmineSystem");
+        assertThat(impl.getDeclaredField("closedWith").get(null)).isEqualTo("plugin-redmine");
+        assertThat(Thread.currentThread().getContextClassLoader().getName()).isNotEqualTo("plugin-redmine");
 
         // Hinweise kommen durch die ClassLoader-Hülle des Plugins durch, Fortschritt erreicht den Client
         ToolCallback ping = manager.modules().getFirst()
