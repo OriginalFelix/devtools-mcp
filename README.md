@@ -21,6 +21,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
+| **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
@@ -304,6 +305,45 @@ wiederverwendet (höchstens zwei freie, geschlossen nach 10 Minuten Leerlauf, be
 `jdbc_disconnect`). *Verbindung testen* verbindet sich mit jeder Verbindung und zeigt Produkt, Version, Treiber und was
 erlaubt ist.
 
+### Datenbank-Branches (Dolt)
+
+[Dolt](https://github.com/dolthub/dolt), [Doltgres](https://www.doltgres.com/) und
+[Doltlite](https://github.com/dolthub/doltlite) versionieren Daten wie Git. Unter Module → Datenbank-Branches (Dolt)
+wird je Datenbank eingetragen: Name, *Art* (`dolt`, `doltgres`, `doltlite`), das *Git-Arbeitsverzeichnis* (Repository
+oder Worktree), dessen Branch sie folgt, der *Ort* (`host[:port]/datenbank` bzw. der Pfad der Doltlite-Datei),
+Benutzer, Passwort (verschlüsselt, nie an das LLM) und optional ein fester *Startpunkt neuer Branches*.
+
+**Wechselt der Git-Branch, wechselt die Datenbank mit** – egal ob über `git_checkout`, die IDE oder die Shell: Gibt es
+in der Datenbank noch keinen gleichnamigen Branch, wird er angelegt – vom Branch, auf dem die Datenbank gerade steht
+(wie `git checkout -b`), oder vom eingetragenen Startpunkt. Danach landen neue Verbindungen ohne Branch-Angabe auf ihm:
+
+| Art | Branch anlegen | Ausgecheckt für neue Verbindungen |
+|---|---|---|
+| Dolt (MySQL-Protokoll) | `CALL DOLT_BRANCH(name, start)` | `SET PERSIST <db>_default_branch` – sofort und über Neustarts |
+| Doltgres (PostgreSQL-Protokoll) | `SELECT dolt_branch(name, start)` | geht in Doltgres 1.4 noch nicht (der Server nimmt `<db>_default_branch` im `SET` nicht an) – die Anwendung verbindet sich über `…/db/branch`; die Meldung nennt die URL |
+| Doltlite (Datei) | `dolt_branch(name, start)` | `dolt_default_branch(name)` – steht in der Datei |
+
+* Den Wechsel meldet ein `WatchService` auf dem Git-Verzeichnis (dort liegt `HEAD`, bei Worktrees das Ziel der Datei
+  `.git`) binnen Millisekunden; im Test lagen Checkout bis umgestellter Branch unter 0,2 s, Anlegen und Umstellen
+  dauerten bei Dolt 65 ms, bei Doltlite 120 ms. Zusätzlich wird alle 10 s nachgesehen und ein gescheiterter Abgleich
+  (Server lief nicht) nach 15 s wiederholt. Losgelöster HEAD (Rebase, Bisect, Tag) ändert nichts.
+* Nach jedem `git_*`-Tool wird sofort abgeglichen; was sich an den Datenbanken geändert hat (oder fehlschlug), steht
+  einmal im Ergebnis des Tools. `dolt_status` zeigt Git-Branch, Standard-Branch, Branches und letzten Abgleich jeder
+  Datenbank, `dolt_sync` gleicht sofort ab. Im Modul gibt es dafür *Jetzt abgleichen*.
+* Ein fehlender Branch wird immer zuerst angelegt: zeigt `<db>_default_branch` bei Dolt auf einen Branch, den es nicht
+  gibt, lehnt der Server jede neue Verbindung auf die Datenbank ab.
+* Offene Verbindungen bleiben auf ihrem Branch – eine laufende Anwendung sieht den neuen erst nach dem Neuverbinden.
+  Freie Verbindungen der jdbc_*-Tools auf dieselbe Dolt-Datenbank (ohne Branch in der URL) werden geschlossen, damit
+  `jdbc_query` gleich den neuen Branch liest.
+* Treiber für Dolt (MySQL Connector/J) und Doltgres (pgJDBC) lädt das JDBC-Modul beim ersten Zugriff per Maven.
+  Doltlite hat keine Java-Bindings; das Modul ruft das Programm `doltlite` auf (Pfad im Modul oder im `PATH`, Download
+  unter [Releases](https://github.com/dolthub/doltlite/releases)) und gibt das SQL über die Standardeingabe.
+* Commits, Diffs und Merges der Daten: bei Dolt/Doltgres über `jdbc_execute` (`CALL DOLT_COMMIT('-Am', '…')`,
+  `SELECT * FROM dolt_diff(…)`) mit einer Verbindung im JDBC-Modul.
+
+Tests: `DoltServerContainerTest` startet `dolthub/dolt-sql-server` und `dolthub/doltgresql` mit podman oder docker
+(übersprungen ohne Image), `DoltliteBackendTest` braucht `doltlite` im `PATH` oder `-Pdoltlite=<pfad>`.
+
 ### Chat-Systeme (ServiceLoader)
 
 Das LLM schreibt dem Nutzer über einen Chat und bekommt von dort Antworten und Anweisungen – etwa Rückfragen und
@@ -501,6 +541,8 @@ Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der S
   standardmäßig an, jede ändernde Art von Anweisung hat einen eigenen Schalter, und je Verbindung lässt sich der Zugriff
   auf „nur lesen“ deckeln. Die Einordnung der Anweisungen ist vorsichtig, aber kein vollständiger SQL-Parser – die
   wirksamste Grenze bleibt ein Datenbankbenutzer, der nur die nötigen Rechte hat.
+* Datenbank-Branches (Dolt): Zugangsdaten verschlüsselt und nie in Ausgaben; das Modul legt nur Branches an und stellt
+  den Standard-Branch um – es löscht, mergt und setzt nichts zurück, auch nicht, wenn ein Git-Branch gelöscht wird.
 * Chat: Token, Passwörter und das Teams-Refresh-Token verschlüsselt und nie in Tool-Ausgaben. Chat-Nachrichten sind
   Eingaben, die das LLM wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Mitglied
   einer freigegebenen Unterhaltung Anweisungen geben), für Matrix ein eigenes Bot-Konto verwenden und Unterhaltungen
@@ -1152,7 +1194,7 @@ MCP-Tool-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `open
 Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die Callbacks mit
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
-zerstörerisch. Bisher annotiert: SSH, Datenbanken (JDBC), Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
+zerstörerisch. Bisher annotiert: SSH, Datenbanken (JDBC), Datenbank-Branches, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
 Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`.
 
 ## Plugins

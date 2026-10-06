@@ -65,6 +65,22 @@ final class JdbcSessions implements AutoCloseable {
         return true;
     }
 
+    /** Schließt die freien Verbindungen aller Verbindungen, auf die {@code filter} passt; Anzahl der geschlossenen. */
+    synchronized int evictWhere(java.util.function.Predicate<JdbcConnection> filter) {
+        int closed = 0;
+        for (Deque<Idle> q : idle.values()) {
+            for (java.util.Iterator<Idle> it = q.iterator(); it.hasNext(); ) {
+                Idle i = it.next();
+                if (filter.test(i.config())) {
+                    JdbcEnvironment.closeQuietly(i.connection());
+                    it.remove();
+                    closed++;
+                }
+            }
+        }
+        return closed;
+    }
+
     synchronized boolean isOpen(String name) {
         Deque<Idle> q = idle.get(name);
         return q != null && !q.isEmpty();
