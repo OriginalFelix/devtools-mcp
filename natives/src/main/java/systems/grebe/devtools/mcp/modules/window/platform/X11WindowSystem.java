@@ -36,6 +36,9 @@ final class X11WindowSystem implements WindowSystem {
     private static final long ABOVE = 0;
     private static final long SUBSTRUCTURE_MASK = (1L << 19) | (1L << 20);
     private static final int XEVENT_SIZE = 192;
+    private static final int SHAPE_INPUT = 2;
+    private static final int SHAPE_SET = 0;
+    private static final int UNSORTED = 0;
 
     private final MethodHandle xOpenDisplay;
     private final MethodHandle xDefaultRootWindow;
@@ -48,6 +51,9 @@ final class X11WindowSystem implements WindowSystem {
     private final MethodHandle xMapRaised;
     private final MethodHandle xSync;
     private final MethodHandle xSetErrorHandler;
+    /** {@code XShapeCombineRectangles} aus libXext; {@code null}, wenn die Bibliothek fehlt. */
+    private final MethodHandle xShapeCombineRectangles;
+    private final java.util.Set<Long> passingThrough = new java.util.HashSet<>();
     private final MemorySegment errorHandler;
 
     private final MemorySegment display;
@@ -81,6 +87,7 @@ final class X11WindowSystem implements WindowSystem {
         xMapRaised = Natives.bind(linker, x11, "XMapRaised", FunctionDescriptor.of(JAVA_INT, ADDRESS, JAVA_LONG));
         xSync = Natives.bind(linker, x11, "XSync", FunctionDescriptor.of(JAVA_INT, ADDRESS, JAVA_INT));
         xSetErrorHandler = Natives.bind(linker, x11, "XSetErrorHandler", FunctionDescriptor.of(ADDRESS, ADDRESS));
+        xShapeCombineRectangles = shapeFunction(linker);
         try {
             MethodHandle ignore = MethodHandles.lookup().findStatic(X11WindowSystem.class, "ignoreError",
                     MethodType.methodType(int.class, MemorySegment.class, MemorySegment.class));
@@ -103,6 +110,16 @@ final class X11WindowSystem implements WindowSystem {
         netWmStateHidden = atom("_NET_WM_STATE_HIDDEN");
         wmName = atom("WM_NAME");
         utf8String = atom("UTF8_STRING");
+    }
+
+    private static MethodHandle shapeFunction(Linker linker) {
+        try {
+            SymbolLookup xext = SymbolLookup.libraryLookup("libXext.so.6", Arena.global());
+            return Natives.bindOptional(linker, xext, "XShapeCombineRectangles", FunctionDescriptor.of(JAVA_INT,
+                    ADDRESS, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));
+        } catch (IllegalArgumentException e) {
+            return null; // ohne libXext bleiben Rahmen und Hinweis anklickbar
+        }
     }
 
     /** Fehler-Handler, der X-Fehler ignoriert statt den Prozess zu beenden. */
@@ -306,6 +323,17 @@ final class X11WindowSystem implements WindowSystem {
         }
         own.forEach(id -> restack(id, target.id()));
         return false;
+    }
+
+    /** Leere Eingabe-Form (Shape-Erweiterung): Mausereignisse gehen an das Fenster darunter. */
+    @Override
+    public synchronized void passThrough(java.awt.Window overlay) {
+        long id = com.sun.jna.Native.getWindowID(overlay);
+        if (xShapeCombineRectangles == null || id == 0 || !passingThrough.add(id)) {
+            return;
+        }
+        guarded(() -> Natives.call(xShapeCombineRectangles, "XShapeCombineRectangles", display, id, SHAPE_INPUT, 0, 0,
+                MemorySegment.NULL, 0, SHAPE_SET, UNSORTED));
     }
 
     private void restack(long own, long target) {

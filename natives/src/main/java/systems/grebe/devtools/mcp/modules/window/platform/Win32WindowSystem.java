@@ -36,6 +36,9 @@ final class Win32WindowSystem implements WindowSystem {
 
     private static final int GWL_EXSTYLE = -20;
     private static final long WS_EX_TOOLWINDOW = 0x80;
+    private static final int WS_EX_TRANSPARENT = 0x20;
+    private static final int WS_EX_LAYERED = 0x80000;
+    private static final int LWA_ALPHA = 0x2;
     private static final int SW_RESTORE = 9;
     private static final int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
     private static final int DWMWA_CLOAKED = 14;
@@ -265,6 +268,29 @@ final class Win32WindowSystem implements WindowSystem {
         long[] own = overlays.stream().map(com.sun.jna.Native::getWindowPointer).filter(java.util.Objects::nonNull)
                 .mapToLong(com.sun.jna.Pointer::nativeValue).toArray();
         return own.length == overlays.size() && Win32ZOrder.stackAbove(own, target.id());
+    }
+
+    /**
+     * {@code WS_EX_TRANSPARENT} nimmt das Fenster aus der Treffersuche, wirkt bei Top-Level-Fenstern aber nur zusammen
+     * mit {@code WS_EX_LAYERED}. AWT entfernt {@code WS_EX_LAYERED} wieder, wenn die Deckkraft auf 1 geht – deshalb bei
+     * jedem Aufruf prüfen und nachziehen.
+     */
+    @Override
+    public void passThrough(java.awt.Window overlay) {
+        com.sun.jna.Pointer p = com.sun.jna.Native.getWindowPointer(overlay);
+        if (p == null) {
+            return;
+        }
+        com.sun.jna.platform.win32.WinDef.HWND h = new com.sun.jna.platform.win32.WinDef.HWND(p);
+        com.sun.jna.platform.win32.User32 u = com.sun.jna.platform.win32.User32.INSTANCE;
+        int ex = u.GetWindowLong(h, GWL_EXSTYLE);
+        if ((ex & WS_EX_LAYERED) != 0 && (ex & WS_EX_TRANSPARENT) != 0) {
+            return;
+        }
+        u.SetWindowLong(h, GWL_EXSTYLE, ex | WS_EX_LAYERED | WS_EX_TRANSPARENT);
+        if ((ex & WS_EX_LAYERED) == 0) {
+            u.SetLayeredWindowAttributes(h, 0, (byte) 0xFF, LWA_ALPHA); // sonst bliebe ein Layered-Fenster unsichtbar
+        }
     }
 
     /** {@code PrintWindow} über {@link Win32Messages} – das Fenster bleibt, wo es ist. */

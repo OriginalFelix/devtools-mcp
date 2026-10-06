@@ -157,6 +157,36 @@ class WindowToolsTest {
     }
 
     @Test
+    void ownPointerIsNotStoppedByOtherPointers() {
+        bind();
+        desktop.independent = true;
+        input.click(10, 10, null, null, null, "0x1A2B");
+        desktop.pointer = new java.awt.Point(900, 900); // z.B. der Zeiger einer anderen KI oder die Maus des Nutzers
+
+        assertThat(input.click(20, 20, null, null, null, "0x1A2B")).contains("Klick");
+    }
+
+    @Test
+    void pastingRestoresAnEmptyClipboard() {
+        bind();
+        desktop.clipboard = null;
+
+        keys.type("ü", "paste", "0x1A2B");
+
+        assertThat(desktop.clipboard).isNotNull();
+        assertThat(desktop.clipboard.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)).isTrue();
+        assertThat(clipboardText()).isEmpty(); // der eingefügte Text bleibt nicht darin stehen
+    }
+
+    private String clipboardText() {
+        try {
+            return (String) desktop.clipboard.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
     void userMovingTheMouseAbortsAndLocksInput() {
         bind();
         input.click(10, 10, null, null, null, "0x1A2B");

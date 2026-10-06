@@ -185,7 +185,7 @@ final class WindowSupport {
         return exclusive(() -> {
             InputDevice d = device.get();
             try {
-                presence.check(d.pointer(), settings.cooldown(), settings.abortOnMouseMove());
+                presence.check(d.userPointer(), settings.cooldown(), settings.abortOnMouseMove());
                 NativeWindow w = resolve(windowId);
                 if (!bringToFront(w)) {
                     throw new IllegalStateException("Fenster " + w.hexId() + " („" + w.title() + "“) ließ sich nicht in "
@@ -225,7 +225,7 @@ final class WindowSupport {
         return exclusive(() -> {
             InputDevice d = device.get();
             try {
-                presence.check(d.pointer(), settings.cooldown(), settings.abortOnMouseMove());
+                presence.check(d.userPointer(), settings.cooldown(), settings.abortOnMouseMove());
                 NativeWindow w = resolve(windowId);
                 if (w.minimized()) {
                     throw new IllegalStateException("Fenster " + w.hexId() + " („" + w.title() + "“) ist minimiert – "

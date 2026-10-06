@@ -117,14 +117,16 @@ final class MacInput {
     private static final long FLAG_COMMAND = 0x100000;
 
     /**
-     * Text in das fokussierte Element des Prozesses: zuerst über die Bedienungshilfen ({@link #insert}), sonst als
-     * Unicode-Tastenereignisse, unabhängig vom Tastaturlayout.
+     * Text in das fokussierte Element des Prozesses: zuerst über die Bedienungshilfen ({@link #insert}); nur wenn die
+     * App ihn dort nicht annimmt, als Unicode-Tastenereignisse, unabhängig vom Tastaturlayout.
      *
-     * @return ob der Text nachweislich angekommen ist – bei Tastenereignissen ist das ungeprüft ({@code false})
+     * @return ob der Text nachweislich angekommen ist – bei Tastenereignissen und nicht nachprüfbarem Einfügen ist das
+     *         ungeprüft ({@code false})
      */
     boolean type(int pid, String text) {
-        if (insert(pid, text)) {
-            return true;
+        Insert result = insert(pid, text);
+        if (result != Insert.FAILED) {
+            return result == Insert.CONFIRMED; // angenommen: nicht zusätzlich tippen, sonst stünde er doppelt da
         }
         for (int i = 0; i < text.length(); i += UNICODE_CHUNK) {
             short[] units = MacNatives.utf16(text.substring(i, Math.min(text.length(), i + UNICODE_CHUNK)));
@@ -139,43 +141,60 @@ final class MacInput {
         return false;
     }
 
+    /** Ergebnis von {@link #insert}. */
+    enum Insert {
+        /** Der Wert des Elements hat sich geändert. */
+        CONFIRMED,
+        /** Die App hat den Text angenommen, der Wert ist (noch) unverändert – manche Apps aktualisieren ihn später. */
+        ACCEPTED,
+        /** Kein fokussiertes Element oder die App unterstützt das Setzen nicht. */
+        FAILED
+    }
+
+    private static final int CONFIRM_POLLS = 5;
+    private static final int CONFIRM_POLL_MILLIS = 20;
+
     /**
      * Setzt den Text als Auswahl des fokussierten Elements ({@code AXSelectedText}) – wie Einfügen an der Schreibmarke,
      * ohne das Fenster zu aktivieren. Normaler Text geht als Tastenereignis nur an das Key-Fenster einer aktiven App;
-     * im Hintergrund verwerfen viele Apps ihn.
-     *
-     * @return ob das Element den Text übernommen hat; {@code false}, wenn es kein fokussiertes Element gibt, die App
-     *         die Bedienungshilfen nicht unterstützt oder sich der Wert nachweislich nicht geändert hat
+     * im Hintergrund verwerfen viele Apps ihn. Ob er angekommen ist, zeigt der Wert des Elements ({@code AXValue}) –
+     * kurz nachgelesen, weil manche Apps ihn erst verzögert aktualisieren.
      */
-    boolean insert(int pid, String text) {
+    Insert insert(int pid, String text) {
         CoreFoundation cf = CoreFoundation.INSTANCE;
         ApplicationServices ax = ApplicationServices.INSTANCE;
         Pointer app = ax.AXUIElementCreateApplication(pid);
         if (app == null) {
-            return false;
+            return Insert.FAILED;
         }
         try {
             PointerByReference ref = new PointerByReference();
             if (ax.AXUIElementCopyAttributeValue(app, AX_FOCUSED, ref) != ApplicationServices.kAXErrorSuccess
                     || ref.getValue() == null) {
-                return false;
+                return Insert.FAILED;
             }
             Pointer focused = ref.getValue();
             Pointer before = copy(focused, AX_VALUE);
             Pointer value = cf.CFStringCreateWithCharacters(null, MacNatives.utf16(text), text.length());
             try {
                 if (ax.AXUIElementSetAttributeValue(focused, AX_SELECTED_TEXT, value) != ApplicationServices.kAXErrorSuccess) {
-                    return false;
+                    return Insert.FAILED;
                 }
                 if (before == null) {
-                    return true; // Wert nicht lesbar – dem Rückgabewert vertrauen
+                    return Insert.ACCEPTED; // Wert nicht lesbar – angenommen, aber nicht nachprüfbar
                 }
-                Pointer after = copy(focused, AX_VALUE);
-                try {
-                    return after == null || cf.CFEqual(before, after) == 0;
-                } finally {
-                    release(after);
+                for (int i = 0; i < CONFIRM_POLLS; i++) {
+                    Pointer after = copy(focused, AX_VALUE);
+                    try {
+                        if (after == null || cf.CFEqual(before, after) == 0) {
+                            return Insert.CONFIRMED;
+                        }
+                    } finally {
+                        release(after);
+                    }
+                    sleep(CONFIRM_POLL_MILLIS);
                 }
+                return Insert.ACCEPTED;
             } finally {
                 cf.CFRelease(value);
                 release(before);
@@ -183,6 +202,15 @@ final class MacInput {
             }
         } finally {
             cf.CFRelease(app);
+        }
+    }
+
+    private static void sleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Unterbrochen", e);
         }
     }
 

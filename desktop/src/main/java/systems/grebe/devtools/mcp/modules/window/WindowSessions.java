@@ -1,8 +1,8 @@
 package systems.grebe.devtools.mcp.modules.window;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -18,12 +18,16 @@ import systems.grebe.devtools.mcp.core.ToolSession;
 
 /**
  * Fensterzustand je KI: jede MCP-Session ({@link ToolSession}) hat ihre eigene {@link WindowSession} mit eigener Farbe
- * (siehe {@link AiColors}), eigener Bindung, eigenem Rahmen und Zeiger. Ein Prozess gehört immer nur einer KI. Nach
- * {@link #IDLE} ohne Fenster-Tool-Aufruf wird die Session aufgeräumt und ihre Farbe frei.
+ * (siehe {@link AiColors}), eigener Bindung, eigenem Rahmen und Zeiger. Ein Prozess gehört immer nur einer KI – hat
+ * sie aber {@link #TAKEOVER} lang kein Fenster-Tool aufgerufen (z.B. weil der Client beendet oder neu gestartet wurde,
+ * ohne die Session zu schließen), darf eine andere KI ihn übernehmen. Nach {@link #IDLE} ohne Fenster-Tool-Aufruf wird
+ * die Session aufgeräumt und ihre Farbe frei.
  */
 final class WindowSessions implements AutoCloseable {
 
     static final Duration IDLE = Duration.ofMinutes(30);
+    /** So lange ohne Fenster-Tool-Aufruf, bis eine andere KI die Bindung übernehmen darf. */
+    static final Duration TAKEOVER = Duration.ofMinutes(2);
 
     private record Entry(WindowSession session, long[] lastUsed) {
     }
@@ -86,44 +90,71 @@ final class WindowSessions implements AutoCloseable {
     private WindowSession.Peers peers(String self) {
         return new WindowSession.Peers() {
             @Override
-            public Optional<String> conflict(WindowSession.Binding wanted, boolean siblings) {
-                return WindowSessions.this.conflict(self, wanted, siblings);
+            public Optional<String> bind(WindowSession.Binding wanted, boolean siblings, Runnable commit) {
+                return WindowSessions.this.bind(self, wanted, siblings, commit);
             }
 
             @Override
             public Set<Long> claimed() {
                 Set<Long> out = new HashSet<>();
-                others(self).forEach((other, theirs) -> out.addAll(theirs.pids(false)));
+                others(self).forEach(o -> out.addAll(o.binding().pids(false)));
                 return out;
             }
         };
     }
 
+    /** Bindung einer anderen KI und wann sie zuletzt ein Fenster-Tool aufgerufen hat. */
+    private record Other(WindowSession session, WindowSession.Binding binding, long lastUsed) {
+    }
+
     /**
-     * Überschneidet sich die gewünschte Bindung mit der einer anderen KI? Geschwister zählen auf beiden Seiten mit: wer
-     * über Geschwister an einen fremden Prozess käme, darf nicht binden – und auch nicht den Geschwisterprozess einer
-     * fremden Bindung.
+     * Bindet, wenn sich die gewünschte Bindung mit keiner aktiven einer anderen KI überschneidet. Geschwister zählen auf
+     * beiden Seiten mit: wer über Geschwister an einen fremden Prozess käme, darf nicht binden – und auch nicht den
+     * Geschwisterprozess einer fremden Bindung. Überschneidungen mit KIs, die seit {@link #TAKEOVER} nichts getan haben,
+     * werden übernommen: deren Bindung fällt weg. Prüfen und Binden sind atomar, damit zwei KIs, die gleichzeitig
+     * binden, nicht beide denselben Prozess bekommen.
      */
-    private Optional<String> conflict(String self, WindowSession.Binding wanted, boolean siblings) {
-        Set<Long> mine = wanted.pids(false);
-        Set<Long> mineReach = wanted.pids(siblings);
-        for (Map.Entry<WindowSession, WindowSession.Binding> e : others(self).entrySet()) {
-            Set<Long> theirs = e.getValue().pids(false);
-            if (!Collections.disjoint(mineReach, theirs) || !Collections.disjoint(mine, e.getValue().pids(siblings))) {
-                return Optional.of(wanted.name() + " wird gerade von " + e.getKey().client() + " gesteuert"
-                        + (Collections.disjoint(mine, theirs) ? " (Geschwisterprozess)" : "") + ".");
+    private Optional<String> bind(String self, WindowSession.Binding wanted, boolean siblings, Runnable commit) {
+        List<WindowSession> takenOver = new ArrayList<>();
+        synchronized (this) {
+            long now = clock.getAsLong();
+            Set<Long> mine = wanted.pids(false);
+            Set<Long> mineReach = wanted.pids(siblings);
+            for (Other o : others(self)) {
+                Set<Long> theirs = o.binding().pids(false);
+                if (Collections.disjoint(mineReach, theirs) && Collections.disjoint(mine, o.binding().pids(siblings))) {
+                    continue;
+                }
+                if (now - o.lastUsed() >= TAKEOVER.toMillis()) {
+                    takenOver.add(o.session());
+                    continue;
+                }
+                return Optional.of(wanted.name() + " wird gerade von " + o.session().client() + " gesteuert"
+                        + (Collections.disjoint(mine, theirs) ? " (Geschwisterprozess)" : "") + ". Ruft sie "
+                        + TAKEOVER.toMinutes() + " Minuten lang kein Fenster-Tool auf, wird der Prozess frei.");
             }
+            commit.run();
+            Entry me = sessions.get(self);
+            String by = me == null ? "eine andere KI" : me.session().client();
+            takenOver.forEach(s -> s.takenOver("Die Bindung an " + wanted.name() + " hat " + by + " übernommen, weil "
+                    + "diese KI " + TAKEOVER.toMinutes() + " Minuten lang kein Fenster-Tool aufgerufen hat. Mit "
+                    + "window_list und window_bind neu binden."));
         }
+        takenOver.forEach(WindowSession::releaseDevices); // außerhalb der Sperre: blendet Rahmen und Zeiger aus
         return Optional.empty();
     }
 
     /** Lebende Bindungen der anderen KIs. */
-    private Map<WindowSession, WindowSession.Binding> others(String self) {
-        Map<WindowSession, WindowSession.Binding> out = new HashMap<>();
+    private List<Other> others(String self) {
+        List<Other> out = new ArrayList<>();
         for (Map.Entry<String, Entry> e : sessions.entrySet()) {
             WindowSession.Binding theirs = e.getValue().session.current();
             if (!e.getKey().equals(self) && theirs != null && theirs.process().isAlive()) {
-                out.put(e.getValue().session, theirs);
+                long last;
+                synchronized (e.getValue().lastUsed) {
+                    last = e.getValue().lastUsed[0];
+                }
+                out.add(new Other(e.getValue().session, theirs, last));
             }
         }
         return out;

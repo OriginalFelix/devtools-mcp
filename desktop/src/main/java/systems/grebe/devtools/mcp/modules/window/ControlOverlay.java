@@ -33,7 +33,8 @@ import systems.grebe.devtools.mcp.modules.window.platform.WindowSystem;
  * Abbruch-Möglichkeit und ein eigener KI-Zeiger an der Stelle, an der die KI gerade arbeitet. Der Mauszeiger des
  * Nutzers bleibt unberührt.
  *
- * <p>Rahmen und Hinweis sind kleine, immer oben liegende Swing-Fenster, die nie den Fokus nehmen; der Rahmen besteht
+ * <p>Rahmen und Hinweis sind kleine, durchklickbare Swing-Fenster auf der Ebene des Fensters (wo das System es kann,
+ * sonst immer oben), die nie den Fokus nehmen; der Rahmen besteht
  * aus vier schmalen Streifen außerhalb der Fenstergrenzen, damit das Fenster selbst bedienbar bleibt und Screenshots
  * ihn nicht enthalten. Der KI-Zeiger ist ein nativer zweiter Zeiger ({@link CursorController}); ist er auf diesem
  * System nicht verfügbar, fehlt nur er. Solange gesteuert wird, folgt der Rahmen dem Fenster; nach
@@ -59,6 +60,8 @@ final class ControlOverlay implements AutoCloseable {
     private final Color color;
     /** Legt Rahmen und Hinweis auf die Ebene des Fensters; {@code null} = über allen Fenstern. */
     private final WindowSystem stacking;
+    /** Macht Rahmen und Hinweis durchklickbar; {@code null} = ohne Fenstersystem (Tests). */
+    private final WindowSystem windows;
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "window-control-overlay");
         t.setDaemon(true);
@@ -97,6 +100,7 @@ final class ControlOverlay implements AutoCloseable {
         this.mode = mode;
         this.color = color;
         this.stacking = windows != null && windows.canStackAbove() ? windows : null;
+        this.windows = windows;
     }
 
     /** Text des Hinweises, z.B. die Abbruch-Möglichkeit. */
@@ -262,6 +266,7 @@ final class ControlOverlay implements AutoCloseable {
     private void reveal(List<JWindow> shown, NativeWindow target) {
         if (stacking == null) {
             shown.stream().filter(w -> !w.isVisible()).forEach(w -> w.setVisible(true));
+            passThrough(shown);
             return;
         }
         shown.stream().filter(w -> !w.isDisplayable()).forEach(JWindow::addNotify); // natives Fenster, unsichtbar
@@ -274,6 +279,21 @@ final class ControlOverlay implements AutoCloseable {
                 w.setVisible(true);
             } else if (stacked && TRANSLUCENT && w.getOpacity() < 1f) {
                 w.setOpacity(1f);
+            }
+        }
+        passThrough(shown);
+    }
+
+    /** Klicks gehen durch Rahmen und Hinweis an das Fenster darunter (z.B. die Knöpfe eines maximierten Fensters). */
+    private void passThrough(List<JWindow> shown) {
+        if (windows == null) {
+            return;
+        }
+        for (JWindow w : shown) {
+            try {
+                windows.passThrough(w);
+            } catch (RuntimeException | LinkageError e) {
+                LOG.log(Level.FINE, "Anzeige-Fenster nicht durchklickbar", e);
             }
         }
     }

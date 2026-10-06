@@ -51,7 +51,8 @@ public class WindowLaunchTools {
         }
         List<String> args = arguments == null ? List.of() : List.copyOf(arguments);
         String name = ProcessFilter.name(program.strip());
-        String commandLine = program.strip() + (args.isEmpty() ? "" : " " + String.join(" ", args));
+        // nur das Programm zählt, nicht die Argumente: sonst genügte ein passender Text darin („cmd /c … winword“)
+        String commandLine = program.strip();
         // nur ein absoluter Pfad kann in einem freigegebenen Ordner liegen ("winword" nicht)
         String executable = absolutePath(program.strip());
         support.filter().rejection(new ProcessFilter.Info(0, name, commandLine, executable)).ifPresent(reason -> {

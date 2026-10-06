@@ -97,7 +97,7 @@ class ProcessTreeScopeTest {
         first.bind(new WindowSession.Binding(a.toHandle(), "A", true), false);
 
         assertThatThrownBy(() -> second.bind(new WindowSession.Binding(b.toHandle(), "B", true), true))
-                .hasMessage("B wird gerade von Claude gesteuert (Geschwisterprozess).");
+                .hasMessageStartingWith("B wird gerade von Claude gesteuert (Geschwisterprozess).");
 
         second.bind(new WindowSession.Binding(b.toHandle(), "B", true), false); // ohne Geschwister kein Konflikt
         FakeDesktop desktop = new FakeDesktop();
@@ -118,6 +118,18 @@ class ProcessTreeScopeTest {
         FakeProcess calculator = new FakeProcess(500, "/System/Applications/Calculator.app", launchd);
         new FakeProcess(501, "/Applications/IntelliJ IDEA.app", launchd);
         assertThat(new WindowSession.Binding(calculator, "Calculator", true).pids(true)).containsExactly(500L);
+    }
+
+    @Test
+    void aShellIsBoundWithoutItsChildren() {
+        FakeProcess explorer = new FakeProcess(300, "explorer.exe");
+        new FakeProcess(301, "WINWORD.EXE", explorer);
+        new FakeProcess(302, "chrome.exe", explorer);
+
+        WindowSession.Binding shell = new WindowSession.Binding(explorer, "explorer", true);
+
+        assertThat(shell.pids(false)).containsExactly(300L); // nicht alle aus dem Startmenü gestarteten Programme
+        assertThat(shell.describe()).contains("ohne Kindprozesse (Shell-Prozess)");
     }
 
     /** Prozess mit festem Programm und Elternprozess, ohne echten Prozess dahinter. */

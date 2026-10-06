@@ -197,8 +197,23 @@ final class MacWindowSystem implements WindowSystem {
                 || (byte) Natives.call(cgPreflightScreenCapture, "CGPreflightScreenCaptureAccess") != 0;
     }
 
+    /**
+     * Ohne die eigenen Anzeige-Fenster: auf Ebene 0 eingeordnet, lägen Rahmen und Hinweis sonst vor ihrem Fenster und
+     * gälten als Vordergrund ({@link #foreground}).
+     */
     @Override
-    public synchronized List<NativeWindow> windows() {
+    public List<NativeWindow> windows() {
+        long self = ProcessHandle.current().pid();
+        return list(-1).stream().filter(w -> w.pid() != self).toList();
+    }
+
+    /**
+     * Fenster von vorn nach hinten.
+     *
+     * @param ownerPid {@code -1} = normale Anwendungsfenster aller Prozesse (Ebene 0); sonst alle Fenster dieses
+     *                 Prozesses auf jeder Ebene (eigene Anzeige-Fenster schweben, bis sie eingeordnet sind)
+     */
+    private synchronized List<NativeWindow> list(long ownerPid) {
         MemorySegment list = (MemorySegment) Natives.call(cgWindowList, "CGWindowListCopyWindowInfo",
                 ON_SCREEN_ONLY | EXCLUDE_DESKTOP_ELEMENTS, 0);
         if (list.address() == 0) {
@@ -216,7 +231,8 @@ final class MacWindowSystem implements WindowSystem {
                 Long pid = number(dict, keyOwnerPid, number);
                 MemorySegment boundsDict = value(dict, keyBounds);
                 // Layer 0 = normale Anwendungsfenster (keine Menüleiste, kein Dock, keine Overlays)
-                if (layer == null || layer != 0 || id == null || pid == null || boundsDict.address() == 0
+                boolean wanted = ownerPid < 0 ? layer != null && layer == 0 : pid != null && pid == ownerPid;
+                if (!wanted || id == null || pid == null || boundsDict.address() == 0
                         || (byte) Natives.call(cgRectFromDictionary, "CGRectMakeWithDictionaryRepresentation",
                         boundsDict, rect) == 0) {
                     continue;
@@ -273,16 +289,19 @@ final class MacWindowSystem implements WindowSystem {
     }
 
     /**
-     * Sucht die Fensternummern der eigenen Fenster über die Fensterliste (eigene PID, gleiche Grenzen) und ordnet sie
-     * per AppKit direkt über das Ziel ({@link MacZOrder}) – nur, wenn sie dort nicht schon zusammenhängend liegen.
-     * Fenster, die noch nicht auf dem Bildschirm sind, haben keine Nummer: dann {@code false}.
+     * Sucht die Fensternummern der eigenen Fenster über die Fensterliste (eigene PID, gleiche Grenzen, jede Ebene) und
+     * ordnet sie per AppKit direkt über das Ziel ({@link MacZOrder}) – nur, wenn sie dort nicht schon zusammenhängend
+     * liegen. Das Ordnen läuft asynchron auf dem AppKit-Hauptthread; bestätigt ({@code true}) ist es erst, wenn ein
+     * späterer Aufruf die Fenster an der richtigen Stelle findet. Fenster, die noch nicht auf dem Bildschirm sind, haben
+     * keine Nummer.
      */
     @Override
     public boolean stackAbove(List<java.awt.Window> overlays, NativeWindow target) {
-        List<NativeWindow> all = windows(); // von vorn nach hinten
+        List<NativeWindow> all = list(-1); // von vorn nach hinten, Ebene 0, mit den eigenen Fenstern
+        List<NativeWindow> mine = list(ProcessHandle.current().pid());
         java.util.Set<Long> own = new java.util.HashSet<>();
         for (java.awt.Window overlay : overlays) {
-            Long n = ownNumber(overlay, all);
+            Long n = ownNumber(overlay, mine);
             if (n != null) {
                 own.add(n);
             }
@@ -304,10 +323,34 @@ final class MacWindowSystem implements WindowSystem {
             }
         }
         own.forEach(n -> MacZOrder.stackAbove(n, target.id()));
-        return own.size() == overlays.size();
+        return false;
     }
 
-    /** Fensternummer eines eigenen Fensters – gemerkt, sobald es einmal in der Fensterliste auftaucht. */
+    /** Fenster, die schon Mausereignisse durchlassen. */
+    private final java.util.Map<java.awt.Window, Boolean> passingThrough = new java.util.WeakHashMap<>();
+
+    @Override
+    public void passThrough(java.awt.Window overlay) {
+        synchronized (passingThrough) {
+            if (passingThrough.containsKey(overlay)) {
+                return;
+            }
+        }
+        Long n = ownNumber(overlay, list(ProcessHandle.current().pid()));
+        if (n == null) {
+            return; // noch nicht auf dem Bildschirm – beim nächsten Nachführen
+        }
+        MacZOrder.ignoreMouse(n);
+        synchronized (passingThrough) {
+            passingThrough.put(overlay, Boolean.TRUE);
+        }
+    }
+
+    /**
+     * Fensternummer eines eigenen Fensters – gemerkt, sobald es einmal in der Fensterliste auftaucht.
+     *
+     * @param all die Fenster dieses Prozesses ({@link #list} mit der eigenen PID)
+     */
     private Long ownNumber(java.awt.Window overlay, List<NativeWindow> all) {
         synchronized (ownNumbers) {
             Long known = ownNumbers.get(overlay);
@@ -316,9 +359,8 @@ final class MacWindowSystem implements WindowSystem {
             }
         }
         Rectangle want = overlay.getBounds();
-        long self = ProcessHandle.current().pid();
         Long n = all.stream()
-                .filter(w -> w.pid() == self && Math.abs(w.bounds().x - want.x) <= 1
+                .filter(w -> Math.abs(w.bounds().x - want.x) <= 1
                         && Math.abs(w.bounds().y - want.y) <= 1 && Math.abs(w.bounds().width - want.width) <= 1
                         && Math.abs(w.bounds().height - want.height) <= 1)
                 .map(NativeWindow::id).findFirst().orElse(null);

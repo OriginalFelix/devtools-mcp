@@ -72,7 +72,7 @@ final class InputGuard {
     /** Vor jedem Schritt: Nutzer hat nicht eingegriffen, Fenster liegt noch vorn (sofern verlangt). */
     void checkpoint() {
         WindowSupport.Settings s = support.settings();
-        presence.check(device.pointer(), s.cooldown(), s.abortOnMouseMove());
+        presence.check(device.userPointer(), s.cooldown(), s.abortOnMouseMove());
         if (requireForeground && !support.isForeground(window)) {
             throw new FocusLostException("Fenster " + window.hexId() + " („" + window.title() + "“) ist nicht mehr im "
                     + "Vordergrund – Eingabe abgebrochen. Mit window_screenshot nachsehen, was sich geöffnet hat.");
@@ -82,7 +82,9 @@ final class InputGuard {
     void move(Point p) {
         checkpoint();
         device.move(p.x, p.y);
-        presence.expect(p);
+        if (!device.independentPointer()) {
+            presence.expect(p); // nur die echte Maus – ein eigener Zeiger bewegt sie nicht
+        }
     }
 
     /** Ein Ereignis ohne Mausbewegung (Taste, Maustaste, Rad) nach erfolgreicher Prüfung. */

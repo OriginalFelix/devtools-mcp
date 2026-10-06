@@ -41,12 +41,28 @@ class WindowSessionsTest {
     void aProcessBelongsToOneAiOnly() {
         in(claude).bind(me(), false);
 
-        assertThatThrownBy(() -> in(codex).bind(me(), false)).hasMessage("java wird gerade von Claude Code gesteuert.");
+        assertThatThrownBy(() -> in(codex).bind(me(), false)).hasMessageStartingWith("java wird gerade von Claude Code "
+                + "gesteuert.");
 
         in(claude).bind(me(), false); // dieselbe KI darf neu binden
         in(claude).unbind();
         in(codex).bind(me(), false); // frei geworden
         assertThat(in(codex).current()).isNotNull();
+    }
+
+    @Test
+    void anAiThatStoppedCallingToolsLosesItsProcessToAnother() {
+        in(claude).bind(me(), false);
+        now.addAndGet(WindowSessions.TAKEOVER.toMillis() - 1);
+        assertThatThrownBy(() -> in(codex).bind(me(), false)).hasMessageContaining("2 Minuten");
+
+        now.addAndGet(1); // Claude hat 2 Minuten nichts getan – z.B. Client neu gestartet
+        in(codex).bind(me(), false);
+
+        assertThat(in(codex).current()).isNotNull();
+        assertThatThrownBy(() -> in(claude).require()).hasMessageContaining("hat Codex übernommen");
+        in(claude).unbind();
+        assertThatThrownBy(() -> in(claude).require()).hasMessageContaining("Kein Prozess gebunden");
     }
 
     @Test

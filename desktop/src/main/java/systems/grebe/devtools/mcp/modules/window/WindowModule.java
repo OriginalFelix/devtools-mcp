@@ -230,9 +230,10 @@ public class WindowModule implements ToolModule {
                                 + "sich beim Start trotzdem nach vorn holt, sofort wieder hinter dein Fenster gesetzt."),
                 ConfigField.of(ALLOW_SIBLINGS, "Geschwisterprozesse erlauben", FieldType.BOOLEAN)
                         .withDefault("false").withHelp("Neben dem gebundenen Prozess und seinen Kindprozessen auch "
-                                + "Fenster der anderen Kinder seines Elternprozesses. Der Elternprozess selbst ist nie "
-                                + "erreichbar. Vorsicht: Bei Anwendungen, die aus dem Explorer, Finder oder Dock "
-                                + "gestartet wurden, sind das meist alle anderen Anwendungen des Benutzers."),
+                                + "Fenster der anderen Kinder seines Elternprozesses – nur mit Fenster-ID, ohne ID "
+                                + "bleibt es beim gebundenen Prozess. Der Elternprozess selbst ist nie erreichbar. Ist "
+                                + "er ein Shell- oder Systemprozess (Explorer, Finder/launchd, systemd), gibt es keine "
+                                + "Geschwister – sonst wären das alle anderen Anwendungen des Benutzers."),
                 ConfigField.of(POINTER_MODE, "Maus der KI", FieldType.ENUM).withDefault(POINTER_OWN)
                         .withOptions(POINTER_OWN, POINTER_MOUSE).withHelp("eigener-zeiger: die KI klickt mit einem "
                                 + "zweiten Zeiger, deine Maus bleibt frei und das Fenster wird nicht nach vorn geholt "

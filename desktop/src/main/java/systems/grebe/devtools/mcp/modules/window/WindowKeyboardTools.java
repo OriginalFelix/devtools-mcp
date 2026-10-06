@@ -149,9 +149,8 @@ public class WindowKeyboardTools {
             }
             d.pause(PASTE_SETTLE_MILLIS); // Ziel liest die Zwischenablage oft erst verzögert
         } finally {
-            if (previous != null) {
-                d.clipboard(previous);
-            }
+            // war sie leer (oder nicht lesbar), bleibt der eingefügte Text nicht darin stehen
+            d.clipboard(previous != null ? previous : new StringSelection(""));
         }
     }
 

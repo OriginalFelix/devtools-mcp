@@ -22,23 +22,26 @@ final class WindowSession {
 
     /**
      * Gebundener Prozess, optional samt aller Kindprozesse. Der Zugriff reicht nur nach unten im Prozessbaum: der
-     * Elternprozess (und dessen Vorfahren) gehört nie dazu, Geschwister nur, wenn sie erlaubt sind.
+     * Elternprozess (und dessen Vorfahren) gehört nie dazu, Geschwister nur, wenn sie erlaubt sind. Shell- und
+     * Systemprozesse ({@link #SHELLS}) zählen nie mit ihren Kindprozessen.
      */
     record Binding(ProcessHandle process, String name, boolean includeChildren) {
 
         /**
-         * Elternprozesse, unter denen praktisch alle Programme des Nutzers laufen (macOS {@code launchd}, Windows
-         * {@code explorer.exe} bzw. Dienste, Linux {@code init}/{@code systemd}) – deren Kinder sind keine
-         * zusammengehörigen Geschwister.
+         * Prozesse, unter denen praktisch alle Programme des Nutzers laufen (macOS {@code launchd}, Dock, Finder;
+         * Windows {@code explorer.exe} bzw. Dienste; Linux {@code init}/{@code systemd} und Desktop-Shells) – ihre
+         * Kinder gehören nicht zusammen, weder als Kindprozesse noch als Geschwister.
          */
-        private static final Set<String> SYSTEM_PARENTS = Set.of("launchd", "init", "systemd", "explorer", "services",
-                "svchost", "wininit", "winlogon", "userinit", "sihost", "runtimebroker", "kernel_task");
+        private static final Set<String> SHELLS = Set.of("launchd", "init", "systemd", "explorer", "services",
+                "svchost", "wininit", "winlogon", "userinit", "sihost", "runtimebroker", "kernel_task", "finder", "dock",
+                "gnome-shell", "plasmashell", "kwin_x11", "xfce4-panel", "xfce4-session", "lxsession", "mate-panel",
+                "cinnamon");
 
         /**
          * Prozesse, deren Fenster angesprochen werden dürfen – bei jedem Aufruf neu ermittelt.
          *
          * @param siblings auch die anderen Kinder des Elternprozesses (mit ihren Nachfahren, wenn
-         *                 {@link #includeChildren}); der Elternprozess selbst nie. Ist der Elternprozess ein
+         *                 {@link #includeChildren}); der Elternprozess selbst nie. Ist der Elternprozess ein Shell- oder
          *                 Systemprozess ({@link #systemParent}) oder unbekannt, gibt es keine Geschwister.
          */
         Set<Long> pids(boolean siblings) {
@@ -52,22 +55,29 @@ final class WindowSession {
             return out;
         }
 
-        /** PID 1, ein Prozess aus {@link #SYSTEM_PARENTS} – oder einer, dessen Programm sich nicht lesen lässt. */
+        /** Ein Shell-Prozess ({@link #shell}) – oder einer, dessen Programm sich nicht lesen lässt. */
         static boolean systemParent(ProcessHandle parent) {
-            return parent.pid() <= 1 || parent.info().command()
-                    .map(c -> SYSTEM_PARENTS.contains(ProcessFilter.name(c).toLowerCase(Locale.ROOT)))
-                    .orElse(true);
+            return shell(parent) || parent.info().command().isEmpty();
+        }
+
+        /** PID 1 oder ein Prozess aus {@link #SHELLS}: seine Kinder sind beliebige Programme des Nutzers. */
+        static boolean shell(ProcessHandle p) {
+            return p.pid() <= 1 || p.info().command()
+                    .map(c -> SHELLS.contains(ProcessFilter.name(c).toLowerCase(Locale.ROOT)))
+                    .orElse(false);
         }
 
         private void addTree(ProcessHandle root, Set<Long> out) {
             out.add(root.pid());
-            if (includeChildren) {
+            if (includeChildren && !shell(root)) {
                 root.descendants().forEach(p -> out.add(p.pid()));
             }
         }
 
         String describe() {
-            return name + " (PID " + process.pid() + (includeChildren ? ", mit Kindprozessen" : "") + ")";
+            String children = !includeChildren ? "" : shell(process) ? ", ohne Kindprozesse (Shell-Prozess)"
+                    : ", mit Kindprozessen";
+            return name + " (PID " + process.pid() + children + ")";
         }
     }
 
@@ -79,6 +89,8 @@ final class WindowSession {
     private final Peers peers;
     private final Map<String, Object> resources = new ConcurrentHashMap<>();
     private volatile Binding binding;
+    /** Warum die Bindung weg ist, wenn eine andere KI sie übernommen hat; sonst {@code null}. */
+    private volatile String lost;
     private final Map<Long, Double> imageScale = new ConcurrentHashMap<>();
 
     /** Die anderen KIs: welche Prozesse sie steuern ({@link WindowSessions}). */
@@ -87,7 +99,8 @@ final class WindowSession {
         /** Keine anderen KIs. */
         Peers NONE = new Peers() {
             @Override
-            public Optional<String> conflict(Binding wanted, boolean siblings) {
+            public Optional<String> bind(Binding wanted, boolean siblings, Runnable commit) {
+                commit.run();
                 return Optional.empty();
             }
 
@@ -97,8 +110,13 @@ final class WindowSession {
             }
         };
 
-        /** Grund, warum die Bindung nicht erlaubt ist – weil eine andere KI einen der Prozesse steuert. */
-        Optional<String> conflict(Binding wanted, boolean siblings);
+        /**
+         * Prüft, ob eine andere KI einen der Prozesse steuert, und führt sonst {@code commit} aus – beides atomar
+         * gegenüber den Bindungen der anderen KIs.
+         *
+         * @return Grund, warum die Bindung nicht erlaubt ist; leer, wenn {@code commit} ausgeführt wurde
+         */
+        Optional<String> bind(Binding wanted, boolean siblings, Runnable commit);
 
         /** Prozesse, die andere KIs direkt gebunden haben (samt Kindprozessen) – nie für diese KI erreichbar. */
         Set<Long> claimed();
@@ -135,11 +153,36 @@ final class WindowSession {
      * seiner Geschwister steuert.
      */
     void bind(Binding value, boolean siblings) {
-        peers.conflict(value, siblings).ifPresent(reason -> {
+        peers.bind(value, siblings, () -> {
+            binding = value;
+            lost = null;
+            imageScale.clear();
+        }).ifPresent(reason -> {
             throw new IllegalStateException(reason);
         });
-        binding = value;
+    }
+
+    /**
+     * Eine andere KI hat den Prozess übernommen, weil diese zu lange kein Fenster-Tool aufgerufen hat: Bindung weg,
+     * beim nächsten Aufruf ein Hinweis.
+     */
+    void takenOver(String reason) {
+        binding = null;
+        lost = reason;
         imageScale.clear();
+    }
+
+    /** Blendet Rahmen, Hinweis und Zeiger dieser KI aus (z.B. nach einer Übernahme). */
+    void releaseDevices() {
+        for (Object r : resources.values()) {
+            if (r instanceof InputDevice d) {
+                try {
+                    d.release();
+                } catch (RuntimeException e) {
+                    LOG.log(Level.FINE, "Anzeige der KI-Session " + id + " nicht ausgeblendet", e);
+                }
+            }
+        }
     }
 
     /** Erlaubte Prozesse der Bindung ({@link Binding#pids}) ohne die, die eine andere KI steuert. */
@@ -173,6 +216,7 @@ final class WindowSession {
 
     void unbind() {
         binding = null;
+        lost = null;
         imageScale.clear();
     }
 
@@ -184,8 +228,10 @@ final class WindowSession {
     Binding require() {
         Binding b = binding;
         if (b == null) {
-            throw new IllegalStateException("Kein Prozess gebunden – zuerst mit window_list die Prozesse ansehen und "
-                    + "mit window_bind einen binden.");
+            String reason = lost;
+            throw new IllegalStateException(reason != null ? reason
+                    : "Kein Prozess gebunden – zuerst mit window_list die Prozesse ansehen und mit window_bind einen "
+                    + "binden.");
         }
         if (!b.process().isAlive()) {
             unbind();

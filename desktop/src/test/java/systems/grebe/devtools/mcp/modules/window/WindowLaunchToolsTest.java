@@ -69,6 +69,13 @@ class WindowLaunchToolsTest {
     }
 
     @Test
+    void argumentsDoNotCountForTheFilter() {
+        assertThatThrownBy(() -> tools("winword").launch("cmd", List.of("/c", "calc", "winword")))
+                .hasMessageContaining("nicht freigegeben");
+        assertThat(launcher.started).isEmpty();
+    }
+
+    @Test
     void refusesProgramsOutsideTheFilter() {
         assertThatThrownBy(() -> tools("winword").launch("notepad", List.of()))
                 .hasMessageContaining("nicht freigegeben");

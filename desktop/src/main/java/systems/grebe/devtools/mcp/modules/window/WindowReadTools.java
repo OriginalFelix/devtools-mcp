@@ -87,7 +87,8 @@ public class WindowReadTools {
             @ToolParam(required = false, description = "Statt PID: Prozessname oder regulärer Ausdruck auf Name/"
                     + "Kommandozeile; muss genau einen Prozess mit Fenstern treffen") String process,
             @ToolParam(required = false, description = "true (Standard) = auch Fenster von Kindprozessen (z.B. "
-                    + "Electron/Chromium, Starter-Skripte)") Boolean includeChildren) {
+                    + "Electron/Chromium, Starter-Skripte); nicht bei Shell-Prozessen wie dem Explorer")
+            Boolean includeChildren) {
         long target = pid != null ? pid : findByName(process);
         ProcessHandle handle = ProcessHandle.of(target).filter(ProcessHandle::isAlive)
                 .orElseThrow(() -> new IllegalArgumentException("Prozess " + target + " läuft nicht."));

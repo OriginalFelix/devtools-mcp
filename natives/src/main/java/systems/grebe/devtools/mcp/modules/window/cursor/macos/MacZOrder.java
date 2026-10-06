@@ -34,4 +34,19 @@ public final class MacZOrder {
             return null;
         });
     }
+
+    /**
+     * Lässt Mausereignisse durch das eigene Fenster an das Fenster darunter gehen ({@code setIgnoresMouseEvents:}) –
+     * asynchron auf dem AppKit-Hauptthread.
+     */
+    public static void ignoreMouse(long ownWindowNumber) {
+        MacNatives.submit(() -> {
+            Pointer app = send(cls("NSApplication"), "sharedApplication");
+            Pointer own = send(app, "windowWithWindowNumber:", ownWindowNumber);
+            if (own != null) {
+                send(own, "setIgnoresMouseEvents:", 1L);
+            }
+            return null;
+        });
+    }
 }

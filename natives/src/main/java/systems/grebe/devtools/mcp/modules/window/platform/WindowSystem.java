@@ -61,6 +61,14 @@ public interface WindowSystem {
         return false;
     }
 
+    /**
+     * Macht ein eigenes Anzeige-Fenster (Rahmen, Hinweis) durchklickbar: Maus-Eingaben gehen an das Fenster darunter –
+     * ein Hinweis über den Titelleisten-Knöpfen eines maximierten Fensters darf sie nicht verdecken. Nur auf dem EDT,
+     * nach {@code addNotify}; darf wiederholt aufgerufen werden (wirkt nur, wo nötig).
+     */
+    default void passThrough(java.awt.Window overlay) {
+    }
+
     /** Wirft mit verständlicher Meldung, wenn Eingaben per Robot nicht ankommen würden (fehlende Berechtigung). */
     default void requireInputPermission() {
     }

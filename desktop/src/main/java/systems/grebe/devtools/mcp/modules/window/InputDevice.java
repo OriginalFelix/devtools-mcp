@@ -17,6 +17,15 @@ interface InputDevice {
     /** Aktuelle Mausposition; {@code null}, wenn unbekannt. */
     Point pointer();
 
+    /**
+     * Position der Maus des Nutzers, die der Not-Aus ({@link UserPresenceMonitor}) beobachtet; {@code null}, wenn das
+     * Gerät sie nicht benutzt (eigener Zeiger – dann stört eine Mausbewegung des Nutzers nicht, und die Zeiger mehrerer
+     * KIs dürfen nicht als Bewegung des Nutzers gelten).
+     */
+    default Point userPointer() {
+        return independentPointer() ? null : pointer();
+    }
+
     void move(int x, int y);
 
     /** Maustasten als {@link java.awt.event.InputEvent}{@code .BUTTON*_DOWN_MASK}. */
