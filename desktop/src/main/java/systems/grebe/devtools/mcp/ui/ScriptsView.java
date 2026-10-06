@@ -36,12 +36,17 @@ import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptTemplates;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptsModule;
+import systems.grebe.devtools.mcp.modules.scripts.assist.ScriptAssist;
+import systems.grebe.devtools.mcp.modules.scripts.assist.ToolInfo;
+import systems.grebe.devtools.mcp.ui.code.CodeEditor;
 
 /**
  * Groovy-Skripte bearbeiten: links die Skripte mit Herkunft und Zustand (aktiv, deaktiviert, Fehler), rechts Editor,
- * Historie und Referenz. Skripte sind Groovy, Java oder Gherkin (Auswahl neben dem Namen). Speichern prüft das Skript, legt es im Backend ab und lädt es sofort als Modul – die
- * Tools stehen den Clients ohne Neustart zur Verfügung. Ändert jemand anderes (das LLM, eine andere Desktop-App) ein
- * Skript, aktualisiert sich die Liste; ungespeicherte Änderungen im Editor bleiben dabei erhalten.
+ * Historie und Referenz. Skripte sind Groovy, Java oder Gherkin (Auswahl neben dem Namen). Der Editor hebt die Syntax
+ * hervor und vervollständigt wie IntelliJ ({@link CodeEditor}, {@link ScriptAssist}). Speichern prüft das Skript, legt
+ * es im Backend ab und lädt es sofort als Modul – die Tools stehen den Clients ohne Neustart zur Verfügung. Ändert
+ * jemand anderes (das LLM, eine andere Desktop-App) ein Skript, aktualisiert sich die Liste; ungespeicherte Änderungen
+ * im Editor bleiben dabei erhalten.
  */
 public class ScriptsView extends BorderPane {
 
@@ -55,9 +60,9 @@ public class ScriptsView extends BorderPane {
     private final ComboBox<ScriptViews.Language> language = new ComboBox<>();
     private final Label scopeHint = new Label();
     private final Label status = new Label();
-    private final TextArea editor = new TextArea();
+    private final CodeEditor editor;
     private final TableView<ScriptViews.Revision> revisions = new TableView<>();
-    private final TextArea revisionContent = new TextArea();
+    private final CodeEditor revisionContent = new CodeEditor(null);
     private final Tab historyTab = new Tab("Historie");
     private final Button save = new Button("Speichern");
     private final Button delete = new Button("Löschen…");
@@ -76,6 +81,7 @@ public class ScriptsView extends BorderPane {
     public ScriptsView(ScriptManager scripts, Supplier<Optional<Me>> account) {
         this.scripts = scripts;
         this.account = account;
+        this.editor = new CodeEditor(new ScriptAssist(() -> scripts.activeTools().stream().map(ToolInfo::of).toList()));
         getStyleClass().add("skills-view");
         SplitPane split = new SplitPane(buildList(), buildEditor());
         split.setDividerPositions(0.3);
@@ -177,9 +183,10 @@ public class ScriptsView extends BorderPane {
         language.setValue(ScriptViews.Language.GROOVY);
         // Neues Skript, Vorlage noch unverändert: Vorlage der gewählten Sprache zeigen
         language.valueProperty().addListener((o, a, l) -> {
+            editor.setLanguage(l);
             if (l != null && loadedName == null && editor.getText().equals(ScriptTemplates.of(a))) {
                 loadedContent = ScriptTemplates.of(l);
-                editor.setText(loadedContent);
+                editor.load(loadedContent);
             }
         });
         HBox head = new HBox(8, nameLabel, name, language, scopeHint);
@@ -189,8 +196,6 @@ public class ScriptsView extends BorderPane {
         status.setWrapText(true);
         status.setMinHeight(Region.USE_PREF_SIZE);
 
-        editor.getStyleClass().add("mono");
-        editor.setWrapText(false);
         TextArea reference = monoArea();
         reference.setText(ScriptsModule.REFERENCE);
 
@@ -202,9 +207,8 @@ public class ScriptsView extends BorderPane {
         revisions.getColumns().add(revCol("Von", 150, r -> r.changedBy() == null ? "" : r.changedBy()));
         revisions.getColumns().add(revCol("Notiz", 250, r -> r.note() == null ? "" : r.note()));
         revisions.getSelectionModel().selectedItemProperty().addListener((o, a, r) ->
-                revisionContent.setText(r == null ? "" : r.content()));
+                revisionContent.load(r == null ? "" : r.content()));
         revisionContent.setEditable(false);
-        revisionContent.getStyleClass().add("mono");
         Button restore = new Button("In den Editor übernehmen");
         restore.setOnAction(e -> Optional.ofNullable(revisions.getSelectionModel().getSelectedItem())
                 .ifPresent(r -> editor.setText(r.content())));
@@ -224,6 +228,11 @@ public class ScriptsView extends BorderPane {
     }
 
     // ------------------------------------------------------------------ Verhalten
+
+    /** Beim Öffnen des Tabs: Vervollständigung schon vorbereiten, bevor der Benutzer tippt. */
+    public void prepareEditor() {
+        editor.warmUp();
+    }
 
     /** Liste neu aus dem {@link ScriptManager} (kein Backend-Zugriff); der Editor bleibt unberührt. */
     public void refresh() {
@@ -253,10 +262,11 @@ public class ScriptsView extends BorderPane {
         loadedContent = ScriptTemplates.GROOVY;
         name.setText("");
         name.setEditable(true);
-        editor.setText(ScriptTemplates.GROOVY);
+        editor.setLanguage(ScriptViews.Language.GROOVY);
+        editor.load(ScriptTemplates.GROOVY);
         scopeHint.setText("neues Skript");
         revisions.getItems().clear();
-        revisionContent.clear();
+        revisionContent.load("");
         historyTab.setText("Historie");
         setStatus("Name eintragen, Quelltext anpassen, „Speichern“. Groovy, Java oder Gherkin – die Referenz steht im dritten Reiter.", null);
         updateActions(null);
@@ -271,13 +281,14 @@ public class ScriptsView extends BorderPane {
             loadedContent = details.content();
             name.setText(s.name());
             language.setValue(s.language());
-            editor.setText(details.content());
-            editor.positionCaret(0);
+            editor.setLanguage(s.language());
+            editor.load(details.content());
+            revisionContent.setLanguage(s.language());
             scopeHint.setText(s.global()
                     ? "globale Vorlage – Speichern legt ein eigenes Skript an, das sie verdeckt"
                     : "eigenes Skript · Revision " + s.revision() + " · geändert " + TIME.format(s.updatedAt()));
             revisions.getItems().setAll(details.revisions());
-            revisionContent.clear();
+            revisionContent.load("");
             historyTab.setText("Historie (" + details.revisions().size() + ")");
             if (message != null) {
                 ok(message);
@@ -380,6 +391,9 @@ public class ScriptsView extends BorderPane {
         status.getStyleClass().removeAll("ok", "error");
         if (style != null) {
             status.getStyleClass().add(style);
+        }
+        if ("error".equals(style)) {
+            editor.markErrors(text); // „Zeile 3, Spalte 5: …“ → Zeile im Editor markieren
         }
     }
 

@@ -963,6 +963,30 @@ Funktionalität: Schnellcheck
 * **Bearbeiten in der App:** Tab **Skripte** – links die Skripte mit Sprache, Herkunft, Revision und Zustand, rechts
   Name und Sprache, Editor (*Prüfen*, *Speichern*), Historie (früheren Stand in den Editor übernehmen) und Referenz.
   Ungespeicherte Änderungen bleiben erhalten, wenn ein Skript woanders geändert wird.
+* **Editor wie in IntelliJ** (RichTextFX, `ui.code.CodeEditor`, Logik ohne Oberfläche in `modules.scripts.assist`):
+  Syntaxhervorhebung in den Farben von „IntelliJ Light“ (Groovy mit DSL, `args.x`/`cfg.x` und GString-Code; Java;
+  Gherkin je `# language:`), Zeilennummern, aktuelle Zeile, passende Klammer; Fehler aus *Prüfen*/*Speichern* mit
+  „Zeile N“ werden in der Zeile rot unterwellt, bis sich der Text ändert. **Autovervollständigung** öffnet sich beim
+  ersten Buchstaben eines Wortes, nach `.` und in Gherkin nach dem Schritt-Schlüsselwort (sonst Strg+Leertaste; bei
+  genau einem Treffer fügt Strg+Leertaste ihn direkt ein). Gefiltert wird wie in IntelliJ mit CamelHumps (`gSN` →
+  `getScriptName`), Enter fügt ein, Tab ersetzt das Wort bis zum Ende, Klassen werden dabei importiert.
+  * *Groovy:* je Block die passende DSL (`module`/`tool` oben, `description`/`setting` …, `param`/`execute` …),
+    Feldtypen und Optionen an Argumentstellen, in `execute` Variablen, `progress`, `log`, Klassen; nach `args.` die
+    Parameter des Tools, nach `cfg.` die Einstellungen. Nach einem Punkt die Member des Typs davor samt GDK-Methoden
+    (`each`, `collect` …) und Groovy-Eigenschaften – Typen aus Deklarationen, `new`, Literalen, Casts und ganzen
+    Aufrufketten.
+  * *Java:* semantisch über javac (Analyse mit Platzhalter an der Schreibmarke, auch bei halbfertigem Code): Member mit
+    Generics und Sichtbarkeit, Variablen und Felder im Gültigkeitsbereich, Pakete in Imports, Annotationen.
+  * *Gherkin:* Schlüsselwörter, die eingebauten Schritte in der passenden Satzstellung (`Wenn ich das Tool … aufrufe`,
+    `Dann enthält das Ergebnis …`), Tool-Namen der aktiven Tools in `Tool "…"`, ihre Parameter in der Tabelle darunter,
+    Platzhalter `<name>`, Variablen `${name}`, Tags und Sprachen.
+
+  Typen kommen aus dem Symbolmodell von javac über die Klassendateien – es werden keine Klassen geladen und keine
+  Reflection verwendet; ohne JDK fallen nur die Typinformationen weg. Beim Öffnen des Tabs wärmt die App Klassenindex
+  (~39 000 Klassen, ~0,5 s), javac (~1 s) und die Liste im Hintergrund vor; danach braucht eine Groovy-Liste wenige
+  Millisekunden, eine Java-Liste (volle Analyse) etwa 70–300 ms. Weitere Kürzel: Enter rückt passend ein (`{|}` wird
+  aufgeklappt), Klammern und Anführungszeichen paarweise, Tab/Umschalt+Tab, Strg+/ (auch Strg+#) kommentiert,
+  Strg+D verdoppelt.
 * **Web-UI des Team-Servers:** Seite **Skripte** – eigene Skripte und globale Vorlagen ansehen, anlegen (Groovy, Java
   oder Gherkin), bearbeiten (mit Syntaxprüfung), Historie, löschen; Administratoren veröffentlichen und ziehen Vorlagen zurück.
   Ohne Ausführung ermittelt der Server die Beschreibung aus dem Quelltext (fester Text, sonst bleibt die bisherige).

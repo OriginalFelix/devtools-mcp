@@ -144,6 +144,13 @@ public class ScriptManager {
         return backend.details(requireName(name));
     }
 
+    /** Die gerade aufrufbaren Tools (Modul- und Tool-Schalter an) – für die Vervollständigung im Editor. */
+    public List<ToolDefinition> activeTools() {
+        ToolRegistry r = registry.getObject();
+        return r.activeToolNames().stream().map(r::activeTool).flatMap(Optional::stream)
+                .map(t -> t.getToolDefinition()).toList();
+    }
+
     /** Zeitlimit je Tool-Aufruf aus dem Modul „Skripte“. */
     Duration callTimeout() {
         try {

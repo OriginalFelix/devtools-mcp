@@ -91,6 +91,8 @@ dependencies {
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
     }
+    // Skript-Editor: Code-Bereich mit Stil je Zeichen (Syntaxhervorhebung), Zeilennummern und Undo
+    implementation("org.fxmisc.richtext:richtextfx:0.11.7")
 
     testImplementation("io.projectreactor:reactor-test")
     testImplementation(testFixtures(project(":backend")))

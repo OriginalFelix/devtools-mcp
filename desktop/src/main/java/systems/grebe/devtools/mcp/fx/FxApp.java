@@ -77,10 +77,17 @@ public class FxApp extends Application {
                 + context.getEnvironment().getProperty("spring.ai.mcp.server.streamable-http.mcp-endpoint", "/mcp");
 
         BackendConnection backend = context.getBean(BackendConnection.class);
+        ScriptsView scripts = scriptsView(backend, registry);
+        Tab scriptsTab = new Tab("Skripte", scripts);
+        scriptsTab.selectedProperty().addListener((o, was, selected) -> {
+            if (selected) {
+                scripts.prepareEditor();
+            }
+        });
         MainView view = new MainView(registry, log, store, endpoint, stage, List.of(
                 new Tab("Skills", skillsView(backend)),
                 new Tab("Memories", memoriesView(backend)),
-                new Tab("Skripte", scriptsView(backend, registry)),
+                scriptsTab,
                 new Tab("Artefakte", new ArtifactsView(context.getBean(JavaEnvironmentProvider.class), getHostServices(),
                         context.getBean(VisualVmModule.class)::openFile)),
                 new Tab("Plugins", new PluginsView(context.getBean(PluginManager.class),

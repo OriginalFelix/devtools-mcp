@@ -21,7 +21,17 @@ import systems.grebe.devtools.mcp.backend.scripts.GherkinScripts;
  * stehen in Anführungszeichen, Tabellen oder DocStrings und werden erst beim Aufruf eingesetzt – so lässt sich jeder
  * Schritt schon beim Speichern zuordnen.
  */
-final class GherkinSteps {
+public final class GherkinSteps {
+
+    /**
+     * Ein eingebauter Schritt für Referenz und Editor (Autovervollständigung).
+     *
+     * @param pattern Cucumber Expression, z.B. {@code ich rufe das Tool {string} auf}
+     * @param example Beispiel mit Schlüsselwort, ggf. mehrzeilig mit Tabelle
+     * @param toolArg Index des Arguments mit dem Tool-Namen oder -1
+     */
+    public record Info(String pattern, String example, int toolArg) {
+    }
 
     /** Name einer Variablen ({@code ich setze name auf …}). */
     static final Pattern VARIABLE = Pattern.compile("[A-Za-z][A-Za-z0-9_]*");
@@ -179,6 +189,11 @@ final class GherkinSteps {
             }
         }
         return out;
+    }
+
+    /** Die eingebauten Schritte in der Reihenfolge der Referenz. */
+    public static List<Info> catalog() {
+        return BUILT_IN.stream().map(d -> new Info(d.pattern(), d.example(), d.toolArg())).toList();
     }
 
     /** Kurzreferenz der eingebauten Schritte mit Beispielen – für die Referenz in App und {@code scripts_view}. */
