@@ -32,6 +32,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import systems.grebe.devtools.mcp.api.Me;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptTemplates;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
@@ -329,7 +330,7 @@ public class ScriptsView extends BorderPane {
     }
 
     private void updateActions(ScriptViews.Summary s) {
-        boolean admin = account.get().map(Me::admin).orElse(false);
+        boolean admin = account.get().map(m -> m.grants().has(Permission.TEMPLATES_PUBLISH)).orElse(false);
         delete.setDisable(s == null || s.global());
         publish.setVisible(admin);
         publish.setManaged(admin);

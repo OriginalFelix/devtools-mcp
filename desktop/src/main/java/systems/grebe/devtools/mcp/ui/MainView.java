@@ -44,6 +44,8 @@ public class MainView extends BorderPane {
     private final StackPane detailHolder = new StackPane();
     private final Label toolCount = new Label();
     private final Label authBadge = new Label();
+    private final Label userBadge = new Label();
+    private final TabPane tabs = new TabPane();
 
     public MainView(ToolRegistry registry, ToolInvocationLog log, SettingsStore store, String endpoint, Stage stage,
                     java.util.List<Tab> extraTabs) {
@@ -55,7 +57,6 @@ public class MainView extends BorderPane {
 
         setTop(header());
 
-        TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getTabs().add(new Tab("Module", modulesPane()));
         tabs.getTabs().add(new Tab("Aufrufe", new InvocationLogView(log)));
@@ -86,9 +87,11 @@ public class MainView extends BorderPane {
         settings.setOnAction(e -> openSettings());
         toolCount.getStyleClass().add("badge");
         authBadge.getStyleClass().add("badge");
+        userBadge.getStyleClass().add("badge");
+        userBadge.setVisible(false);
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox box = new HBox(10, dot, title, url, toolCount, authBadge, spacer, copy, connect, settings);
+        HBox box = new HBox(10, dot, title, url, toolCount, authBadge, userBadge, spacer, copy, connect, settings);
         box.setAlignment(Pos.CENTER_LEFT);
         box.setPadding(new Insets(12, 16, 12, 16));
         box.getStyleClass().add("header");
@@ -153,6 +156,21 @@ public class MainView extends BorderPane {
                         () -> moduleList.getSelectionModel().selectFirst());
     }
 
+    /** Angemeldeter Benutzer im Kopf; {@code null} = niemand. */
+    public void setUser(String label) {
+        userBadge.setText(label == null ? "" : label);
+        userBadge.setVisible(label != null);
+    }
+
+    /** Blendet einen der zusätzlichen Tabs ein oder aus (z.B. „Benutzer“ nur mit dem Recht dazu). */
+    public void showTab(Tab tab, boolean shown) {
+        if (shown && !tabs.getTabs().contains(tab)) {
+            tabs.getTabs().add(tab);
+        } else if (!shown) {
+            tabs.getTabs().remove(tab);
+        }
+    }
+
     private void openSettings() {
         int runningPort = URI.create(endpoint).getPort();
         new SettingsDialog(stage, store.server(), runningPort).showAndWait().ifPresent((ServerSettings s) -> {
@@ -172,15 +190,17 @@ public class MainView extends BorderPane {
                 return;
             }
             boolean enabled = registry.settings(m.id()).enabled();
+            boolean permitted = !m.hasTools() || registry.modulePermitted(m.id());
             boolean error = registry.moduleError(m.id()).isPresent();
             int total = registry.availableTools(m.id()).size();
             long active = registry.availableTools(m.id()).stream()
                     .filter(t -> registry.isToolActive(m.id(), t.name())).count();
             Circle dot = new Circle(5);
-            dot.getStyleClass().addAll("module-dot", !m.hasTools() ? "settings" : error ? "error" : enabled ? "on" : "off");
+            dot.getStyleClass().addAll("module-dot", !m.hasTools() ? "settings" : error ? "error"
+                    : enabled && permitted ? "on" : "off");
             Label name = new Label(m.displayName());
             name.getStyleClass().add("module-name");
-            String state = !m.hasTools() ? "Einstellungen" : error ? "Fehler"
+            String state = !m.hasTools() ? "Einstellungen" : !permitted ? "keine Berechtigung" : error ? "Fehler"
                     : enabled ? active + " von " + total + " Tools aktiv" : "deaktiviert";
             Label sub = new Label(PluginToolModule.pluginOf(m).map(p -> state + " · Plugin " + p)
                     .or(() -> ScriptToolModule.scriptOf(m).map(s -> state + (s.summary().global() ? " · globales Skript"

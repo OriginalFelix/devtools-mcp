@@ -31,7 +31,8 @@ public final class ScriptsViewSnapshot {
         String select = args.length > 1 ? args[1] : "demo";
         System.setProperty("devtools.mcp.home", Files.createTempDirectory("scripts-snapshot").toString());
         ConfigurableApplicationContext ctx = DevToolsMcpApplication.startSpring(new String[] {"--server.port=0",
-                "--devtools.local-user.email=snapshot@example.com"});
+                "--devtools.local-user.email=snapshot@example.com", "--devtools.login.username=tester",
+                "--devtools.login.password=tester-passwort"});
         ScriptManager scripts = ctx.getBean(ScriptManager.class);
         String groovy = ScriptTemplates.GROOVY.replace(ScriptTemplates.PLACEHOLDER_DESCRIPTION,
                 "Begrüßungen für den Sichttest");

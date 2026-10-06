@@ -62,6 +62,12 @@ public final class ScriptToolModule implements ToolModule, AutoCloseable {
         return summary.name();
     }
 
+    /** Das Recht auf das Modul „Skripte“ umfasst alle Skript-Module. */
+    @Override
+    public String parentModule() {
+        return ScriptsModule.ID;
+    }
+
     @Override
     public String displayName() {
         return compiled == null ? summary.name() : compiled.displayName();

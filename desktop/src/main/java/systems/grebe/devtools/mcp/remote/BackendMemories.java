@@ -34,6 +34,9 @@ public class BackendMemories implements MemoryBackend {
 
     @Override
     public List<MemoryViews.Entry> overview(String query, String project, String skill, int limit) {
+        if (!backend.signedIn()) {
+            return List.of();
+        }
         return backend.queryList("""
                 query($query: String, $project: String, $skill: String, $limit: Int) { memories(query: $query, \
                 project: $project, skill: $skill, limit: $limit) { %s } }""".formatted(ENTRY),
@@ -49,6 +52,9 @@ public class BackendMemories implements MemoryBackend {
 
     @Override
     public int count() {
+        if (!backend.signedIn()) {
+            return 0;
+        }
         Integer n = backend.query("{ memoryCount }", Map.of(), "memoryCount", Integer.class);
         return n == null ? 0 : n;
     }

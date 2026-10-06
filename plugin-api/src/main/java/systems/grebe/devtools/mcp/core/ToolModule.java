@@ -42,6 +42,14 @@ public interface ToolModule {
         return null;
     }
 
+    /**
+     * Modul, dessen Recht dieses Modul mitumfasst (Rollen: {@code module:<id>}), z.B. {@code scripts} für die Module
+     * der Skripte; {@code null} = nur das eigene.
+     */
+    default String parentModule() {
+        return null;
+    }
+
     /** Deklaratives Konfigurationsschema – daraus erzeugt die UI das Formular. */
     default List<ConfigField> configSchema() {
         return List.of();

@@ -17,6 +17,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 import systems.grebe.devtools.mcp.DevToolsMcpApplication;
+import systems.grebe.devtools.mcp.api.Me;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
@@ -32,16 +34,20 @@ import systems.grebe.devtools.mcp.remote.BackendConnection;
 import systems.grebe.devtools.mcp.ui.AppIcons;
 import systems.grebe.devtools.mcp.ui.ArtifactsView;
 import systems.grebe.devtools.mcp.ui.BackendView;
+import systems.grebe.devtools.mcp.ui.LoginWindow;
 import systems.grebe.devtools.mcp.ui.MainView;
 import systems.grebe.devtools.mcp.ui.MemoriesView;
 import systems.grebe.devtools.mcp.ui.PluginsView;
 import systems.grebe.devtools.mcp.ui.ScriptsView;
 import systems.grebe.devtools.mcp.ui.SkillsView;
 import systems.grebe.devtools.mcp.ui.TrayManager;
+import systems.grebe.devtools.mcp.ui.UsersAdminView;
 
 /**
  * JavaFX-Lebenszyklus: {@link #init()} startet Spring (inkl. MCP-Server) im Launcher-Thread,
- * {@link #start(Stage)} baut das Fenster, {@link #stop()} fährt Spring herunter.
+ * {@link #start(Stage)} baut das Fenster und fragt vorher nach der Anmeldung ({@link LoginWindow}) – ohne Anmeldung
+ * gibt es keine Tools. Nach dem Abmelden (oder einer abgelaufenen Anmeldung) verschwindet das Hauptfenster, bis sich
+ * wieder jemand angemeldet hat. {@link #stop()} fährt Spring herunter.
  */
 public class FxApp extends Application {
 
@@ -50,6 +56,9 @@ public class FxApp extends Application {
     private ConfigurableApplicationContext context;
     private Throwable startupError;
     private TrayManager tray;
+    private BackendConnection backend;
+    private boolean loginOpen;
+    private boolean exiting;
 
     @Override
     public void init() {
@@ -76,7 +85,9 @@ public class FxApp extends Application {
         String endpoint = "http://127.0.0.1:" + port
                 + context.getEnvironment().getProperty("spring.ai.mcp.server.streamable-http.mcp-endpoint", "/mcp");
 
-        BackendConnection backend = context.getBean(BackendConnection.class);
+        backend = context.getBean(BackendConnection.class);
+        UsersAdminView usersView = new UsersAdminView(backend, registry);
+        Tab usersTab = new Tab("Benutzer", usersView);
         ScriptsView scripts = scriptsView(backend, registry);
         Tab scriptsTab = new Tab("Skripte", scripts);
         scriptsTab.selectedProperty().addListener((o, was, selected) -> {
@@ -94,9 +105,20 @@ public class FxApp extends Application {
                         context.getBean(PluginStore.class))),
                 new Tab("Backend", new BackendView(backend))));
         Scene scene = new Scene(view, 1180, 760);
-        scene.getStylesheets().add(getClass().getResource("/ui/app.css").toExternalForm());
+        String css = getClass().getResource("/ui/app.css").toExternalForm();
+        scene.getStylesheets().add(css);
         stage.setScene(scene);
         stage.setTitle("DevTools MCP – " + endpoint);
+        Runnable account = () -> {
+            Me me = backend.me().orElse(null);
+            view.setUser(me == null ? null : "Benutzer: " + me.username());
+            stage.setTitle("DevTools MCP – " + (me == null ? "" : me.username() + " – ") + endpoint);
+            boolean admin = me != null && me.grants().has(Permission.USERS_MANAGE);
+            view.showTab(usersTab, admin);
+            if (admin) {
+                usersView.refresh();
+            }
+        };
         stage.getIcons().add(AppIcons.fxIcon(64));
         stage.setMinWidth(900);
         stage.setMinHeight(560);
@@ -113,10 +135,41 @@ public class FxApp extends Application {
                 exit();
             }
         });
-        if (!(trayAvailable && store.server().startMinimized())) {
-            stage.show();
-        }
+        boolean showMain = !(trayAvailable && store.server().startMinimized());
+        backend.addListener(() -> Platform.runLater(() -> {
+            account.run();
+            if (!backend.signedIn() && !loginOpen && !exiting && !backend.passwordChangePending()) {
+                // abgemeldet oder Anmeldung abgelaufen: neu anmelden, so lange ohne Hauptfenster (erst das
+                // Anmeldefenster öffnen, sonst beendet JavaFX ohne Tray die App mit dem letzten Fenster)
+                whenSignedIn(css, stage::show);
+                stage.hide();
+            }
+        }));
+        account.run();
+        whenSignedIn(css, () -> {
+            account.run();
+            if (showMain) {
+                stage.show();
+            }
+        });
         context.getBean(UserConfirmation.class).setDesktopHandler((title, message) -> confirm(stage, title, message));
+    }
+
+    /** Führt {@code then} aus, sobald jemand angemeldet ist – sonst erst nach dem Anmeldefenster. */
+    private void whenSignedIn(String css, Runnable then) {
+        if (backend.signedIn()) {
+            then.run();
+            return;
+        }
+        loginOpen = true;
+        LoginWindow.show(backend, css, backend.message().isBlank() || backend.message().equals("Abgemeldet.") ? ""
+                : backend.message(), () -> {
+                    loginOpen = false;
+                    then.run();
+                }, () -> {
+                    loginOpen = false;
+                    exit();
+                });
     }
 
     /**
@@ -168,6 +221,7 @@ public class FxApp extends Application {
     }
 
     private void exit() {
+        exiting = true;
         Platform.runLater(() -> {
             Optional.ofNullable(tray).ifPresent(TrayManager::uninstall);
             Platform.exit();

@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.springframework.stereotype.Component;
+import systems.grebe.devtools.mcp.api.Grants;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.api.SettingsSnapshot;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
@@ -18,8 +19,12 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 /**
  * Wirksame Einstellungen aus dem Backend: Vorbelegung des Moduls, darüber die Vorgaben Global → Benutzer → aktives
  * Profil. Git, Build und Code-Graph bekommen zusätzlich die Projekte, denen in dieser App ein Verzeichnis zugeordnet
- * ist – unter dem Namen, den die Tools kennen ({@code name} bzw. {@code name@eigentümer}). Solange das Backend noch
- * keinen Stand geliefert hat, gelten die lokalen Einstellungen. Änderungen gehen als Überschreibung ins aktive Profil.
+ * ist – unter dem Namen, den die Tools kennen ({@code name} bzw. {@code name@eigentümer}). Änderungen gehen als
+ * Überschreibung ins aktive Profil.
+ *
+ * <p>Ohne Anmeldung ist jedes Modul aus. Welche Tools registriert werden, bestimmen außerdem die Rechte des Benutzers
+ * ({@link #permitted}: {@code module:*}, {@code module:<id>} – auch das übergeordnete Modul, z.B. {@code scripts} –
+ * oder {@code tool:<name>}).
  */
 @Component
 public class BackendSettingsResolver implements SettingsResolver {
@@ -32,20 +37,33 @@ public class BackendSettingsResolver implements SettingsResolver {
 
     @Override
     public ModuleSettings effective(ToolModule module, ModuleSettings local) {
+        if (!backend.signedIn()) {
+            return defaults(module).withEnabled(false); // niemand angemeldet: keine Tools
+        }
         ModuleSettings s = backend.settings()
                 .map((SettingsSnapshot snapshot) -> snapshot.module(module.id()).applyTo(defaults(module)))
                 .orElse(local);
         return withProjects(module, s);
     }
 
+    /** Einstellungen liegen immer im Backend – ohne Anmeldung lässt sich nichts speichern. */
     @Override
     public boolean handlesWrites() {
-        return backend.settings().isPresent();
+        return true;
     }
 
     @Override
     public void save(ToolModule module, ModuleSettings before, ModuleSettings after) {
+        if (!backend.signedIn()) {
+            throw new IllegalStateException("Nicht angemeldet.");
+        }
         backend.save(module, before, after);
+    }
+
+    @Override
+    public boolean permitted(ToolModule module, String toolName) {
+        Grants g = backend.grants();
+        return g.tool(module.id(), toolName) || module.parentModule() != null && g.moduleFull(module.parentModule());
     }
 
     @Override

@@ -91,6 +91,15 @@ public final class McpRuntime implements AutoCloseable {
 
     /** Erzeugt die Tools des Moduls neu und gleicht die Registrierung am Server ab. */
     public synchronized void rebuild(ToolModule module, ModuleSettings settings, List<ToolCallListener> listeners) {
+        rebuild(module, settings, listeners, tool -> true);
+    }
+
+    /**
+     * Wie {@link #rebuild(ToolModule, ModuleSettings, List)}; registriert werden nur Tools, die {@code permitted}
+     * erlaubt (Rechte des angemeldeten Benutzers). Erzeugt werden alle – der Katalog fürs Backend braucht sie.
+     */
+    public synchronized void rebuild(ToolModule module, ModuleSettings settings, List<ToolCallListener> listeners,
+                                     java.util.function.Predicate<String> permitted) {
         List<ManagedToolCallback> tools = new ArrayList<>();
         String error = null;
         try {
@@ -114,7 +123,7 @@ public final class McpRuntime implements AutoCloseable {
         }
         for (ManagedToolCallback cb : tools) {
             String name = cb.getToolDefinition().name();
-            if (settings.disabledTools().contains(name)) {
+            if (settings.disabledTools().contains(name) || !permitted.test(name)) {
                 continue;
             }
             try {

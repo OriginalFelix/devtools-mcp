@@ -32,7 +32,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** End-to-End: echter MCP-Client über Streamable HTTP gegen den eingebetteten Server. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "devtools.local-user.email=mcp@example.com")
+        properties = {"devtools.local-user.email=mcp@example.com", "devtools.login.username=tester",
+                "devtools.login.password=tester-passwort"})
 class McpServerIntegrationTest {
 
     @TempDir

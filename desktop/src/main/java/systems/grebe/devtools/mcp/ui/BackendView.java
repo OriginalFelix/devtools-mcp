@@ -16,7 +16,9 @@ import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TableCell;
@@ -32,13 +34,15 @@ import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.util.StringConverter;
 import systems.grebe.devtools.mcp.api.Me;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.config.TeamSettings;
 import systems.grebe.devtools.mcp.remote.BackendConnection;
 
 /**
- * Tab „Backend“: eingebettet oder Team-Server (Adresse + Desktop-Token, wirksam nach Neustart), Verbindungsstatus,
- * aktives Profil und die Projekte mit ihrem lokalen Verzeichnis. Netzwerkzugriffe laufen im Hintergrund.
+ * Tab „Backend“: eingebettet oder Team-Server (Adresse, wirksam nach Neustart), Verbindungsstatus, angemeldeter
+ * Benutzer mit Rollen (Abmelden, Passwort ändern), aktives Profil und die Projekte mit ihrem lokalen Verzeichnis.
+ * Netzwerkzugriffe laufen im Hintergrund.
  */
 public class BackendView extends BorderPane {
 
@@ -46,12 +50,14 @@ public class BackendView extends BorderPane {
 
     private final BackendConnection backend;
     private final TextField url = new TextField();
-    private final PasswordField token = new PasswordField();
     private final Button useServer = new Button("Server eintragen");
     private final Button useEmbedded = new Button("Eingebettet verwenden");
     private final Label mode = new Label();
     private final Label status = new Label();
     private final Label user = new Label();
+    private final Label roles = new Label();
+    private final Button logout = new Button("Abmelden");
+    private final Button changePassword = new Button("Passwort ändern…");
     private final ComboBox<Me.ProfileInfo> profile = new ComboBox<>();
     private final Button newProject = new Button("Neues Projekt…");
     private final ObservableList<ProjectInfo> projects = FXCollections.observableArrayList();
@@ -65,17 +71,23 @@ public class BackendView extends BorderPane {
         TeamSettings current = backend.serverSettings();
         url.setText(current.url());
         url.setPromptText("https://devtools.example.com – leer = eingebettetes Backend");
-        token.setText(current.token());
-        token.setPromptText("Desktop-Token aus der Web-UI (Mein Konto)");
         HBox.setHgrow(url, Priority.ALWAYS);
         useServer.getStyleClass().add("accent");
-        useServer.setOnAction(e -> background(() -> backend.configureServer(url.getText(), token.getText())
-                        .map(me -> "Server eingetragen (angemeldet als " + me.username() + ")").orElse(""),
-                msg -> msg + " – wirksam nach einem Neustart der App."));
+        useServer.setOnAction(e -> background(() -> {
+            backend.configureServer(url.getText());
+            return url.getText().isBlank() ? "Eingebettetes Backend eingestellt" : "Server eingetragen";
+        }, msg -> msg + " – wirksam nach einem Neustart der App (dort mit Benutzername und Passwort anmelden)."));
         useEmbedded.setOnAction(e -> background(() -> {
-            backend.configureServer("", "");
+            backend.configureServer("");
             return "Eingebettetes Backend eingestellt";
         }, msg -> msg + " – wirksam nach einem Neustart der App."));
+        logout.setOnAction(e -> background(() -> {
+            backend.logout();
+            return "";
+        }, msg -> msg));
+        changePassword.setOnAction(e -> changePassword());
+        roles.setWrapText(true);
+        roles.getStyleClass().add("form-help");
 
         Label help = new Label("Ohne Server läuft das Backend (Benutzer, Profile, Einstellungen, Projekte, Skills, Memories) "
                 + "eingebettet in dieser App. Mit einem Team-Server gelten dessen Vorgaben (Global → Benutzer → Profil) "
@@ -109,10 +121,12 @@ public class BackendView extends BorderPane {
         grid.setVgap(8);
         grid.addRow(0, new Label("Backend"), mode);
         grid.addRow(1, new Label("Server-Adresse"), url);
-        grid.addRow(2, new Label("Desktop-Token"), token);
-        grid.add(new HBox(8, useServer, useEmbedded), 1, 3);
-        grid.addRow(4, new Label("Status"), status);
-        grid.addRow(5, new Label("Benutzer"), user);
+        grid.add(new HBox(8, useServer, useEmbedded), 1, 2);
+        grid.addRow(3, new Label("Status"), status);
+        HBox userRow = new HBox(12, user, logout, changePassword);
+        userRow.setAlignment(Pos.CENTER_LEFT);
+        grid.addRow(4, new Label("Angemeldet"), userRow);
+        grid.add(roles, 1, 5);
         grid.addRow(6, new Label("Profil"), profile);
         GridPane.setHgrow(url, Priority.ALWAYS);
         status.setWrapText(true);
@@ -201,26 +215,63 @@ public class BackendView extends BorderPane {
             mode.setText(backend.embedded() ? "eingebettet (" + backend.url() + ")" : "Team-Server " + backend.url());
             String when = backend.lastSync().map(t -> " (zuletzt " + TIME.format(t) + ")").orElse("");
             status.setText(switch (backend.status()) {
+                case SIGNED_OUT -> "Nicht angemeldet" + (backend.message().isEmpty() ? "" : " – " + backend.message());
                 case CONNECTING -> "Verbinde …";
                 case ONLINE -> "Verbunden" + when;
                 case OFFLINE -> "Nicht erreichbar – letzter Stand gilt" + when + ". " + backend.message();
                 case ERROR -> "Fehler: " + backend.message();
             });
             Me me = backend.me().orElse(null);
-            user.setText(me == null ? "–" : me.username() + (me.email() == null ? "" : " <" + me.email() + ">")
-                    + (me.admin() ? " (Administrator)" : ""));
+            user.setText(me == null ? "–" : me.label() + " (" + me.username() + ")"
+                    + (me.email() == null ? "" : " <" + me.email() + ">"));
+            roles.setText(me == null ? "" : "Rollen: "
+                    + (me.roles().isEmpty() ? "keine" : String.join(", ", me.roles()))
+                    + (me.admin() ? " – alle Rechte" : ""));
+            logout.setDisable(me == null);
+            changePassword.setDisable(me == null || backend.status() == BackendConnection.Status.OFFLINE);
             profile.getItems().setAll(me == null ? List.of() : me.profiles());
             profile.setDisable(me == null);
             if (me != null) {
                 me.profiles().stream().filter(p -> p.id() == me.activeProfileId()).findFirst()
                         .ifPresent(profile::setValue);
             }
-            newProject.setDisable(me == null);
+            newProject.setDisable(me == null || !me.grants().has(Permission.PROJECTS_CREATE));
             projects.setAll(backend.projects());
             table.refresh();
         } finally {
             updating = false;
         }
+    }
+
+    private void changePassword() {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle("Passwort ändern");
+        d.setHeaderText("Neues Passwort für " + backend.me().map(Me::username).orElse(""));
+        if (getScene() != null) {
+            d.initOwner(getScene().getWindow());
+        }
+        PasswordField current = new PasswordField();
+        PasswordField next = new PasswordField();
+        next.setPromptText("mindestens 8 Zeichen");
+        PasswordField repeat = new PasswordField();
+        GridPane form = new GridPane();
+        form.setHgap(12);
+        form.setVgap(8);
+        form.addRow(0, new Label("Bisheriges Passwort"), current);
+        form.addRow(1, new Label("Neues Passwort"), next);
+        form.addRow(2, new Label("Wiederholen"), repeat);
+        d.getDialogPane().setContent(form);
+        d.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        d.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> {
+            if (!next.getText().equals(repeat.getText())) {
+                status.setText("Fehler: Die neuen Passwörter stimmen nicht überein.");
+                return;
+            }
+            background(() -> {
+                backend.changePassword(current.getText(), next.getText());
+                return "Passwort geändert";
+            }, msg -> msg);
+        });
     }
 
     private void background(Supplier<String> action, java.util.function.UnaryOperator<String> success) {

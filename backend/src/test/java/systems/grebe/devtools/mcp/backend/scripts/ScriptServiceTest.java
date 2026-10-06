@@ -98,8 +98,8 @@ class ScriptServiceTest {
                 assertThat(s.global()).isTrue();
             });
             assertThatThrownBy(() -> scripts.delete("shared")).hasMessageContaining("globale Vorlage");
-            assertThatThrownBy(() -> scripts.publish("shared")).hasMessageContaining("Administratoren");
-            assertThatThrownBy(() -> scripts.unpublish("shared")).hasMessageContaining("Administratoren");
+            assertThatThrownBy(() -> scripts.publish("shared")).hasMessageContaining("Vorlagen veröffentlichen");
+            assertThatThrownBy(() -> scripts.unpublish("shared")).hasMessageContaining("Vorlagen veröffentlichen");
 
             assertThat(scripts.save("shared", "Meins", SOURCE + "\n// eigen", null, 1)).contains("verdeckt");
             assertThat(scripts.overview()).singleElement().satisfies(s -> {

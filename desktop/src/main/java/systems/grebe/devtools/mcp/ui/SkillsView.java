@@ -39,13 +39,15 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import systems.grebe.devtools.mcp.api.Me;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 
 /**
  * Übersicht der Skills des aktuellen Benutzers und der globalen Vorlagen: links Liste mit Suche und Filtern, rechts
  * Inhalt, Zusatzdateien und Änderungshistorie. Aktualisiert sich selbst, sobald das LLM einen Skill anlegt oder ändert.
- * Mit dem Admin-Schalter lassen sich eigene Skills als Vorlage veröffentlichen und Vorlagen zurückziehen.
+ * Mit dem Recht „Vorlagen veröffentlichen“ lassen sich eigene Skills als Vorlage veröffentlichen und Vorlagen
+ * zurückziehen.
  */
 public class SkillsView extends BorderPane {
 
@@ -60,7 +62,7 @@ public class SkillsView extends BorderPane {
             .withZone(ZoneId.systemDefault());
 
     private final SkillBackend service;
-    /** Angemeldetes Konto am Backend (Eigentümer der Skills, Administrator für Vorlagen). */
+    /** Angemeldetes Konto am Backend (Eigentümer der Skills, Recht auf Vorlagen). */
     private final Supplier<Optional<Me>> account;
     private final ComboBox<String> scopeFilter = new ComboBox<>();
     private final Label userLabel = new Label();
@@ -292,7 +294,7 @@ public class SkillsView extends BorderPane {
     }
 
     private void updateActions(SkillViews.Summary s) {
-        boolean admin = account.get().map(Me::admin).orElse(false);
+        boolean admin = account.get().map(m -> m.grants().has(Permission.TEMPLATES_PUBLISH)).orElse(false);
         delete.setDisable(s == null || s.global());
         publish.setVisible(admin);
         publish.setManaged(admin);

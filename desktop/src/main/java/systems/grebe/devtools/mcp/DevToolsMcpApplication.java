@@ -21,15 +21,16 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.fx.FxApp;
 import systems.grebe.devtools.mcp.modules.skills.SkillsModule;
 import systems.grebe.devtools.mcp.plugin.PluginSigner;
+import systems.grebe.devtools.mcp.remote.EmbeddedAccounts;
 import systems.grebe.devtools.mcp.remote.EmbeddedBackend;
-import systems.grebe.devtools.mcp.remote.LocalUser;
 
 /**
  * Einstiegspunkt. Die Klasse erweitert bewusst NICHT {@link Application}, damit die App auch
  * aus einem Fat-Jar (JavaFX auf dem Classpath) startet.
  *
  * <p>Mit {@code --headless} (oder {@code DEVTOOLS_MCP_HEADLESS=true}) startet nur der MCP-Server, ohne
- * JavaFX-Fenster und Tray.
+ * JavaFX-Fenster und Tray. Angemeldet wird dann über {@code DEVTOOLS_MCP_TOKEN} (persönliches Desktop-Token) oder
+ * {@code DEVTOOLS_MCP_USER}/{@code DEVTOOLS_MCP_PASSWORD}; mit Fenster fragt die App beim Start.
  *
  * <p>Das Backend (Paket {@code systems.grebe.devtools.mcp.backend}) nimmt nicht der Component-Scan auf, sondern
  * {@link EmbeddedBackend} – nur ohne eingetragenen Team-Server.
@@ -92,15 +93,24 @@ public class DevToolsMcpApplication {
         String[] springArgs = Arrays.stream(args).filter(a -> !HEADLESS_ARG.equals(a)).toArray(String[]::new);
         return new SpringApplicationBuilder(DevToolsMcpApplication.class)
                 .headless(headless) // ohne headless: AWT-SystemTray
-                .properties(properties(store))
+                .properties(properties(store, headless, System.getenv()))
                 .initializers(ctx -> ctx.getBeanFactory().registerSingleton("settingsStore", store))
                 .run(springArgs);
     }
 
-    /** Port, eingebettetes Backend ja/nein und – falls früher eingestellt – die Verbindung der Skill-Datenbank. */
-    static Map<String, Object> properties(SettingsStore store) {
+    /**
+     * Port, eingebettetes Backend ja/nein, ohne Fenster die Anmeldung aus der Umgebung und – falls früher eingestellt –
+     * die Verbindung der Skill-Datenbank.
+     */
+    static Map<String, Object> properties(SettingsStore store, boolean headless, Map<String, String> environment) {
         Map<String, Object> p = new LinkedHashMap<>();
         p.put("server.port", store.server().port());
+        p.put("devtools.headless", headless);
+        if (headless) {
+            putIfSet(p, "devtools.login.token", environment.get("DEVTOOLS_MCP_TOKEN"));
+            putIfSet(p, "devtools.login.username", environment.get("DEVTOOLS_MCP_USER"));
+            putIfSet(p, "devtools.login.password", environment.get("DEVTOOLS_MCP_PASSWORD"));
+        }
         boolean embedded = !store.team().configured();
         p.put(EmbeddedBackend.PROPERTY, embedded);
         if (!embedded) {
@@ -111,7 +121,7 @@ public class DevToolsMcpApplication {
         putIfSet(p, "devtools.skills.datasource.url", skills.get(SkillsModule.LEGACY_JDBC_URL));
         putIfSet(p, "devtools.skills.datasource.username", skills.get(SkillsModule.LEGACY_USERNAME));
         putIfSet(p, "devtools.skills.datasource.password", skills.get(SkillsModule.LEGACY_PASSWORD));
-        LocalUser.email(store).ifPresent(o -> p.put("devtools.skills.legacy-owner", o.toLowerCase(java.util.Locale.ROOT)));
+        EmbeddedAccounts.email(store).ifPresent(o -> p.put("devtools.skills.legacy-owner", o.toLowerCase(java.util.Locale.ROOT)));
         return p;
     }
 

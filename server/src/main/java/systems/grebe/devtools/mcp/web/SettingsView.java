@@ -29,6 +29,7 @@ import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.api.ModuleDescriptor;
 import systems.grebe.devtools.mcp.api.ModuleOverlay;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.backend.catalog.ModuleCatalog;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -105,7 +106,7 @@ public class SettingsView extends HorizontalLayout {
     /** Hinweis, solange sich noch keine Desktop-App gemeldet hat. */
     static Paragraph noCatalog() {
         return new Paragraph("Noch keine Module bekannt: Die Einstellungen erscheinen, sobald sich eine Desktop-App "
-                + "mit einem Desktop-Token (Mein Konto) verbunden hat.");
+                + "angemeldet hat.");
     }
 
     private void show() {
@@ -123,6 +124,11 @@ public class SettingsView extends HorizontalLayout {
         String inheritedFrom = t.profile() == null ? "global" : "Benutzer/global";
 
         panel.add(new H3(m.displayName()), new Paragraph(m.description()));
+        List<String> toolNames = m.tools().stream().map(ModuleDescriptor.ToolDescriptor::name).toList();
+        if (!user.grants().moduleUsable(m.id(), toolNames)) {
+            panel.add(new Paragraph("Für dieses Modul hast du keine Berechtigung – es bleibt in deinen Desktop-Apps "
+                    + "aus, egal was hier eingestellt ist."));
+        }
 
         Select<String> enabled = tristate("Modul aktiv (geerbt: " + label(inherited.enabled()) + ")",
                 current.enabled());
@@ -176,8 +182,8 @@ public class SettingsView extends HorizontalLayout {
             boolean toolsLocked = locks.contains(Overrides.TOOLS);
             panel.add(new H3("Tools"));
             for (String tool : tools) {
-                Select<String> s = tristate(tool + " (geerbt: " + label(inherited.toolMap().get(tool)) + ")",
-                        current.tools().get(tool));
+                Select<String> s = tristate(tool + " (geerbt: " + label(inherited.toolMap().get(tool)) + ")"
+                        + (user.grants().tool(m.id(), tool) ? "" : " – keine Berechtigung"), current.tools().get(tool));
                 lockHint(s, toolsLocked);
                 toolSelects.put(tool, s);
                 panel.add(s);
@@ -205,7 +211,11 @@ public class SettingsView extends HorizontalLayout {
             }
         });
         reset.addThemeVariants(ButtonVariant.TERTIARY);
-        panel.add(new HorizontalLayout(save, reset));
+        if (user.has(Permission.SETTINGS_OWN)) {
+            panel.add(new HorizontalLayout(save, reset));
+        } else {
+            panel.add(new Paragraph("Ändern: dafür fehlt dir das Recht „" + Permission.SETTINGS_OWN.label() + "“."));
+        }
     }
 
     /** Anzeige eines geerbten Schalters; {@code null} = nirgends vorgegeben, die Desktop-App entscheidet. */

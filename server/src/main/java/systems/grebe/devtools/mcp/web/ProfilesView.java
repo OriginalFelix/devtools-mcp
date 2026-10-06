@@ -15,6 +15,7 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
 import systems.grebe.devtools.mcp.backend.profile.Profile;
 import systems.grebe.devtools.mcp.backend.profile.ProfileService;
@@ -32,6 +33,8 @@ public class ProfilesView extends VerticalLayout {
     public ProfilesView(ProfileService profiles, AuthenticationContext auth) {
         this.profiles = profiles;
         this.userId = auth.getAuthenticatedUser(AccountPrincipal.class).orElseThrow().id();
+        // Anlegen, Ändern und Löschen gehören zu den eigenen Einstellungen; umschalten darf jeder
+        boolean manage = auth.hasRole(Permission.SETTINGS_OWN.name());
 
         grid.addColumn(Profile::name).setHeader("Profil").setAutoWidth(true);
         grid.addColumn(p -> p.description() == null ? "" : p.description()).setHeader("Beschreibung");
@@ -49,12 +52,16 @@ public class ProfilesView extends VerticalLayout {
                 b.addThemeVariants(ButtonVariant.TERTIARY);
             }
             delete.addThemeVariants(ButtonVariant.ERROR);
+            edit.setVisible(manage);
+            copy.setVisible(manage);
+            delete.setVisible(manage);
             return new HorizontalLayout(activate, edit, copy, delete);
         }).setAutoWidth(true);
         grid.setAllRowsVisible(true);
 
         Button create = new Button("Neues Profil", e -> edit(null));
         create.addThemeVariants(ButtonVariant.PRIMARY);
+        create.setVisible(manage);
         add(new H2("Profile"), new Paragraph("Ein Profil bündelt Einstellungen (z.B. Work, Home). Deine MCP-Clients "
                 + "arbeiten mit dem aktiven Profil; ein Wechsel gilt sofort, offene SSH-Sitzungen u.ä. des alten "
                 + "Profils werden geschlossen."), create, grid);

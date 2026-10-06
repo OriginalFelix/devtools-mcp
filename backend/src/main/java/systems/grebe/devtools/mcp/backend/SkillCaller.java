@@ -5,12 +5,14 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.springframework.stereotype.Component;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
 
 /**
  * Eigentümer der Skills im Backend: der angemeldete Benutzer der laufenden GraphQL-Operation mit seiner Konto-E-Mail;
- * globale Vorlagen verwalten Administratoren. Gesetzt für die Dauer eines Aufrufs über {@link #as}.
+ * globale Vorlagen verwaltet, wer das Recht {@link Permission#TEMPLATES_PUBLISH} hat. Gesetzt für die Dauer eines
+ * Aufrufs über {@link #as}.
  */
 @Component
 public class SkillCaller implements SkillOwner {
@@ -36,7 +38,7 @@ public class SkillCaller implements SkillOwner {
     public String email() {
         UserAccount u = CURRENT.get();
         return emailIfKnown().orElseThrow(() -> new IllegalStateException(u == null
-                ? "Skills nur über die GraphQL-API mit Desktop-Token."
+                ? "Skills nur über die GraphQL-API mit Anmeldung."
                 : "Kein Benutzer für die Skills: im Konto von '" + u.username() + "' ist keine E-Mail hinterlegt."));
     }
 
@@ -49,6 +51,6 @@ public class SkillCaller implements SkillOwner {
     @Override
     public boolean admin() {
         UserAccount u = CURRENT.get();
-        return u != null && u.admin();
+        return u != null && u.has(Permission.TEMPLATES_PUBLISH);
     }
 }

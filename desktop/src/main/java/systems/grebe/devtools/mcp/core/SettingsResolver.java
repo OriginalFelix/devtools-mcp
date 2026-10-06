@@ -32,6 +32,14 @@ public interface SettingsResolver {
         throw new UnsupportedOperationException();
     }
 
+    /**
+     * Ob der angemeldete Benutzer das Tool nutzen darf (Rechte seiner Rollen). Nicht erlaubte Tools registriert die
+     * Registry gar nicht erst.
+     */
+    default boolean permitted(ToolModule module, String toolName) {
+        return true;
+    }
+
     /** Vom Administrator gesperrte Schlüssel des Moduls (Feld, {@code @enabled}, {@code @tools}). */
     default java.util.Set<String> locked(ToolModule module) {
         return java.util.Set.of();

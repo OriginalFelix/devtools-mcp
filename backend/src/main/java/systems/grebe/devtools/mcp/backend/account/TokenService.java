@@ -29,11 +29,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.config.SecretCipher;
 import systems.grebe.devtools.mcp.backend.BackendHome;
 
 /**
- * Persönliche MCP-Zugriffstokens als JWT (HS512, Schlüssel {@code jwt.key} neben {@code settings.json}).
+ * Zugriffstokens als JWT (HS512, Schlüssel {@code jwt.key} neben {@code settings.json}): persönliche Tokens aus
+ * „Mein Konto“ ({@link ApiToken.Kind#TOKEN}) und Anmeldungen der Desktop-Apps ({@link ApiToken.Kind#SESSION}, enden
+ * mit der Abmeldung).
  *
  * <p>Ein Token gilt, wenn Signatur und Ablauf stimmen, seine ID ({@code jti}) in der Datenbank steht und nicht
  * widerrufen ist und der Benutzer aktiv ist. Das Ergebnis der Datenbank-Prüfung wird 30 s gemerkt; Widerruf,
@@ -52,7 +55,7 @@ public class TokenService {
     }
 
     /** Wer ein gültiges Token vorgelegt hat. */
-    public record TokenUser(UserAccount user, String tokenId) {
+    public record TokenUser(UserAccount user, String tokenId, ApiToken.Kind kind) {
     }
 
     private record Checked(TokenUser user, Instant until) {
@@ -76,18 +79,41 @@ public class TokenService {
     }
 
     /**
-     * Stellt ein neues Token aus.
+     * Stellt ein neues persönliches Token aus (Recht {@link Permission#TOKENS_CREATE}).
      *
      * @param validity Gültigkeit, {@code null} = unbegrenzt (bis zum Widerruf)
      */
     public IssuedToken issue(UserAccount user, String name, Duration validity) {
+        if (!user.has(Permission.TOKENS_CREATE)) {
+            throw new IllegalStateException("Dafür fehlt das Recht „" + Permission.TOKENS_CREATE.label() + "“.");
+        }
+        return issue(user, name, validity, ApiToken.Kind.TOKEN);
+    }
+
+    /**
+     * Stellt das Token einer Anmeldung aus (Desktop-App mit Benutzername und Passwort) und räumt beendete Anmeldungen
+     * des Benutzers ab.
+     *
+     * @param client z.B. „Desktop-App (rechner)“
+     */
+    public IssuedToken issueSession(UserAccount user, String client, Duration validity) {
+        try {
+            repo.deleteEndedSessions(user.id(), clock.instant());
+        } catch (RuntimeException e) {
+            LOG.debug("Beendete Anmeldungen von {} nicht entfernt", user.username(), e);
+        }
+        String name = client == null || client.isBlank() ? "Desktop-App" : client.strip();
+        return issue(user, name.length() > 100 ? name.substring(0, 100) : name, validity, ApiToken.Kind.SESSION);
+    }
+
+    private IssuedToken issue(UserAccount user, String name, Duration validity, ApiToken.Kind kind) {
         String label = name == null || name.isBlank() ? "Token" : name.strip();
         if (label.length() > 100) {
             throw new IllegalArgumentException("Name: höchstens 100 Zeichen.");
         }
         Instant now = clock.instant();
         Instant expires = validity == null ? null : now.plus(validity);
-        ApiToken token = new ApiToken(UUID.randomUUID().toString(), user.id(), label, now, expires, null, null);
+        ApiToken token = new ApiToken(UUID.randomUUID().toString(), user.id(), label, now, expires, null, null, kind);
         JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
                 .issuer(ISSUER)
                 .subject(Long.toString(user.id()))
@@ -117,6 +143,17 @@ public class TokenService {
                 .orElseThrow(() -> new IllegalArgumentException("Unbekanntes Token"));
         repo.revokeToken(t.id(), clock.instant());
         cache.remove(t.id());
+    }
+
+    /** Beendet eine Anmeldung (Abmelden der Desktop-App): Token widerrufen und entfernen. */
+    public void end(String tokenId) {
+        repo.token(tokenId).ifPresent(t -> {
+            repo.revokeToken(t.id(), clock.instant());
+            if (t.kind() == ApiToken.Kind.SESSION) {
+                repo.deleteToken(t.id());
+            }
+        });
+        cache.remove(tokenId);
     }
 
     /** Entfernt ein widerrufenes oder abgelaufenes Token aus der Liste. */
@@ -162,9 +199,8 @@ public class TokenService {
     private TokenUser lookup(String id, String subject, Instant now) {
         return repo.token(id)
                 .filter(t -> t.activeAt(now) && Long.toString(t.userId()).equals(subject))
-                .flatMap(t -> repo.user(t.userId()))
-                .filter(UserAccount::enabled)
-                .map(u -> new TokenUser(u, id))
+                .flatMap(t -> repo.user(t.userId()).filter(UserAccount::enabled)
+                        .map(u -> new TokenUser(u, id, t.kind())))
                 .orElse(null);
     }
 
@@ -180,10 +216,14 @@ public class TokenService {
         }
     }
 
-    /** Sperren/Löschen eines Benutzers wirkt sofort auf seine Tokens. */
+    /** Sperren/Löschen eines Benutzers und geänderte Rollen wirken sofort auf seine Tokens. */
     @EventListener
     public void onAccountChanged(AccountService.AccountChangedEvent e) {
-        cache.values().removeIf(c -> c.user() == null || c.user().user().id() == e.userId());
+        if (e.userId() == null) {
+            cache.clear();
+        } else {
+            cache.values().removeIf(c -> c.user() == null || c.user().user().id() == e.userId());
+        }
     }
 
     // ---------------------------------------------------------------- Schlüssel
