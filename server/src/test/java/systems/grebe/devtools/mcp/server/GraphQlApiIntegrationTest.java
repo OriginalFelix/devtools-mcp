@@ -294,6 +294,20 @@ class GraphQlApiIntegrationTest {
             assertThat(skill.getErrors().getFirst().getMessage()).contains("skills_create");
             assertThat(errorType(client(rev).document("""
                     mutation { createProject(name: "p") { id } }""").executeSync())).isEqualTo("BAD_REQUEST");
+            // ohne Recht auf memories_*: dauerhafte Memories nicht, temporäre schon (Memories brauchen eine E-Mail)
+            String rev2 = login(newUser("Reviewer").username(), "passwort-123").token();
+            assertThat(errorType(client(rev2).document("""
+                    mutation { saveMemory(title: "t", content: "c") }""").executeSync())).isEqualTo("FORBIDDEN");
+            String temp = mutation(rev2, """
+                    mutation { saveMemory(title: "t", content: "c", type: TEMPORARY) }""", Map.of(), "saveMemory");
+            long tempId = Long.parseLong(temp.replaceAll("\\D", ""));
+            assertThat(mutation(rev2, "mutation($id: Int!) { updateMemory(id: $id, append: \"weiter\") }",
+                    Map.of("id", tempId), "updateMemory")).contains("Nachtrag");
+            assertThat(errorType(client(rev2).document("""
+                    mutation($id: Int!) { updateMemory(id: $id, type: PERMANENT) }""").variable("id", tempId)
+                    .executeSync())).isEqualTo("BAD_REQUEST");
+            assertThat(mutation(rev2, "mutation($id: Int!) { deleteMemory(id: $id) }", Map.of("id", tempId),
+                    "deleteMemory")).contains("gelöscht");
 
             long adminId = client(admin).document("{ me { id } }").retrieveSync("me.id").toEntity(Long.class);
             ClientGraphQlResponse self = client(admin).document("mutation($id: Int!) { deleteUser(id: $id) }")
@@ -469,6 +483,18 @@ class GraphQlApiIntegrationTest {
                 .variables(Map.of("id", id)).executeSync())).isEqualTo("BAD_REQUEST");
         assertThat(client(jb).document("{ memoryCount }").retrieveSync("memoryCount").toEntity(Integer.class))
                 .isZero();
+
+        String temp = mutation(ja, """
+                mutation($t: String!, $c: String!) { saveMemory(title: $t, content: $c, type: TEMPORARY) }""",
+                Map.of("t", "Zwischenstand", "c", "Halb fertig."), "saveMemory");
+        long tempId = Long.parseLong(temp.replaceAll("\\D", ""));
+        assertThat(client(ja).document("query($id: Int!) { memory(id: $id) { type } }").variables(Map.of("id", tempId))
+                .retrieveSync("memory.type").toEntity(String.class)).isEqualTo("TEMPORARY");
+        // temporaryOnly: dauerhafte abgelehnt, temporäre gelöscht
+        assertThat(errorType(client(ja).document("mutation($id: Int!) { deleteMemory(id: $id, temporaryOnly: true) }")
+                .variables(Map.of("id", id)).executeSync())).isEqualTo("BAD_REQUEST");
+        assertThat(mutation(ja, "mutation($id: Int!) { deleteMemory(id: $id, temporaryOnly: true) }",
+                Map.of("id", tempId), "deleteMemory")).contains("gelöscht");
     }
 
     @Test

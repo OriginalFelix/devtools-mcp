@@ -267,8 +267,9 @@ class McpServerIntegrationTest {
 
     @Test
     void memoriesRoundTripOverMcp() {
-        assertThat(toolNames()).contains("memories_search", "memories_view", "memories_save", "memories_update")
-                .doesNotContain("memories_delete");
+        // delete ist ohne Schalter registriert – dann nur für temporäre Memories
+        assertThat(toolNames()).contains("memories_search", "memories_view", "memories_save", "memories_update",
+                "memories_delete");
 
         McpSchema.CallToolResult saved = client.callTool(callRequest("memories_save", Map.of(
                 "title", "Ticket MCP-7 reviewt: Akzeptanzkriterien fehlen",
@@ -292,10 +293,26 @@ class McpServerIntegrationTest {
         assertThat(missing.isError()).isTrue();
         assertThat(text(missing)).contains("#999999 gibt es nicht", "memories_search");
 
+        McpSchema.CallToolResult permanent = client.callTool(callRequest("memories_delete",
+                Map.of("id", Long.parseLong(id))));
+        assertThat(permanent.isError()).isTrue();
+        assertThat(text(permanent)).contains("ist dauerhaft");
+
         registry.updateConfig("memories", Map.of("allowWrite", "false", "allowDelete", "true"));
         try {
-            assertThat(toolNames()).contains("memories_search", "memories_delete")
-                    .doesNotContain("memories_save", "memories_update");
+            McpSchema.CallToolResult denied = client.callTool(callRequest("memories_save", Map.of(
+                    "title", "Zwischenstand", "content", "Halb fertig.")));
+            assertThat(denied.isError()).isTrue();
+            assertThat(text(denied)).contains("type=TEMPORARY");
+            String temp = text(client.callTool(callRequest("memories_save", Map.of(
+                    "title", "Zwischenstand", "content", "Halb fertig.", "type", "TEMPORARY"))))
+                    .replaceAll("(?s)^Memory #(\\d+) \\(temporär\\) gespeichert\\..*$", "$1");
+            assertThat(temp).matches("\\d+");
+            assertThat(text(client.callTool(callRequest("memories_update", Map.of("id", Long.parseLong(temp),
+                    "append", "Fertig.")))))
+                    .contains("aktualisiert (Nachtrag)");
+            assertThat(text(client.callTool(callRequest("memories_delete", Map.of("id", Long.parseLong(temp))))))
+                    .contains("gelöscht");
             assertThat(text(client.callTool(callRequest("memories_delete", Map.of("id", Long.parseLong(id))))))
                     .contains("gelöscht");
         } finally {

@@ -42,7 +42,7 @@ class RecallHintsTest {
     }
 
     static MemoryViews.Entry memory(long id, String title, String reference) {
-        return new MemoryViews.Entry(id, title, null, null, "ticket-review", reference, List.of(), T, T);
+        return new MemoryViews.Entry(id, title, null, null, "ticket-review", reference, List.of(), null, T, T);
     }
 
     @BeforeEach
