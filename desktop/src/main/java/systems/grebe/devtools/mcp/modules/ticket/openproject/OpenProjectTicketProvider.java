@@ -395,13 +395,108 @@ public class OpenProjectTicketProvider implements TicketProvider {
                 out.add(link("Parent", parent));
             }
             wp.path("_links").path("children").forEach(c -> out.add(link("Unteraufgabe", c)));
-            for (JsonNode r : http.getJson(path(id) + "/relations").path("_embedded").path("elements")) {
-                JsonNode from = r.path("_links").path("from");
-                boolean outgoing = String.valueOf(id).equals(lastSegment(text(from.path("href"))));
-                out.add(link(relation(text(r.path(outgoing ? "type" : "reverseType"))),
-                        outgoing ? r.path("_links").path("to") : from));
+            for (JsonNode r : relations(id)) {
+                out.add(link(relation(id, r), other(id, r)));
             }
             return out;
+        }
+
+        private List<JsonNode> relations(int id) {
+            List<JsonNode> out = new ArrayList<>();
+            http().getJson(path(id) + "/relations").path("_embedded").path("elements").forEach(out::add);
+            return out;
+        }
+
+        /** Beziehung aus Sicht von {@code id} – eine Relation steht bei beiden Arbeitspaketen, mit Typ bzw. Gegentyp. */
+        private static String relation(int id, JsonNode r) {
+            return relation(text(r.path(outgoing(id, r) ? "type" : "reverseType")));
+        }
+
+        private static JsonNode other(int id, JsonNode r) {
+            return outgoing(id, r) ? r.path("_links").path("to") : r.path("_links").path("from");
+        }
+
+        private static boolean outgoing(int id, JsonNode r) {
+            return String.valueOf(id).equals(lastSegment(text(r.path("_links").path("from").path("href"))));
+        }
+
+        /** Beziehungstypen der API (IDs) plus Parent/Unteraufgabe (Feld {@code parent}); Namen wie in {@link #links}. */
+        private static final List<LinkType> LINK_TYPES = List.of(
+                linkType("relates", "relates"), linkType("duplicates", "duplicated"), linkType("duplicated", "duplicates"),
+                linkType("blocks", "blocked"), linkType("blocked", "blocks"), linkType("precedes", "follows"),
+                linkType("follows", "precedes"), linkType("includes", "partof"), linkType("partof", "includes"),
+                linkType("requires", "required"), linkType("required", "requires"),
+                new LinkType("parent", "Parent", "Unteraufgabe"), new LinkType("child", "Unteraufgabe", "Parent"));
+
+        private static LinkType linkType(String type, String reverse) {
+            return new LinkType(type, relation(type), relation(reverse));
+        }
+
+        @Override
+        public List<LinkType> linkTypes(String project) {
+            return LINK_TYPES;
+        }
+
+        @Override
+        public WriteResult link(String key, String project, LinkType type, String target) {
+            int id = packageId(key);
+            int other = packageId(target);
+            switch (type.id()) {
+                case "parent" -> setParent(id, other);
+                case "child" -> setParent(other, id);
+                default -> {
+                    var body = HttpJson.object();
+                    body.put("type", type.id());
+                    body.putObject("_links").putObject("to").put("href", "/api/v3" + path(other));
+                    try {
+                        http().post(path(id) + "/relations", body);
+                    } catch (HttpJson.StatusException e) {
+                        if (e.status() == 422) {
+                            throw new IllegalArgumentException(e.getMessage(), e);
+                        }
+                        throw e;
+                    }
+                }
+            }
+            return new WriteResult("#" + id, "verknüpft: #" + id + " " + type.name() + " #" + other, webUrl(id));
+        }
+
+        @Override
+        public WriteResult unlink(String key, String project, String target, String relation) {
+            int id = packageId(key);
+            int other = packageId(target);
+            String otherId = String.valueOf(other);
+            record Found(String relation, Runnable remove) { }
+            List<Found> found = new ArrayList<>();
+            JsonNode wp = http().getJson(path(id));
+            if (otherId.equals(lastSegment(href(wp, "parent")))) {
+                found.add(new Found("Parent", () -> setParent(id, null)));
+            }
+            for (JsonNode c : wp.path("_links").path("children")) {
+                if (otherId.equals(lastSegment(text(c.path("href"))))) {
+                    found.add(new Found("Unteraufgabe", () -> setParent(other, null)));
+                }
+            }
+            for (JsonNode r : relations(id)) {
+                if (otherId.equals(lastSegment(text(other(id, r).path("href"))))) {
+                    found.add(new Found(relation(id, r), () -> http.delete("/relations/" + text(r.path("id")))));
+                }
+            }
+            Found hit = TicketSystem.pickLink(found, Found::relation, relation, "OpenProject", "#" + id, "#" + other);
+            hit.remove().run();
+            return new WriteResult("#" + id, "Verknüpfung entfernt: #" + id + " " + hit.relation() + " #" + other, webUrl(id));
+        }
+
+        /** Setzt den Parent eines Arbeitspakets; {@code null} entfernt ihn. */
+        private void setParent(int id, Integer parent) {
+            patch(id, b -> {
+                ObjectNode p = b.putObject("_links").putObject("parent");
+                if (parent == null) {
+                    p.putNull("href");
+                } else {
+                    p.put("href", "/api/v3" + path(parent));
+                }
+            });
         }
 
         private Link link(String relation, JsonNode ref) {

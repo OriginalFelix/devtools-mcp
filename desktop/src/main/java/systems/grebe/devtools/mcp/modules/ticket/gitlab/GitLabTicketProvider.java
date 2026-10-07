@@ -448,20 +448,77 @@ public class GitLabTicketProvider implements TicketProvider {
             Ref ref = ref(key, project);
             List<Link> out = new ArrayList<>();
             for (JsonNode l : http.getJson(issuePath(ref) + "/links")) {
-                String relation = switch (HttpJson.first(text(l.path("link_type")), "relates_to")) {
-                    case "blocks" -> "blocks";
-                    case "is_blocked_by" -> "is blocked by";
-                    default -> "relates to";
-                };
-                out.add(new Link(relation, HttpJson.first(text(l.path("references").path("full")),
-                        projectFromUrl(text(l.path("web_url"))) + "#" + text(l.path("iid"))), text(l.path("title")),
-                        text(l.path("state")), text(l.path("web_url"))));
+                out.add(new Link(relation(l), linkedKey(l), text(l.path("title")), text(l.path("state")), text(l.path("web_url"))));
             }
             for (JsonNode mr : http.getJson(issuePath(ref) + "/related_merge_requests")) {
                 out.add(new Link("Merge Request", HttpJson.first(text(mr.path("references").path("full")),
                         "!" + text(mr.path("iid"))), text(mr.path("title")), text(mr.path("state")), text(mr.path("web_url"))));
             }
             return out;
+        }
+
+        private static String relation(JsonNode link) {
+            return switch (HttpJson.first(text(link.path("link_type")), "relates_to")) {
+                case "blocks" -> "blocks";
+                case "is_blocked_by" -> "is blocked by";
+                default -> "relates to";
+            };
+        }
+
+        private static String linkedKey(JsonNode link) {
+            return HttpJson.first(text(link.path("references").path("full")),
+                    projectFromUrl(text(link.path("web_url"))) + "#" + text(link.path("iid")));
+        }
+
+        /** {@code blocks}/{@code is_blocked_by} gibt es erst ab GitLab Premium, {@code relates_to} überall. */
+        private static final List<LinkType> LINK_TYPES = List.of(
+                new LinkType("relates_to", "relates to", "relates to"),
+                new LinkType("blocks", "blocks", "is blocked by"),
+                new LinkType("is_blocked_by", "is blocked by", "blocks"));
+
+        @Override
+        public List<LinkType> linkTypes(String project) {
+            return LINK_TYPES;
+        }
+
+        @Override
+        public WriteResult link(String key, String project, LinkType type, String target) {
+            requireToken("Verknüpfen");
+            Ref a = ref(key, project);
+            Ref b = ref(target, project);
+            var body = HttpJson.object();
+            body.put("target_project_id", b.project());
+            body.put("target_issue_iid", b.iid());
+            body.put("link_type", type.id());
+            try {
+                http.post(issuePath(a) + "/links", body);
+            } catch (HttpJson.StatusException e) {
+                if (!"relates_to".equals(type.id()) && (e.status() == 403 || e.status() == 400)) {
+                    throw new IllegalStateException(e.getMessage() + " – 'blocks'/'is blocked by' braucht GitLab Premium; "
+                            + "sonst 'relates to' verwenden.", e);
+                }
+                throw e;
+            }
+            return new WriteResult(canonicalKey(key, project), "verknüpft: " + a.key() + " " + type.name() + " " + b.key(),
+                    webBase + "/" + a.project() + "/-/issues/" + a.iid());
+        }
+
+        @Override
+        public WriteResult unlink(String key, String project, String target, String relation) {
+            requireToken("Verknüpfung entfernen");
+            Ref a = ref(key, project);
+            Ref b = ref(target, project);
+            String other = canonicalKey(target, project);
+            List<JsonNode> found = new ArrayList<>();
+            for (JsonNode l : http.getJson(issuePath(a) + "/links")) {
+                if (other.equals(linkedKey(l).toLowerCase(Locale.ROOT))) {
+                    found.add(l);
+                }
+            }
+            JsonNode hit = TicketSystem.pickLink(found, GitLab::relation, relation, "GitLab", a.key(), b.key());
+            http.delete(issuePath(a) + "/links/" + text(hit.path("issue_link_id")));
+            return new WriteResult(canonicalKey(key, project), "Verknüpfung entfernt: " + a.key() + " " + relation(hit)
+                    + " " + b.key(), webBase + "/" + a.project() + "/-/issues/" + a.iid());
         }
 
         /**
