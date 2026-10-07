@@ -19,7 +19,7 @@ import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 @Component
 public class BackendMemories implements MemoryBackend {
 
-    private static final String ENTRY = "id title content project skill reference tags createdAt updatedAt";
+    private static final String ENTRY = "id title content project skill reference tags type createdAt updatedAt";
 
     private final BackendConnection backend;
 
@@ -68,17 +68,19 @@ public class BackendMemories implements MemoryBackend {
     public List<MemoryViews.Entry> related(List<String> references, String skill, int limit) {
         return backend.queryList("""
                 query($refs: [String!], $skill: String, $limit: Int) { relatedMemories(references: $refs, \
-                skill: $skill, limit: $limit) { id title project skill reference tags createdAt updatedAt } }""",
+                skill: $skill, limit: $limit) { id title project skill reference tags type createdAt updatedAt } }""",
                 args("refs", references, "skill", skill, "limit", limit), "relatedMemories", MemoryViews.Entry.class);
     }
 
     @Override
-    public String search(String query, String project, String skill, String tag, Integer days, Integer limit) {
+    public String search(String query, String project, String skill, String tag, MemoryViews.Type type,
+                         Integer days, Integer limit) {
         return text("""
-                query($query: String, $project: String, $skill: String, $tag: String, $days: Int, $limit: Int) { \
-                memorySearch(query: $query, project: $project, skill: $skill, tag: $tag, days: $days, \
-                limit: $limit) }""", "memorySearch",
-                args("query", query, "project", project, "skill", skill, "tag", tag, "days", days, "limit", limit));
+                query($query: String, $project: String, $skill: String, $tag: String, $type: MemoryType, $days: Int, \
+                $limit: Int) { memorySearch(query: $query, project: $project, skill: $skill, tag: $tag, type: $type, \
+                days: $days, limit: $limit) }""", "memorySearch",
+                args("query", query, "project", project, "skill", skill, "tag", tag, "type", name(type),
+                        "days", days, "limit", limit));
     }
 
     @Override
@@ -87,31 +89,40 @@ public class BackendMemories implements MemoryBackend {
     }
 
     @Override
-    public String save(String title, String content, String project, String skill, String reference,
-                       List<String> tags, int maxContentChars) {
+    public String save(String title, String content, MemoryViews.Type type, String project, String skill,
+                       String reference, List<String> tags, int maxContentChars) {
         return text("""
                 mutation($title: String!, $content: String!, $project: String, $skill: String, $reference: String, \
-                $tags: [String!], $max: Int) { saveMemory(title: $title, content: $content, project: $project, \
-                skill: $skill, reference: $reference, tags: $tags, maxContentChars: $max) }""", "saveMemory",
+                $tags: [String!], $type: MemoryType, $max: Int) { saveMemory(title: $title, content: $content, \
+                project: $project, skill: $skill, reference: $reference, tags: $tags, type: $type, \
+                maxContentChars: $max) }""", "saveMemory",
                 args("title", title, "content", content, "project", project, "skill", skill, "reference", reference,
-                        "tags", tags, "max", maxContentChars));
+                        "tags", tags, "type", name(type), "max", maxContentChars));
     }
 
     @Override
-    public String update(long id, String title, String content, String append, String project, String skill,
-                         String reference, List<String> tags, int maxContentChars) {
+    public String update(long id, String title, String content, String append, MemoryViews.Type type,
+                         String project, String skill, String reference, List<String> tags, boolean temporaryOnly,
+                         int maxContentChars) {
         return text("""
                 mutation($id: Int!, $title: String, $content: String, $append: String, $project: String, \
-                $skill: String, $reference: String, $tags: [String!], $max: Int) { updateMemory(id: $id, \
-                title: $title, content: $content, append: $append, project: $project, skill: $skill, \
-                reference: $reference, tags: $tags, maxContentChars: $max) }""", "updateMemory",
+                $skill: String, $reference: String, $tags: [String!], $type: MemoryType, $tempOnly: Boolean, \
+                $max: Int) { updateMemory(id: $id, title: $title, content: $content, append: $append, \
+                project: $project, skill: $skill, reference: $reference, tags: $tags, type: $type, \
+                temporaryOnly: $tempOnly, maxContentChars: $max) }""", "updateMemory",
                 args("id", id, "title", title, "content", content, "append", append, "project", project,
-                        "skill", skill, "reference", reference, "tags", tags, "max", maxContentChars));
+                        "skill", skill, "reference", reference, "tags", tags, "type", name(type),
+                        "tempOnly", temporaryOnly, "max", maxContentChars));
     }
 
     @Override
-    public String delete(long id) {
-        return text("mutation($id: Int!) { deleteMemory(id: $id) }", "deleteMemory", args("id", id));
+    public String delete(long id, boolean temporaryOnly) {
+        return text("mutation($id: Int!, $tempOnly: Boolean) { deleteMemory(id: $id, temporaryOnly: $tempOnly) }",
+                "deleteMemory", args("id", id, "tempOnly", temporaryOnly));
+    }
+
+    private static String name(MemoryViews.Type type) {
+        return type == null ? null : type.name();
     }
 
     private String text(String document, String field, Map<String, Object> args) {

@@ -1,6 +1,7 @@
 package systems.grebe.devtools.mcp.backend;
 
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.springframework.graphql.data.method.annotation.Argument;
@@ -292,8 +293,9 @@ public class BackendGraphQlController {
     @QueryMapping
     public String memorySearch(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                                @Argument String query, @Argument String project, @Argument String skill,
-                               @Argument String tag, @Argument Integer days, @Argument Integer limit) {
-        return as(user, () -> memories.search(query, project, skill, tag, days, limit));
+                               @Argument String tag, @Argument MemoryViews.Type type, @Argument Integer days,
+                               @Argument Integer limit) {
+        return as(user, () -> memories.search(query, project, skill, tag, type, days, limit));
     }
 
     @QueryMapping
@@ -318,10 +320,11 @@ public class BackendGraphQlController {
     public String saveMemory(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                              @Argument String title, @Argument String content, @Argument String project,
                              @Argument String skill, @Argument String reference, @Argument List<String> tags,
-                             @Argument Integer maxContentChars) {
-        return asTool(user, "memories", "memories_save",
-                () -> memories.save(title, content, project, skill, reference, tags,
-                        maxMemory(maxContentChars)));
+                             @Argument MemoryViews.Type type, @Argument Integer maxContentChars) {
+        Supplier<String> save = () -> memories.save(title, content, type, project, skill, reference, tags,
+                maxMemory(maxContentChars));
+        // temporäre Memories ohne Recht auf das Tool
+        return type == MemoryViews.Type.TEMPORARY ? as(user, save) : asTool(user, "memories", "memories_save", save);
     }
 
     @MutationMapping
@@ -329,16 +332,37 @@ public class BackendGraphQlController {
                                @Argument long id, @Argument String title, @Argument String content,
                                @Argument String append, @Argument String project, @Argument String skill,
                                @Argument String reference, @Argument List<String> tags,
+                               @Argument MemoryViews.Type type, @Argument Boolean temporaryOnly,
                                @Argument Integer maxContentChars) {
-        return asTool(user, "memories", "memories_update",
-                () -> memories.update(id, title, content, append, project, skill, reference, tags,
-                        maxMemory(maxContentChars)));
+        return asToolOrTemporary(user, "memories_update", id, Boolean.TRUE.equals(temporaryOnly),
+                tempOnly -> memories.update(id, title, content, append, type, project, skill, reference, tags,
+                        tempOnly, maxMemory(maxContentChars)));
     }
 
     @MutationMapping
     public String deleteMemory(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
-                               @Argument long id) {
-        return asTool(user, "memories", "memories_delete", () -> memories.delete(id));
+                               @Argument long id, @Argument Boolean temporaryOnly) {
+        return asToolOrTemporary(user, "memories_delete", id, Boolean.TRUE.equals(temporaryOnly),
+                tempOnly -> memories.delete(id, tempOnly));
+    }
+
+    /**
+     * Temporäre Memories dürfen ohne Recht auf das Tool geändert und gelöscht werden: Fehlt das Recht (oder verlangt
+     * der Aufrufer es so), läuft die Operation mit {@code temporaryOnly}; eine dauerhafte Memory lehnt sie dann ab.
+     */
+    private <T> T asToolOrTemporary(UserAccount user, String tool, long id, boolean temporaryOnly,
+                                    Function<Boolean, T> body) {
+        UserAccount u = GraphQlAuth.require(user);
+        boolean permitted = u.grants().tool("memories", tool);
+        if (permitted && !temporaryOnly) {
+            return SkillCaller.as(u, () -> body.apply(false));
+        }
+        return SkillCaller.as(u, () -> {
+            if (!permitted && !memories.temporary(id)) {
+                throw new GraphQlErrors.Forbidden("Dafür fehlt das Recht auf das Tool " + tool + ".");
+            }
+            return body.apply(true);
+        });
     }
 
     private static int maxMemory(Integer requested) {
