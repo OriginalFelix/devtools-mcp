@@ -105,6 +105,7 @@ class DatabaseGraphStorageTest {
                 new Q("find method", t -> t.find(null, "save", "method", null, null)),
                 new Q("find all", t -> t.find(null, "o", null, 50, null)),
                 new Q("find *dao", t -> t.find(null, "*repository", null, null, null)),
+                new Q("find *x*", t -> t.find(null, "*order*", null, null, null)),
                 new Q("explain member", t -> t.explain(null, "OrderRepository#save", null, null)),
                 new Q("explain type", t -> t.explain(null, "OrderService", null, null)),
                 new Q("explain file", t -> t.explain(null, "src/main/java/com/acme/shop/Order.java", null, null)),

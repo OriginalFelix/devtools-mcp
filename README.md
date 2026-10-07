@@ -1094,7 +1094,11 @@ Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Um
   `EXTRACTED` (steht so im Code, z.B. Aufruf über ein Feld mit deklariertem Typ), `INFERRED` mit Score (abgeleitet,
   z.B. über den Rückgabetyp einer Aufrufkette 0.8, über den Methodennamen bei unbekanntem Empfänger 0.6,
   `overrides` ohne `@Override` 0.9), `AMBIGUOUS` (Überladungen gleicher Stelligkeit – Kante zu jedem Kandidaten).
-  Mehrfache Fundstellen werden zu einer Kante mit `count` zusammengefasst.
+  Mehrfache Fundstellen werden zu einer Kante mit `count` zusammengefasst. **Aufrufe über Interfaces und
+  Oberklassen:** Ruft Code eine Methode auf, die überschrieben wird, kommt je Implementierung (auch über mehrere
+  Stufen) eine Kante `calls` dazu – `INFERRED`, Score 0.7 –, damit Aufrufketten und `graph_path` bis in die
+  Implementierungen führen; bei mehr als 12 Implementierungen unterbleibt das (Rauschen). Gemessen an diesem
+  Repository: rund 1.700 solcher Kanten bei gut 50.000.
 * **Grenzen:** keine vollständige Typinferenz (Lambdas, Generics-Rückgaben, `var` aus externen Aufrufen) und kein
   Classpath – Aufrufe auf Bibliothekstypen erzeugen keine Kante, Obertypen außerhalb des Projekts werden nur über
   Imports erkannt.
@@ -1140,6 +1144,10 @@ Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Um
   `graph_cypher` (freies, nur lesendes OpenCypher – schreibende Klauseln lehnt die Datenbank in Abfragen ab, `$g` ist
   auf Projekt+Branch gesetzt und Pflicht). Beide Ablagen liefern dieselben Antworten (`DatabaseGraphStorageTest`
   vergleicht die Ausgaben direkt, `GraphQlGraphProviderTest` über die GraphQL-API).
+* **Graph zuerst:** Die Server-Instructions des Moduls weisen das LLM an, in freigegebenen Java-Projekten Dateien
+  **immer zuerst** über `graph_files`, `graph_query` oder `graph_find` zu suchen und mit `graph_read` nur die nötigen
+  Stellen zu lesen – `grep`, `find`, Glob oder ganze Dateien erst, wenn der Graph nichts liefert (Nicht-Java-Dateien,
+  Konfiguration, Texte in Strings/Kommentaren). Suchbegriffe behalten Umlaute (*veröffentlicht* bleibt ein Wort).
 * **Einstellungen:** Projekte/Sammelordner, Standardprojekt, Ablage (`database`/`file`), Ausschlüsse (Ordnername
   außerhalb von `src/`, relativer Pfad oder `*.endung`), Tests einbeziehen, max. Dateien. Eingebettete oder externe
   ArcadeDB stellt das Backend ein (`devtools.graph.*`). *Verbindung testen* prüft die Graph-Storage (mit Version) und

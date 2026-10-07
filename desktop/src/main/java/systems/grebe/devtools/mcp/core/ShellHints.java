@@ -52,8 +52,8 @@ public final class ShellHints {
     public static final String SCRIPTS = " Eigene Tools als Groovy-Skripte immer über die scripts_*-Tools anlegen und "
             + "pflegen, nicht als Dateien im Dateisystem und nicht per `groovy` in der Shell ausführen.";
 
-    public static final String GRAPH =" Für freigegebene Java-Projekte gilt: Struktur, Aufrufer und Abhängigkeiten über "
-            + "die graph_*-Tools ermitteln, nicht mit `grep`/`find` in der Shell.";
+    public static final String GRAPH = " Für freigegebene Java-Projekte gilt: Dateien, Struktur, Aufrufer und Abhängigkeiten "
+            + "immer zuerst über die graph_*-Tools suchen, nicht mit `grep`/`find`/Glob in der Shell.";
 
     public static final String TICKET = " Tickets (Jira, GitHub, GitLab, YouTrack, OpenProject) immer über die ticket_*-Tools lesen, nicht per "
             + "`curl` gegen die REST-API, mit `gh`/`glab` in der Shell oder im Browser.";
