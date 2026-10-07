@@ -27,6 +27,7 @@ import org.springframework.security.authentication.AuthenticationEventPublisher;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.authentication.event.AuthenticationFailureBadCredentialsEvent;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.client.RestClient;
@@ -66,6 +67,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Modul-Katalog, Einstellungs-Ebenen Global → Benutzer → Profil mit Sperren, Profilwechsel, Projekte, Skills und
  * Subscriptions über WebSocket.
  */
+// Kontext nach der Klasse schließen: die Graph-Datenbank des Backends hält sonst Dateien im temporären Ordner offen
+@DirtiesContext
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class GraphQlApiIntegrationTest {
 

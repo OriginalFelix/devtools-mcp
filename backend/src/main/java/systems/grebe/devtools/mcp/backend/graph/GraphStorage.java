@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import com.arcadedb.Constants;
 import com.arcadedb.database.BasicDatabase;
@@ -25,8 +26,11 @@ import com.arcadedb.remote.RemoteServer;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.backend.BackendHome;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph;
@@ -100,9 +104,9 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
     public enum Mode { EMBEDDED, REMOTE }
 
     /**
-     * Einstellungen ({@code devtools.graph.*}).
+     * Einstellungen ({@code devtools.graph.*} bzw. Reiter „Backend“ der Desktop-App).
      *
-     * @param path     Verzeichnis der eingebetteten Datenbank
+     * @param path     Verzeichnis der eingebetteten Datenbank; {@code null} = {@code graphdb/} im Datenverzeichnis
      * @param host     ArcadeDB-Server (extern)
      * @param port     HTTP-Port des Servers (Standard 2480)
      * @param database Datenbank auf dem Server; fehlt sie, wird sie angelegt
@@ -126,6 +130,15 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         }
     }
 
+    /**
+     * Einstellungen, die Vorrang vor {@code devtools.graph.*} haben – in der Desktop-App die aus dem Reiter „Backend“.
+     * {@code null} = nicht eingestellt.
+     */
+    @FunctionalInterface
+    public interface Configured {
+        Settings settings();
+    }
+
     /** Kopfdaten beim Umschalten auf eine neue Generation ({@code stats} als JSON). */
     public record Header(String commit, String builtAt, String generator, int version, long files, long nodes,
                          long edges, String stats, List<Community> communities) {
@@ -137,9 +150,12 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         }
     }
 
-    private final Settings settings;
+    private final Path defaultPath;
+    private volatile Settings settings;
     private DatabaseFactory factory;
     private volatile BasicDatabase db;
+    private volatile String status = "nicht gestartet";
+    private final List<Runnable> statusListeners = new CopyOnWriteArrayList<>();
 
     private final Object cleanLock = new Object();
     private boolean cleanPending;
@@ -147,7 +163,7 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
     private volatile boolean closing;
 
     @Autowired
-    public GraphStorage(BackendHome home,
+    public GraphStorage(BackendHome home, ObjectProvider<Configured> configured,
                         @Value("${devtools.graph.mode:embedded}") String mode,
                         @Value("${devtools.graph.path:}") String path,
                         @Value("${devtools.graph.host:localhost}") String host,
@@ -155,8 +171,11 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
                         @Value("${devtools.graph.database:devtools}") String database,
                         @Value("${devtools.graph.user:root}") String user,
                         @Value("${devtools.graph.password:}") String password) {
-        this(switch (mode.strip().toLowerCase(Locale.ROOT)) {
-            case "embedded", "" -> Settings.embedded(path.isBlank() ? home.resolve("graphdb") : Path.of(path));
+        this.defaultPath = path.isBlank() ? home.resolve("graphdb") : Path.of(path);
+        Configured c = configured.getIfAvailable();
+        Settings fromApp = c == null ? null : c.settings();
+        this.settings = resolve(fromApp != null ? fromApp : switch (mode.strip().toLowerCase(Locale.ROOT)) {
+            case "embedded", "" -> Settings.embedded(null);
             case "remote", "external" -> Settings.remote(host, port, database, user, password);
             default -> throw new IllegalArgumentException("devtools.graph.mode: 'embedded' oder 'remote', nicht '"
                     + mode + "'");
@@ -164,7 +183,13 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
     }
 
     public GraphStorage(Settings settings) {
+        this.defaultPath = settings.path();
         this.settings = settings;
+    }
+
+    /** Eingebettet ohne Pfad: {@code graphdb/} im Datenverzeichnis. */
+    private Settings resolve(Settings s) {
+        return s.mode() == Mode.EMBEDDED && s.path() == null ? Settings.embedded(defaultPath) : s;
     }
 
     public Settings settings() {
@@ -172,6 +197,58 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
     }
 
     // ------------------------------------------------------------------ Verbindung
+
+    /** Startet die Datenbank beim Start des Backends – im Hintergrund, der Start wartet nicht darauf. */
+    @EventListener(ApplicationReadyEvent.class)
+    public void startWhenReady() {
+        Thread.ofVirtual().name("graph-start").start(this::start);
+    }
+
+    /**
+     * Öffnet die Datenbank (legt sie bei Bedarf an) und liefert den Status; Fehler stehen im Status, statt geworfen zu
+     * werden.
+     */
+    public String start() {
+        try {
+            setStatus("läuft: " + check());
+        } catch (RuntimeException e) {
+            setStatus("Fehler: " + e.getMessage());
+            LOG.warn("Graph-Storage nicht gestartet: {}", e.getMessage());
+        }
+        return status;
+    }
+
+    private void setStatus(String value) {
+        status = value;
+        statusListeners.forEach(Runnable::run);
+    }
+
+    /** Wird bei jeder Änderung des Status aufgerufen (beliebiger Thread). */
+    public void addStatusListener(Runnable listener) {
+        statusListeners.add(listener);
+    }
+
+    /** Zustand für die Oberfläche, z.B. {@code läuft: ArcadeDB eingebettet (…) · ArcadeDB 26.10.1}. */
+    public String status() {
+        return status;
+    }
+
+    /**
+     * Stellt auf andere Einstellungen um (Reiter „Backend“): schließt die offene Datenbank und startet mit den neuen.
+     * Laufende Abfragen auf der alten schlagen dabei fehl.
+     *
+     * @return Status nach dem Start
+     */
+    public String configure(Settings next) {
+        synchronized (this) {
+            closing = true;
+            shutdown();
+            settings = resolve(next);
+            setStatus("wird gestartet …");
+            closing = false;
+        }
+        return start();
+    }
 
     /** Offene Datenbank; beim ersten Zugriff geöffnet (bzw. angelegt) und mit Schema versehen. */
     BasicDatabase db() {
@@ -221,9 +298,10 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
     /** Fehler beim Öffnen als Meldung mit Hinweis auf die Einstellungen. */
     private IllegalStateException explain(RuntimeException e) {
         String hint = settings.mode() == Mode.EMBEDDED
-                ? " Läuft schon ein anderes Programm mit derselben Datenbank? Sonst devtools.graph.path prüfen."
-                : " Läuft der ArcadeDB-Server? Sonst devtools.graph.host, -port, -database, -user und -password des "
-                + "Backends prüfen.";
+                ? " Läuft schon ein anderes Programm mit derselben Datenbank? Sonst devtools.graph.path bzw. den Reiter "
+                + "„Backend“ der Desktop-App prüfen."
+                : " Läuft der ArcadeDB-Server? Sonst Host, Port, Datenbank, Benutzer und Passwort prüfen (Reiter „Backend“ "
+                + "der Desktop-App bzw. devtools.graph.* des Backends).";
         return new IllegalStateException(settings + " ist nicht verfügbar: " + rootMessage(e) + "." + hint, e);
     }
 
@@ -286,6 +364,12 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
     @Override
     public void close() {
         closing = true;
+        shutdown();
+        setStatus("beendet");
+    }
+
+    /** Wartet auf den Aufräumer und schließt die Datenbank; {@code closing} muss gesetzt sein. */
+    private void shutdown() {
         Thread c;
         synchronized (cleanLock) {
             c = cleaner;

@@ -16,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.annotation.DirtiesContext;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
 import systems.grebe.devtools.mcp.backend.account.Role;
@@ -39,6 +40,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Speichern ins aktive Profil über GraphQL, Subscriptions (Änderung wie aus der Web-UI kommt sofort an), Profilwechsel,
  * Projekte mit lokalem Verzeichnis, Skills des angemeldeten Benutzers, Abmelden und Rechte auf Module und Tools.
  */
+// Kontext nach der Klasse schließen: die Graph-Datenbank des Backends hält sonst Dateien im temporären Ordner offen
+@DirtiesContext
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"devtools.local-user.email=local@example.com", "devtools.login.username=tester",
                 "devtools.login.password=tester-passwort"})

@@ -19,6 +19,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import systems.grebe.devtools.mcp.DevToolsMcpApplication;
 import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.api.Permission;
+import systems.grebe.devtools.mcp.backend.graph.GraphStorage;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
@@ -103,7 +104,9 @@ public class FxApp extends Application {
                         context.getBean(VisualVmModule.class)::openFile)),
                 new Tab("Plugins", new PluginsView(context.getBean(PluginManager.class),
                         context.getBean(PluginStore.class))),
-                new Tab("Backend", new BackendView(backend))));
+                new Tab("Backend", new BackendView(backend,
+                        context.getBeanProvider(GraphStorage.class).getIfAvailable(),
+                        context.getBean(SettingsStore.class)))));
         Scene scene = new Scene(view, 1180, 760);
         String css = getClass().getResource("/ui/app.css").toExternalForm();
         scene.getStylesheets().add(css);

@@ -56,6 +56,12 @@ class GraphQlGraphProviderTest {
     void graphQlAnswersLikeTheFileStorageAndKeepsUsersApart(@TempDir Path project) throws Exception {
         assertThat(backend.signedIn()).isTrue();
         assertThat(storage.describe()).contains("ArcadeDB eingebettet", home.toString());
+        // beim Start des Backends gestartet, nicht erst beim ersten Zugriff
+        long end = System.nanoTime() + 20_000_000_000L;
+        while (!storage.status().startsWith("läuft:") && System.nanoTime() < end) {
+            Thread.sleep(50);
+        }
+        assertThat(storage.status()).startsWith("läuft: ArcadeDB eingebettet");
         DatabaseGraphStorageTest.init(project);
         try (Git git = Git.init().setDirectory(project.toFile()).setInitialBranch("main").call()) {
             git.add().addFilepattern(".").call();
