@@ -42,6 +42,10 @@ extend type Mutation {
     writeGraphEdges(graph: ID!, edges: [CodeEdgeInput!]!): Int!
     "Schaltet den Branch auf die Generation um (atomar); die vorige entfernt das Backend im Hintergrund."
     publishGraph(key: GraphKeyInput!, graph: ID!, header: GraphHeaderInput!): GraphHead!
+    "Inkrementell: wendet die Änderungen auf die Generation base an (eine Transaktion); null = nicht möglich – dann neu schreiben."
+    updateGraph(key: GraphKeyInput!, base: ID!, delta: GraphDeltaInput!): GraphHead
+    "Übernimmt für den Branch von key die Generation von source (gleicher Stand); null = source hat keinen Graphen."
+    linkGraph(key: GraphKeyInput!, source: GraphKeyInput!): GraphHead
     "Verwirft eine vorgemerkte Generation."
     abortGraph(graph: ID!): Boolean!
     "Löscht den Graphen des Branches (branch leer = Projekt ohne Git); false, wenn es keinen gab."
@@ -147,6 +151,22 @@ type GraphHead {
     stats: String!
     communities: [Community!]!
     location: String!
+}
+
+"""
+Änderungen gegenüber dem gespeicherten Stand; Kanten über from/to/rel identifiziert. Knoten mit geänderter Art stehen
+unter removedNodes und addedNodes, ihre Kanten unter addedEdges.
+"""
+input GraphDeltaInput {
+    files: [SourceFileInput!]!
+    removedFiles: [String!]!
+    addedNodes: [CodeNodeInput!]!
+    changedNodes: [CodeNodeInput!]!
+    removedNodes: [String!]!
+    addedEdges: [CodeEdgeInput!]!
+    changedEdges: [CodeEdgeInput!]!
+    removedEdges: [CodeEdgeInput!]!
+    header: GraphHeaderInput!
 }
 
 input GraphHeaderInput {

@@ -221,6 +221,109 @@ class DatabaseGraphStorageTest {
     }
 
     @Test
+    void commitsAreIndexedIncrementallyAndNewBranchesTakeOverTheGraph() throws Exception {
+        GraphTools db = tools(GraphModule.STORAGE_DATABASE);
+        db.build(null, false);
+        String generation = graphId("main");
+
+        // Commit mit geändertem Rumpf: nur diese Datei wird gelesen, gespeichert nur der Unterschied – in place
+        Path order = project.resolve("src/main/java/com/acme/shop/Order.java");
+        String source = Files.readString(order);
+        Files.writeString(order, source.replace("    void print(String s) {\n    }",
+                "    void print(String s) {\n        new Money().add(3);\n    }"));
+        git.add().addFilepattern(".").call();
+        git.commit().setMessage("print zählt").setSign(false).call();
+        String built = db.build(null, false);
+        assertThat(built).startsWith("Graph gebaut").contains("Inkrementell: 1 Datei(en) gelesen");
+        assertThat(graphId("main")).isEqualTo(generation);
+
+        // neue Methode (Deklaration geändert): weiter inkrementell gespeichert, Kanten aller Dateien neu aufgelöst
+        Files.writeString(order, Files.readString(order).replace("    void add(int x) {\n    }",
+                "    void add(int x) {\n    }\n\n    void twice() {\n        add(1);\n        add(1);\n    }"));
+        assertThat(db.build(null, false)).contains("Inkrementell: 1 Datei(en) gelesen");
+
+        // Ergebnis wie ein kompletter Neuaufbau (Datei-Ablage baut immer komplett)
+        GraphTools file = tools(GraphModule.STORAGE_FILE);
+        file.build(null, true);
+        for (String node : List.of("Printer", "Money", "Money#add", "Money#twice", "OrderService", "Printer#print(String)")) {
+            assertThat(db.explain(null, node, null, null)).as(node).isEqualTo(file.explain(null, node, null, null));
+        }
+        assertThat(db.report(null, 10, null).lines().skip(2).toList())
+                .isEqualTo(file.report(null, 10, null).lines().skip(2).toList());
+
+        // nach einem Neustart der App (kein Zwischenstand): komplett, Ergebnis gleich
+        GraphService.forgetSessions();
+        GraphToolsTestFixture.writeSource(project, "com/acme/shop/Extra.java",
+                "package com.acme.shop;\nclass Extra { void x() { new Money().twice(); } }\n");
+        assertThat(db.build(null, false)).startsWith("Graph gebaut").doesNotContain("Inkrementell:");
+        assertThat(graphId("main")).isNotEqualTo(generation);
+        git.add().addFilepattern(".").call();
+        git.commit().setMessage("extra").setSign(false).call();
+
+        // neuer Branch mit gleichem Stand: übernimmt den Graphen, ohne zu bauen
+        git.checkout().setCreateBranch(true).setName("feature/neu").call();
+        assertThat(db.build(null, false)).startsWith("Graph gebaut")
+                .contains("Übernommen von Branch main (gleicher Stand, nichts gebaut)");
+        assertThat(graphId("feature/neu")).isEqualTo(graphId("main"));
+        // erster eigener Commit auf dem Branch: eigene Generation, main bleibt
+        GraphToolsTestFixture.writeSource(project, "com/acme/shop/Extra.java",
+                "package com.acme.shop;\nclass Extra { void y() { } }\n");
+        db.build(null, false);
+        assertThat(graphId("feature/neu")).isNotEqualTo(graphId("main"));
+        assertThat(db.find(null, "Extra#x", null, null, "main")).contains("Extra#x()");
+        assertThat(db.find(null, "Extra#x", null, null, null)).startsWith("Keine Treffer");
+    }
+
+    @Test
+    void commitsAndNewBranchesAreIndexedAutomatically() throws Exception {
+        ModuleConfig cfg = config(project, GraphModule.STORAGE_DATABASE);
+        GraphAutoIndexer indexer = new GraphAutoIndexer(() -> cfg, c -> new GraphService(c, () -> storage),
+                java.time.Duration.ofSeconds(1));
+        assertThat(indexer.poll()).isEmpty(); // Start: nur den Stand merken
+        assertThat(tools(GraphModule.STORAGE_DATABASE).branches(null)).contains("Noch kein Graph");
+
+        // Commit → indiziert (beim ersten Mal komplett)
+        GraphToolsTestFixture.writeSource(project, "com/acme/shop/Extra.java",
+                "package com.acme.shop;\nclass Extra { void x() { new Money().add(2); } }\n");
+        commit("extra");
+        assertThat(indexer.poll()).singleElement().asString().contains("(Branch main)", "komplett gebaut");
+        assertThat(indexer.poll()).isEmpty(); // nichts geändert
+
+        // nächster Commit → inkrementell
+        GraphToolsTestFixture.writeSource(project, "com/acme/shop/Extra.java",
+                "package com.acme.shop;\nclass Extra { void x() { new Money().add(3); new Printer(); } }\n");
+        commit("extra 2");
+        assertThat(indexer.poll()).singleElement().asString().contains("inkrementell: 1 Datei(en) gelesen");
+
+        // neuer Branch ohne Auschecken (git branch) → übernimmt den Graphen von main
+        git.branchCreate().setName("feature/y").call();
+        assertThat(indexer.poll()).singleElement().asString()
+                .contains("(Branch feature/y)", "übernommen von Branch main");
+        assertThat(graphId("feature/y")).isEqualTo(graphId("main"));
+
+        // neuer Branch ausgecheckt (checkout -b) → ebenso übernommen
+        git.checkout().setCreateBranch(true).setName("feature/z").call();
+        assertThat(indexer.poll()).singleElement().asString()
+                .contains("(Branch feature/z)", "übernommen von Branch", "gleicher Stand");
+        assertThat(graphId("feature/z")).isEqualTo(graphId("main"));
+
+        // abgeschaltet: nichts
+        Map<String, String> off = values(project, GraphModule.STORAGE_DATABASE);
+        off.put(GraphModule.AUTO_INDEX, "false");
+        ModuleConfig offCfg = ModuleConfig.of(new GraphModule().configSchema(), off);
+        GraphAutoIndexer disabled = new GraphAutoIndexer(() -> offCfg, c -> new GraphService(c, () -> storage),
+                java.time.Duration.ofSeconds(1));
+        disabled.poll();
+        commit("leer");
+        assertThat(disabled.poll()).isEmpty();
+    }
+
+    private void commit(String message) throws Exception {
+        git.add().addFilepattern(".").call();
+        git.commit().setMessage(message).setAllowEmpty(true).setSign(false).call();
+    }
+
+    @Test
     void deletedBranchesAreOnlyCleanedUpWhereTheyWereBuilt() throws Exception {
         // feature/x hat „jemand anders“ gebaut – den Branch kennt das eigene Git nicht, der Graph bleibt
         git.checkout().setCreateBranch(true).setName("feature/x").call();

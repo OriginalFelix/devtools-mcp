@@ -23,6 +23,7 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.GraphFile;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
+import systems.grebe.devtools.mcp.modules.graph.GraphDelta;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Key;
 import systems.grebe.devtools.mcp.modules.graph.GraphReader;
@@ -177,6 +178,86 @@ class GraphStorageTest {
         // zurück: der Graph ist wieder da
         storage.configure(create().settings());
         assertThat(storage.reader(MAIN).info().commit()).isEqualTo("c1");
+    }
+
+    /** Zweiter Stand: Knoten geändert, entfernt, mit neuer Art (Interface → Klasse), Kanten geändert, Datei weg. */
+    static GraphFile changed(GraphFile v1) {
+        List<Node> nodes = new ArrayList<>();
+        for (Node n : v1.nodes()) {
+            if (n.id().equals("a.A#helper()")) {
+                continue; // entfernt
+            }
+            if (n.id().equals("a.A#run()")) {
+                n = new Node(n.id(), n.kind(), n.name(), n.file(), 6, 12, n.modifiers(), n.signature(), "Neu.", 0);
+            }
+            if (n.id().equals("a.B")) {
+                n = new Node(n.id(), Kind.CLASS, n.name(), n.file(), n.line(), n.endLine(), n.modifiers(), null, null, 1);
+            }
+            nodes.add(n);
+        }
+        nodes.add(new Node("a.A#neu()", Kind.METHOD, "neu", null, 14, 15, "public", "void neu()", null, 0));
+        List<Edge> edges = new ArrayList<>();
+        for (Edge e : v1.edges()) {
+            if (e.to().equals("a.A#helper()")) {
+                continue;
+            }
+            if (e.rel() == Relation.CALLS && e.to().equals("a.B")) {
+                e = new Edge(e.from(), e.to(), e.rel(), Confidence.AMBIGUOUS, null, 3, 8);
+            }
+            edges.add(e);
+        }
+        edges.add(new Edge("a.A", "a.A#neu()", Relation.CONTAINS, Confidence.EXTRACTED, null, null, null));
+        edges.add(new Edge("a.A#run()", "a.A#neu()", Relation.CALLS, Confidence.EXTRACTED, null, null, 9));
+        return new GraphFile(v1.format(), v1.version(), v1.project(), v1.root(), v1.branch(), "c2",
+                "2026-10-08T10:00:00Z", v1.generator(), Map.of("files", 1, "nodes", nodes.size(), "edges", edges.size()),
+                List.of(new FileEntry("src/A.java", "sha-a2", 21, null)), v1.communities(), nodes, edges);
+    }
+
+    /** Alle Knoten und Kanten eines gespeicherten Graphen, sortiert – zum Vergleich zweier Ablagen. */
+    static List<String> content(GraphReader g, GraphFile expected) {
+        List<String> ids = expected.nodes().stream().map(Node::id).toList();
+        List<String> out = new ArrayList<>();
+        g.nodes(ids).values().forEach(n -> out.add("N " + n));
+        g.edges(ids, GraphReader.Direction.OUT, null).forEach(e -> out.add("E " + e));
+        out.sort(String::compareTo);
+        return out;
+    }
+
+    @Test
+    void incrementalUpdateGivesTheSameGraphAsAFullWrite() throws Exception {
+        GraphFile v1 = graph("c1");
+        GraphFile v2 = changed(v1);
+        GraphReader first = storage.write(MAIN, v1);
+        GraphDelta delta = GraphDelta.between(v1, v2);
+        assertThat(delta.removedNodes()).containsExactlyInAnyOrder("a.A#helper()", "a.B");
+        assertThat(delta.addedNodes()).extracting(Node::id).containsExactlyInAnyOrder("a.A#neu()", "a.B");
+
+        GraphReader updated = storage.update(MAIN, first.generation(), delta);
+        assertThat(updated.generation()).isEqualTo(first.generation()); // in place, keine neue Generation
+        assertThat(updated.info().commit()).isEqualTo("c2");
+        Key fresh = new Key("frisch", "/x", "main");
+        GraphReader full = storage.write(fresh, v2);
+        assertThat(content(storage.reader(MAIN), v2)).isEqualTo(content(full, v2)).isNotEmpty();
+        assertThat(storage.state(MAIN).fileHashes()).isEqualTo(storage.state(fresh).fileHashes())
+                .containsOnly(Map.entry("src/A.java", "sha-a2"));
+        assertThat(storage.reader(MAIN).info().stats()).isEqualTo(full.info().stats());
+
+        // veraltete Basis: abgelehnt, dann schreibt der Aufrufer neu
+        assertThat(storage.update(MAIN, "gibt-es-nicht", delta)).isNull();
+
+        // neuer Branch mit gleichem Stand: übernimmt die Generation, ohne zu bauen
+        Key feature = MAIN.withBranch("feature/neu");
+        GraphReader linked = storage.link(feature, MAIN);
+        assertThat(linked.generation()).isEqualTo(first.generation());
+        assertThat(storage.branches(MAIN)).extracting(GraphProvider.Stored::branch).containsExactly("feature/neu",
+                "main");
+        // geteilte Generation wird nicht verändert – der andere Branch behielte sonst nicht seinen Stand
+        assertThat(storage.update(feature, linked.generation(), GraphDelta.between(v2, v1))).isNull();
+        GraphReader own = storage.write(feature, v1);
+        assertThat(own.generation()).isNotEqualTo(first.generation());
+        storage.awaitCleanup();
+        assertThat(storage.reader(MAIN).info().commit()).isEqualTo("c2"); // main unberührt
+        assertThat(content(storage.reader(feature), v1)).isEqualTo(content(storage.write(fresh, v1), v1));
     }
 
     @Test

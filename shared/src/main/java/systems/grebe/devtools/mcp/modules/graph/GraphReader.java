@@ -26,6 +26,11 @@ public interface GraphReader {
     /** Kopfdaten: Projekt, Branch, Stand, Statistik und Communities. */
     GraphInfo info();
 
+    /** Generation in der Datenbank (Basis für {@link GraphProvider#update}); {@code null} bei der Datei-Ablage. */
+    default String generation() {
+        return null;
+    }
+
     /** Knoten mit genau dieser ID oder {@code null}. */
     Node node(String id);
 

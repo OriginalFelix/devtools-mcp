@@ -24,6 +24,7 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Edge;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.FileEntry;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
+import systems.grebe.devtools.mcp.modules.graph.GraphDelta;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider;
 import systems.grebe.devtools.mcp.modules.graph.GraphReader;
 import systems.grebe.devtools.mcp.modules.graph.GraphReader.Direction;
@@ -277,6 +278,36 @@ public class GraphGraphQlController {
                 header.version(), header.files(), header.nodes(), header.edges(),
                 header.stats() == null ? "{}" : header.stats(), header.communities());
         return head(storage.publish(access(user), key.key(), graph, h));
+    }
+
+    /** Änderungen wie {@code GraphDeltaInput}. */
+    public record DeltaInput(List<FileEntry> files, List<String> removedFiles, List<Node> addedNodes,
+                             List<Node> changedNodes, List<String> removedNodes, List<Edge> addedEdges,
+                             List<Edge> changedEdges, List<Edge> removedEdges, HeaderInput header) {
+
+        GraphDelta delta() {
+            Map<String, Object> stats = header.stats() == null || header.stats().isBlank() ? Map.of()
+                    : GraphStorage.JSON.readValue(header.stats(), new TypeReference<Map<String, Object>>() { });
+            return new GraphDelta(files, removedFiles, addedNodes, changedNodes, removedNodes, addedEdges, changedEdges,
+                    removedEdges, new GraphDelta.Header(header.commit(), header.builtAt(), header.generator(),
+                    header.version(), header.files(), header.nodes(), header.edges(), stats,
+                    header.communities() == null ? List.of() : header.communities()));
+        }
+    }
+
+    @MutationMapping
+    public Map<String, Object> updateGraph(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                           @Argument KeyInput key, @Argument String base,
+                                           @Argument DeltaInput delta) {
+        ArcadeGraphReader r = storage.update(access(user), key.key(), base, delta.delta(), delta.header().builtBy());
+        return r == null ? null : head(r);
+    }
+
+    @MutationMapping
+    public Map<String, Object> linkGraph(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                         @Argument KeyInput key, @Argument KeyInput source) {
+        ArcadeGraphReader r = storage.link(access(user), key.key(), source.key());
+        return r == null ? null : head(r);
     }
 
     @MutationMapping

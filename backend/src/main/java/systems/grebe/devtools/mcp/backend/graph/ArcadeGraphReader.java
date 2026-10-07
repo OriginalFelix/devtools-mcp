@@ -55,6 +55,11 @@ public final class ArcadeGraphReader implements GraphReader {
         return info;
     }
 
+    @Override
+    public String generation() {
+        return g;
+    }
+
     // ------------------------------------------------------------------ Hilfen
 
     private List<Map<String, Object>> rows(String cypher, Map<String, Object> params) {

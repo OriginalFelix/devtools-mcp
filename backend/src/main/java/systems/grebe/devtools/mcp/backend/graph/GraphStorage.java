@@ -43,6 +43,7 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.GraphFile;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
+import systems.grebe.devtools.mcp.modules.graph.GraphDelta;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider;
 import systems.grebe.devtools.mcp.modules.graph.GraphReader;
 import tools.jackson.core.type.TypeReference;
@@ -584,6 +585,16 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         return delete(Access.LOCAL, key);
     }
 
+    @Override
+    public GraphReader update(Key key, String base, GraphDelta delta) {
+        return update(Access.LOCAL, key, base, delta, GraphProvider.localBuilder());
+    }
+
+    @Override
+    public GraphReader link(Key key, Key source) {
+        return link(Access.LOCAL, key, source);
+    }
+
     /** Die Ablage aus Sicht eines Benutzers der GraphQL-API (eigener Bereich, Rechte auf die Projekte). */
     public GraphProvider forAccess(Access a) {
         GraphStorage s = this;
@@ -626,6 +637,16 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
             @Override
             public boolean delete(Key key) {
                 return s.delete(a, key);
+            }
+
+            @Override
+            public GraphReader update(Key key, String base, GraphDelta delta) {
+                return s.update(a, key, base, delta, GraphProvider.localBuilder());
+            }
+
+            @Override
+            public GraphReader link(Key key, Key source) {
+                return s.link(a, key, source);
             }
         };
     }
@@ -888,6 +909,170 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         exec("sql", "DELETE FROM GraphBranch WHERE branchKey = :k", params("k", bkey));
         scheduleCleanup();
         return true;
+    }
+
+    // ------------------------------------------------------------------ Inkrementell
+
+    /** Kommandos einer Transaktion (siehe {@link #inTransaction}). */
+    @FunctionalInterface
+    interface Tx {
+        void run(String language, String command, Map<String, Object> params);
+    }
+
+    /**
+     * Führt mehrere Kommandos in einer Transaktion aus – eingebettet über die Datenbank, extern über eine eigene
+     * Sitzung ({@link RemoteDatabase} führt je Instanz nur eine, deshalb nicht die gemeinsame).
+     */
+    private void inTransaction(java.util.function.Consumer<Tx> body) {
+        BasicDatabase d = db();
+        if (d instanceof Database local) {
+            local.transaction(() -> body.accept((l, c, p) -> local.command(l, c, p).close()), false, RETRIES);
+            return;
+        }
+        RemoteDatabase session = new RemoteDatabase(settings.host(), settings.port(), settings.database(),
+                settings.user(), settings.password() == null ? "" : settings.password());
+        try {
+            session.begin();
+            body.accept((l, c, p) -> session.command(l, c, p).close());
+            session.commit();
+        } catch (RuntimeException e) {
+            try {
+                session.rollback();
+            } catch (RuntimeException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e;
+        } finally {
+            session.close();
+        }
+    }
+
+    /** In Portionen à {@link #BATCH}. */
+    private static <T> void batches(List<T> items, java.util.function.Consumer<List<T>> each) {
+        for (int i = 0; i < items.size(); i += BATCH) {
+            checkInterrupt();
+            each.accept(items.subList(i, Math.min(items.size(), i + BATCH)));
+        }
+    }
+
+    private static Map<String, Object> edgeRow(Edge e) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("conf", e.conf() == null || e.conf() == Confidence.EXTRACTED ? null : e.conf().name());
+        p.put("score", e.score());
+        p.put("count", e.count());
+        p.put("line", e.line());
+        return Map.of("f", e.from(), "t", e.to(), "p", p);
+    }
+
+    private static Map<String, Object> fileRow(FileEntry f) {
+        Map<String, Object> r = new HashMap<>();
+        r.put("path", f.path());
+        r.put("sha256", f.sha256());
+        r.put("lines", f.lines());
+        r.put("parseErrors", Boolean.TRUE.equals(f.parseErrors()) ? Boolean.TRUE : null);
+        return r;
+    }
+
+    /**
+     * Wendet die Änderungen eines inkrementellen Aufbaus auf die Generation {@code base} an – in einer Transaktion,
+     * samt Kopfdaten des Branches. Abgelehnt ({@code null}), wenn für den Branch inzwischen eine andere Generation gilt,
+     * ein Aufbau läuft oder die Generation mit anderen Branches geteilt ist ({@link #link}) – dann neu schreiben.
+     */
+    public ArcadeGraphReader update(Access a, Key key, String base, GraphDelta delta, String builtBy) {
+        requireWrite(a, key.projectId());
+        String bkey = branchKey(a, key);
+        Map<String, Object> b = branchRow(bkey);
+        if (b == null || !base.equals(b.get("graphId")) || b.get("pendingGraphId") != null) {
+            return null;
+        }
+        List<Map<String, Object>> users = rows("sql", "SELECT count(*) AS c FROM GraphBranch WHERE graphId = :g",
+                params("g", base));
+        if (users.isEmpty() || number(users.getFirst().get("c")) != 1) {
+            return null; // geteilte Generation nicht verändern – der andere Branch hat seinen Stand
+        }
+        String g = base;
+        GraphDelta.Header h = delta.header();
+        inTransaction(tx -> {
+            // 1. Kanten und Knoten entfernen (DETACH nimmt die Kanten entfernter Knoten mit)
+            Map<Relation, List<Map<String, Object>>> removedByRel = new EnumMap<>(Relation.class);
+            delta.removedEdges().forEach(e -> removedByRel.computeIfAbsent(e.rel(), r -> new ArrayList<>())
+                    .add(edgeRow(e)));
+            removedByRel.forEach((rel, rows) -> batches(rows, part -> tx.run(CYPHER, "UNWIND $rows AS r "
+                    + "MATCH (a:CodeNode {uid: $g + '|' + r.f})-[e:" + rel.name() + "]->(b:CodeNode {uid: $g + '|' + "
+                    + "r.t}) DELETE e", params("g", g, "rows", List.copyOf(part)))));
+            batches(delta.removedNodes(), part -> tx.run(CYPHER, "UNWIND $ids AS id MATCH (n:CodeNode {uid: $g + '|' + "
+                    + "id}) DETACH DELETE n", params("g", g, "ids", List.copyOf(part))));
+            // 2. Knoten ändern bzw. anlegen
+            batches(delta.changedNodes().stream().map(GraphStorage::nodeRow).toList(), part -> tx.run(CYPHER,
+                    "UNWIND $rows AS r MATCH (n:CodeNode {uid: $g + '|' + r.id}) SET n = r, n.g = $g, "
+                            + "n.uid = $g + '|' + r.id", params("g", g, "rows", List.copyOf(part))));
+            Map<Kind, List<Map<String, Object>>> addedByKind = new EnumMap<>(Kind.class);
+            delta.addedNodes().forEach(n -> addedByKind.computeIfAbsent(n.kind(), k -> new ArrayList<>())
+                    .add(nodeRow(n)));
+            addedByKind.forEach((kind, rows) -> batches(rows, part -> tx.run(CYPHER, "UNWIND $rows AS r CREATE (n:"
+                    + typeOf(kind) + ") SET n = r, n.g = $g, n.uid = $g + '|' + r.id",
+                    params("g", g, "rows", List.copyOf(part)))));
+            // 3. Kanten ändern bzw. anlegen
+            Map<Relation, List<Map<String, Object>>> changedByRel = new EnumMap<>(Relation.class);
+            delta.changedEdges().forEach(e -> changedByRel.computeIfAbsent(e.rel(), r -> new ArrayList<>())
+                    .add(edgeRow(e)));
+            changedByRel.forEach((rel, rows) -> batches(rows, part -> tx.run(CYPHER, "UNWIND $rows AS r "
+                    + "MATCH (a:CodeNode {uid: $g + '|' + r.f})-[e:" + rel.name() + "]->(b:CodeNode {uid: $g + '|' + "
+                    + "r.t}) SET e = r.p", params("g", g, "rows", List.copyOf(part)))));
+            Map<Relation, List<Map<String, Object>>> addedByRel = new EnumMap<>(Relation.class);
+            delta.addedEdges().forEach(e -> addedByRel.computeIfAbsent(e.rel(), r -> new ArrayList<>())
+                    .add(edgeRow(e)));
+            addedByRel.forEach((rel, rows) -> batches(rows, part -> tx.run(CYPHER, "UNWIND $rows AS r "
+                    + "MATCH (a:CodeNode {uid: $g + '|' + r.f}) MATCH (b:CodeNode {uid: $g + '|' + r.t}) "
+                    + "CREATE (a)-[e:" + rel.name() + "]->(b) SET e = r.p", params("g", g, "rows", List.copyOf(part)))));
+            // 4. Quelldateien ersetzen
+            List<String> replaced = new ArrayList<>(delta.removedFiles());
+            delta.files().forEach(f -> replaced.add(f.path()));
+            batches(replaced, part -> tx.run("sql", "DELETE FROM SourceFile WHERE g = :g AND path IN :paths",
+                    params("g", g, "paths", List.copyOf(part))));
+            batches(delta.files().stream().map(GraphStorage::fileRow).toList(), part -> tx.run(CYPHER,
+                    "UNWIND $rows AS r CREATE (f:SourceFile) SET f = r, f.g = $g",
+                    params("g", g, "rows", List.copyOf(part))));
+            // 5. Kopfdaten
+            tx.run("sql", "UPDATE GraphBranch SET commitId = :commit, builtAt = :builtAt, builtBy = :builtBy, "
+                            + "generator = :generator, version = :version, files = :files, nodes = :nodes, edges = :edges, "
+                            + "stats = :stats, communities = :communities, root = :root, project = :n WHERE branchKey = :k",
+                    params("k", bkey, "commit", h.commit(), "builtAt", h.builtAt(), "builtBy", builtBy,
+                            "generator", h.generator(), "version", h.version(), "files", h.files(), "nodes", h.nodes(),
+                            "edges", h.edges(), "stats", JSON.writeValueAsString(h.stats() == null ? Map.of() : h.stats()),
+                            "communities", JSON.writeValueAsString(h.communities() == null ? List.of()
+                                    : h.communities()), "root", key.root(), "n", key.project()));
+        });
+        return new ArcadeGraphReader(this, g, info(branchRow(bkey)));
+    }
+
+    /**
+     * Übernimmt für den Branch von {@code key} die Generation von {@code source} (gleiches Projekt): kein Aufbau, keine
+     * Kopie. Die bisherige Generation des Branches entfernt der Aufräumer.
+     */
+    public ArcadeGraphReader link(Access a, Key key, Key source) {
+        requireWrite(a, key.projectId());
+        if (!projectKey(a, key).equals(projectKey(a, source))) {
+            throw new IllegalArgumentException("Graphen lassen sich nur innerhalb desselben Projekts übernehmen.");
+        }
+        Map<String, Object> s = branchRow(branchKey(a, source));
+        if (s == null || s.get("graphId") == null) {
+            return null;
+        }
+        String bkey = branchKey(a, key);
+        exec("sql", "UPDATE GraphBranch SET branchKey = :k, projectKey = :p, projectId = :pid, owner = :o, "
+                        + "keyVersion = :kv, root = :root, project = :n, branch = :b, pendingGraphId = null, graphId = :g, "
+                        + "commitId = :commit, builtAt = :builtAt, builtBy = :builtBy, generator = :generator, "
+                        + "version = :version, files = :files, nodes = :nodes, edges = :edges, stats = :stats, "
+                        + "communities = :communities UPSERT WHERE branchKey = :k",
+                params("k", bkey, "p", projectKey(a, key), "pid", key.projectId(),
+                        "o", key.projectId() == null ? a.owner() : "", "kv", KEY_VERSION, "root", key.root(),
+                        "n", key.project(), "b", key.branch(), "g", s.get("graphId"), "commit", s.get("commitId"),
+                        "builtAt", s.get("builtAt"), "builtBy", s.get("builtBy"), "generator", s.get("generator"),
+                        "version", s.get("version"), "files", s.get("files"), "nodes", s.get("nodes"),
+                        "edges", s.get("edges"), "stats", s.get("stats"), "communities", s.get("communities")));
+        scheduleCleanup();
+        return new ArcadeGraphReader(this, (String) s.get("graphId"), info(branchRow(bkey)));
     }
 
     // ------------------------------------------------------------------ Aufräumen

@@ -14,6 +14,7 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Edge;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.GraphFile;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
+import systems.grebe.devtools.mcp.modules.graph.GraphDelta;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider;
 import systems.grebe.devtools.mcp.modules.graph.GraphReader;
 import tools.jackson.core.type.TypeReference;
@@ -167,6 +168,50 @@ public class GraphQlGraphProvider implements GraphProvider {
                 + ": $items) }", Map.of("graph", g, "items", part), field, Integer.class);
     }
 
+    /** Größter Unterschied, der als eine Mutation geht; darüber wird neu geschrieben (in Portionen). */
+    static final int MAX_DELTA = 20_000;
+
+    @Override
+    public GraphReader update(Key key, String base, GraphDelta delta) {
+        if (base == null || delta.size() > MAX_DELTA) {
+            return null;
+        }
+        GraphDelta.Header h = delta.header();
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("commit", h.commit());
+        header.put("builtAt", h.builtAt());
+        header.put("builtBy", GraphProvider.localBuilder());
+        header.put("generator", h.generator());
+        header.put("version", h.version());
+        header.put("files", h.files());
+        header.put("nodes", h.nodes());
+        header.put("edges", h.edges());
+        header.put("stats", JSON.writeValueAsString(h.stats() == null ? Map.of() : h.stats()));
+        header.put("communities", h.communities());
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("files", delta.files());
+        d.put("removedFiles", delta.removedFiles());
+        d.put("addedNodes", delta.addedNodes());
+        d.put("changedNodes", delta.changedNodes());
+        d.put("removedNodes", delta.removedNodes());
+        d.put("addedEdges", delta.addedEdges());
+        d.put("changedEdges", delta.changedEdges());
+        d.put("removedEdges", delta.removedEdges());
+        d.put("header", header);
+        Head head = backend.query("mutation($key: GraphKeyInput!, $base: ID!, $delta: GraphDeltaInput!) { updateGraph("
+                + "key: $key, base: $base, delta: $delta) { " + HEAD + " } }", Map.of("key", key(key), "base", base,
+                "delta", d), "updateGraph", Head.class);
+        return head == null ? null : new Reader(head);
+    }
+
+    @Override
+    public GraphReader link(Key key, Key source) {
+        Head head = backend.query("mutation($key: GraphKeyInput!, $source: GraphKeyInput!) { linkGraph(key: $key, "
+                + "source: $source) { " + HEAD + " } }", Map.of("key", key(key), "source", key(source)), "linkGraph",
+                Head.class);
+        return head == null ? null : new Reader(head);
+    }
+
     @Override
     public List<Stored> branches(Key project) {
         return backend.queryList("query($key: GraphKeyInput!) { graphBranches(key: $key) { branch commit builtAt files "
@@ -198,6 +243,11 @@ public class GraphQlGraphProvider implements GraphProvider {
         @Override
         public GraphInfo info() {
             return info;
+        }
+
+        @Override
+        public String generation() {
+            return g;
         }
 
         private <T> List<T> list(String field, String params, String selection, Map<String, Object> vars,

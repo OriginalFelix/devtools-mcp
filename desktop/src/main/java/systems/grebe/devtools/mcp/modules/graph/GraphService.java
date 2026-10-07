@@ -1,12 +1,16 @@
 package systems.grebe.devtools.mcp.modules.graph;
 
+import java.lang.ref.SoftReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -134,8 +138,59 @@ final class GraphService {
         return new Key(name, root.toString(), branch, id == null ? null : id.projectId());
     }
 
+    /**
+     * Ergebnis eines Aufbaus.
+     *
+     * @param mode wie gespeichert wurde, für Meldungen: {@code null} = komplett, sonst z.B. „inkrementell: 2 Dateien
+     *             gelesen, 37 Änderungen gespeichert“ oder „übernommen von Branch main (gleicher Stand)“
+     */
     record BuildResult(Key key, GraphReader graph, boolean rebuilt, int changedFiles, int addedFiles,
-                       int removedFiles, Duration duration, List<String> removedBranches) {
+                       int removedFiles, Duration duration, List<String> removedBranches, String mode) {
+    }
+
+    /**
+     * Zwischenstand eines Projekts über Aufbauten hinweg (im Speicher der App): Deklarationen und Kanten je Datei
+     * ({@link GraphBuilder.ParseCache}) und der zuletzt gespeicherte Graph samt Generation – daraus wird beim nächsten
+     * Aufbau nur der Unterschied gespeichert.
+     */
+    static final class Session {
+        final GraphBuilder.ParseCache parse = new GraphBuilder.ParseCache();
+        Key key;
+        String storage;
+        String generation;
+        GraphFile last;
+    }
+
+    /**
+     * Zwischenstände der zuletzt gebauten Projekte (höchstens {@value #MAX_SESSIONS}). Weich referenziert: wird der
+     * Speicher knapp, räumt der GC sie ab – der nächste Aufbau liest dann alles neu und schreibt komplett (gleiches
+     * Ergebnis, nur langsamer).
+     */
+    private static final int MAX_SESSIONS = 4;
+    private static final Map<Path, SoftReference<Session>> SESSIONS = new LinkedHashMap<>(8, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Path, SoftReference<Session>> eldest) {
+            return size() > MAX_SESSIONS;
+        }
+    };
+
+    private static Session session(Path root) {
+        synchronized (SESSIONS) {
+            SoftReference<Session> ref = SESSIONS.get(root);
+            Session s = ref == null ? null : ref.get();
+            if (s == null) {
+                s = new Session();
+                SESSIONS.put(root, new SoftReference<>(s));
+            }
+            return s;
+        }
+    }
+
+    /** Für Tests: Zwischenstände verwerfen (wie nach einem Neustart der App). */
+    static void forgetSessions() {
+        synchronized (SESSIONS) {
+            SESSIONS.clear();
+        }
     }
 
     BuildResult build(String project, boolean force) {
@@ -146,6 +201,11 @@ final class GraphService {
      * Baut den Graphen des ausgecheckten Branches, wenn sich eine Quelldatei geändert hat (SHA-256), Dateien
      * hinzugekommen/entfallen sind oder {@code force} gesetzt ist; sonst wird der gespeicherte geliefert. Ein
      * Thread-Interrupt bricht ab.
+     *
+     * <p>Inkrementell: Hat ein anderer Branch des Projekts genau diesen Stand gespeichert (z.B. ein eben angelegter
+     * Branch), wird dessen Graph übernommen. Sonst werden nur geänderte Dateien neu gelesen ({@link Session}), und
+     * gespeichert wird der Unterschied zum zuletzt gespeicherten Stand ({@link GraphProvider#update}) – bei großen
+     * Änderungen, nach einem Neustart der App oder mit {@code force} der ganze Graph.
      *
      * @param branch nur zur Kontrolle: ist er angegeben, muss er ausgecheckt sein
      */
@@ -161,7 +221,8 @@ final class GraphService {
         Key key = key(root, current);
         GraphProvider store = storage();
         store.check(); // Verbindung/Anmeldung prüfen, bevor minutenlang geparst wird
-        ReentrantLock lock = LOCKS.computeIfAbsent(root + "@" + current, k -> new ReentrantLock());
+        // je Projekt, nicht je Branch: der Zwischenstand gilt fürs Arbeitsverzeichnis
+        ReentrantLock lock = LOCKS.computeIfAbsent(root.toString(), k -> new ReentrantLock());
         if (lock.isLocked()) {
             progress.update("Warte auf laufenden Aufbau …", -1);
         }
@@ -212,23 +273,118 @@ final class GraphService {
                     if (reader != null) {
                         List<String> gone = cleanup(store, key, git);
                         return new BuildResult(key, reader, false, 0, 0, 0, Duration.ofNanos(System.nanoTime() - start),
-                                gone);
+                                gone, null);
                     }
+                }
+            } else if (!force) {
+                BuildResult linked = linkSameState(store, key, sources, git, start);
+                if (linked != null) {
+                    return linked;
                 }
             }
             Workspaces.requireWritable(root); // nur lesend freigegeben: vorhandenen Graphen nutzen, nicht neu bauen
-            GraphFile data = builder.build(sources, key.project(), progress)
+            Session session = session(root);
+            if (force) {
+                session.last = null;
+                session.parse.clear(); // komplett neu lesen, den Cache dabei neu füllen
+            }
+            GraphFile data = builder.build(sources, key.project(), progress, session.parse)
                     .withBranch(current, git == null ? null : git.commit());
+            int parsed = session.parse.parsedDeclarations;
             sources.clear();
             progress.update("Speichere (" + store.describe() + ") …", 0.95);
-            GraphReader reader = store.write(key, data);
+            GraphReader reader = null;
+            String mode = null;
+            GraphDelta delta = incrementalDelta(store, key, session, data);
+            if (delta != null) {
+                reader = store.update(key, session.generation, delta);
+                if (reader != null) {
+                    mode = "inkrementell: " + parsed + " Datei(en) gelesen, " + delta.size()
+                            + " Änderung(en) gespeichert";
+                }
+            }
+            if (reader == null) {
+                reader = store.write(key, data);
+                if (parsed < data.files().size()) {
+                    mode = "inkrementell gelesen: " + parsed + " von " + data.files().size() + " Dateien, komplett "
+                            + "gespeichert";
+                }
+            }
+            session.key = key;
+            session.storage = store.describe();
+            session.generation = reader.generation();
+            session.last = data;
             List<String> gone = cleanup(store, key, git);
             progress.update("Fertig", 1);
             return new BuildResult(key, reader, true, changed, added, removed, Duration.ofNanos(System.nanoTime() - start),
-                    gone);
+                    gone, mode);
         } finally {
             lock.unlock();
         }
+    }
+
+    /**
+     * Ein eben angelegter, nicht ausgecheckter Branch, der auf dem ausgecheckten Commit steht: übernimmt den Graphen des
+     * ausgecheckten Branches (vorher auf den aktuellen Stand gebracht), wenn das Arbeitsverzeichnis keine Änderungen an
+     * Java-Dateien hat – sonst gehörten sie nicht zu seinem Commit. Gebaut wird er dann beim Auschecken.
+     *
+     * @return Ergebnis oder {@code null}, wenn nichts übernommen wurde
+     */
+    BuildResult adopt(String project, String newBranch) {
+        BuildResult current = build(project, null, false, ModuleAction.Progress.NONE);
+        Path root = resolve(project);
+        if (current.key().branch() == null || current.key().branch().equals(newBranch) || !GitState.javaClean(root)) {
+            return null;
+        }
+        Key target = key(root, newBranch);
+        GraphReader reader = storage().link(target, current.key());
+        return reader == null ? null : new BuildResult(target, reader, true, 0, 0, 0, Duration.ZERO, List.of(),
+                "übernommen von Branch " + current.key().branchLabel() + " (gleicher Stand, nichts gebaut)");
+    }
+
+    /**
+     * Unterschied zum zuletzt gespeicherten Stand, wenn er sich lohnt: derselbe Branch, dieselbe Ablage, dort gilt noch
+     * die zuletzt geschriebene Generation, und es ändert sich höchstens ein Viertel des Graphen.
+     */
+    private static GraphDelta incrementalDelta(GraphProvider store, Key key, Session session, GraphFile data) {
+        if (session.last == null || session.generation == null || !key.equals(session.key)
+                || !store.describe().equals(session.storage)) {
+            return null;
+        }
+        GraphReader stored = store.reader(key);
+        if (stored == null || !session.generation.equals(stored.generation())) {
+            return null; // inzwischen anderswo gebaut (z.B. anderer Rechner) – neu schreiben
+        }
+        GraphDelta delta = GraphDelta.between(session.last, data);
+        int limit = Math.max(2_000, (data.nodes().size() + data.edges().size()) / 4);
+        return delta.size() <= limit ? delta : null;
+    }
+
+    /**
+     * Noch kein Graph für den Branch: Hat ein anderer Branch des Projekts genau diese Dateien gespeichert (eben
+     * angelegter Branch, zurück auf einen alten Stand), wird dessen Graph übernommen – ohne Aufbau.
+     */
+    private BuildResult linkSameState(GraphProvider store, Key key, List<GraphBuilder.Source> sources, GitState git,
+                                      long start) {
+        Map<String, String> now = new HashMap<>();
+        sources.forEach(s -> now.put(s.path(), s.sha256()));
+        for (Stored s : store.branches(key)) {
+            if (Objects.equals(s.branch(), key.branch()) || s.files() != now.size()) {
+                continue;
+            }
+            Key other = key.withBranch(s.branch());
+            GraphProvider.State st = safeState(store, other);
+            if (st == null || !GraphBuilder.GENERATOR.equals(st.generator()) || !now.equals(st.fileHashes())) {
+                continue;
+            }
+            GraphReader reader = store.link(key, other);
+            if (reader != null) {
+                return new BuildResult(key, reader, true, 0, 0, 0, Duration.ofNanos(System.nanoTime() - start),
+                        cleanup(store, key, git), "übernommen von Branch " + (s.branch() == null ? "(ohne Git)"
+                        : s.branch()) + " (gleicher Stand, nichts gebaut)");
+            }
+        }
+        return null;
     }
 
     private static GraphProvider.State safeState(GraphProvider store, Key key) {

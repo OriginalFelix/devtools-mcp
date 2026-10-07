@@ -123,6 +123,28 @@ public interface GraphProvider {
     GraphReader write(Key key, GraphFile data);
 
     /**
+     * Speichert inkrementell: wendet {@code delta} auf den gespeicherten Graphen an, wenn dort noch die Generation
+     * {@code base} gilt ({@link GraphReader#generation()}) – in einem Schritt, Leser sehen den alten oder den neuen Stand.
+     *
+     * @return Leser auf den neuen Stand oder {@code null}, wenn das nicht geht (inzwischen anderer Stand gespeichert,
+     * Generation mit anderen Branches geteilt, Ablage kann es nicht) – dann ganz neu schreiben ({@link #write})
+     */
+    default GraphReader update(Key key, String base, GraphDelta delta) {
+        return null;
+    }
+
+    /**
+     * Übernimmt für den Branch von {@code key} den gespeicherten Graphen von {@code source} (gleiches Projekt, gleicher
+     * Stand – z.B. ein eben angelegter Branch): beide zeigen auf dieselbe Generation, nichts wird gebaut oder kopiert.
+     * Ein späterer Aufbau eines der beiden schreibt eine eigene Generation.
+     *
+     * @return Leser oder {@code null}, wenn das nicht geht (kein Graph für {@code source}, Ablage kann es nicht)
+     */
+    default GraphReader link(Key key, Key source) {
+        return null;
+    }
+
+    /**
      * Gespeicherte Graphen des Projekts, nach Branch sortiert.
      *
      * @param project Projekt; der Branch des Schlüssels spielt keine Rolle
