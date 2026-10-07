@@ -45,12 +45,12 @@ dependencies {
     implementation("org.graalvm.visualvm.modules:org-graalvm-visualvm-lib-jfluid-heap:2.2")
     implementation("org.graalvm.visualvm.modules:org-graalvm-visualvm-lib-jfluid:2.2")
 
-    // Code-Graph: tree-sitter über die offiziellen FFM-Bindings (jtreesitter). Die bonede-Artefakte liefern nur die
-    // vorkompilierten nativen Bibliotheken (macOS/Linux/Windows) als Ressourcen – ihre JNI-Klassen werden nicht
-    // verwendet, weil sie bei vollem Heap die JVM mit SIGSEGV beenden (siehe TreeSitterNatives).
-    implementation("io.github.tree-sitter:jtreesitter:0.26.1")
-    runtimeOnly("io.github.bonede:tree-sitter:0.26.6")
-    runtimeOnly("io.github.bonede:tree-sitter-java:0.23.5")
+    // Syntaxbäume (Code-Graph u.a.): tree-sitter samt Grammatiken als WebAssembly (src/main/resources/tree-sitter,
+    // gebaut mit natives/build-tree-sitter-wasm.sh), ausgeführt von Chicory – reiner Java-Code, der Compiler übersetzt
+    // die Module zur Laufzeit in JVM-Bytecode. Keine nativen Bibliotheken, die Windows blockieren könnte.
+    val chicoryVersion = "1.7.5"
+    implementation("com.dylibso.chicory:runtime:$chicoryVersion")
+    implementation("com.dylibso.chicory:compiler:$chicoryVersion")
 
     // Code-Graph-Ablage: Spring Data Neo4j (Entities für Projekt/Branch, Bulk-Cypher über Neo4jClient für Knoten/Kanten)
     // Bewusst ohne Boot-Starter: die Verbindung kommt aus den Modul-Einstellungen und wird zur Laufzeit gebaut
@@ -120,7 +120,7 @@ springBoot {
 
 tasks.named<Jar>("bootJar") {
     archiveBaseName = "devtools-mcp"
-    // Native Zugriffe (JavaFX, tree-sitter über FFM) ohne Warnung beim Start mit java -jar
+    // Native Zugriffe (JavaFX) ohne Warnung beim Start mit java -jar
     manifest.attributes("Enable-Native-Access" to "ALL-UNNAMED")
 }
 

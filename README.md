@@ -974,26 +974,53 @@ jede Ebene speichert nur, was sie vorgibt bzw. überschreibt. Speichern in der D
 * `projects_list` zeigt dem LLM die Projekte mit Zugriff, lokalem Verzeichnis, erkanntem Git/Gradle/Maven,
   Sonar-Schlüssel und Ticket-Projekt.
 
+### Syntaxbäume für viele Sprachen (reines Java)
+
+`SyntaxEngine` liefert für eine Datei den Syntaxbaum (AST) – für Java, Kotlin, Scala, Python, JavaScript, TypeScript,
+TSX, Go, Rust, C, C++, C#, PHP, Ruby und Bash. Knotentypen und Feldnamen sind die der jeweiligen tree-sitter-Grammatik
+(`node-types.json` im Grammatik-Repository); der Baum ist eine reine Java-Struktur, beliebig lange haltbar und von
+mehreren Threads lesbar.
+
+```java
+SyntaxTree tree = SyntaxEngine.parse(Language.forFile(path).orElseThrow(), Files.readString(path));
+for (SyntaxNode fn : tree.root().findByType("function_definition", "method_declaration")) {
+    System.out.println(fn.child("name").text() + " Zeile " + fn.line());
+}
+tree.walk(n -> !n.type().equals("class_body"));   // Vorordnung, false = Kinder überspringen
+tree.root().toSExpression(3);                     // (program (class_declaration name: (identifier) …))
+```
+
+* **Enthalten:** benannte Knoten und Schlüsselwörter (`public`, `static`, `async`, `def` …) als unbenannte Kinder;
+  fehlende Tokens der Fehlerkorrektur immer, sonstige Satzzeichen und Operatoren nur mit
+  `parse(language, source, true)`. Offsets in UTF-8-Bytes, Zeilen/Spalten 0-basiert
+  (`line()`/`endLine()` 1-basiert). Syntaxfehler: `hasError()`, `isError()`, `isMissing()` – der Baum ist trotzdem
+  vollständig.
+* **Wie:** tree-sitter (Kern 0.26.6) samt Grammatik ist je Sprache ein eigenständiges WebAssembly-Modul unter
+  `src/main/resources/tree-sitter/`. [Chicory](https://github.com/dylibso/chicory) übersetzt es beim ersten Gebrauch
+  der Sprache in JVM-Bytecode (~0,3 s für Java) und führt es aus – zur Laufzeit wird nichts Natives geladen. Je Datei
+  ein Aufruf ins Modul: die Brücke `natives/tree-sitter-wasm/ast.c` legt den Baum flach in einen Puffer, Java liest ihn
+  am Stück. Wasm-Instanzen sind nicht threadsicher; jeder Aufruf leiht sich eine aus einem Pool je Sprache.
+* **Neu bauen:** `WASI_SDK=/opt/wasi-sdk sh natives/build-tree-sitter-wasm.sh [sprache …]` (wasi-sdk, Java, curl;
+  Versionen der Grammatiken im Skript). Unter Windows blockiert Smart App Control das `wasm-ld.exe` von wasi-sdk –
+  dann übernimmt YoWASP (Clang/LLD selbst als WebAssembly in Node), siehe Kopf des Skripts.
+* **Geschwindigkeit:** HotSpot übersetzt Methoden über 8000 Bytes Bytecode nie per JIT. Der generierte Lexer jeder
+  Grammatik ist ein einziger riesiger `switch` – `natives/tree-sitter-wasm/SplitLexer.java` zerlegt ihn beim Bauen in
+  kleine Funktionen, der Kern wird ohne großflächiges Inlining übersetzt (`-fno-inline-functions`). Gemessen an den
+  337 Java-Dateien dieses Projekts (3,3 MB, ein Thread): ~0,7 MB/s, die frühere native Anbindung schaffte ~3,9 MB/s;
+  ohne die Zerlegung waren es 0,16 MB/s.
+
 ### Code-Graph (Java)
 
 Angelehnt an den AST-Durchlauf von [graphify](https://github.com/safishamsi/graphify), aber in Java und ohne LLM:
 tree-sitter liest alle `.java`-Dateien eines freigegebenen Projekts in zwei Durchläufen – erst Deklarationen, dann
-Referenzen, aufgelöst über die Deklarationen aller Dateien. Gemessen an eGECKO (~10.800 Dateien): Aufbau ~20 s,
-Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s.
+Referenzen, aufgelöst über die Deklarationen aller Dateien. Gemessen an eGECKO (~10.800 Dateien, noch mit der
+früheren nativen Anbindung): Aufbau ~20 s, Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im
+Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Umstellung auf reines Java (siehe
+[Syntaxbäume](#syntaxbäume-für-viele-sprachen-reines-java)) etwa 5× langsamer, der Aufbau entsprechend länger.
 
-* **Native Bibliotheken:** Aufruf über die offiziellen FFM-Bindings `io.github.tree-sitter:jtreesitter`
-  (`jtreesitter.internal.TreeSitter`, Version fest). Die vorkompilierten Bibliotheken für macOS/Linux (x86_64,
-  aarch64) und Windows (x86_64) kommen als reine Ressourcen aus `io.github.bonede:tree-sitter(-java)`;
-  `TreeSitterNatives` entpackt sie beim ersten Aufruf. Ausnahme Windows-Kernbibliothek: die DLL von bonede exportiert
-  nur ihre JNI-Funktionen, nicht die C-API (`ts_*`) – jtreesitter scheitert daran mit `NoClassDefFoundError: Could not
-  initialize class …TreeSitter`. Deshalb liegt unter `src/main/resources/natives/` eine eigene, aus den Original-Quellen
-  (gleiche Version) mit MinGW gebaute `x86_64-windows-tree-sitter.dll`; `malloc`/`free` kommen dort aus `msvcrt.dll`.
-  Neu bauen: `podman run --rm -v "$PWD:/src" docker.io/library/eclipse-temurin:25-jdk sh
-  /src/natives/build-windows-tree-sitter.sh`. Bewusst **nicht** verwendet: die JNI-Klassen von bonede –
-  sie prüfen Allokationen nicht und beenden bei vollem Heap die ganze JVM mit SIGSEGV (reproduziert). Ebenfalls
-  nicht: `jtreesitter.Node` beim Durchlaufen – jedes Knotenobjekt hat eine eigene Arena mit Cleaner, bei großen
-  Projekten läuft der Heap voll. Stattdessen kopiert `SyntaxNode` jede Datei einmal per Tree-Cursor in eine schlanke
-  Java-Struktur und gibt den nativen Baum sofort frei.
+* **Syntaxbäume:** über `SyntaxEngine` (Paket `systems.grebe.devtools.mcp.syntax`) – tree-sitter als WebAssembly in
+  Chicory, keine nativen Bibliotheken. Früher FFM/jtreesitter mit aus dem Temp-Verzeichnis entpackten
+  DLL/.so-Dateien; Windows blockiert solche unsignierten Bibliotheken (Smart App Control, WDAC, AppLocker).
 
 * **Knoten:** `package`, `file`, `class`/`interface`/`enum`/`record`/`annotation`, `method`, `constructor`, `field`
   (mit Datei, Zeilen, Modifiern, Signatur, erstem Javadoc-Satz) sowie `external` für referenzierte Bibliothekstypen.
