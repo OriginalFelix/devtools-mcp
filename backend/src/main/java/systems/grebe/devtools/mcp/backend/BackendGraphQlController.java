@@ -323,8 +323,8 @@ public class BackendGraphQlController {
                              @Argument MemoryViews.Type type, @Argument Integer maxContentChars) {
         Supplier<String> save = () -> memories.save(title, content, type, project, skill, reference, tags,
                 maxMemory(maxContentChars));
-        // temporäre Memories ohne Recht auf das Tool
-        return type == MemoryViews.Type.TEMPORARY ? as(user, save) : asTool(user, "memories", "memories_save", save);
+        // temporäre Memories und Rückrufe ohne Recht auf das Tool
+        return type != null && type.ephemeral() ? as(user, save) : asTool(user, "memories", "memories_save", save);
     }
 
     @MutationMapping

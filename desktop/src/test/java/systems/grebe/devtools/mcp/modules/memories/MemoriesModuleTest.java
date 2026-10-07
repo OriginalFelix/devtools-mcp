@@ -43,7 +43,9 @@ class MemoriesModuleTest {
         assertThat(MemoryWriteTools.type(" temporary ")).isEqualTo(MemoryViews.Type.TEMPORARY);
         assertThat(MemoryWriteTools.type("Dauerhaft")).isEqualTo(MemoryViews.Type.PERMANENT);
         assertThat(MemoryWriteTools.type("")).isNull();
-        assertThatThrownBy(() -> MemoryWriteTools.type("ewig")).hasMessageContaining("PERMANENT oder TEMPORARY");
+        assertThat(MemoryWriteTools.type("Rückruf")).isEqualTo(MemoryViews.Type.INVOCATION);
+        assertThatThrownBy(() -> MemoryWriteTools.type("ewig"))
+                .hasMessageContaining("PERMANENT, TEMPORARY oder INVOCATION");
     }
 
     @Test

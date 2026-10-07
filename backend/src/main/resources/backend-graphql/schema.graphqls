@@ -378,5 +378,5 @@ type MemoryEntry {
     updatedAt: String
 }
 
-"Lebensdauer einer Memory: PERMANENT (Standard) oder TEMPORARY (ausdrücklich angegeben; ohne Freigabe änderbar und löschbar)."
-enum MemoryType { PERMANENT TEMPORARY }
+"Lebensdauer einer Memory: PERMANENT (Standard), TEMPORARY (ausdrücklich angegeben) oder INVOCATION (Rückruf nach einer lang laufenden Aktion, nach der Zustellung gelöscht); TEMPORARY und INVOCATION ohne Freigabe änderbar und löschbar."
+enum MemoryType { PERMANENT TEMPORARY INVOCATION }

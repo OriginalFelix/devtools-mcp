@@ -26,7 +26,7 @@ public class MemoryReadTools {
             @ToolParam(required = false, description = "Nur mit diesem Tag") String tag,
             @ToolParam(required = false, description = "Nur die letzten N Tage") Integer days,
             @ToolParam(required = false, description = "Max. Treffer (Standard 5)") Integer limit,
-            @ToolParam(required = false, description = "Nur PERMANENT oder nur TEMPORARY") String type) {
+            @ToolParam(required = false, description = "Nur PERMANENT, TEMPORARY oder INVOCATION") String type) {
         return service.search(query, project, skill, tag, MemoryWriteTools.type(type), days, limit);
     }
 

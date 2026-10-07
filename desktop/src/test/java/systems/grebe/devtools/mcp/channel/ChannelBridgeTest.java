@@ -123,13 +123,17 @@ class ChannelBridgeTest {
                 new PrintStream(OutputStream.nullOutputStream()), uri, "t0k", ChannelBridge.Mode.CHANNEL);
         Thread t = Thread.ofVirtual().start(bridge::run);
         try {
+            // Ereignisse erst nach der Initialisierung durch den Client
+            assertThat(connected.await(500, TimeUnit.MILLISECONDS)).isFalse();
+            write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
+            write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
             assertThat(connected.await(10, TimeUnit.SECONDS)).isTrue();
             events.publish("mail", "Neue E-Mail in arbeit/INBOX", Map.of("uid", "5", "bad-key", "x"));
             long deadline = System.currentTimeMillis() + 10_000;
-            while (lines(out).isEmpty() && System.currentTimeMillis() < deadline) {
+            while (lines(out).stream().noneMatch(n -> n.has("method")) && System.currentTimeMillis() < deadline) {
                 Thread.sleep(50);
             }
-            assertThat(lines(out)).singleElement().satisfies(n -> {
+            assertThat(lines(out).stream().filter(n -> n.has("method")).toList()).singleElement().satisfies(n -> {
                 assertThat(n.path("params").path("content").asString()).isEqualTo("Neue E-Mail in arbeit/INBOX");
                 assertThat(n.path("params").path("meta").path("uid").asString()).isEqualTo("5");
                 assertThat(n.path("params").path("meta").path("event_source").asString()).isEqualTo("mail");
