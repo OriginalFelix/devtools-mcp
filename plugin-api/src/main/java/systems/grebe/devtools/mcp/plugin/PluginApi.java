@@ -9,7 +9,8 @@ public final class PluginApi {
      *
      * <ul>
      *   <li>1 – Plugins, Module, Provider-SPIs (Tickets, Chat, Git-Server, Container)</li>
-     *   <li>2 – {@code DatabaseConnectionProvider}: Verbindungen des JDBC-Moduls für Plugins</li>
+     *   <li>2 – {@code DatabaseConnectionProvider} (Verbindungen des JDBC-Moduls) und {@code ProjectProvider}
+     *   (freigegebene Projektverzeichnisse) für Plugins</li>
      * </ul>
      */
     public static final int VERSION = 2;

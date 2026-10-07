@@ -464,7 +464,7 @@ Gradle-Multiprojekt:
 | `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories, Skripte mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
 | `shared` | Gemeinsam: Einstellungs-Ablage, Datenklassen der GraphQL-API (`api`) | – |
-| `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), Datenbankverbindungen (`DatabaseConnectionProvider`), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
+| `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), Datenbankverbindungen (`DatabaseConnectionProvider`), Projektverzeichnisse (`ProjectProvider`), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
 
 MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
 im Team-Server, und in der Desktop-App eingebettet – außer dort ist ein Team-Server eingetragen, dann nutzt sie dessen
@@ -1218,7 +1218,7 @@ inkl. Formular, Schaltern, Aktionen und Protokoll. Für kleine Erweiterungen ohn
 name: jira                        # Pflicht, [a-z][a-z0-9-]*, eindeutig
 version: 1.2.0                    # Pflicht
 main: com.acme.jira.JiraPlugin    # Pflicht, erweitert DevToolsPlugin
-api-version: 1                    # optional; höher als die App → Plugin wird abgewiesen (2: DatabaseConnectionProvider)
+api-version: 1                    # optional; höher als die App → Plugin wird abgewiesen (2: Datenbanken, Projekte)
 description: Tickets lesen und kommentieren
 author: Team Tools                # oder authors: [a, b]
 website: https://git.acme.de/jira-plugin
@@ -1275,6 +1275,7 @@ Sie enthält, was ein Plugin braucht, und reicht Spring AI (`@Tool`, `ToolCallba
 | Tools | `ToolBeans` (Callbacks mit Hinweisen), `@ToolHints`, `ToolProgress` (Fortschritt an den Client), `DelegatingToolCallback` |
 | Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `ContainerRuntimeProvider`/`ContainerRuntime`/`RuntimeSettings` |
 | Datenbanken | `DatabaseConnectionProvider`, `DatabaseConnectionInfo` (Verbindungen des JDBC-Moduls, ab `api-version: 2`) |
+| Projekte | `ProjectProvider`, `ProjectDirectory` (freigegebene Projektverzeichnisse, ab `api-version: 2`) |
  Die App stellt all das zur Laufzeit bereit, ins Jar
 gehört nur der eigene Code. Die Pakete sind dieselben wie vorher im App-Jar: bereits gebaute Plugins laufen unverändert.
 
@@ -1322,6 +1323,12 @@ Maven: dieselbe Koordinate mit `<scope>provided</scope>`. Das POM nennt feste Ve
   Schalter „Datensätze lesen“, das Recht auf `jdbc_query` und eine Verbindung, deren Deckel Lesen erlaubt; ob das
   Modul selbst aktiv ist, spielt keine Rolle. Injiziert als `ObjectProvider<DatabaseConnectionProvider>` bleibt das
   Plugin auch ohne die Bean (Tests) lauffähig.
+* **Projekte:** Die Bean `ProjectProvider` (Plugin-API, `project/spi`, `api-version: 2`) liefert die freigegebenen
+  Projektverzeichnisse – die Verzeichnislisten von Git, Build, Code-Graph und Pull Requests in ihrer wirksamen Form,
+  also inklusive Backend-Projekten und „Freigaben“ – gefiltert über einen `marker` (z.B. „ist ein Gradle-Build“).
+  `resolve(nameOrPath, marker)` löst einen Projektnamen oder Pfad auf, auch ein Unterverzeichnis wie das
+  Arbeitsverzeichnis des Clients; bei aufgehobener Beschränkung auch Pfade außerhalb. `ProjectDirectory.writable()`
+  sagt, ob das Plugin dort schreiben oder Code des Projekts (Gradle) ausführen darf.
 * **Tools:** `ToolBeans.callbacks(…)` statt `ToolCallbacks.from(…)` übernimmt `@ToolHints` als MCP-Tool-Annotations,
   `ToolProgress.report(…)` meldet Zwischenstände an den Client – beides funktioniert in Plugin-Tools wie in eingebauten.
 * **Instructions:** `instructions()` aktiver Plugin-Module stehen ab der nächsten Client-Session in den
@@ -1429,6 +1436,7 @@ plugin-api/
   core/                   ── ToolModule, ModuleAction, ConnectionTestResult, ToolScope, ConfigField, ConfigGroup,
                              FieldType, ModuleConfig, ToolBeans + ToolHints, ToolProgress, ServiceProvider
   modules/*/spi/          ── Provider-SPIs: ticket, chat, pr (Git-Server), container; jdbc: Verbindungen für Plugins
+  project/spi/            ── ProjectProvider: freigegebene Projektverzeichnisse für Plugins
   plugin/                 ── DevToolsPlugin, PluginContext, PluginDescriptor, PluginApi
 ```
 
