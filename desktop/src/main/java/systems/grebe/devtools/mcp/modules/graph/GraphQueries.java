@@ -26,7 +26,7 @@ import systems.grebe.devtools.mcp.modules.graph.GraphReader.TypeLink;
 
 /**
  * Abfragen auf einem gespeicherten Code-Graphen; Ergebnisse als kompakter Text für das LLM. Alle Zugriffe laufen über
- * {@link GraphReader} – bei der Neo4j-Ablage also als Cypher in der Datenbank, ohne den Graphen zu laden.
+ * {@link GraphReader} – bei der Datenbank-Ablage also als OpenCypher in der Datenbank, ohne den Graphen zu laden.
  */
 final class GraphQueries {
 

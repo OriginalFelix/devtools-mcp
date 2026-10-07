@@ -17,7 +17,7 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.GraphFile;
  * Datei-Ablage: je Branch eine Datei im Projektwurzelverzeichnis ({@code devtools-fileinfo@<branch>.graph}, ohne Git
  * {@code devtools-fileinfo.graph}). Abfragen laufen auf dem geladenen Graphen ({@link MemoryGraphReader}).
  */
-final class FileGraphStorage implements GraphStorage {
+final class FileGraphProvider implements GraphProvider {
 
     @Override
     public String describe() {
@@ -26,11 +26,11 @@ final class FileGraphStorage implements GraphStorage {
 
     @Override
     public String location(Key key) {
-        return GraphStore.fileFor(key.root(), key.branch()).toString();
+        return GraphStore.fileFor(key.path(), key.branch()).toString();
     }
 
     private static CodeGraph load(Key key) {
-        return GraphStore.loadFile(GraphStore.fileFor(key.root(), key.branch()));
+        return GraphStore.loadFile(GraphStore.fileFor(key.path(), key.branch()));
     }
 
     @Override
@@ -59,12 +59,13 @@ final class FileGraphStorage implements GraphStorage {
 
     @Override
     public GraphReader write(Key key, GraphFile data) {
-        CodeGraph g = GraphStore.writeFile(GraphStore.fileFor(key.root(), key.branch()), data);
+        CodeGraph g = GraphStore.writeFile(GraphStore.fileFor(key.path(), key.branch()), data);
         return new MemoryGraphReader(g, key.branch(), data.commit(), location(key));
     }
 
     @Override
-    public List<Stored> branches(Path root) {
+    public List<Stored> branches(String rootPath) {
+        Path root = Path.of(rootPath);
         List<Stored> out = new ArrayList<>();
         for (Path file : GraphStore.files(root)) {
             try {
@@ -88,7 +89,8 @@ final class FileGraphStorage implements GraphStorage {
     }
 
     @Override
-    public boolean delete(Path root, String branch) {
+    public boolean delete(String rootPath, String branch) {
+        Path root = Path.of(rootPath);
         try {
             return Files.deleteIfExists(GraphStore.fileFor(root, branch));
         } catch (IOException e) {

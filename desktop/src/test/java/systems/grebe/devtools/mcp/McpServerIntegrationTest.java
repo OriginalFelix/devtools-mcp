@@ -846,9 +846,14 @@ class McpServerIntegrationTest {
     @Test
     void stdioProxyServesToolsElicitationAndListChanged() throws Exception {
         store.saveServer(new ServerSettings(ServerSettings.DEFAULT_PORT, "proxy-token", true, false));
+        // Classpath als @argfile: auf der Kommandozeile wäre er unter Windows zu lang (max. 32.767 Zeichen)
+        java.nio.file.Path argfile = java.nio.file.Files.createTempFile("mcp-proxy-cp", ".args");
+        argfile.toFile().deleteOnExit();
+        java.nio.file.Files.writeString(argfile, "-cp \"" + System.getProperty("java.class.path").replace("\\", "\\\\")
+                + "\"");
         var params = io.modelcontextprotocol.client.transport.ServerParameters
                 .builder(ProcessHandle.current().info().command().orElse("java"))
-                .args("-cp", System.getProperty("java.class.path"), ChannelBridge.class.getName(), ChannelBridge.STDIO_COMMAND,
+                .args("@" + argfile, ChannelBridge.class.getName(), ChannelBridge.STDIO_COMMAND,
                         "--url", "http://127.0.0.1:" + port, "--token", "proxy-token")
                 .build();
         var transport = new io.modelcontextprotocol.client.transport.StdioClientTransport(params,

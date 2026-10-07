@@ -12,13 +12,14 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
 
 /**
- * Lesezugriff auf einen gespeicherten Code-Graphen (ein Projekt, ein Branch). {@link GraphQueries} formuliert alle
- * Abfragen über diese Schnittstelle: {@link Neo4jGraphReader} beantwortet sie mit Cypher direkt in der Datenbank,
- * {@link MemoryGraphReader} auf dem geladenen Graphen der Datei-Ablage.
+ * Lesezugriff auf einen gespeicherten Code-Graphen (ein Projekt, ein Branch). Die Abfragen der Desktop-App
+ * ({@code GraphQueries}) laufen über diese Schnittstelle: in der Graph-Datenbank des Backends (ArcadeDB, per OpenCypher –
+ * direkt im Local-Mode, sonst über GraphQL, siehe {@link GraphProvider}) oder auf dem geladenen Graphen der
+ * Datei-Ablage.
  *
  * <p>Alle Methoden liefern nur Knoten und Kanten dieses einen Graphen.
  */
-interface GraphReader {
+public interface GraphReader {
 
     enum Direction { OUT, IN, BOTH }
 
@@ -116,9 +117,9 @@ interface GraphReader {
 
     /** Kopfdaten eines gespeicherten Graphen. */
     record GraphInfo(String project, String branch, String commit, String root, String builtAt, String generator,
-                     Map<String, Object> stats, List<Community> communities, String location) {
+              Map<String, Object> stats, List<Community> communities, String location) {
 
-        long stat(String key) {
+        public long stat(String key) {
             return stats != null && stats.get(key) instanceof Number n ? n.longValue() : 0;
         }
     }
@@ -133,10 +134,25 @@ interface GraphReader {
      * </ul>
      */
     record NodeSearch(Set<Kind> kinds, List<String> needles, boolean withDoc, String nameRegex, String idRegex,
-                      int limit) {
+               int limit) {
     }
 
     /** Verbindung zweier Typen ({@code a} → {@code b}); {@code sample} = kleinste Kante nach (von, nach). */
     record TypeLink(String a, String b, int weight, Edge sample) {
+    }
+
+    /**
+     * Lesende OpenCypher-Abfrage direkt in der Graph-Datenbank; der Parameter {@code $g} ist auf diesen Graphen gesetzt.
+     * Nur die Datenbank-Ablage kann das – die Datei-Ablage lehnt ab.
+     *
+     * @return Spaltennamen und höchstens {@code maxRows} Zeilen; {@code truncated} = es gab mehr
+     */
+    default QueryResult query(String query, Map<String, Object> params, int maxRows) {
+        throw new IllegalStateException("graph_cypher braucht die Datenbank-Ablage (Modul-Einstellung 'Ablage' = "
+                + "database).");
+    }
+
+    /** Ergebnis von {@link #query}: Werte als einfache Java-Objekte (Knoten als Kurzform {@code id [art]}). */
+    record QueryResult(List<String> columns, List<List<Object>> rows, boolean truncated) {
     }
 }

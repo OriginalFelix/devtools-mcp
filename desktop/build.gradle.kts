@@ -52,12 +52,6 @@ dependencies {
     runtimeOnly("io.github.bonede:tree-sitter:0.26.6")
     runtimeOnly("io.github.bonede:tree-sitter-java:0.23.5")
 
-    // Code-Graph-Ablage: Spring Data Neo4j (Entities für Projekt/Branch, Bulk-Cypher über Neo4jClient für Knoten/Kanten)
-    // Bewusst ohne Boot-Starter: die Verbindung kommt aus den Modul-Einstellungen und wird zur Laufzeit gebaut
-    // (Änderungen gelten sofort), eine Neo4j-Auto-Konfiguration neben JPA wäre nur im Weg.
-    implementation("org.springframework.data:spring-data-neo4j")
-    implementation("org.neo4j.driver:neo4j-java-driver")
-
     // Plugins: plugin.yml (SnakeYAML, Version aus der Boot-BOM) und Plugin-Store über Maven-Repositories
     // (Maven Resolver: Auflösung, Versionen aus maven-metadata.xml, Prüfsummen, Zugangsdaten, file://-Repositories).
     implementation("org.yaml:snakeyaml")
