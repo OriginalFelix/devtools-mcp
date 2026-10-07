@@ -107,6 +107,6 @@ final class GraphIndexAction implements ModuleAction {
         return ActionResult.ok("Graph gebaut in " + String.format("%.1f", r.duration().toMillis() / 1000.0) + " s (Branch "
                 + r.key().branchLabel() + "): " + s.get("files") + " Dateien, " + s.get("nodes") + " Knoten, "
                 + s.get("edges") + " Kanten, " + s.get("communities") + " Communities → " + r.graph().info().location()
-                + "." + removed);
+                + "." + (r.mode() == null ? "" : " (" + r.mode() + ")") + removed);
     }
 }

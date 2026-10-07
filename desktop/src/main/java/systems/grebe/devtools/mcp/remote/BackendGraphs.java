@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.backend.graph.GraphStorage;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.GraphFile;
+import systems.grebe.devtools.mcp.modules.graph.GraphDelta;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider;
 import systems.grebe.devtools.mcp.modules.graph.GraphReader;
 
@@ -73,5 +74,15 @@ public class BackendGraphs implements GraphProvider {
     @Override
     public boolean delete(Key key) {
         return current().delete(key);
+    }
+
+    @Override
+    public GraphReader update(Key key, String base, GraphDelta delta) {
+        return current().update(key, base, delta);
+    }
+
+    @Override
+    public GraphReader link(Key key, Key source) {
+        return current().link(key, source);
     }
 }

@@ -32,6 +32,7 @@ public class GraphModule implements ToolModule {
     static final String EXCLUDES = "excludes";
     static final String INCLUDE_TESTS = "includeTests";
     static final String MAX_FILES = "maxFiles";
+    static final String AUTO_INDEX = "autoIndex";
     static final String STORAGE = "storage";
     static final String STORAGE_DATABASE = "database";
     static final String STORAGE_FILE = "file";
@@ -138,7 +139,12 @@ public class GraphModule implements ToolModule {
                 ConfigField.of(INCLUDE_TESTS, "Tests einbeziehen", FieldType.BOOLEAN).withDefault("true")
                         .withHelp("Aus = Ordner src/test/… werden übersprungen."),
                 ConfigField.of(MAX_FILES, "Max. Dateien", FieldType.INT).withDefault("30000")
-                        .withHelp("Schutz gegen versehentlich riesige Verzeichnisse."));
+                        .withHelp("Schutz gegen versehentlich riesige Verzeichnisse."),
+                ConfigField.of(AUTO_INDEX, "Automatisch indizieren", FieldType.BOOLEAN).withDefault("true")
+                        .withHelp("Bei jedem Commit, Branch-Wechsel und neuen Branch den Graphen des Projekts im "
+                                + "Hintergrund aktualisieren – inkrementell: nur geänderte Dateien werden gelesen und nur "
+                                + "der Unterschied gespeichert; ein neuer Branch mit gleichem Stand übernimmt den Graphen. "
+                                + "Nur bei eingeschaltetem Modul."));
     }
 
     @Override

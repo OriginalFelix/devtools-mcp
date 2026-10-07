@@ -1132,6 +1132,24 @@ Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Um
 * **Aktualität:** `graph_build` baut nur neu, wenn sich eine Quelldatei geändert hat (SHA-256) oder Dateien
   hinzugekommen/entfallen sind; die Abfrage-Tools bauen, falls der Graph des ausgecheckten Branches fehlt, und
   suchen dann – ein Hinweis vor der Antwort meldet den Aufbau.
+* **Automatisch und inkrementell:** Bei jedem Commit (egal ob aus DevTools, IDE oder Shell), Branch-Wechsel und
+  neuen Branch aktualisiert die App den Graphen des Projekts im Hintergrund (`GraphAutoIndexer`, prüft alle 5 s
+  HEAD und lokale Branches; `devtools.graph.watch-interval`; Einstellung *Automatisch indizieren*, nur bei
+  eingeschaltetem Modul). Inkrementell heißt:
+  * **Lesen:** Deklarationen und Kanten je Datei bleiben je Projekt im Speicher (nach SHA-256); neu gelesen werden
+    nur geänderte Dateien. Bleiben die Deklarationen aller Dateien gleich (nur Rümpfe, Javadoc, Zeilen), gelten die
+    Kanten der übrigen Dateien weiter, sonst werden sie neu aufgelöst – das Ergebnis ist in jedem Fall dasselbe wie
+    beim kompletten Aufbau.
+  * **Speichern:** nur der Unterschied zum gespeicherten Stand (`GraphDelta`: Dateien, Knoten, Kanten hinzu/geändert/
+    entfernt) in einer Transaktion, in place – über GraphQL als eine Mutation `updateGraph`. Komplett geschrieben wird
+    nach einem Neustart der App, mit *Komplett neu*, wenn inzwischen ein anderer Stand gespeichert ist oder sich mehr
+    als ein Viertel des Graphen ändert.
+  * **Neuer Branch:** Hat ein anderer Branch genau diesen Stand gespeichert, zeigt der neue auf dieselbe Generation
+    (`link`) – nichts wird gebaut. Ein neuer, nicht ausgecheckter Branch auf dem ausgecheckten Commit übernimmt so den
+    Graphen, wenn das Arbeitsverzeichnis keine Java-Änderungen hat. Geteilte Generationen werden nie in place
+    geändert; der erste eigene Aufbau schreibt eine eigene.
+  * Gemessen an diesem Repository (602 Dateien, eingebettet): erster Aufbau 12 s, Commit mit geändertem Rumpf 0,5 s,
+    mit neuer Methode 1,3 s, ohne Änderung 0,07 s.
 * **Abfragen:** `graph_report` (God Nodes, meistaufgerufene Methoden, Communities, überraschende Verbindungen zwischen
   Paketen), `graph_find` (Name, `*`-Platzhalter), `graph_files` (Dateien nach Name, Stichworten, `*`-Muster oder
   Pfad – oder mit `related` über Kanten, z.B. alle Dateien, die einen Typ verwenden – je Datei Länge und passende
@@ -1149,9 +1167,9 @@ Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Um
   Stellen zu lesen – `grep`, `find`, Glob oder ganze Dateien erst, wenn der Graph nichts liefert (Nicht-Java-Dateien,
   Konfiguration, Texte in Strings/Kommentaren). Suchbegriffe behalten Umlaute (*veröffentlicht* bleibt ein Wort).
 * **Einstellungen:** Projekte/Sammelordner, Standardprojekt, Ablage (`database`/`file`), Ausschlüsse (Ordnername
-  außerhalb von `src/`, relativer Pfad oder `*.endung`), Tests einbeziehen, max. Dateien. Eingebettete oder externe
-  ArcadeDB stellt das Backend ein (`devtools.graph.*`). *Verbindung testen* prüft die Graph-Storage (mit Version) und
-  listet die gespeicherten Branches.
+  außerhalb von `src/`, relativer Pfad oder `*.endung`), Tests einbeziehen, max. Dateien, automatisch indizieren.
+  Eingebettete oder externe ArcadeDB stellt das Backend ein (`devtools.graph.*`). *Verbindung testen* prüft die
+  Graph-Storage (mit Version) und listet die gespeicherten Branches.
 * **Indizieren in der App:** Im Modul unter **Aktionen** ein Projekt wählen und *Indizieren* klicken (optional
   *Komplett neu*) – mit Fortschrittsbalken, Abbrechen und dem Stand der vorhandenen Graph-Datei. Läuft mit der
   gespeicherten Konfiguration und auch bei inaktivem Modul, d.h. ohne dass `graph_*`-Tools beim LLM erscheinen.

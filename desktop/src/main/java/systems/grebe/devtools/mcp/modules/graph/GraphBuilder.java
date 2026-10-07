@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -215,42 +216,153 @@ final class GraphBuilder {
         return build(sources, projectName, ModuleAction.Progress.NONE);
     }
 
+    GraphFile build(List<Source> sources, String projectName, ModuleAction.Progress progress) {
+        return build(sources, projectName, progress, null);
+    }
+
+    /**
+     * Zwischenstand je Projekt für den inkrementellen Aufbau: Deklarationen und Kanten je Datei (nach SHA-256) und der
+     * Fingerabdruck aller Deklarationen, gegen den die Kanten aufgelöst wurden. Nicht threadsicher – je Projekt baut
+     * immer nur einer ({@code GraphService} sperrt).
+     */
+    static final class ParseCache {
+
+        /** Datei mit Prüfsumme, Deklarationen, ihrem Fingerabdruck (ohne Zeilen und Javadoc) und den Kanten. */
+        record CachedFile(String sha256, FileDecl decl, String api, List<RawEdge> refs) {
+        }
+
+        private Map<String, CachedFile> files = Map.of();
+        private String fingerprint;
+        /** Beim letzten Aufbau neu gelesene Dateien: Deklarationen bzw. Kanten. */
+        int parsedDeclarations;
+        int parsedReferences;
+
+        /** Vergessen – der nächste Aufbau liest alles (und füllt den Cache neu). */
+        void clear() {
+            files = Map.of();
+            fingerprint = null;
+        }
+    }
+
     /**
      * Baut den Graphen; meldet den Fortschritt je Phase (Anteil 0,05–0,95). Ein Interrupt des aufrufenden Threads
      * bricht ab ({@link IllegalStateException} mit {@link InterruptedException} als Ursache).
+     *
+     * <p>Mit {@code cache} inkrementell: Dateien mit unveränderter Prüfsumme werden nicht neu geparst. Sind auch die
+     * Deklarationen aller Dateien unverändert (nur Rümpfe, Javadoc oder Zeilen geändert – der häufige Fall bei einem
+     * Commit), gelten ihre Kanten weiter; sonst werden die Kanten aller Dateien neu aufgelöst. Das Ergebnis ist in
+     * beiden Fällen dasselbe wie ohne Cache.
      */
-    GraphFile build(List<Source> sources, String projectName, ModuleAction.Progress progress) {
+    GraphFile build(List<Source> sources, String projectName, ModuleAction.Progress progress, ParseCache cache) {
         int threads = this.threads > 0 ? this.threads
                 : Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), 8));
         int n = sources.size();
+        Map<String, ParseCache.CachedFile> previous = cache == null ? Map.of() : cache.files;
         try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
-            List<Future<FileDecl>> declFutures = sources.stream()
-                    .map(s -> pool.submit(() -> declarationsOrEmpty(s))).toList();
+            List<Future<FileDecl>> declFutures = new ArrayList<>(n);
+            int parsedDecls = 0;
+            for (Source s : sources) {
+                ParseCache.CachedFile c = previous.get(s.path());
+                if (c != null && c.sha256().equals(s.sha256())) {
+                    declFutures.add(CompletableFuture.completedFuture(c.decl()));
+                } else {
+                    declFutures.add(pool.submit(() -> declarationsOrEmpty(s)));
+                    parsedDecls++;
+                }
+            }
             List<FileDecl> decls = new ArrayList<>(n);
             for (int i = 0; i < n; i++) {
                 decls.add(get(pool, declFutures.get(i)));
                 report(progress, "Deklarationen", i + 1, n, 0.05, 0.45);
             }
+            List<String> apis = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) {
+                ParseCache.CachedFile c = previous.get(sources.get(i).path());
+                apis.add(c != null && c.decl() == decls.get(i) ? c.api() : api(decls.get(i)));
+            }
+            String fingerprint = fingerprint(sources, apis);
+            boolean sameDeclarations = cache != null && fingerprint.equals(cache.fingerprint);
+
             Map<String, Node> nodes = new LinkedHashMap<>();
             Map<String, EdgeAcc> edges = new LinkedHashMap<>();
             List<FileEntry> files = declarationNodes(sources, decls, nodes, edges);
 
             JavaResolver resolver = new JavaResolver(decls);
             List<Future<List<RawEdge>>> futures = new ArrayList<>();
+            int parsedRefs = 0;
             for (int i = 0; i < sources.size(); i++) {
                 FileDecl d = decls.get(i);
                 Source s = sources.get(i);
-                futures.add(pool.submit(() -> referencesOrEmpty(d, s, resolver)));
+                ParseCache.CachedFile c = previous.get(s.path());
+                if (sameDeclarations && c != null && c.decl() == d && c.refs() != null) {
+                    futures.add(CompletableFuture.completedFuture(c.refs()));
+                } else {
+                    futures.add(pool.submit(() -> referencesOrEmpty(d, s, resolver)));
+                    parsedRefs++;
+                }
             }
+            Map<String, ParseCache.CachedFile> next = new HashMap<>();
             for (int i = 0; i < futures.size(); i++) {
-                referenceEdges(get(pool, futures.get(i)), nodes, edges);
+                List<RawEdge> refs = get(pool, futures.get(i));
+                referenceEdges(refs, nodes, edges);
                 futures.set(i, null); // Ergebnis freigeben
+                if (cache != null) {
+                    Source s = sources.get(i);
+                    next.put(s.path(), new ParseCache.CachedFile(s.sha256(), decls.get(i), apis.get(i), refs));
+                }
                 report(progress, "Aufrufe und Referenzen", i + 1, n, 0.45, 0.85);
+            }
+            if (cache != null) {
+                cache.files = next;
+                cache.fingerprint = fingerprint;
+                cache.parsedDeclarations = parsedDecls;
+                cache.parsedReferences = parsedRefs;
             }
             dispatchEdges(edges);
             progress.update("Communities …", 0.9);
             return finish(files, nodes, edges, projectName);
         }
+    }
+
+    /**
+     * Fingerabdruck der Deklarationen einer Datei, wie sie die Auflösung der Kanten sieht: ohne Zeilen und Javadoc
+     * (die Zeilen eigener Deklarationen gehen nur in die Kanten dieser Datei ein, und die wird bei Änderung neu gelesen).
+     */
+    static String api(FileDecl d) {
+        StringBuilder sb = new StringBuilder(d.pkg()).append('\n');
+        for (JavaExtractor.Import i : d.imports()) {
+            sb.append("i ").append(i.name()).append(i.isStatic() ? " s" : "").append(i.wildcard() ? " *" : "")
+                    .append('\n');
+        }
+        for (TypeDecl t : d.types()) {
+            sb.append("t ").append(t.fqn()).append('|').append(t.simpleName()).append('|').append(t.kind()).append('|')
+                    .append(t.outer()).append('|').append(t.modifiers()).append('|').append(t.annotations()).append('|')
+                    .append(t.typeParams()).append('|').append(t.superclass()).append('|').append(t.interfaces())
+                    .append('\n');
+            for (MemberDecl m : t.members()) {
+                sb.append("m ").append(m.id()).append('|').append(m.kind()).append('|').append(m.paramTypes())
+                        .append('|').append(m.varargs()).append('|').append(m.type()).append('|').append(m.modifiers())
+                        .append('|').append(m.annotations()).append('|').append(m.typeParams()).append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Fingerabdruck aller Deklarationen des Projekts (Pfad + {@link #api} je Datei). */
+    private static String fingerprint(List<Source> sources, List<String> apis) {
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        for (int i = 0; i < sources.size(); i++) {
+            md.update(sources.get(i).path().getBytes(StandardCharsets.UTF_8));
+            md.update((byte) 0);
+            md.update(apis.get(i).getBytes(StandardCharsets.UTF_8));
+            md.update((byte) 0);
+        }
+        return HexFormat.of().formatHex(md.digest());
     }
 
     /**

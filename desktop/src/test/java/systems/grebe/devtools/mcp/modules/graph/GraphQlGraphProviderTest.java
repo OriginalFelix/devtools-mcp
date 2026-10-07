@@ -1,6 +1,7 @@
 package systems.grebe.devtools.mcp.modules.graph;
 
 import java.nio.file.Path;
+import java.util.List;
 
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
@@ -102,5 +103,16 @@ class GraphQlGraphProviderTest {
         Key anywhere = new Key("egal", "/anderer/rechner/shop", "main", shop.id());
         assertThat(api.branches(anywhere)).extracting(GraphProvider.Stored::branch).containsExactly("main");
         assertThat(graphs.reader(anywhere).info().project()).isEqualTo("shop@" + shop.owner());
+
+        // nach einer Änderung inkrementell über die API (updateGraph), Generation bleibt
+        String generation = api.reader(anywhere).generation();
+        java.nio.file.Path order = project.resolve("src/main/java/com/acme/shop/Order.java");
+        java.nio.file.Files.writeString(order, java.nio.file.Files.readString(order)
+                .replace("    void frobnicate() {\n    }", "    void frobnicate() {\n        new Money().add(7);\n    }"));
+        GraphService.BuildResult r = viaApi.build(null, false);
+        assertThat(r.mode()).startsWith("inkrementell: 1 Datei(en) gelesen");
+        assertThat(api.reader(anywhere).generation()).isEqualTo(generation);
+        assertThat(new GraphTools(viaApi).neighbors(null, "Money#add", "in", List.of("calls"), 1, null, null))
+                .contains("Weird#frobnicate()");
     }
 }

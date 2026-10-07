@@ -72,6 +72,9 @@ public class GraphTools {
                 sb.append(" (geändert ").append(r.changedFiles()).append(", neu ").append(r.addedFiles())
                         .append(", entfernt ").append(r.removedFiles()).append(')');
             }
+            if (r.mode() != null) {
+                sb.append("\n").append(r.mode().substring(0, 1).toUpperCase()).append(r.mode().substring(1));
+            }
         } else {
             sb.append("Graph ist aktuell (keine Quelldatei geändert, Branch ").append(r.key().branchLabel())
                     .append(") → ").append(where);
