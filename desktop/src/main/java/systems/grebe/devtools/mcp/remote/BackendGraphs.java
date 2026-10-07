@@ -66,12 +66,12 @@ public class BackendGraphs implements GraphProvider {
     }
 
     @Override
-    public List<Stored> branches(String root) {
-        return current().branches(root);
+    public List<Stored> branches(Key project) {
+        return current().branches(project);
     }
 
     @Override
-    public boolean delete(String root, String branch) {
-        return current().delete(root, branch);
+    public boolean delete(Key key) {
+        return current().delete(key);
     }
 }

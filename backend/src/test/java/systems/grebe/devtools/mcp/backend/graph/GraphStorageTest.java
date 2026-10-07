@@ -95,7 +95,7 @@ class GraphStorageTest {
         assertThat(r.info().project()).isEqualTo("demo");
         assertThat(r.info().stat("nodes")).isEqualTo(6);
         assertThat(r.info().communities()).extracting(Community::label).containsExactly("A", "B");
-        assertThat(r.info().location()).contains("GraphBranch /work/demo@main");
+        assertThat(r.info().location()).contains("GraphBranch name:demo@main");
         assertThat(storage.state(MAIN).fileHashes()).containsEntry("src/A.java", "sha-a").hasSize(2);
         assertThat(storage.state(MAIN).generator()).isEqualTo("test-1");
 
@@ -141,11 +141,11 @@ class GraphStorageTest {
         // weiterer Branch, Liste, Löschen
         storage.write(new Key("demo", "/work/demo", "feature/x"), graph("c3"));
         storage.write(new Key("demo", "/work/demo", null), graph("c4"));
-        assertThat(storage.branches("/work/demo")).extracting(GraphProvider.Stored::branch)
+        assertThat(storage.branches(MAIN)).extracting(GraphProvider.Stored::branch)
                 .containsExactly(null, "feature/x", "main");
-        assertThat(storage.delete("/work/demo", "feature/x")).isTrue();
-        assertThat(storage.delete("/work/demo", "feature/x")).isFalse();
-        assertThat(storage.branches("/work/demo")).extracting(GraphProvider.Stored::branch).containsExactly(null, "main");
+        assertThat(storage.delete(MAIN.withBranch("feature/x"))).isTrue();
+        assertThat(storage.delete(MAIN.withBranch("feature/x"))).isFalse();
+        assertThat(storage.branches(MAIN)).extracting(GraphProvider.Stored::branch).containsExactly(null, "main");
         storage.awaitCleanup();
 
         // Nach einem Neustart ist alles noch da
@@ -181,20 +181,20 @@ class GraphStorageTest {
 
     @Test
     void abortedBuildsLeaveNothingBehind() throws Exception {
-        String g = storage.begin(GraphStorage.LOCAL, MAIN);
-        storage.writeFiles(GraphStorage.LOCAL, g, graph("c1").files());
-        storage.writeNodes(GraphStorage.LOCAL, g, graph("c1").nodes());
+        String g = storage.begin(GraphStorage.Access.LOCAL, MAIN);
+        storage.writeFiles(GraphStorage.Access.LOCAL, g, graph("c1").files());
+        storage.writeNodes(GraphStorage.Access.LOCAL, g, graph("c1").nodes());
         assertThat(storage.reader(MAIN)).isNull(); // nicht veröffentlicht
-        assertThat(storage.branches("/work/demo")).isEmpty();
-        storage.abort(GraphStorage.LOCAL, g);
+        assertThat(storage.branches(MAIN)).isEmpty();
+        storage.abort(GraphStorage.Access.LOCAL, g);
         storage.awaitCleanup();
         assertThat(storage.count("CodeNode", g)).isZero();
-        assertThatThrownBy(() -> storage.writeEdges(GraphStorage.LOCAL, g, graph("c1").edges()))
+        assertThatThrownBy(() -> storage.writeEdges(GraphStorage.Access.LOCAL, g, graph("c1").edges()))
                 .hasMessageContaining("Kein laufender Aufbau");
 
         // ein neuer Aufbau löst einen hängengebliebenen ab
-        String stale = storage.begin(GraphStorage.LOCAL, MAIN);
-        storage.writeNodes(GraphStorage.LOCAL, stale, graph("c1").nodes());
+        String stale = storage.begin(GraphStorage.Access.LOCAL, MAIN);
+        storage.writeNodes(GraphStorage.Access.LOCAL, stale, graph("c1").nodes());
         storage.write(MAIN, graph("c2"));
         storage.awaitCleanup();
         assertThat(storage.count("CodeNode", stale)).isZero();
@@ -203,22 +203,61 @@ class GraphStorageTest {
 
     @Test
     void usersOfTheApiOnlySeeTheirOwnGraphs() {
-        GraphProvider felix = storage.forOwner("user:1");
-        GraphProvider anna = storage.forOwner("user:2");
+        GraphProvider felix = storage.forAccess(user(1, Set.of(), Set.of()));
+        GraphProvider anna = storage.forAccess(user(2, Set.of(), Set.of()));
         GraphReader mine = felix.write(MAIN, graph("f"));
         anna.write(MAIN, graph("a"));
         assertThat(felix.reader(MAIN).info().commit()).isEqualTo("f");
         assertThat(anna.reader(MAIN).info().commit()).isEqualTo("a");
         assertThat(storage.reader(MAIN)).isNull(); // Local-Mode: eigener Bereich
-        assertThat(anna.branches("/work/demo")).hasSize(1);
+        assertThat(anna.branches(MAIN)).hasSize(1);
 
         String id = ((ArcadeGraphReader) mine).graphId();
-        assertThat(storage.reader("user:1", id).node("a.A")).isNotNull();
-        assertThatThrownBy(() -> storage.reader("user:2", id)).hasMessageContaining("gibt es nicht mehr");
-        String g = storage.begin("user:1", MAIN);
-        assertThatThrownBy(() -> storage.writeNodes("user:2", g, List.of())).hasMessageContaining("Kein laufender");
-        assertThat(anna.delete("/work/demo", "main")).isTrue();
+        assertThat(storage.reader(user(1, Set.of(), Set.of()), id).node("a.A")).isNotNull();
+        assertThatThrownBy(() -> storage.reader(user(2, Set.of(), Set.of()), id))
+                .hasMessageContaining("gibt es nicht mehr");
+        String g = storage.begin(user(1, Set.of(), Set.of()), MAIN);
+        assertThatThrownBy(() -> storage.writeNodes(user(2, Set.of(), Set.of()), g, List.of()))
+                .hasMessageContaining("Kein laufender");
+        assertThat(anna.delete(MAIN)).isTrue();
         assertThat(felix.reader(MAIN)).isNotNull();
+    }
+
+    /** Benutzer der API mit lesbaren und beschreibbaren Backend-Projekten. */
+    static GraphStorage.Access user(long id, Set<Long> read, Set<Long> write) {
+        return new GraphStorage.Access("user:" + id, p -> read.contains(p) || write.contains(p), write::contains);
+    }
+
+    @Test
+    void sameProjectAndBranchIsTheSameGraphWhateverThePath() {
+        // ohne Backend-Projekt: Name + Branch, Pfad egal (anderer Rechner, anderes Verzeichnis)
+        storage.write(MAIN, graph("c1"));
+        Key elsewhere = new Key("Demo", "D:\\ganz\\woanders", "main");
+        assertThat(storage.reader(elsewhere).info().commit()).isEqualTo("c1");
+        assertThat(storage.state(elsewhere)).isNotNull();
+        assertThat(storage.reader(new Key("anderes", "/work/demo", "main"))).isNull();
+
+        // Backend-Projekt 7: gemeinsam für alle mit Zugriff, unabhängig vom Namen in der App
+        Key felixKey = new Key("shop@felix", "/home/felix/shop", "main", 7L);
+        Key annaKey = new Key("shop@felix", "C:/dev/shop", "main", 7L);
+        GraphProvider felix = storage.forAccess(user(1, Set.of(), Set.of(7L)));
+        GraphProvider anna = storage.forAccess(user(2, Set.of(7L), Set.of()));
+        GraphProvider fremd = storage.forAccess(user(3, Set.of(), Set.of()));
+        felix.write(felixKey, graph("shared"));
+        assertThat(anna.reader(annaKey).info().commit()).isEqualTo("shared");
+        assertThat(anna.reader(annaKey).info().root()).isEqualTo("/home/felix/shop"); // zuletzt gebaut dort
+        assertThat(anna.branches(annaKey)).singleElement()
+                .satisfies(s -> assertThat(s.builtBy()).isEqualTo(GraphProvider.localBuilder()));
+        // nur lesend freigegeben: bauen und löschen abgelehnt
+        assertThatThrownBy(() -> anna.write(annaKey, graph("x"))).hasMessageContaining("nur zum Lesen");
+        assertThatThrownBy(() -> anna.delete(annaKey)).hasMessageContaining("nur zum Lesen");
+        // ohne Zugriff: weder lesen noch über die Generation
+        assertThatThrownBy(() -> fremd.reader(annaKey)).hasMessageContaining("Kein Zugriff");
+        String g = ((ArcadeGraphReader) felix.reader(felixKey)).graphId();
+        assertThatThrownBy(() -> storage.reader(user(3, Set.of(), Set.of()), g)).hasMessageContaining("gibt es nicht");
+        assertThat(storage.reader(user(2, Set.of(7L), Set.of()), g).node("a.A")).isNotNull();
+        // der Local-Mode sieht das Projekt ebenso
+        assertThat(storage.reader(annaKey).info().commit()).isEqualTo("shared");
     }
 
     @Test

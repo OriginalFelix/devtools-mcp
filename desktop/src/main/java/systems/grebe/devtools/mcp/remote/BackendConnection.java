@@ -60,6 +60,7 @@ import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.config.TeamSettings;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.ToolScope;
@@ -854,8 +855,17 @@ public class BackendConnection {
         changedTools.addAll(after.disabledTools());
         changedTools.removeIf(t -> before.disabledTools().contains(t) == after.disabledTools().contains(t));
         changedTools.forEach(t -> tools.put(t, !after.disabledTools().contains(t)));
+        Map<String, ConfigField> fields = module.configSchema().stream()
+                .collect(Collectors.toMap(ConfigField::key, f -> f, (a, b) -> a));
         Map<String, String> values = new LinkedHashMap<>(current.valueMap());
-        Set<String> schema = module.configSchema().stream().map(ConfigField::key).collect(Collectors.toSet());
+        // Überschreibungen aus älteren Versionen: entfallene Felder (z.B. neo4jUser) lehnt das Backend ab, entfallene
+        // Auswahlwerte (z.B. storage=neo4j) wären ungültig – beides fällt beim Speichern weg, es gilt die Vorgabe
+        values.entrySet().removeIf(e -> {
+            ConfigField f = fields.get(e.getKey());
+            return f == null || f.type() == FieldType.ENUM && !f.options().isEmpty() && !e.getValue().isEmpty()
+                    && !f.options().contains(e.getValue());
+        });
+        Set<String> schema = fields.keySet();
         Set<String> keys = new LinkedHashSet<>(before.values().keySet());
         keys.addAll(after.values().keySet());
         for (String k : keys) {

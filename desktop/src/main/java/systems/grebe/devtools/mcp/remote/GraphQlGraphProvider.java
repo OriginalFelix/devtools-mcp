@@ -70,6 +70,7 @@ public class GraphQlGraphProvider implements GraphProvider {
         m.put("project", key.project());
         m.put("root", key.root());
         m.put("branch", key.branch());
+        m.put("projectId", key.projectId());
         return m;
     }
 
@@ -129,6 +130,7 @@ public class GraphQlGraphProvider implements GraphProvider {
             Map<String, Object> header = new LinkedHashMap<>();
             header.put("commit", data.commit());
             header.put("builtAt", data.builtAt());
+            header.put("builtBy", GraphProvider.localBuilder());
             header.put("generator", data.generator());
             header.put("version", data.version());
             header.put("files", data.files().size());
@@ -166,15 +168,15 @@ public class GraphQlGraphProvider implements GraphProvider {
     }
 
     @Override
-    public List<Stored> branches(String root) {
-        return backend.queryList("query($root: String!) { graphBranches(root: $root) { branch commit builtAt files "
-                + "nodes edges location } }", Map.of("root", root), "graphBranches", Stored.class);
+    public List<Stored> branches(Key project) {
+        return backend.queryList("query($key: GraphKeyInput!) { graphBranches(key: $key) { branch commit builtAt files "
+                + "nodes edges location builtBy } }", Map.of("key", key(project)), "graphBranches", Stored.class);
     }
 
     @Override
-    public boolean delete(String root, String branch) {
-        return Boolean.TRUE.equals(backend.query("mutation($root: String!, $branch: String) { deleteGraph(root: $root, "
-                + "branch: $branch) }", args("root", root, "branch", branch), "deleteGraph", Boolean.class));
+    public boolean delete(Key key) {
+        return Boolean.TRUE.equals(backend.query("mutation($key: GraphKeyInput!) { deleteGraph(key: $key) }",
+                Map.of("key", key(key)), "deleteGraph", Boolean.class));
     }
 
     // ------------------------------------------------------------------ Lesen

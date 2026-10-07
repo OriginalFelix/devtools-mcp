@@ -37,19 +37,30 @@ public class GraphModule implements ToolModule {
     static final String STORAGE_FILE = "file";
 
     private final Supplier<GraphProvider> database;
+    private final Supplier<GraphProjects> identities;
 
     /** Ohne Graph-Storage – nur die Datei-Ablage (Tests). */
     public GraphModule() {
-        this((Supplier<GraphProvider>) () -> null);
+        this(() -> null, () -> null);
     }
 
     @Autowired
-    public GraphModule(ObjectProvider<GraphProvider> database) {
-        this((Supplier<GraphProvider>) database::getIfAvailable);
+    public GraphModule(ObjectProvider<GraphProvider> database, ObjectProvider<GraphProjects> identities) {
+        this(database::getIfAvailable, identities::getIfAvailable);
     }
 
     GraphModule(Supplier<GraphProvider> database) {
+        this(database, () -> null);
+    }
+
+    GraphModule(Supplier<GraphProvider> database, Supplier<GraphProjects> identities) {
         this.database = database;
+        this.identities = identities;
+    }
+
+    /** Dienst mit der Konfiguration, der Graph-Storage und den Projekten der App. */
+    GraphService service(ModuleConfig config) {
+        return new GraphService(config, database, identities.get());
     }
 
     @Override
@@ -126,7 +137,7 @@ public class GraphModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new GraphTools(new GraphService(config, database))));
+        return List.of(ToolCallbacks.from(new GraphTools(service(config))));
     }
 
     @Override
@@ -135,7 +146,7 @@ public class GraphModule implements ToolModule {
         if (!errors.isEmpty()) {
             return ConnectionTestResult.failed(String.join("\n", errors));
         }
-        GraphService service = new GraphService(config, database);
+        GraphService service = service(config);
         Workspaces projects = service.projects();
         if (projects.isEmpty() && !Workspaces.unrestricted()) {
             return ConnectionTestResult.failed("Keine Projekte gefunden.");
@@ -153,7 +164,7 @@ public class GraphModule implements ToolModule {
         }
         sb.append(projects.all().size()).append(" Projekt(e) gefunden:\n");
         projects.all().forEach((name, dir) -> {
-            List<String> branches = storage.branches(dir.toAbsolutePath().normalize().toString()).stream()
+            List<String> branches = storage.branches(service.key(dir.toAbsolutePath().normalize(), null)).stream()
                     .map(s -> s.branch() == null ? "(ohne Git)" : s.branch()).toList();
             sb.append(name).append("  ").append(dir)
                     .append(branches.isEmpty() ? "" : "  [Graph: " + String.join(", ", branches) + "]").append('\n');
@@ -171,7 +182,7 @@ public class GraphModule implements ToolModule {
 
     @Override
     public List<ModuleAction> actions() {
-        return List.of(new GraphIndexAction(database));
+        return List.of(new GraphIndexAction(this::service));
     }
 
     @Override

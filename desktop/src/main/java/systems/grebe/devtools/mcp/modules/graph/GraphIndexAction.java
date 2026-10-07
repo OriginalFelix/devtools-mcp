@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
@@ -22,10 +22,10 @@ final class GraphIndexAction implements ModuleAction {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
             .withZone(ZoneId.systemDefault());
 
-    private final Supplier<GraphProvider> database;
+    private final Function<ModuleConfig, GraphService> services;
 
-    GraphIndexAction(Supplier<GraphProvider> database) {
-        this.database = database;
+    GraphIndexAction(Function<ModuleConfig, GraphService> services) {
+        this.services = services;
     }
 
     @Override
@@ -47,7 +47,7 @@ final class GraphIndexAction implements ModuleAction {
 
     @Override
     public List<String> targets(ModuleConfig config) {
-        return new ArrayList<>(new GraphService(config, database).projects().all().keySet());
+        return new ArrayList<>(services.apply(config).projects().all().keySet());
     }
 
     @Override
@@ -60,7 +60,7 @@ final class GraphIndexAction implements ModuleAction {
         if (target == null) {
             return null;
         }
-        GraphService service = new GraphService(config, database);
+        GraphService service = services.apply(config);
         Key key;
         try {
             key = service.key(target, null);
@@ -69,7 +69,7 @@ final class GraphIndexAction implements ModuleAction {
         }
         String head = key.root() + " – Branch " + key.branchLabel();
         try {
-            List<Stored> stored = service.storage().branches(key.root());
+            List<Stored> stored = service.storage().branches(key);
             Stored current = stored.stream().filter(s -> java.util.Objects.equals(s.branch(), key.branch()))
                     .findFirst().orElse(null);
             String others = stored.size() > (current == null ? 0 : 1)
@@ -95,7 +95,7 @@ final class GraphIndexAction implements ModuleAction {
         if (target == null || target.isBlank()) {
             return ActionResult.failed("Bitte ein Projekt wählen (Projekte in der Konfiguration eintragen und speichern).");
         }
-        GraphService.BuildResult r = new GraphService(config, database).build(target, null, flags.contains(FORCE),
+        GraphService.BuildResult r = services.apply(config).build(target, null, flags.contains(FORCE),
                 progress);
         Map<String, Object> s = r.graph().info().stats();
         String removed = r.removedBranches().isEmpty() ? ""

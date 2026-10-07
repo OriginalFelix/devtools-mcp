@@ -219,6 +219,60 @@ class DatabaseGraphStorageTest {
         assertThat(t.branches(null)).doesNotContain("feature/x");
     }
 
+    @Test
+    void deletedBranchesAreOnlyCleanedUpWhereTheyWereBuilt() throws Exception {
+        // feature/x hat „jemand anders“ gebaut – den Branch kennt das eigene Git nicht, der Graph bleibt
+        git.checkout().setCreateBranch(true).setName("feature/x").call();
+        tools(GraphModule.STORAGE_DATABASE).build(null, false);
+        git.checkout().setName("main").call();
+        git.branchDelete().setBranchNames("feature/x").setForce(true).call();
+        GraphProvider others = new GraphProvider() {
+            @Override
+            public String describe() {
+                return storage.describe();
+            }
+
+            @Override
+            public String location(Key key) {
+                return storage.location(key);
+            }
+
+            @Override
+            public State state(Key key) {
+                return storage.state(key);
+            }
+
+            @Override
+            public GraphReader reader(Key key) {
+                return storage.reader(key);
+            }
+
+            @Override
+            public GraphReader write(Key key, CodeGraph.GraphFile data) {
+                return storage.write(key, data);
+            }
+
+            @Override
+            public List<Stored> branches(Key project) {
+                return storage.branches(project).stream().map(s -> !"feature/x".equals(s.branch()) ? s
+                        : new Stored(s.branch(), s.commit(), s.builtAt(), s.files(), s.nodes(), s.edges(), s.location(),
+                        "anna@anderer-rechner")).toList();
+            }
+
+            @Override
+            public boolean delete(Key key) {
+                return storage.delete(key);
+            }
+        };
+        GraphTools t = new GraphTools(new GraphService(config(project, GraphModule.STORAGE_DATABASE), () -> others));
+        assertThat(t.build(null, false)).doesNotContain("Entfernt");
+        assertThat(t.branches(null)).contains("feature/x");
+
+        // selbst gebaut: wird entfernt
+        String built = tools(GraphModule.STORAGE_DATABASE).build(null, false);
+        assertThat(built).contains("Entfernt (Branch existiert nicht mehr): feature/x");
+    }
+
     private String graphId(String branch) {
         return ((ArcadeGraphReader) service(GraphModule.STORAGE_DATABASE).graph(null, branch)).graphId();
     }
