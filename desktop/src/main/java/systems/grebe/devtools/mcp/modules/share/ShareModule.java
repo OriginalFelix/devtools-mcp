@@ -26,8 +26,8 @@ import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 /**
  * Kooperation zwischen Claude-Instanzen auf verschiedenen Rechnern: Ein Nutzer bietet Kontext (Notiz), Memories,
  * Skills und Dateien an, ein anderer – oder derselbe auf einem weiteren Gerät – nimmt sie in seine Instanz auf.
- * Übertragen wird über einen MQTT-Broker ({@link ShareBroker}), zentral (z.B. HiveMQ Cloud) oder intern im
- * Firmennetz, und nur mit Zustimmung beider Nutzer: Nutzer 1 bestätigt das Senden, Nutzer 2 das Annehmen. Neue
+ * Übertragen wird über einen MQTT-Broker ({@link ShareBroker}) – standardmäßig den HiveMQ CE im Backend (Team-Server
+ * bzw. eingebettetes Backend), sonst einen eigenen wie HiveMQ Cloud – und nur mit Zustimmung beider Nutzer: Nutzer 1 bestätigt das Senden, Nutzer 2 das Annehmen. Neue
  * Angebote und Antworten meldet die App über den Channel an Claude Code.
  */
 @Component
@@ -76,8 +76,8 @@ public class ShareModule implements ToolModule {
 
     @Override
     public String description() {
-        return "Austausch zwischen Claude-Instanzen auf verschiedenen Rechnern über einen MQTT-Broker (z.B. HiveMQ, "
-                + "zentral oder intern): Kontext, Memories, Skills und Dateien anbieten und annehmen – nur mit "
+        return "Austausch zwischen Claude-Instanzen auf verschiedenen Rechnern über einen MQTT-Broker (HiveMQ CE im "
+                + "Backend oder ein eigener): Kontext, Memories, Skills und Dateien anbieten und annehmen – nur mit "
                 + "Zustimmung beider Nutzer. Neue Angebote meldet die App per Channel an Claude Code.";
     }
 
@@ -111,17 +111,23 @@ public class ShareModule implements ToolModule {
     @Override
     public List<ConfigField> configSchema() {
         return List.of(
-                ConfigField.of(BROKER_URL, "Broker", FieldType.STRING).asRequired()
-                        .withHelp("MQTT-5-Broker, zentral (z.B. HiveMQ Cloud) oder intern im Firmennetz (HiveMQ CE, "
-                                + "Mosquitto …): mqtts://host:8883 (TLS, empfohlen), mqtt://host:1883, "
-                                + "wss://host/mqtt bzw. ws://host:8000/mqtt (WebSocket)."),
+                ConfigField.of(BROKER_URL, "Broker", FieldType.STRING)
+                        .withHelp("Leer = Broker des Backends (HiveMQ CE im Team-Server bzw. im eingebetteten Backend, "
+                                + "devtools.broker.enabled): Anmeldung mit dem Benutzerkonto, Adresse = seine E-Mail, "
+                                + "Absender vom Broker geprüft. Sonst ein eigener MQTT-5-Broker, z.B. HiveMQ Cloud oder "
+                                + "Mosquitto: mqtts://host:8883 (TLS, empfohlen), mqtt://host:1883, wss://host/mqtt bzw. "
+                                + "ws://host:8000/mqtt (WebSocket)."),
                 ConfigField.of(USERNAME, "Benutzer am Broker", FieldType.STRING)
-                        .withHelp("Leer = anonym."),
+                        .withHelp("Nur für einen eigenen Broker. Leer = anonym."),
                 ConfigField.of(PASSWORD, "Passwort am Broker", FieldType.SECRET)
-                        .withHelp("Wird verschlüsselt gespeichert."),
+                        .withHelp("Nur für einen eigenen Broker; wird verschlüsselt gespeichert."),
+                ConfigField.of(TOPIC_PREFIX, "Topic-Präfix", FieldType.STRING).withDefault(ShareTopics.DEFAULT_PREFIX)
+                        .withHelp("Nur für einen eigenen Broker; alle Beteiligten brauchen dasselbe. Beim Broker des "
+                                + "Backends gibt der Server es vor."),
                 ConfigField.of(ADDRESS, "Eigene Adresse", FieldType.STRING)
-                        .withHelp("Unter dieser Adresse erreichen andere diese Instanz, meist die E-Mail. Leer = "
-                                + "E-Mail des Benutzerkontos. Weitere eigene Geräte tragen dieselbe Adresse ein."),
+                        .withHelp("Nur für einen eigenen Broker: unter dieser Adresse erreichen andere diese Instanz, "
+                                + "meist die E-Mail. Leer = E-Mail des Benutzerkontos. Weitere eigene Geräte tragen "
+                                + "dieselbe Adresse ein. Beim Broker des Backends immer die E-Mail des Kontos."),
                 ConfigField.of(DISPLAY_NAME, "Anzeigename", FieldType.STRING)
                         .withHelp("Steht beim Empfänger neben der Adresse, z.B. Felix Grebe."),
                 ConfigField.of(TEAM_KEY, "Team-Schlüssel (Ende-zu-Ende)", FieldType.SECRET)
@@ -199,12 +205,19 @@ public class ShareModule implements ToolModule {
         if (!errors.isEmpty()) {
             return ConnectionTestResult.failed(String.join("\n", errors));
         }
-        try {
-            ShareBroker.brokerUri(config.getString(BROKER_URL, ""));
-        } catch (IllegalArgumentException e) {
-            return ConnectionTestResult.failed(e.getMessage());
+        String url = config.getString(BROKER_URL, "");
+        if (!url.isBlank()) {
+            try {
+                ShareBroker.brokerUri(url);
+            } catch (IllegalArgumentException e) {
+                return ConnectionTestResult.failed(e.getMessage());
+            }
         }
         StringBuilder sb = new StringBuilder(broker.status());
+        if (broker.settings().backend()) {
+            sb.append("\nBroker des Backends").append(broker.settings().brokerUrl().isEmpty() ? ""
+                    : " (" + broker.settings().brokerUrl() + "), Absender vom Broker geprüft");
+        }
         ShareBroker.Settings s = broker.settings();
         if (!s.address().isEmpty()) {
             sb.append("\nEigene Adresse: ").append(s.address());

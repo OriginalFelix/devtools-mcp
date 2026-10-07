@@ -6,7 +6,6 @@ import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
@@ -127,10 +126,7 @@ final class ShareMessages {
 
     /** Adresse in der Form, die in Topics und Vergleichen gilt: klein, ohne Zeichen mit Sonderbedeutung in MQTT. */
     static String address(String raw) {
-        if (raw == null) {
-            return "";
-        }
-        return raw.strip().toLowerCase(Locale.ROOT).replaceAll("[/+#\\s\\p{Cntrl}]+", "_");
+        return ShareTopics.address(raw);
     }
 
     /**

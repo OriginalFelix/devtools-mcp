@@ -31,7 +31,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
 | **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` · Typ dauerhaft, temporär oder **Rückruf** (`INVOCATION`) |
 | **Rückrufe** (Invocations) | lang laufende Aktion fertig → das LLM bekommt Ergebnis und hinterlegte Memory (Typ `INVOCATION`) per Channel, auch in einer später gestarteten Sitzung; danach wird die Memory gelöscht: `invocations_list`, `invocations_cancel` (siehe [Rückrufe](#rückrufe--ergebnis-lang-laufender-aktionen-an-das-llm)) |
-| **Kooperation** (MQTT 5, z.B. HiveMQ) | Austausch zwischen Claude-Instanzen auf verschiedenen Rechnern – anderer Nutzer oder eigenes weiteres Gerät: `share_peers`, `share_send` (Notiz, Memories, Skills, Dateien; Rückfrage bei Nutzer 1), `share_inbox`, `share_view`, `share_accept` (Rückfrage bei Nutzer 2), `share_decline` – Broker zentral oder intern, optional Ende-zu-Ende verschlüsselt, neue Angebote und Antworten als Rückruf per Channel (siehe [Kooperation](#kooperation-zwischen-instanzen-und-geräten)) (Modul Standard: aus) |
+| **Kooperation** (MQTT 5, z.B. HiveMQ) | Austausch zwischen Claude-Instanzen auf verschiedenen Rechnern – anderer Nutzer oder eigenes weiteres Gerät: `share_peers`, `share_send` (Notiz, Memories, Skills, Dateien; Rückfrage bei Nutzer 1), `share_inbox`, `share_view`, `share_accept` (Rückfrage bei Nutzer 2), `share_decline` – über den Broker des Backends (HiveMQ CE im Team-Server bzw. eingebetteten Backend, Anmeldung mit dem Benutzerkonto, Absender geprüft) oder einen eigenen, optional Ende-zu-Ende verschlüsselt, neue Angebote und Antworten als Rückruf per Channel (siehe [Kooperation](#kooperation-zwischen-instanzen-und-geräten)) (Modul Standard: aus) |
 | **Skripte** (Groovy 5 oder Java per `javac`) | `scripts_list`, `scripts_view` (Quelltext, Historie, ohne Namen die Referenz) · je Schalter (Standard aus): `scripts_save`, `scripts_delete` – jedes Skript wird zur Laufzeit ein eigenes Modul mit Tools `<skript>_*`, gespeichert im Backend (siehe [Skripte](#skripte--eigene-tools-zur-laufzeit)) |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -753,6 +753,35 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
   übernimmt ein Reverse-Proxy (`server.forward-headers-strategy=native`; WebSocket-Upgrade für `/graphql` durchreichen).
 * Entwicklung der Web-UI mit Hot-Reload: `./gradlew :server:bootRun -Pvaadin.productionMode=false`.
 
+#### MQTT-Broker für die Kooperation
+
+Das Backend bringt einen MQTT-5-Broker mit: **HiveMQ CE**, über dessen Embedded-API in derselben JVM gestartet (kein
+eigener Prozess). Er verbindet die Desktop-Apps für die [Kooperation](#kooperation-zwischen-instanzen-und-geräten) –
+im Team-Server zentral für alle, im eingebetteten Backend für diesen Rechner. Standard: aus.
+
+| Property | Standard | |
+|---|---|---|
+| `devtools.broker.enabled` | `false` | Broker starten |
+| `devtools.broker.bind-address` | `0.0.0.0` | Adresse der Listener |
+| `devtools.broker.port` | `1883` | MQTT über TCP, `0` = aus |
+| `devtools.broker.tls-port` | `0` | MQTT über TLS, dazu `devtools.broker.tls.keystore`, `.keystore-password`, `.key-password` (JKS/PKCS12) |
+| `devtools.broker.websocket-port` | `0` | MQTT über WebSocket (`/mqtt`) |
+| `devtools.broker.topic-prefix` | `devtools-mcp` | Präfix aller Topics |
+| `devtools.broker.host` | – | Host, den die Apps verwenden sollen; leer = Host der Backend-Adresse |
+
+* **Anmeldung:** Passwort = Token des Benutzers (Sitzungs- oder Desktop-Token, wie für GraphQL), der Benutzername ist
+  beliebig. Ohne gültiges Token oder ohne E-Mail im Konto lehnt der Broker ab. Die App holt beim Wiederverbinden das
+  aktuelle Token.
+* **Rechte** je Benutzer, Adresse = E-Mail des Kontos: nur den eigenen Eingang (`<präfix>/inbox/<e-mail>`) abonnieren,
+  die Anwesenheit aller lesen, nur die eigene melden, an jeden Eingang senden – alles andere lehnt der Broker ab.
+* **Absender:** Der Broker stempelt jede Nachricht mit der geprüften Adresse (User Property `devtools-sender`, ein
+  mitgeschickter Wert wird ersetzt); die App verwirft Angebote und Antworten, deren Absender nicht dazu passt.
+* **Ablage:** Sitzungen, für getrennte Apps aufgehobene Nachrichten und Anwesenheit in `broker/` im Datenverzeichnis
+  des Backends – sie überstehen Neustarts. Die Listener stehen in `broker/conf/config.xml`, die der Dienst beim Start
+  aus den Properties schreibt.
+* Die Apps erfahren über die GraphQL-Query `broker` (Host, Ports, Präfix), wie sie ihn erreichen. Für den Broker den
+  TLS-Port (oder einen TCP-Proxy mit TLS) verwenden, wenn der Team-Server nicht nur im internen Netz steht.
+
 #### Deployment in WildFly
 
 Alternativ zum Jar läuft der Team-Server als WAR in einem externen WildFly (Jakarta EE 11 / Servlet 6.1, Java 25):
@@ -1063,8 +1092,9 @@ die Sitzung initialisiert hat – vorher gingen sie verloren, ein Rückruf gilt 
 ### Kooperation zwischen Instanzen und Geräten
 
 Zwei Claude-Instanzen auf verschiedenen Rechnern tauschen Kontext aus – zwei Nutzer, oder ein Nutzer mit mehreren
-Geräten. Übertragen wird über einen **MQTT-5-Broker**, zentral (z.B. HiveMQ Cloud) oder intern im Firmennetz
-(HiveMQ CE, Mosquitto …), und nur mit **Zustimmung beider Nutzer**:
+Geräten. Übertragen wird über einen **MQTT-5-Broker** – standardmäßig den des Backends ([HiveMQ CE im Team-Server bzw.
+im eingebetteten Backend](#mqtt-broker-für-die-kooperation)), alternativ einen eigenen (z.B. HiveMQ Cloud, Mosquitto) –
+und nur mit **Zustimmung beider Nutzer**:
 
 1. **Nutzer 1 sendet.** `share_send(to, title, note, memories, skills, files, invocation)` packt eine Notiz (Stand,
    Ergebnisse, offene Punkte), Memories (Nummern), Skills (mit Zusatzdateien) und Dateien zu einem Angebot. Bevor
@@ -1083,19 +1113,25 @@ Geräten. Übertragen wird über einen **MQTT-5-Broker**, zentral (z.B. HiveMQ C
    `share_decline` lehnt ab. In beiden Fällen erfährt Nutzer 1 die Antwort (`kind=accepted`/`declined`, mit Kommentar),
    der Inhalt wird beim Empfänger danach nicht mehr aufbewahrt.
 
-**Broker und Topics.** Je Instanz eine Verbindung mit stabiler Client-ID und persistenter Sitzung (`cleanStart=false`,
+**Broker.** Ist im Modul kein Broker eingetragen, fragt die App das Backend (GraphQL `broker`) und meldet sich dort mit
+dem Token ihres Benutzerkontos an; Adresse ist die E-Mail des Kontos, das Präfix gibt der Server vor, und der Broker
+prüft jeden Absender. Ist dort keiner eingeschaltet, sagt `share_peers` bzw. „Verbindung testen“, was fehlt. Ein eigener
+Broker wird als `mqtts://host:8883`, `mqtt://host:1883`, `wss://host/mqtt` oder `ws://host:8000/mqtt` eingetragen,
+optional mit Benutzer, Passwort, Präfix und eigener Adresse.
+
+**Topics und Sitzung.** Je Instanz eine Verbindung mit stabiler Client-ID und persistenter Sitzung (`cleanStart=false`,
 *Aufbewahrung beim Broker*, Standard 7 Tage): Angebote an eine gerade getrennte Instanz stellt der Broker zu, sobald sie
 sich wieder verbindet. Topics unter dem Präfix (Standard `devtools-mcp`): `…/inbox/<adresse>` (QoS 1) und
-`…/presence/<adresse>/<instanz>` (retained, Testament „offline“) – `share_peers` zeigt daraus, wer online ist.
-Adresse ist standardmäßig die E-Mail des Benutzerkontos; weitere eigene Geräte tragen dieselbe ein, jedes bekommt das
-Angebot, die sendende Instanz ignoriert ihr eigenes. Broker-Adresse als `mqtts://host:8883`, `mqtt://host:1883`,
-`wss://host/mqtt` oder `ws://host:8000/mqtt`, optional mit Benutzer und Passwort.
+`…/presence/<adresse>/<instanz>` (retained, Testament „offline“) – `share_peers` zeigt daraus, wer online ist. Weitere
+eigene Geräte haben dieselbe Adresse; jedes bekommt das Angebot, die sendende Instanz ignoriert ihr eigenes.
 
 **Sicherheit.**
+* *Broker des Backends*: Anmeldung mit dem Benutzerkonto, jeder liest nur seinen eigenen Eingang, und der Broker
+  stempelt den geprüften Absender – Angebote unter fremdem Namen verwirft die App.
 * *Team-Schlüssel (Ende-zu-Ende)*: gemeinsames Passwort aller Beteiligten; Nachrichten werden mit AES-256-GCM
   verschlüsselt (Schlüssel per PBKDF2 aus Passwort und Präfix), der Broker sieht nur Adressen. Nachrichten ohne oder mit
-  anderem Schlüssel werden verworfen – das schützt auch vor untergeschobenen Absendern. Ohne Schlüssel TLS und
-  Zugriffsregeln am Broker verwenden.
+  anderem Schlüssel werden verworfen. Für einen eigenen Broker ohne Absenderprüfung empfohlen, zusammen mit TLS und
+  Zugriffsregeln am Broker.
 * *Austausch nur mit*: Adresse, `@domain` oder `domain` je Zeile – gilt für Senden und Empfangen.
 * Dateien nur aus *Dateien senden aus* (inkl. Unterverzeichnissen, auch über Symlinks nicht hinaus), *Max. Größe je
   Angebot* (Standard 1024 KB) beim Senden und Empfangen – größere lehnt der Empfänger automatisch ab.

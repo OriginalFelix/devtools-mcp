@@ -23,8 +23,12 @@ dependencies {
     implementation("org.apache.groovy:groovy")
     // Gherkin-Skripte: ebenfalls nur parsen
     implementation("io.cucumber:gherkin:42.0.1")
+    // MQTT-Broker für die Kooperation der Desktop-Apps (HiveMQ CE, eingebettet; devtools.broker.*)
+    api("com.hivemq:hivemq-community-edition-embedded:2026.5")
 
     testImplementation("org.springframework.graphql:spring-graphql-test")
+    // MQTT-Client für die Tests des Brokers
+    testImplementation("com.hivemq:hivemq-mqtt-client:1.4.0")
     // SkillTestSupport: schlanker Skill-Kontext, auch für die UI-Tests der Desktop-App
     testFixturesImplementation("org.springframework.boot:spring-boot-starter-data-jpa")
 }

@@ -17,6 +17,8 @@ type Query {
     overrides(level: Level!, moduleId: String!): Overlay!
     "Eigene und freigegebene Projekte."
     projects: [Project!]!
+    "MQTT-Broker des Backends für die Kooperation der Desktop-Apps (Anmeldung mit dem Token als Passwort)."
+    broker: Broker!
 
     "Sichtbare Skills (eigene und nicht verdeckte Vorlagen)."
     skills: [SkillSummary!]!
@@ -380,3 +382,13 @@ type MemoryEntry {
 
 "Lebensdauer einer Memory: PERMANENT (Standard), TEMPORARY (ausdrücklich angegeben) oder INVOCATION (Rückruf nach einer lang laufenden Aktion, nach der Zustellung gelöscht); TEMPORARY und INVOCATION ohne Freigabe änderbar und löschbar."
 enum MemoryType { PERMANENT TEMPORARY INVOCATION }
+
+"MQTT-Broker des Backends (HiveMQ CE). Ports 0 = Listener aus; host leer = Host der Backend-Adresse."
+type Broker {
+    enabled: Boolean!
+    host: String
+    port: Int!
+    tlsPort: Int!
+    websocketPort: Int!
+    topicPrefix: String!
+}

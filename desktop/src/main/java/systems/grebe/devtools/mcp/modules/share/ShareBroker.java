@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -15,6 +16,8 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
@@ -24,6 +27,8 @@ import com.hivemq.client.mqtt.MqttGlobalPublishFilter;
 import com.hivemq.client.mqtt.datatypes.MqttQos;
 import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient;
 import com.hivemq.client.mqtt.mqtt5.Mqtt5ClientBuilder;
+import com.hivemq.client.mqtt.mqtt5.lifecycle.Mqtt5ClientDisconnectedContext;
+import com.hivemq.client.mqtt.mqtt5.lifecycle.Mqtt5ClientReconnector;
 import com.hivemq.client.mqtt.mqtt5.message.connect.Mqtt5ConnectBuilder;
 import com.hivemq.client.mqtt.mqtt5.message.connect.connack.Mqtt5ConnAck;
 import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5Publish;
@@ -36,6 +41,8 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import systems.grebe.devtools.mcp.api.BrokerInfo;
+import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ChannelEvents;
 import systems.grebe.devtools.mcp.core.InvocationService;
@@ -51,7 +58,10 @@ import systems.grebe.devtools.mcp.modules.share.ShareMessages.Wire;
 import systems.grebe.devtools.mcp.remote.BackendConnection;
 
 /**
- * Verbindung dieser Instanz zum MQTT-Broker (MQTT 5, z.B. HiveMQ – zentral in der Cloud oder intern im Firmennetz).
+ * Verbindung dieser Instanz zum MQTT-Broker (MQTT 5). Standard ist der Broker des Backends – HiveMQ CE im Team-Server
+ * bzw. im eingebetteten Backend ({@code BrokerService}): angemeldet mit dem Token des Benutzerkontos, Adresse = seine
+ * E-Mail, und der Broker stempelt jede Nachricht mit dem geprüften Absender ({@link ShareTopics#SENDER_PROPERTY}).
+ * Alternativ ein eigener Broker (z.B. HiveMQ Cloud, Mosquitto) mit Benutzer und Passwort.
  *
  * <p>Topics unter dem Präfix (Standard {@code devtools-mcp}):
  * <ul>
@@ -75,37 +85,67 @@ public class ShareBroker implements AutoCloseable {
     static final String SOURCE = "share";
     private static final long PUBLISH_TIMEOUT_SECONDS = 30;
 
-    /** Wirksame Einstellungen; {@code address} schon normalisiert. */
-    record Settings(String brokerUrl, String username, String password, String address, String name, String prefix,
-                    List<String> peers, String teamKey, boolean channel, int expiryDays, int maxBytes) {
+    /**
+     * Broker des Backends, wie ihn die App über GraphQL erfährt.
+     *
+     * @param address E-Mail des angemeldeten Kontos – die Adresse, für die der Broker Rechte vergibt
+     * @param token   aktuelles Token des Kontos (Passwort beim Broker), bei jedem Verbinden neu gefragt
+     */
+    record BackendBroker(String url, String prefix, String address, Supplier<String> token) {
+    }
 
-        static final Settings OFF = new Settings("", "", "", "", "", "devtools-mcp", List.of(), "", false, 7, 0);
+    /**
+     * Wirksame Einstellungen; {@code address} schon normalisiert.
+     *
+     * @param backend Broker des Backends (Adresse, Präfix und Anmeldung von dort, Absender vom Broker gestempelt);
+     *                bis {@link #resolve} ihn gefunden hat, ist {@code brokerUrl} leer
+     * @param problem warum (noch) nicht verbunden werden kann, {@code null} = nichts
+     */
+    record Settings(String brokerUrl, String username, String password, String address, String name, String prefix,
+                    List<String> peers, String teamKey, boolean channel, int expiryDays, int maxBytes, boolean backend,
+                    String problem) {
+
+        static final Settings OFF = new Settings("", "", "", "", "", ShareTopics.DEFAULT_PREFIX, List.of(), "",
+                false, 7, 0, false, "Modul aus");
 
         static Settings of(ModuleConfig c, Supplier<Optional<String>> accountEmail) {
+            String url = c.getString(ShareModule.BROKER_URL, "").strip();
             String address = c.getString(ShareModule.ADDRESS, "");
             if (address.isBlank()) {
                 address = accountEmail.get().orElse("");
             }
-            String prefix = c.getString(ShareModule.TOPIC_PREFIX, "").strip().replaceAll("^/+|/+$", "");
-            return new Settings(c.getString(ShareModule.BROKER_URL, "").strip(),
-                    c.getString(ShareModule.USERNAME, "").strip(), c.getString(ShareModule.PASSWORD, ""),
-                    ShareMessages.address(address), c.getString(ShareModule.DISPLAY_NAME, "").strip(),
-                    prefix.isEmpty() || prefix.matches(".*[+#].*") ? "devtools-mcp" : prefix,
+            String raw = c.getString(ShareModule.TOPIC_PREFIX, "").strip().replaceAll("^/+|/+$", "");
+            return new Settings(url, c.getString(ShareModule.USERNAME, "").strip(),
+                    c.getString(ShareModule.PASSWORD, ""), ShareTopics.address(address),
+                    c.getString(ShareModule.DISPLAY_NAME, "").strip(),
+                    raw.isEmpty() || raw.matches(".*[+#].*") ? ShareTopics.DEFAULT_PREFIX : raw,
                     c.getList(ShareModule.PEERS), c.getString(ShareModule.TEAM_KEY, ""),
                     c.getBoolean(ShareModule.NOTIFY_CHANNEL), Math.max(1, c.getInt(ShareModule.EXPIRY_DAYS, 7)),
-                    Math.max(1, c.getInt(ShareModule.MAX_KB, 1024)) * 1024);
+                    Math.max(1, c.getInt(ShareModule.MAX_KB, 1024)) * 1024, url.isEmpty(), null);
+        }
+
+        /** Mit dem Broker des Backends: Adresse, Präfix und Anmeldung von dort. */
+        Settings with(BackendBroker b) {
+            String a = ShareTopics.address(b.address());
+            return new Settings(b.url(), a, "", a, name, b.prefix(), peers, teamKey, channel, expiryDays, maxBytes,
+                    true, null);
+        }
+
+        Settings failed(String why) {
+            return new Settings(brokerUrl, username, password, address, name, prefix, peers, teamKey, channel,
+                    expiryDays, maxBytes, backend, why);
         }
 
         boolean active() {
-            return !brokerUrl.isEmpty() && !address.isEmpty();
+            return problem == null && !brokerUrl.isEmpty() && !address.isEmpty();
         }
 
         String inbox(String to) {
-            return prefix + "/inbox/" + ShareMessages.address(to);
+            return ShareTopics.inbox(prefix, to);
         }
 
         String presence(String instance) {
-            return prefix + "/presence/" + address + "/" + instance;
+            return ShareTopics.presence(prefix, address, instance);
         }
 
         /** Ob mit {@code address} ausgetauscht werden darf: leer = mit allen. */
@@ -115,7 +155,8 @@ public class ShareBroker implements AutoCloseable {
 
         /** Was die Verbindung betrifft – ändert sich das, wird neu verbunden. */
         private List<Object> connectionKey() {
-            return List.of(brokerUrl, username, password, address, name, prefix, teamKey, expiryDays);
+            return Arrays.asList(brokerUrl, username, password, address, name, prefix, teamKey, expiryDays, backend,
+                    problem);
         }
     }
 
@@ -125,9 +166,13 @@ public class ShareBroker implements AutoCloseable {
     private final Path receiveDir;
     private final InvocationService invocations;
     private final Supplier<MemoryBackend> memories;
+    private final Supplier<BackendBroker> backendBroker;
+    private final ExecutorService configurator = Executors.newSingleThreadExecutor(
+            Thread.ofPlatform().daemon().name("share-config").factory());
     private final Supplier<Optional<String>> accountEmail;
     private final Map<String, Presence> presence = new ConcurrentHashMap<>();
     private volatile Settings settings = Settings.OFF;
+    private volatile Supplier<String> token = () -> "";
     private volatile Codec codec = Codec.PLAIN;
     private volatile Mqtt5AsyncClient client;
     private volatile String status = "nicht verbunden (Modul aus oder kein Broker eingetragen)";
@@ -140,14 +185,37 @@ public class ShareBroker implements AutoCloseable {
                        ObjectProvider<MemoryBackend> memories) {
         this(registry, channel, new ShareState(store.file().toAbsolutePath().getParent().resolve("share-state.json")),
                 store.file().toAbsolutePath().getParent().resolve("share-received"), invocations,
-                memories::getIfAvailable,
+                memories::getIfAvailable, () -> backendBroker(backend.getIfAvailable()),
                 () -> Optional.ofNullable(backend.getIfAvailable()).flatMap(BackendConnection::me)
                         .map(me -> me.email()));
     }
 
+    /** Fragt das Backend nach seinem Broker; wirft mit einer verständlichen Begründung, wenn es keinen gibt. */
+    static BackendBroker backendBroker(BackendConnection b) {
+        if (b == null || !b.signedIn()) {
+            throw new IllegalStateException("nicht beim Backend angemeldet");
+        }
+        BrokerInfo i = b.query("{ broker { enabled host port tlsPort websocketPort topicPrefix } }", Map.of(),
+                "broker", BrokerInfo.class);
+        if (i == null || !i.enabled()) {
+            throw new IllegalStateException(b.embedded()
+                    ? "das eingebettete Backend startet keinen Broker (devtools.broker.enabled=true) – oder im Modul "
+                    + "einen Broker eintragen"
+                    : "der Team-Server hat keinen Broker eingeschaltet (devtools.broker.enabled) – oder im Modul "
+                    + "einen Broker eintragen");
+        }
+        String email = b.me().map(Me::email).filter(e -> !e.isBlank()).orElseThrow(() ->
+                new IllegalStateException("das Benutzerkonto hat keine E-Mail – sie ist die Adresse beim Broker"));
+        String host = i.host() != null && !i.host().isBlank() ? i.host() : URI.create(b.url()).getHost();
+        String url = i.tlsPort() > 0 ? "mqtts://" + host + ":" + i.tlsPort()
+                : i.port() > 0 ? "mqtt://" + host + ":" + i.port() : "ws://" + host + ":" + i.websocketPort() + "/mqtt";
+        return new BackendBroker(url, i.topicPrefix(), email, () -> b.token().orElse(""));
+    }
+
     ShareBroker(ObjectProvider<ToolRegistry> registry, ChannelEvents channel, ShareState state, Path receiveDir,
                 InvocationService invocations, Supplier<MemoryBackend> memories,
-                Supplier<Optional<String>> accountEmail) {
+                Supplier<BackendBroker> backendBroker, Supplier<Optional<String>> accountEmail) {
+        this.backendBroker = backendBroker;
         this.registry = registry;
         this.receiveDir = receiveDir;
         this.invocations = invocations;
@@ -174,8 +242,30 @@ public class ShareBroker implements AutoCloseable {
         if (r == null || !r.hasModule(ShareModule.ID)) {
             return;
         }
-        apply(r.settings(ShareModule.ID).enabled() ? Settings.of(r.config(ShareModule.ID), accountEmail)
-                : Settings.OFF);
+        Settings next = r.settings(ShareModule.ID).enabled() ? Settings.of(r.config(ShareModule.ID), accountEmail)
+                : Settings.OFF;
+        // im Hintergrund: den Broker des Backends erfragen ist ein Netzwerkaufruf
+        if (!configurator.isShutdown()) {
+            configurator.execute(() -> configure(next));
+        }
+    }
+
+    /** Ergänzt den Broker des Backends (falls keiner eingetragen ist) und übernimmt die Einstellungen. */
+    void configure(Settings next) {
+        apply(resolve(next));
+    }
+
+    private Settings resolve(Settings s) {
+        if (!s.backend() || s.problem() != null) {
+            return s;
+        }
+        try {
+            BackendBroker b = backendBroker.get();
+            token = b.token();
+            return s.with(b);
+        } catch (RuntimeException e) {
+            return s.failed("Broker des Backends nicht verfügbar: " + describe(e));
+        }
     }
 
     /** Setzt die Einstellungen; verbindet nur neu, wenn sich etwas an der Verbindung geändert hat. */
@@ -190,8 +280,8 @@ public class ShareBroker implements AutoCloseable {
         }
         disconnect(previous);
         if (!next.active()) {
-            status = next.brokerUrl().isEmpty() ? "nicht verbunden (kein Broker eingetragen)"
-                    : "nicht verbunden (keine eigene Adresse – im Modul eintragen oder E-Mail im Benutzerkonto)";
+            status = "nicht verbunden (" + (next.problem() != null ? next.problem()
+                    : "keine eigene Adresse – im Modul eintragen oder E-Mail im Benutzerkonto") + ")";
             return;
         }
         try {
@@ -222,6 +312,12 @@ public class ShareBroker implements AutoCloseable {
                 .addDisconnectedListener(ctx -> {
                     connected = false;
                     status = "nicht verbunden: " + describe(ctx.getCause()) + " – neuer Versuch läuft";
+                    if (s.backend() && ctx instanceof Mqtt5ClientDisconnectedContext c5) {
+                        // Token beim Wiederverbinden neu holen: das alte kann inzwischen abgelaufen sein
+                        Mqtt5ClientReconnector r = c5.getReconnector();
+                        r.connect(r.getConnect().extend().simpleAuth().username(s.username())
+                                .password(token.get().getBytes(StandardCharsets.UTF_8)).applySimpleAuth().build());
+                    }
                 });
         if (tls) {
             b = b.sslWithDefaultConfig();
@@ -236,8 +332,9 @@ public class ShareBroker implements AutoCloseable {
         Mqtt5ConnectBuilder.Send<CompletableFuture<Mqtt5ConnAck>> connect = c.connectWith().cleanStart(false).keepAlive(60)
                 .sessionExpiryInterval(TimeUnit.DAYS.toSeconds(s.expiryDays()));
         if (!s.username().isEmpty()) {
+            String password = s.backend() ? token.get() : s.password();
             connect = connect.simpleAuth().username(s.username())
-                    .password(s.password().getBytes(StandardCharsets.UTF_8)).applySimpleAuth();
+                    .password(password.getBytes(StandardCharsets.UTF_8)).applySimpleAuth();
         }
         connect = connect.willPublish().topic(s.presence(state.instanceId()))
                 .payload(codec.write(presence(s, false))).qos(MqttQos.AT_LEAST_ONCE).retain(true).applyWillPublish();
@@ -272,6 +369,7 @@ public class ShareBroker implements AutoCloseable {
                     } else {
                         connected = true;
                         status = "verbunden mit " + s.brokerUrl() + " als " + s.address()
+                                + (s.backend() ? " (Broker des Backends, Absender geprüft)" : "")
                                 + (codec.encrypted() ? " (Ende-zu-Ende verschlüsselt)" : "");
                     }
                 });
@@ -317,6 +415,7 @@ public class ShareBroker implements AutoCloseable {
     @Override
     public synchronized void close() {
         stopped = true;
+        configurator.shutdownNow();
         disconnect(settings);
     }
 
@@ -330,10 +429,28 @@ public class ShareBroker implements AutoCloseable {
             if (topic.startsWith(s.prefix() + "/presence/")) {
                 onPresence(topic, payload);
             } else if (topic.equals(s.inbox(s.address()))) {
-                onInbox(s, payload);
+                onInbox(s, payload, sender(p));
             }
         } catch (RuntimeException e) {
             LOG.info("Kooperation: Nachricht auf {} verworfen: {}", topic, e.getMessage());
+        }
+    }
+
+    /** Vom Broker gestempelter Absender, {@code null} = keiner (fremder Broker). */
+    private static String sender(Mqtt5Publish p) {
+        return p.getUserProperties().asList().stream()
+                .filter(u -> u.getName().toString().equals(ShareTopics.SENDER_PROPERTY))
+                .map(u -> u.getValue().toString()).reduce((a, b) -> b).orElse(null);
+    }
+
+    /**
+     * Prüft den angegebenen Absender gegen den Stempel des Brokers: Der Broker des Backends stempelt immer, ein
+     * abweichender oder fehlender Stempel heißt untergeschoben.
+     */
+    private static void requireSender(Settings s, String claimed, String stamped) {
+        if (stamped == null ? s.backend() : !stamped.equals(ShareTopics.address(claimed))) {
+            throw new IllegalArgumentException("Absender " + claimed + " passt nicht zur Anmeldung beim Broker ("
+                    + (stamped == null ? "kein Stempel" : stamped) + ")");
         }
     }
 
@@ -348,11 +465,13 @@ public class ShareBroker implements AutoCloseable {
         }
     }
 
-    private void onInbox(Settings s, byte[] payload) {
+    private void onInbox(Settings s, byte[] payload, String stamped) {
         Wire w = codec.read(payload, Wire.class);
         if (ShareMessages.OFFER.equals(w.type()) && w.offer() != null) {
+            requireSender(s, w.offer().from(), stamped);
             onOffer(s, w.offer(), payload.length);
         } else if (ShareMessages.RECEIPT.equals(w.type()) && w.receipt() != null) {
+            requireSender(s, w.receipt().from(), stamped);
             onReceipt(s, w.receipt());
         }
     }
