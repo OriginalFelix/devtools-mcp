@@ -19,10 +19,10 @@ import org.springframework.stereotype.Component;
  * Ereignisse, mit denen die App eine laufende LLM-Sitzung von sich aus anstößt (z.B. „neue E-Mail“).
  *
  * <p>MCP über Streamable HTTP kennt keinen Weg, dem Modell ungefragt etwas zu sagen. Claude Code bietet dafür
- * <em>Channels</em> ({@code notifications/claude/channel}) – aber nur für Server, die es selbst per stdio startet. Die
- * Brücke {@code java -jar devtools-mcp.jar channel} ({@link systems.grebe.devtools.mcp.channel.ChannelBridge}) ist so ein
- * Server: Sie holt die Ereignisse über {@code GET /mcp/channel/events} (Server-Sent Events) von hier ab und reicht sie
- * an Claude Code weiter.
+ * <em>Channels</em> ({@code notifications/claude/channel}) – aber nur für Server, die es selbst per stdio startet. Der
+ * stdio-Proxy {@code java -jar devtools-mcp.jar stdio} ({@link systems.grebe.devtools.mcp.channel.ChannelBridge}) ist so
+ * ein Server: Er holt die Ereignisse über {@code GET /mcp/channel/events} (Server-Sent Events) von hier ab und reicht
+ * sie an Claude Code weiter.
  *
  * <p>Die letzten {@link #BUFFER} Ereignisse bleiben im Speicher, damit eine kurz unterbrochene Brücke mit
  * {@code Last-Event-ID} nachholen kann, was sie verpasst hat.

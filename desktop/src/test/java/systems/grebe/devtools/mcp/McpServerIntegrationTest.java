@@ -21,6 +21,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import systems.grebe.devtools.mcp.channel.ChannelBridge;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ChannelEvents;
@@ -831,6 +832,59 @@ class McpServerIntegrationTest {
             assertThat(text(client.callTool(callRequest("mail_accounts", Map.of())))).contains("Kein Mail-Konto");
         } finally {
             registry.setModuleEnabled("mail", false);
+        }
+    }
+
+    /**
+     * Ende zu Ende: ein echter MCP-Client startet {@code ChannelBridge stdio} als Prozess und arbeitet über ihn mit der
+     * App – Tools, Rückfrage per Elicitation (Anfrage der App an den Client durch den Proxy) und
+     * {@code tools/list_changed} über den Meldungsstrom.
+     */
+    @Test
+    void stdioProxyServesToolsElicitationAndListChanged() throws Exception {
+        store.saveServer(new ServerSettings(ServerSettings.DEFAULT_PORT, "proxy-token", true, false));
+        var params = io.modelcontextprotocol.client.transport.ServerParameters
+                .builder(ProcessHandle.current().info().command().orElse("java"))
+                .args("-cp", System.getProperty("java.class.path"), ChannelBridge.class.getName(), ChannelBridge.STDIO_COMMAND,
+                        "--url", "http://127.0.0.1:" + port, "--token", "proxy-token")
+                .build();
+        var transport = new io.modelcontextprotocol.client.transport.StdioClientTransport(params,
+                io.modelcontextprotocol.json.McpJsonDefaults.getMapper());
+        List<McpSchema.ElicitFormRequest> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger changed = new java.util.concurrent.atomic.AtomicInteger();
+        McpSyncClient viaProxy = McpClient.sync(transport).requestTimeout(java.time.Duration.ofSeconds(60))
+                .clientInfo(new McpSchema.Implementation("proxy-client", "1.0"))
+                .capabilities(McpSchema.ClientCapabilities.builder().elicitation().build())
+                .elicitation(req -> {
+                    asked.add(req);
+                    return new McpSchema.ElicitResult(McpSchema.ElicitResult.Action.ACCEPT, Map.of("grant", false));
+                })
+                .toolsChangeConsumer(tools -> changed.incrementAndGet())
+                .build();
+        try {
+            McpSchema.InitializeResult init = viaProxy.initialize();
+            assertThat(init.capabilities().experimental()).containsKey("claude/channel");
+            assertThat(init.instructions()).contains("Tools `git_*`", "## Ereignisse (Channel)");
+            assertThat(viaProxy.listTools().tools()).extracting(McpSchema.Tool::name).contains("git_status");
+            assertThat(text(viaProxy.callTool(callRequest("git_status", Map.of())))).contains("main");
+
+            // Rückfrage: die App fragt den Client – durch den Proxy hin und die Antwort zurück
+            String answer = text(viaProxy.callTool(callRequest("permissions_request",
+                    Map.of("tool", "git_push", "reason", "Feature-Branch pushen"))));
+            assertThat(answer).contains("Vom Nutzer abgelehnt (proxy-client)");
+            assertThat(asked).singleElement().satisfies(r -> assertThat(r.message()).contains("Feature-Branch pushen"));
+
+            // Tool-Liste ändert sich in der App → Meldung kommt über den Meldungsstrom des Proxys
+            int before = changed.get();
+            registry.setModuleEnabled("sonar", true);
+            long deadline = System.currentTimeMillis() + 15_000;
+            while (changed.get() == before && System.currentTimeMillis() < deadline) {
+                Thread.sleep(50);
+            }
+            assertThat(changed.get()).as("tools/list_changed über den Proxy").isGreaterThan(before);
+        } finally {
+            registry.setModuleEnabled("sonar", false);
+            viaProxy.closeGracefully();
         }
     }
 }

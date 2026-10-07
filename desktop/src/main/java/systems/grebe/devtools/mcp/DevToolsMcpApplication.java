@@ -33,8 +33,9 @@ import systems.grebe.devtools.mcp.remote.EmbeddedBackend;
  * JavaFX-Fenster und Tray. Angemeldet wird dann über {@code DEVTOOLS_MCP_TOKEN} (persönliches Desktop-Token) oder
  * {@code DEVTOOLS_MCP_USER}/{@code DEVTOOLS_MCP_PASSWORD}; mit Fenster fragt die App beim Start.
  *
- * <p>{@code channel} startet statt der App die Channel-Brücke für Claude Code ({@link ChannelBridge}),
- * {@code sign-plugin} signiert ein Plugin ({@link PluginSigner}).
+ * <p>{@code stdio} startet statt der App einen stdio-Proxy zur laufenden App (für Claude Code: Tools und Channel in
+ * einem Eintrag), {@code channel} nur die Channel-Benachrichtigungen ({@link ChannelBridge}); {@code sign-plugin}
+ * signiert ein Plugin ({@link PluginSigner}).
  *
  * <p>Das Backend (Paket {@code systems.grebe.devtools.mcp.backend}) nimmt nicht der Component-Scan auf, sondern
  * {@link EmbeddedBackend} – nur ohne eingetragenen Team-Server.
@@ -70,8 +71,8 @@ public class DevToolsMcpApplication {
             PluginSigner.main(Arrays.copyOfRange(args, 1, args.length));
             return;
         }
-        if (args.length > 0 && ChannelBridge.COMMAND.equals(args[0])) {
-            ChannelBridge.main(Arrays.copyOfRange(args, 1, args.length));
+        if (args.length > 0 && (ChannelBridge.STDIO_COMMAND.equals(args[0]) || ChannelBridge.COMMAND.equals(args[0]))) {
+            ChannelBridge.main(args);
             return;
         }
         if (headless(args)) {

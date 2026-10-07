@@ -30,7 +30,7 @@ class ChannelBridgeTest {
     @Test
     void answersInitializeWithChannelCapability() {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ChannelBridge bridge = bridge(out, URI.create("http://127.0.0.1:1/x"), "");
+        ChannelBridge bridge = bridge(out, URI.create("http://127.0.0.1:1"), "");
         bridge.handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":"
                 + "\"2026-07-28\",\"capabilities\":{},\"clientInfo\":{\"name\":\"claude-code\",\"version\":\"2\"}}}");
         bridge.handle("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
@@ -60,7 +60,7 @@ class ChannelBridgeTest {
     @Test
     void turnsServerSentEventsIntoChannelNotifications() {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ChannelBridge bridge = bridge(out, URI.create("http://127.0.0.1:1/x"), "");
+        ChannelBridge bridge = bridge(out, URI.create("http://127.0.0.1:1"), "");
         bridge.read(List.of(
                 ": ping",
                 "",
@@ -118,9 +118,9 @@ class ChannelBridgeTest {
         PipedOutputStream stdinWriter = new PipedOutputStream();
         BufferedReader stdin = new BufferedReader(new InputStreamReader(new PipedInputStream(stdinWriter), StandardCharsets.UTF_8));
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/mcp/channel/events");
+        URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
         ChannelBridge bridge = new ChannelBridge(stdin, new PrintStream(out, true, StandardCharsets.UTF_8),
-                new PrintStream(OutputStream.nullOutputStream()), uri, "t0k");
+                new PrintStream(OutputStream.nullOutputStream()), uri, "t0k", ChannelBridge.Mode.CHANNEL);
         Thread t = Thread.ofVirtual().start(bridge::run);
         try {
             assertThat(connected.await(10, TimeUnit.SECONDS)).isTrue();
@@ -142,10 +142,122 @@ class ChannelBridgeTest {
         }
     }
 
+    /**
+     * Proxy gegen einen nachgebauten Streamable-HTTP-Server: initialize bekommt die Channel-Fähigkeit, eine zu neue
+     * Protokollversion wird heruntergesetzt, und verfällt die Sitzung (Neustart der App), meldet sich der Proxy neu an,
+     * wiederholt die Anfrage und sagt dem Client, dass er die Tool-Liste neu laden soll.
+     */
+    @Test
+    void proxyForwardsAndRenewsSessionAfterRestart() throws Exception {
+        List<String> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger sessions = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicBoolean restarted = new java.util.concurrent.atomic.AtomicBoolean();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/mcp", ex -> {
+            String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String sid = ex.getRequestHeaders().getFirst("Mcp-Session-Id");
+            if (!"GET".equals(ex.getRequestMethod()) && !"DELETE".equals(ex.getRequestMethod())) {
+                JsonNode msg = JSON.readTree(body);
+                String method = msg.path("method").asString("");
+                seen.add(method + "@" + sid + (method.equals("initialize")
+                        ? "/" + msg.path("params").path("protocolVersion").asString() : ""));
+                if (method.equals("initialize")) {
+                    String newSid = "s" + sessions.incrementAndGet();
+                    ex.getResponseHeaders().add("Mcp-Session-Id", newSid);
+                    json(ex, "{\"jsonrpc\":\"2.0\",\"id\":" + JSON.writeValueAsString(msg.get("id"))
+                            + ",\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":"
+                            + "{\"listChanged\":true}},\"serverInfo\":{\"name\":\"devtools-mcp\",\"version\":\"1\"},"
+                            + "\"instructions\":\"DevTools-Hinweise\"}}");
+                } else if (!msg.has("id")) {
+                    ex.sendResponseHeaders(202, -1);
+                    ex.close();
+                } else if ("s1".equals(sid) && restarted.compareAndSet(false, true)) {
+                    ex.sendResponseHeaders(404, -1); // App neu gestartet: Sitzung unbekannt
+                    ex.close();
+                } else {
+                    // Antwort als SSE wie beim echten Server, mit einer Rückfrage davor
+                    ex.getResponseHeaders().add("Content-Type", "text/event-stream");
+                    ex.sendResponseHeaders(200, 0);
+                    try (OutputStream o = ex.getResponseBody()) {
+                        o.write(("event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\","
+                                + "\"params\":{\"progressToken\":1,\"progress\":1}}\n\n").getBytes(StandardCharsets.UTF_8));
+                        o.write(("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":" + JSON.writeValueAsString(msg.get("id"))
+                                + ",\"result\":{\"tools\":[{\"name\":\"git_status\"}]}}\n\n")
+                                .getBytes(StandardCharsets.UTF_8));
+                    }
+                }
+            } else {
+                ex.sendResponseHeaders(405, -1); // kein eigener Meldungsstrom
+                ex.close();
+            }
+        });
+        server.start();
+        PipedOutputStream stdinWriter = new PipedOutputStream();
+        BufferedReader stdin = new BufferedReader(new InputStreamReader(new PipedInputStream(stdinWriter),
+                StandardCharsets.UTF_8));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ChannelBridge bridge = new ChannelBridge(stdin, new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(OutputStream.nullOutputStream()),
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "", ChannelBridge.Mode.PROXY);
+        Thread t = Thread.ofVirtual().start(bridge::run);
+        try {
+            write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":"
+                    + "\"2026-07-28\",\"capabilities\":{\"elicitation\":{}},\"clientInfo\":{\"name\":\"cc\",\"version\":\"2\"}}}");
+            JsonNode init = await(out, n -> n.path("id").asInt() == 1);
+            assertThat(init.path("result").path("capabilities").path("experimental").has("claude/channel")).isTrue();
+            assertThat(init.path("result").path("capabilities").path("tools").path("listChanged").asBoolean()).isTrue();
+            assertThat(init.path("result").path("instructions").asString()).startsWith("DevTools-Hinweise")
+                    .contains("## Ereignisse (Channel)", "event_source=\"mail\"");
+            write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
+            write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
+            JsonNode tools = await(out, n -> n.path("id").asInt() == 2);
+            assertThat(tools.path("result").path("tools").get(0).path("name").asString()).isEqualTo("git_status");
+            List<JsonNode> all = lines(out);
+            assertThat(all).anySatisfy(n -> assertThat(n.path("method").asString()).isEqualTo("notifications/progress"));
+            assertThat(all).anySatisfy(n -> assertThat(n.path("method").asString())
+                    .isEqualTo("notifications/tools/list_changed"));
+            // zu neue Version heruntergesetzt; nach dem 404 neu angemeldet, initialized gesendet, Anfrage wiederholt
+            assertThat(seen).containsSubsequence("initialize@null/2025-11-25", "notifications/initialized@s1",
+                    "tools/list@s1", "initialize@null/2025-11-25", "notifications/initialized@s2", "tools/list@s2");
+        } finally {
+            stdinWriter.close();
+            t.join(5000);
+            server.stop(0);
+        }
+    }
+
+    private static void json(com.sun.net.httpserver.HttpExchange ex, String body) throws java.io.IOException {
+        byte[] b = body.getBytes(StandardCharsets.UTF_8);
+        ex.getResponseHeaders().add("Content-Type", "application/json");
+        ex.sendResponseHeaders(200, b.length);
+        try (OutputStream o = ex.getResponseBody()) {
+            o.write(b);
+        }
+    }
+
+    private static void write(PipedOutputStream stdin, String line) throws java.io.IOException {
+        stdin.write((line + "\n").getBytes(StandardCharsets.UTF_8));
+        stdin.flush();
+    }
+
+    private static JsonNode await(ByteArrayOutputStream out, java.util.function.Predicate<JsonNode> match)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < deadline) {
+            for (JsonNode n : lines(out)) {
+                if (match.test(n)) {
+                    return n;
+                }
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("Keine passende Nachricht: " + lines(out));
+    }
+
     private static ChannelBridge bridge(ByteArrayOutputStream out, URI uri, String token) {
         return new ChannelBridge(new BufferedReader(new java.io.StringReader("")),
                 new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(OutputStream.nullOutputStream()),
-                uri, token);
+                uri, token, ChannelBridge.Mode.CHANNEL);
     }
 
     private static List<JsonNode> lines(ByteArrayOutputStream out) {

@@ -57,12 +57,15 @@ public class ClientConfigDialog extends Dialog<Void> {
                 auth ? "\n    headers:\n      Authorization: \"Bearer " + token + "\"" : ""));
         snippets.put("Nur stdio-Clients (Bridge)", "npx -y mcp-remote " + endpoint
                 + (auth ? " --header \"Authorization: Bearer " + token + "\"" : ""));
-        snippets.put("Claude Code: Channel", """
-                # Neue Mails (Modul Mail) als Nachricht in die laufende Sitzung – zusätzlich zu "devtools":
-                claude mcp add devtools-events -- %s -jar %s channel
+        snippets.put("Claude Code (stdio + Channel)", """
+                # Tools UND Benachrichtigungen (neue Mails) in einem Eintrag – statt des HTTP-Eintrags oben:
+                claude mcp add devtools -- %1$s -jar %2$s stdio
 
-                # Claude Code mit dem Channel starten (Research Preview, nur interaktiv):
-                claude --dangerously-load-development-channels server:devtools-events""".formatted(quote(javaCommand()),
+                # Claude Code mit Channel starten (Research Preview, nur interaktiv) – sonst normal "claude":
+                claude --dangerously-load-development-channels server:devtools
+
+                # Nur Benachrichtigungen, wenn die Tools schon über HTTP eingebunden sind:
+                claude mcp add devtools-events -- %1$s -jar %2$s channel""".formatted(quote(javaCommand()),
                 quote(jarPath())));
 
         TabPane tabs = new TabPane();

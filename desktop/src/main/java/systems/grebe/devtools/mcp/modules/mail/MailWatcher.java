@@ -55,7 +55,7 @@ import systems.grebe.devtools.mcp.core.ToolRegistry;
  * <p>Eine neue Mail geht an
  * <ul>
  *   <li>den Eingang für {@code mail_receive} (immer),</li>
- *   <li>die {@link ChannelEvents} – die Channel-Brücke reicht sie an eine laufende Claude-Code-Sitzung weiter,</li>
+ *   <li>die {@link ChannelEvents} – der stdio-Proxy reicht sie an eine laufende Claude-Code-Sitzung weiter,</li>
  *   <li>den „Befehl bei neuer E-Mail“ ({@link MailCommand}), z.B. {@code claude -p …}.</li>
  * </ul>
  * Die letzten beiden nur für freigegebene Absender und – Standard – nur ungelesene Mails.
@@ -248,7 +248,7 @@ public class MailWatcher implements AutoCloseable {
         out.add("mail_receive");
         if (s.channel()) {
             int n = channel.subscribers();
-            out.add("Claude-Code-Channel (" + (n == 0 ? "keine Brücke verbunden" : n + " Brücke(n) verbunden") + ")");
+            out.add("Claude-Code-Channel (" + (n == 0 ? "kein stdio-Proxy verbunden" : n + " stdio-Proxy(s) verbunden") + ")");
         }
         if (s.command().active()) {
             out.add("Befehl bei neuer E-Mail" + (command.lastRun() == null ? "" : " – zuletzt " + command.lastRun()));

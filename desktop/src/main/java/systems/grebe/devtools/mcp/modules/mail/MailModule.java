@@ -38,7 +38,7 @@ import systems.grebe.devtools.mcp.core.UserConfirmation;
 /**
  * E-Mail über IMAP (Angus Mail): Konten ganz oder nur einzelne Ordner (Postfächer) freigeben, Mails suchen und lesen,
  * optional markieren, verschieben und Entwürfe anlegen. Neue Mails in überwachten Ordnern meldet der
- * {@link MailWatcher} – an {@code mail_receive}, über die Channel-Brücke an eine laufende Claude-Code-Sitzung und an
+ * {@link MailWatcher} – an {@code mail_receive}, über den stdio-Proxy an eine laufende Claude-Code-Sitzung und an
  * einen frei wählbaren Befehl (z.B. {@code claude -p}).
  */
 @Component
@@ -199,8 +199,8 @@ public class MailModule implements ToolModule {
                                 + "Name, Benutzer@Host, Beschreibung und Ordner, nie Passwörter."),
                 ConfigField.of(NOTIFY_CHANNEL, "Neue Mails an Claude Code melden (Channel)", FieldType.BOOLEAN)
                         .withDefault("true")
-                        .withHelp("Über die Channel-Brücke „java -jar devtools-mcp.jar channel“, die Claude Code als "
-                                + "stdio-Server startet (siehe README). Die laufende Sitzung bekommt jede neue Mail als "
+                        .withHelp("Über den stdio-Proxy „java -jar devtools-mcp.jar stdio“, den Claude Code startet "
+                                + "(siehe README, „Client verbinden…“). Die laufende Sitzung bekommt jede neue Mail als "
                                 + "Nachricht und wird dadurch aktiv."),
                 ConfigField.of(COMMAND, "Befehl bei neuer E-Mail", FieldType.STRING)
                         .withHelp("Wird je neuer Mail ausgeführt (ohne Shell, nacheinander), z.B. claude -p \"Neue Mail "
@@ -339,7 +339,7 @@ public class MailModule implements ToolModule {
             }
         }
         if (config.getBoolean(NOTIFY_CHANNEL)) {
-            sb.append("\nChannel: neue Mails gehen an verbundene Brücken (java -jar devtools-mcp.jar channel).");
+            sb.append("\nChannel: neue Mails gehen an verbundene stdio-Proxys (java -jar devtools-mcp.jar stdio).");
         }
         String msg = sb.toString().strip();
         return ok ? ConnectionTestResult.ok(msg) : ConnectionTestResult.failed(msg);

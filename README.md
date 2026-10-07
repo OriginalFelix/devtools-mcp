@@ -23,7 +23,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
-| **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort), `mail_send` (SMTP, auch als Antwort; Rückfrage beim Nutzer, erlaubte Empfänger, Grenze pro Stunde) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über die Channel-Brücke an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
+| **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort), `mail_send` (SMTP, auch als Antwort; Rückfrage beim Nutzer, erlaubte Empfänger, Grenze pro Stunde) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über den stdio-Proxy (Channel) an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
@@ -392,8 +392,8 @@ Konto des Nutzers schreibt, und Matrix auch ohne eigenes Bot-Konto.
 
 Von sich aus in eine laufende Sitzung schreiben (Push) kann der MCP-Server selbst nicht: Die *Channels* von Claude Code
 (`notifications/claude/channel`) gibt es nur für per stdio gestartete MCP-Server, DevTools MCP spricht Streamable HTTP.
-Dafür gibt es die [Channel-Brücke](#neue-mails-melden-channel-brücke-befehl-mail_receive) (bisher nutzt sie nur das
-Mail-Modul); Chat-Nachrichten holt das LLM weiter mit `chat_receive`.
+Dafür gibt es den [stdio-Proxy](#claude-code-über-stdio-tools-und-channel) (bisher meldet darüber nur das Mail-Modul);
+Chat-Nachrichten holt das LLM weiter mit `chat_receive`.
 
 In der UI wählt „Aktiv“ (Mehrfachauswahl) die Systeme; darunter stehen die Felder und die Standard-Unterhaltung des
 gerade gewählten aktiven Systems, ein Umschalter wechselt zwischen ihnen.
@@ -496,7 +496,7 @@ erneuert sie selbst. Nach der Anmeldung verbindet die Überwachung sofort. Läuf
 melden Tools, *Verbindung testen* und `mail_accounts` „nicht angemeldet“ – die Überwachung wartet dann, statt den
 Server mit Versuchen zu belasten. Für nationale Clouds gibt es den *Anmelde-Endpunkt* in den Modul-Einstellungen.
 
-#### Neue Mails melden: Channel-Brücke, Befehl, `mail_receive`
+#### Neue Mails melden: Channel, Befehl, `mail_receive`
 
 **Überwachte Ordner** (je Konto, Standard `INBOX`, müssen freigegeben sein) beobachtet die App im Hintergrund, solange
 das Modul an ist – je Ordner eine eigene Verbindung mit **IMAP IDLE** (der Server meldet neue Mails sofort; alle
@@ -511,30 +511,18 @@ Jede neue Mail geht an drei Stellen:
 1. **Claude-Code-Channel** (*Neue Mails an Claude Code melden*, Standard an): Die laufende Sitzung bekommt die Mail als
    Nachricht und wird dadurch aktiv – ohne dass das LLM fragt:
    ```
-   <channel source="devtools-events" event_source="mail" account="arbeit" folder="INBOX" uid="4711" from="kunde@example.com" subject="Rückfrage">
+   <channel source="devtools" event_source="mail" account="arbeit" folder="INBOX" uid="4711" from="kunde@example.com" subject="Rückfrage">
    Neue E-Mail in arbeit/INBOX
    Von: Kunde <kunde@example.com>
    …
    Lesen: mail_read(account="arbeit", folder="INBOX", uid=4711)
    ```
-   Channels gibt es nur für MCP-Server, die Claude Code per stdio selbst startet. Deshalb hat das Jar eine eigene
-   **Channel-Brücke**: `java -jar devtools-mcp.jar channel` ist ein kleiner stdio-MCP-Server (Fähigkeit
-   `experimental["claude/channel"]`, keine Tools), der die Ereignisse der laufenden App über
-   `GET /mcp/channel/events` (Server-Sent Events, geschützt wie `/mcp` durch das Zugriffstoken) abholt und als
-   `notifications/claude/channel` weiterreicht. Port und Token liest sie aus `~/.devtools-mcp/settings.json`
-   (abweichend `--url http://127.0.0.1:8765`, `--token …` bzw. `DEVTOOLS_MCP_AUTH_TOKEN`). Einrichtung:
-   ```bash
-   claude mcp add devtools-events -- java -jar /pfad/zu/devtools-mcp.jar channel
-   ```
-   ```bash
-   claude --dangerously-load-development-channels server:devtools-events
-   ```
-   Der Schalter ist nötig, weil Channels in Claude Code eine *Research Preview* sind und nur freigegebene Plugins ohne ihn
-   laden; er funktioniert nur interaktiv (nicht mit `-p`). Voraussetzungen von Claude Code: Anmeldung über claude.ai
-   oder Console-API-Key (nicht Bedrock/Vertex/Foundry), in Team-/Enterprise-Organisationen muss der Administrator
-   Channels erlauben (`channelsEnabled`). Wird die Brücke kurz getrennt (App-Neustart), verbindet sie sich neu und holt
-   mit `Last-Event-ID` nach, was im Puffer der App (200 Ereignisse) noch da ist. Die Brücke ist allgemein gehalten
-   (`core/ChannelEvents`) – weitere Module können darüber Ereignisse melden.
+   Channels gibt es nur für MCP-Server, die Claude Code per stdio selbst startet – dafür bindet man DevTools über den
+   [stdio-Proxy](#claude-code-über-stdio-tools-und-channel) ein (Tools und Channel in einem Eintrag) und startet
+   Claude Code mit `--dangerously-load-development-channels server:devtools`. Die Ereignisse holt der Proxy über
+   `GET /mcp/channel/events` (Server-Sent Events, geschützt wie `/mcp` durch das Zugriffstoken); nach einer kurzen
+   Trennung (App-Neustart) holt er mit `Last-Event-ID` nach, was im Puffer der App (200 Ereignisse) noch da ist. Die
+   Ereignisse sind allgemein gehalten (`core/ChannelEvents`) – weitere Module können darüber melden.
 2. **Befehl bei neuer E-Mail** – für einen Agenten ohne offene Sitzung, z.B.
    ```
    claude -p "Neue Mail {account}/{folder} UID {uid}: lies sie mit mail_read und bearbeite sie nach meinen Regeln für Support-Mails" --allowedTools "mcp__devtools__mail_*"
@@ -615,6 +603,38 @@ Der MCP-Server der Desktop-App lauscht auf `http://127.0.0.1:8765/mcp` (Streamab
 ```bash
 claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
 ```
+
+### Claude Code über stdio: Tools und Channel
+
+Claude Code kann einen MCP-Server nur dann von sich aus Nachrichten in die Sitzung schreiben lassen (*Channels*, z.B.
+„neue E-Mail“), wenn es den Server selbst per stdio startet. Die App selbst per stdio starten zu lassen hieße eine
+eigene, vollständige App je Sitzung (zweiter Port, gesperrte Datenbank, doppelte Mail-Überwachung). Stattdessen bringt
+das Jar einen **stdio-Proxy** mit, der an die laufende App andockt:
+
+```bash
+claude mcp add devtools -- java -jar /pfad/zu/devtools-mcp.jar stdio
+```
+
+```bash
+claude --dangerously-load-development-channels server:devtools
+```
+
+* Jede MCP-Nachricht geht an `/mcp` der App (Streamable HTTP mit Sitzungs-ID und Protokollversion): Tools,
+  Fortschritt, Rückfragen der App an den Client (Elicitation, z.B. bei `permissions_request` und `mail_send`) und
+  `tools/list_changed` über den Meldungsstrom der App. Für Claude Code ist es ein gewöhnlicher stdio-Server.
+* Zusätzlich meldet der Proxy `experimental["claude/channel"]`, hängt die Channel-Hinweise an die Instructions und
+  reicht Ereignisse der App als `notifications/claude/channel` weiter.
+* Startet die App neu, meldet sich der Proxy mit den ursprünglichen `initialize`-Daten neu an, wiederholt die Anfrage
+  und meldet `tools/list_changed`. Startet Claude Code vor der App, wartet `initialize` bis zu 15 Sekunden.
+* Port und Zugriffstoken liest der Proxy aus `~/.devtools-mcp/settings.json`, abweichend `--url http://127.0.0.1:8765`,
+  `--token …` bzw. `DEVTOOLS_MCP_AUTH_TOKEN`. Gebraucht wird dieselbe Java-Version wie für die App; „Client
+  verbinden…“ zeigt den Befehl mit dem Pfad des laufenden Jars.
+* Ohne den Schalter `--dangerously-load-development-channels` funktioniert alles außer den Benachrichtigungen. Er ist
+  nötig, weil Channels in Claude Code eine *Research Preview* sind, und wirkt nur interaktiv (nicht mit `-p`).
+  Voraussetzungen von Claude Code: Anmeldung über claude.ai oder Console-API-Key (nicht Bedrock/Vertex/Foundry), in
+  Team-/Enterprise-Organisationen muss der Administrator Channels erlauben (`channelsEnabled`).
+* `java -jar devtools-mcp.jar channel` liefert nur die Benachrichtigungen (ohne Tools) – für einen zweiten Eintrag
+  neben dem HTTP-Eintrag.
 
 ## Bedienung
 
@@ -1548,7 +1568,8 @@ desktop/
   config/SettingsStore    ── settings.json (App-Einstellungen), SecretCipher (AES-GCM)
   server/BearerTokenFilter── optionaler Token-Schutz für /mcp
   core/ChannelEvents      ── Ereignisse an laufende Sitzungen; server/ChannelEventsController: GET /mcp/channel/events (SSE)
-  channel/ChannelBridge   ── `java -jar … channel`: stdio-MCP-Server für Claude-Code-Channels, liest die SSE der App
+  channel/ChannelBridge   ── `java -jar … stdio`: stdio-Proxy zur App (Tools + Claude-Code-Channel), `… channel`: nur
+                             Benachrichtigungen
   modules/mail/           ── IMAP: MailTools/MailWriteTools, MailWatcher (IDLE/Abfrage, Meldungen), MailCommand, MailState,
                              MailSender (SMTP), MailOAuth (Exchange Online), MailAccountService (SPI für Plugins)
   remote/                 ── EmbeddedBackend + EmbeddedAccounts (erstes Konto), BackendConnection (Anmeldung,
