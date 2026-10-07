@@ -32,7 +32,8 @@ type Query {
     memory(id: Int!): MemoryEntry
     memoryCount: Int!
     "Texte für das LLM wie die Tools memories_search und memories_view."
-    memorySearch(query: String, project: String, skill: String, tag: String, days: Int, limit: Int): String!
+    memorySearch(query: String, project: String, skill: String, tag: String, type: MemoryType, days: Int,
+                 limit: Int): String!
     memoryView(id: Int!): String!
     "Bezüge aller Memories (klein geschrieben) – die App erkennt damit Ticket-Keys o.ä. in Tool-Aufrufen."
     memoryReferences: [String!]!
@@ -90,12 +91,15 @@ type Mutation {
     publishSkill(name: String!): String!
     unpublishSkill(name: String!): String!
 
+    "Ohne type dauerhaft. Temporäre Memories brauchen kein Recht auf das Tool memories_save."
     saveMemory(title: String!, content: String!, project: String, skill: String, reference: String, tags: [String!],
-               maxContentChars: Int): String!
-    "Nicht angegebene Felder bleiben; leerer Text entfernt Projekt, Skill, Bezug bzw. Tags."
+               type: MemoryType, maxContentChars: Int): String!
+    "Nicht angegebene Felder bleiben; leerer Text entfernt Projekt, Skill, Bezug bzw. Tags. Temporäre Memories auch ohne Recht auf das Tool memories_update; temporaryOnly lehnt dauerhafte ab (Aufrufer ohne Freigabe)."
     updateMemory(id: Int!, title: String, content: String, append: String, project: String, skill: String,
-                 reference: String, tags: [String!], maxContentChars: Int): String!
-    deleteMemory(id: Int!): String!
+                 reference: String, tags: [String!], type: MemoryType, temporaryOnly: Boolean,
+                 maxContentChars: Int): String!
+    "Temporäre Memories auch ohne Recht auf das Tool memories_delete; temporaryOnly lehnt dauerhafte ab."
+    deleteMemory(id: Int!, temporaryOnly: Boolean): String!
 
     "Legt ein eigenes Skript an oder ändert es. Das Backend prüft die Syntax (ohne Ausführung); ohne description gilt der feste Text aus dem Quelltext, ohne language die bisherige Sprache (neu: GROOVY)."
     saveScript(name: String!, language: ScriptLanguage, description: String, content: String!, note: String,
@@ -369,6 +373,10 @@ type MemoryEntry {
     skill: String
     reference: String
     tags: [String!]!
+    type: MemoryType!
     createdAt: String
     updatedAt: String
 }
+
+"Lebensdauer einer Memory: PERMANENT (Standard) oder TEMPORARY (ausdrücklich angegeben; ohne Freigabe änderbar und löschbar)."
+enum MemoryType { PERMANENT TEMPORARY }
