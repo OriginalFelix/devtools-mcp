@@ -151,6 +151,28 @@ public interface TicketSystem {
     }
 
     /**
+     * Legt ein Ticket an und setzt weitere Felder wie {@link #updateFields}. Systeme, die Pflichtfelder schon beim Anlegen
+     * verlangen (Jira: Komponenten, Custom Fields), überschreiben das und schicken alles in einem Aufruf. Der Default legt
+     * an und setzt die Felder danach; schlägt nur das fehl, meldet das Ergebnis das angelegte Ticket samt Fehler.
+     *
+     * @param fields wie bei {@link #updateFields}; {@code null} oder leer = wie {@link #create(String, NewTicket)}
+     */
+    default WriteResult create(String project, NewTicket ticket, Map<String, String> fields) {
+        WriteResult created = create(project, ticket);
+        if (fields == null || fields.isEmpty()) {
+            return created;
+        }
+        try {
+            WriteResult set = updateFields(created.key(), project, fields);
+            return new WriteResult(created.key(), created.message() + "; " + set.message(), created.url(), created.id());
+        } catch (RuntimeException e) {
+            // angelegt ist das Ticket schon – nicht als Fehlschlag des ganzen Aufrufs melden
+            return new WriteResult(created.key(), created.message() + "; Felder nicht gesetzt: " + e.getMessage(),
+                    created.url(), created.id());
+        }
+    }
+
+    /**
      * Bucht Arbeitszeit auf ein Ticket (Jira-Worklog, GitLab-Timelog, YouTrack-Arbeitselement, OpenProject-Zeiteintrag).
      * {@link WriteResult#id()} ist die ID der Buchung.
      */

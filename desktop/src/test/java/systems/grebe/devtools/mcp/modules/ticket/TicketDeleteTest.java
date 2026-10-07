@@ -78,7 +78,7 @@ class TicketDeleteTest {
     void onlyOwnTicketsAndCommentsAreDeletedAndOwnershipSurvivesRestart() {
         jiraRoutes();
         TicketEnvironment env = module.environment(config(jira()));
-        new TicketCreateTools(env).create("Wegwerf", null, null, null, null, null, null);
+        new TicketCreateTools(env).create("Wegwerf", null, null, null, null, null, null, null);
         new TicketCommentTools(env).comment("abc-7", "Notiz", null, null); // Kleinschreibung → kanonisch ABC-7
         assertThat(home.resolve("tickets-own.json")).exists();
 
@@ -109,7 +109,7 @@ class TicketDeleteTest {
     @Test
     void ownershipIsPerInstanceAndSwitchOffAllowsForeignDeletes() {
         jiraRoutes();
-        new TicketCreateTools(module.environment(config(jira()))).create("Wegwerf", null, null, null, null, null, null);
+        new TicketCreateTools(module.environment(config(jira()))).create("Wegwerf", null, null, null, null, null, null, null);
 
         // derselbe Schlüssel auf einer anderen Jira-Instanz gilt nicht als eigen
         try (StubServer other = new StubServer()) {
@@ -162,7 +162,7 @@ class TicketDeleteTest {
         stub.on("/repos/OCTO/app/issues/40", "{\"number\":40,\"node_id\":\"I_kw40\"}");
 
         TicketEnvironment env = module.environment(config(gh));
-        new TicketCreateTools(env).create("Wegwerf", null, null, null, null, null, null);
+        new TicketCreateTools(env).create("Wegwerf", null, null, null, null, null, null, null);
         new TicketCommentTools(env).comment("#40", "x", null, null);
         TicketDeleteTools own = new TicketDeleteTools(env, true);
 
