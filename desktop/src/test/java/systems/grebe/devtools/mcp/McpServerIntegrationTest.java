@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -22,10 +23,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.core.ChannelEvents;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.UserConfirmation;
+import systems.grebe.devtools.mcp.server.ChannelEventsController;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -63,6 +66,9 @@ class McpServerIntegrationTest {
 
     @Autowired
     UserConfirmation confirmation;
+
+    @Autowired
+    ChannelEvents channelEvents;
 
     @TempDir
     Path repoDir;
@@ -781,6 +787,50 @@ class McpServerIntegrationTest {
                 registry.setModuleEnabled("jdbc", false);
                 registry.updateConfig("jdbc", Map.of());
             }
+        }
+    }
+
+    @Test
+    void channelEventsStreamIsProtectedAndDeliversEvents() throws Exception {
+        store.saveServer(new ServerSettings(ServerSettings.DEFAULT_PORT, "kanal-token", true, false));
+        var http = java.net.http.HttpClient.newHttpClient();
+        URI uri = URI.create("http://127.0.0.1:" + port + ChannelEventsController.PATH);
+        var denied = http.send(java.net.http.HttpRequest.newBuilder(uri).build(),
+                java.net.http.HttpResponse.BodyHandlers.discarding());
+        assertThat(denied.statusCode()).isEqualTo(401);
+
+        var res = http.send(java.net.http.HttpRequest.newBuilder(uri).header("Authorization", "Bearer kanal-token")
+                .header("Accept", "text/event-stream").build(), java.net.http.HttpResponse.BodyHandlers.ofLines());
+        assertThat(res.statusCode()).isEqualTo(200);
+        try (var lines = res.body()) {
+            var it = lines.iterator();
+            assertThat(it.next()).startsWith(":"); // Herzschlag gleich beim Verbinden
+            channelEvents.publish("mail", "Neue E-Mail\nVon: a@b.de", Map.of("uid", "9"));
+            String id = null;
+            String data = null;
+            while (data == null && it.hasNext()) {
+                String line = it.next();
+                if (line.startsWith("id:")) {
+                    id = line.substring(3).strip();
+                } else if (line.startsWith("data:")) {
+                    data = line.substring(5).strip();
+                }
+            }
+            assertThat(id).isNotBlank();
+            assertThat(data).contains("\"content\":\"Neue E-Mail\\nVon: a@b.de\"", "\"uid\":\"9\"",
+                    "\"event_source\":\"mail\"");
+        }
+    }
+
+    @Test
+    void mailModuleOffersReadToolsOnly() {
+        registry.setModuleEnabled("mail", true);
+        try {
+            assertThat(toolNames()).contains("mail_accounts", "mail_folders", "mail_list", "mail_read", "mail_receive")
+                    .doesNotContain("mail_move", "mail_draft", "mail_mark");
+            assertThat(text(client.callTool(callRequest("mail_accounts", Map.of())))).contains("Kein Mail-Konto");
+        } finally {
+            registry.setModuleEnabled("mail", false);
         }
     }
 }

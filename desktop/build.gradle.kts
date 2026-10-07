@@ -71,6 +71,9 @@ dependencies {
     // SSH-Modul: Befehle und SFTP über JSch (gepflegter Fork mit aktuellen Algorithmen, ohne weitere Abhängigkeiten)
     implementation("com.github.mwiede:jsch:2.27.2")
 
+    // Mail-Modul: IMAP inkl. IDLE (Angus Mail, Implementierung von Jakarta Mail; Version aus der Boot-BOM)
+    implementation("org.eclipse.angus:angus-mail")
+
     // Matrix-Modul: Markdown der Nachrichten als HTML (formatted_body), mit Tabellen und Durchstreichen wie GFM
     val commonmarkVersion = "0.30.0"
     implementation("org.commonmark:commonmark:$commonmarkVersion")
@@ -99,6 +102,8 @@ dependencies {
     // Eingebetteter SSH-/SFTP-Server für die Tests des SSH-Moduls
     testImplementation("org.apache.sshd:sshd-core:2.15.0")
     testImplementation("org.apache.sshd:sshd-sftp:2.15.0")
+    // Eingebetteter IMAP-/SMTP-Server für die Tests des Mail-Moduls
+    testImplementation("com.icegreen:greenmail-junit5:2.1.3")
     // Tests des Dolt-Moduls gegen Dolt-/Doltgres-Container: Treiber, die die App sonst per Maven lädt (Boot-BOM)
     testRuntimeOnly("com.mysql:mysql-connector-j")
     testRuntimeOnly("org.postgresql:postgresql")

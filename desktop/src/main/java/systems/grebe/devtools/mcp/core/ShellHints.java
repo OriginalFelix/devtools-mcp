@@ -74,6 +74,9 @@ public final class ShellHints {
     public static final String CHAT =" Chat-Nachrichten (Matrix, Teams) immer über die chat_*-Tools senden und lesen, "
             + "nicht per `curl` gegen die APIs – die Zugangsdaten liegen nur in der DevTools-App.";
 
+    public static final String MAIL = " E-Mails konfigurierter Konten immer über die mail_*-Tools lesen und verwalten, "
+            + "nicht per `curl`, Skript oder Mail-Programm – die Zugangsdaten liegen nur in der DevTools-App.";
+
     public static final String PROJECTS = " Welche Projekte (Repositories, Build-, Graph-Projekte) zur Verfügung stehen, "
             + "immer über projects_list ermitteln, nicht durch Durchsuchen des Dateisystems in der Shell.";
 

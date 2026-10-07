@@ -57,6 +57,13 @@ public class ClientConfigDialog extends Dialog<Void> {
                 auth ? "\n    headers:\n      Authorization: \"Bearer " + token + "\"" : ""));
         snippets.put("Nur stdio-Clients (Bridge)", "npx -y mcp-remote " + endpoint
                 + (auth ? " --header \"Authorization: Bearer " + token + "\"" : ""));
+        snippets.put("Claude Code: Channel", """
+                # Neue Mails (Modul Mail) als Nachricht in die laufende Sitzung – zusätzlich zu "devtools":
+                claude mcp add devtools-events -- %s -jar %s channel
+
+                # Claude Code mit dem Channel starten (Research Preview, nur interaktiv):
+                claude --dangerously-load-development-channels server:devtools-events""".formatted(quote(javaCommand()),
+                quote(jarPath())));
 
         TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
@@ -78,12 +85,29 @@ public class ClientConfigDialog extends Dialog<Void> {
         });
 
         Label hint = new Label("Nach Änderungen an Modulen informiert der Server verbundene Clients automatisch "
-                + "(tools/list_changed). Manche Clients laden die Tool-Liste trotzdem erst nach einem Neustart.");
+                + "(tools/list_changed). Manche Clients laden die Tool-Liste trotzdem erst nach einem Neustart. Der "
+                + "Channel liest Port und Token selbst aus den Einstellungen der App.");
         hint.setWrapText(true);
         hint.getStyleClass().add("form-help");
         VBox content = new VBox(10, tabs, hint);
         content.setPrefWidth(720);
         getDialogPane().setContent(content);
         getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+    }
+
+    /** Java dieser App (die Brücke braucht dieselbe Version). */
+    static String javaCommand() {
+        return ProcessHandle.current().info().command().orElse("java");
+    }
+
+    /** Jar dieser App, beim Start aus der IDE ein Platzhalter. */
+    static String jarPath() {
+        String cp = System.getProperty("java.class.path", "");
+        return !cp.contains(java.io.File.pathSeparator) && cp.endsWith(".jar")
+                ? java.nio.file.Path.of(cp).toAbsolutePath().toString() : "/pfad/zu/devtools-mcp.jar";
+    }
+
+    private static String quote(String s) {
+        return s.contains(" ") ? "\"" + s + "\"" : s;
     }
 }

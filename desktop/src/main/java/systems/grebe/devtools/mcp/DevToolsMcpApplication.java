@@ -16,6 +16,7 @@ import org.springframework.boot.context.TypeExcludeFilter;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
+import systems.grebe.devtools.mcp.channel.ChannelBridge;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.fx.FxApp;
@@ -31,6 +32,9 @@ import systems.grebe.devtools.mcp.remote.EmbeddedBackend;
  * <p>Mit {@code --headless} (oder {@code DEVTOOLS_MCP_HEADLESS=true}) startet nur der MCP-Server, ohne
  * JavaFX-Fenster und Tray. Angemeldet wird dann über {@code DEVTOOLS_MCP_TOKEN} (persönliches Desktop-Token) oder
  * {@code DEVTOOLS_MCP_USER}/{@code DEVTOOLS_MCP_PASSWORD}; mit Fenster fragt die App beim Start.
+ *
+ * <p>{@code channel} startet statt der App die Channel-Brücke für Claude Code ({@link ChannelBridge}),
+ * {@code sign-plugin} signiert ein Plugin ({@link PluginSigner}).
  *
  * <p>Das Backend (Paket {@code systems.grebe.devtools.mcp.backend}) nimmt nicht der Component-Scan auf, sondern
  * {@link EmbeddedBackend} – nur ohne eingetragenen Team-Server.
@@ -64,6 +68,10 @@ public class DevToolsMcpApplication {
     public static void main(String[] args) {
         if (args.length > 0 && PluginSigner.COMMAND.equals(args[0])) {
             PluginSigner.main(Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
+        if (args.length > 0 && ChannelBridge.COMMAND.equals(args[0])) {
+            ChannelBridge.main(Arrays.copyOfRange(args, 1, args.length));
             return;
         }
         if (headless(args)) {
