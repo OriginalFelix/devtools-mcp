@@ -10,16 +10,19 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.GraphFile;
-import systems.grebe.devtools.mcp.modules.graph.GraphStorage.Key;
-import systems.grebe.devtools.mcp.modules.graph.GraphStorage.Stored;
+import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Key;
+import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Stored;
 
 /**
- * Projektauflösung, Branch-Ermittlung, Aufbau (mit Änderungserkennung per SHA-256) und Zugriff auf die Graphen.
+ * Projektauflösung, Branch-Ermittlung, Aufbau (mit Änderungserkennung per SHA-256) und Zugriff auf die Graphen – in
+ * der Graph-Storage des Backends ({@link GraphProvider}, im Local-Mode direkt, sonst über GraphQL) oder als Datei im
+ * Projekt ({@link FileGraphProvider}).
  *
  * <p>Ein Graph gehört zu Projekt + Branch: gebaut wird immer der ausgecheckte Branch (aus dem Arbeitsverzeichnis),
  * gelesen werden kann jeder gespeicherte. Nach jedem Aufbau werden Graphen von Branches gelöscht, die es in Git
@@ -35,10 +38,18 @@ final class GraphService {
     private final boolean includeTests;
     private final int maxFiles;
     private final ModuleConfig config;
-    private GraphStorage storage;
+    private final Supplier<GraphProvider> database;
+    private GraphProvider storage;
 
+    /** Nur mit Datei-Ablage (Tests). */
     GraphService(ModuleConfig config) {
+        this(config, null);
+    }
+
+    /** @param database Graph-Storage des Backends; erst beim ersten Zugriff abgefragt */
+    GraphService(ModuleConfig config, Supplier<GraphProvider> database) {
         this.config = config;
+        this.database = database;
         this.projects = new Workspaces(config.getList(GraphModule.PROJECTS), GraphService::isJavaProject, "Graph-Projekte");
         this.defaultProject = config.getString(GraphModule.DEFAULT_PROJECT, null);
         this.excludes = config.getList(GraphModule.EXCLUDES);
@@ -57,16 +68,20 @@ final class GraphService {
         return false;
     }
 
-    static boolean usesNeo4j(ModuleConfig config) {
-        return !GraphModule.STORAGE_FILE.equals(config.getString(GraphModule.STORAGE, GraphModule.STORAGE_NEO4J));
+    /** Graph-Storage des Backends statt Datei – alles außer {@code file} (auch ältere Einstellungen wie {@code neo4j}). */
+    static boolean usesDatabase(ModuleConfig config) {
+        return !GraphModule.STORAGE_FILE.equals(config.getString(GraphModule.STORAGE, GraphModule.STORAGE_DATABASE));
     }
 
-    /** Ablage laut Konfiguration; die Neo4j-Verbindung wird erst beim ersten Zugriff aufgebaut. */
-    synchronized GraphStorage storage() {
+    /** Ablage laut Konfiguration; die Datenbank wird erst beim ersten Zugriff geöffnet. */
+    synchronized GraphProvider storage() {
         if (storage == null) {
-            storage = usesNeo4j(config)
-                    ? new Neo4jGraphStorage(Neo4jConnection.get(Neo4jConnection.Settings.from(config)))
-                    : new FileGraphStorage();
+            GraphProvider db = usesDatabase(config) && database != null ? database.get() : null;
+            if (usesDatabase(config) && db == null) {
+                throw new IllegalStateException("Keine Graph-Storage verfügbar (Backend nicht verbunden) – in den "
+                        + "Einstellungen des Moduls „Code-Graph“ als Ablage 'file' wählen oder anmelden.");
+            }
+            storage = db != null ? db : new FileGraphProvider();
         }
         return storage;
     }
@@ -75,8 +90,9 @@ final class GraphService {
         return projects;
     }
 
+    /** Projektwurzel, absolut – identifiziert das Projekt in der Ablage. */
     Path resolve(String project) {
-        return projects.resolve(project, defaultProject);
+        return projects.resolve(project, defaultProject).toAbsolutePath().normalize();
     }
 
     static String name(Path root) {
@@ -122,10 +138,8 @@ final class GraphService {
                     + branch.strip() + "'. Branch auschecken oder ohne branch bauen.");
         }
         Key key = new Key(name(root), root, current);
-        GraphStorage store = storage();
-        if (store instanceof Neo4jGraphStorage neo) {
-            neo.connection().ensureSchema(); // Verbindung/Anmeldung prüfen, bevor minutenlang geparst wird
-        }
+        GraphProvider store = storage();
+        store.check(); // Verbindung/Anmeldung prüfen, bevor minutenlang geparst wird
         ReentrantLock lock = LOCKS.computeIfAbsent(root + "@" + current, k -> new ReentrantLock());
         if (lock.isLocked()) {
             progress.update("Warte auf laufenden Aufbau …", -1);
@@ -151,7 +165,7 @@ final class GraphService {
                     progress.update("Prüfsummen " + (i + 1) + "/" + paths.size(), 0.05 * (i + 1) / paths.size());
                 }
             }
-            GraphStorage.State existing = force ? null : safeState(store, key);
+            GraphProvider.State existing = force ? null : safeState(store, key);
             int changed = 0;
             int added = 0;
             int removed = 0;
@@ -196,11 +210,11 @@ final class GraphService {
         }
     }
 
-    private static GraphStorage.State safeState(GraphStorage store, Key key) {
+    private static GraphProvider.State safeState(GraphProvider store, Key key) {
         try {
             return store.state(key);
         } catch (RuntimeException e) {
-            if (store instanceof FileGraphStorage) {
+            if (store instanceof FileGraphProvider) {
                 return null; // beschädigte Datei -> neu bauen
             }
             throw e; // Datenbank nicht erreichbar: melden statt stundenlang umsonst zu bauen
@@ -208,13 +222,13 @@ final class GraphService {
     }
 
     /** Löscht gespeicherte Graphen von Branches, die es in Git nicht mehr gibt. */
-    private static List<String> cleanup(GraphStorage store, Path root, GitState git) {
+    private static List<String> cleanup(GraphProvider store, Path root, GitState git) {
         if (git == null) {
             return List.of();
         }
         List<String> gone = new ArrayList<>();
-        for (Stored s : store.branches(root)) {
-            if (s.branch() != null && !git.exists(s.branch()) && store.delete(root, s.branch())) {
+        for (Stored s : store.branches(root.toString())) {
+            if (s.branch() != null && !git.exists(s.branch()) && store.delete(root.toString(), s.branch())) {
                 gone.add(s.branch());
             }
         }
@@ -250,7 +264,7 @@ final class GraphService {
         if (reader != null) {
             return new Opened(reader, null);
         }
-        GitState git = GitState.of(key.root());
+        GitState git = GitState.of(key.path());
         String current = git == null ? null : git.branch();
         if (key.branch() == null || key.branch().equals(current)) {
             BuildResult r = build(project, null, false, ModuleAction.Progress.NONE);

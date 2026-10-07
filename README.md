@@ -9,7 +9,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Git** (JGit; Netzwerk über installiertes git) | `git_list_repositories` (inkl. Worktrees als `<repo>/<ordner>`), `git_status` (inkl. laufendem Merge/Rebase), `git_log` (auch `contentChange` wie `git log -S`), `git_diff`, `git_show_commit`, `git_branches`, `git_tags`, `git_remotes`, `git_stash_list`, `git_reflog`, `git_compare` (merge-base, voraus/zurück, Commits je Seite), `git_grep`, `git_blame`, `git_file_at_revision` · schreibend (Standard an): `git_create_branch`, `git_checkout`, `git_rename_branch`, `git_stage`, `git_unstage`, `git_commit`, `git_reset` (soft/mixed), `git_stash` (push/apply/pop), `git_tag` · eigener Schalter (Standard an): `git_cherry_pick` (Commits oder Bereiche `a..b`, Herkunftsvermerk wie `-x`, nur stagen wie `-n`, Merge-Commits mit `mainline` wie `-m`; inkl. `git_continue`/`git_abort`) · je Schalter (Standard aus): Remote-Abgleich `git_fetch`, `git_pull` (ff-only/rebase/merge), `git_push` (nie Force, nie auf „Nie pushen auf“, Standard main/master) · Integrieren `git_merge`, `git_rebase`, `git_revert`, `git_continue`, `git_abort` · Verwerfen `git_restore`, `git_reset mode=hard`, `git_delete_branch`, `git_delete_tag`, `git_stash_drop` |
 | **SonarQube** / SonarCloud | `sonar_list_projects`, `sonar_quality_gate`, `sonar_issues`, `sonar_issue_detail`, `sonar_rule`, `sonar_measures`, `sonar_hotspots`, `sonar_source` |
 | **Build** (Gradle/Maven) | `build_list_projects`, `build_run`, `build_test`, `build_test_report` |
-| **Code-Graph** (Java, tree-sitter) | `graph_build`, `graph_branches`, `graph_report`, `graph_find`, `graph_files`, `graph_read`, `graph_explain`, `graph_neighbors`, `graph_path`, `graph_query`, `graph_cypher` – je Projekt und Git-Branch in Neo4j (Spring Data Neo4j) oder als Datei im Projekt (Standard: aus) |
+| **Code-Graph** (Java, tree-sitter) | `graph_build`, `graph_branches`, `graph_report`, `graph_find`, `graph_files`, `graph_read`, `graph_explain`, `graph_neighbors`, `graph_path`, `graph_query`, `graph_cypher` – je Projekt und Git-Branch in der Graph-Storage des Backends (ArcadeDB, eingebettet oder extern) oder als Datei im Projekt (Standard: aus) |
 | **JVM-Diagnose** (jcmd) | `jvm_processes`, `jvm_info`, `jvm_threads` (inkl. Deadlock-Erkennung), `jvm_heap`, `jvm_native_memory` · invasiv: `jvm_heap_dump`, `jvm_gc_run`, `jvm_jcmd` (Allowlist) |
 | **Flight Recorder** | `jfr_record`, `jfr_start`, `jfr_status`, `jfr_dump`, `jfr_stop`, `jfr_analyze` (cpu/allocation/gc/locks/io/exceptions/threads), `jfr_flamegraph` |
 | **async-profiler** 4.5 | `asprof_profile`, `asprof_start`, `asprof_stop`, `asprof_status` – Linux/macOS nativ, unter Windows für JVMs in Docker/Podman-Containern (Standard: aus) |
@@ -580,9 +580,9 @@ Gradle-Multiprojekt:
 | Projekt | Inhalt | Artefakt |
 |---|---|---|
 | `desktop` | Desktop-App: MCP-Server, alle Module, Plugins, JavaFX-Oberfläche; Backend eingebettet oder Anbindung an einen Team-Server | `desktop/build/libs/devtools-mcp-<version>.jar` |
-| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories, Skripte mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
+| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories, Skripte und die Graph-Storage der Code-Graphen (ArcadeDB, eingebettet oder extern) mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
-| `shared` | Gemeinsam: Einstellungs-Ablage, Datenklassen der GraphQL-API (`api`) | – |
+| `shared` | Gemeinsam: Einstellungs-Ablage, Datenklassen der GraphQL-API (`api`), Zugriff auf die Code-Graphen (`GraphProvider`, `GraphReader`, `CodeGraph`) | – |
 | `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), Datenbankverbindungen (`DatabaseConnectionProvider`), Projektverzeichnisse (`ProjectProvider`), E-Mail-Konten (`MailAccountProvider`), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
 
 MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
@@ -818,8 +818,9 @@ Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der S
 
 ### Backend und Team-Server
 
-Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills und Memories und bietet dafür eine
-**GraphQL-API** unter `/graphql` (Schema: `backend/src/main/resources/backend-graphql/schema.graphqls`; Queries/Mutations über
+Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills, Memories und die Code-Graphen und
+bietet dafür eine **GraphQL-API** unter `/graphql` (Schema: `backend/src/main/resources/backend-graphql/schema.graphqls`
+und `graph.graphqls`; Queries/Mutations über
 HTTP, Subscriptions über WebSocket).
 
 * **Eingebettet** (Standard, kein Team-Server eingetragen): Das Backend läuft in der Desktop-App auf
@@ -894,6 +895,41 @@ im Team-Server zentral für alle, im eingebetteten Backend für diesen Rechner. 
   aus den Properties schreibt.
 * Die Apps erfahren über die GraphQL-Query `broker` (Host, Ports, Präfix), wie sie ihn erreichen. Für den Broker den
   TLS-Port (oder einen TCP-Proxy mit TLS) verwenden, wenn der Team-Server nicht nur im internen Netz steht.
+
+#### Graph-Storage für die Code-Graphen
+
+Die Code-Graphen des Moduls [Code-Graph](#code-graph-java) liegen zentral im Backend, in der **Graph-Storage**
+(`backend/graph/GraphStorage`) auf Basis von [ArcadeDB](https://github.com/ArcadeData/arcadedb) – wahlweise
+**eingebettet** (Standard: Datenbank `graphdb/` im Datenverzeichnis des Backends, im selben Prozess) oder **extern**
+(ein ArcadeDB-Server über HTTP). Abfragen laufen als OpenCypher in der Datenbank (native Engine von ArcadeDB).
+
+| Property | Standard | |
+|---|---|---|
+| `devtools.graph.mode` | `embedded` | `embedded` oder `remote` (externer ArcadeDB-Server) |
+| `devtools.graph.path` | `<datenverzeichnis>/graphdb` | Verzeichnis der eingebetteten Datenbank |
+| `devtools.graph.host` | `localhost` | ArcadeDB-Server (`remote`) |
+| `devtools.graph.port` | `2480` | HTTP-Port des Servers |
+| `devtools.graph.database` | `devtools` | Datenbank auf dem Server; fehlt sie, wird sie angelegt |
+| `devtools.graph.user` | `root` | Benutzer auf dem Server |
+| `devtools.graph.password` | – | Passwort |
+
+Externer Server z.B.: `podman run -d --name arcadedb -p 2480:2480 -e JAVA_OPTS="-Darcadedb.server.rootPassword=<passwort>"
+arcadedata/arcadedb` und im Backend `devtools.graph.mode=remote`, `devtools.graph.password=<passwort>` (in der
+Desktop-App z.B. als `-Ddevtools.graph.mode=remote …` bzw. Umgebungsvariablen `DEVTOOLS_GRAPH_MODE` …).
+
+* **Zugriff der Desktop-App:** über das Interface `GraphProvider` (`shared`). Im **Local-Mode** (eingebettetes
+  Backend) verwendet die App die Graph-Storage direkt im selben Prozess. Mit **Team-Server** gehen alle Lese- und
+  Schreibzugriffe über die GraphQL-API des Backends (`backend-graphql/graph.graphqls`, `GraphQlGraphProvider` in der
+  App): `graph(key)` liefert Kopfdaten und die ID der aktuellen Generation, `graphNodes`, `graphEdges`, `graphSearch`,
+  `graphShortestPath`, `graphQuery` (lesendes OpenCypher) … lesen damit; gespeichert wird in Portionen
+  (`beginGraph` → `writeGraphFiles`/`-Nodes`/`-Edges` → `publishGraph`). `BackendGraphs` entscheidet bei jedem Zugriff.
+* **Je Benutzer getrennt:** Über die API hat jeder Benutzer einen eigenen Bereich (`user:<id>`), Projekte gleicher
+  Pfade verschiedener Rechner stören sich nicht.
+* **Generationen:** Jeder Aufbau schreibt eine neue Generation (`g`) und schaltet `GraphBranch.graphId` am Ende mit
+  einem einzigen Kommando um – Leser sehen nie einen halben Graphen. Ersetzte, abgebrochene und gelöschte Generationen
+  entfernt ein Aufräumer im Hintergrund (auch Reste nach einem Absturz beim nächsten Start). Jede Schreiboperation ist
+  ein einzelnes Kommando (`UNWIND`-Batches à 10.000), eingebettet und extern gleich.
+* Aus dem Paket der ArcadeDB-Engine bleiben GraalVM-JavaScript/Truffle weg (Polyglot-Abfragen werden nicht gebraucht).
 
 #### Deployment in WildFly
 
@@ -1027,21 +1063,19 @@ Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekunde
   wird unter Projektwurzel + Branch, ohne Git genau ein Graph. Alle Abfrage-Tools nehmen optional `branch` und lesen
   dann einen anderen gespeicherten Branch (`graph_branches` listet sie); ohne Angabe gilt der ausgecheckte. Nach
   jedem Aufbau werden Graphen von Branches gelöscht, die es weder lokal noch auf einem Remote mehr gibt.
-* **Ablage Neo4j (Standard)** über **Spring Data Neo4j** – Hibernate OGM für Neo4j ist seit Jahren eingestellt
-  (javax, Neo4j 3.x). Verwaltungsdaten sind Entities (`GraphProjectEntity` `(:GraphProject {root, name})`
-  `-[:HAS_BRANCH]->` `GraphBranchEntity` `(:GraphBranch {key, branch, commitId, graphId, stats, communities, …})`,
-  gespeichert per `Neo4jTemplate`); die Code-Knoten und Kanten schreibt `Neo4jClient` als Bulk-Cypher
-  (`UNWIND`-Batches à 10.000) – Entity-Mapping wäre für eine Million Kanten viel zu langsam:
-  `(:CodeNode:<Class|Method|…>[:Type|:Member] {g, id, kind, name, file, line, …, community, t})`,
-  echte Relationship-Typen `CALLS`, `EXTENDS`, … mit `{conf, score, count, line}`, dazu `(:SourceFile {g, path,
-  sha256, …})` für die Änderungserkennung. `g` ist die `graphId` des Branches: jeder Aufbau schreibt eine neue
-  Generation und schaltet `GraphBranch.graphId` erst am Ende in einer Transaktion um, danach wird die alte entfernt –
-  Leser sehen nie einen halben Graphen; Reste eines abgebrochenen Aufbaus (`pendingGraphId`) räumt der nächste auf.
-  Constraints/Indizes legt der Server selbst an (u.a. eindeutiges `uid = g|id` für den Knoten-Lookup beim
-  Kantenimport). Gemessen an Vaadin Flow (3.600 Dateien, 46.000 Knoten, 186.000 Kanten, Neo4j 2026.06 Community im
-  Container): Aufbau 10,5 s (Datei 3,6 s), davon Schreiben 6,2 s; Prüfung „aktuell?“ 0,15 s; Abfragen 50–500 ms. Alle Abfragen laufen als Cypher in der Datenbank (`Neo4jGraphReader`),
-  der Graph wird nie komplett geladen. Die Verbindung wird aus den Moduleinstellungen gebaut (kein Spring-Bean,
-  Änderungen gelten sofort); die Community Edition genügt.
+* **Ablage Datenbank (Standard, `storage=database`):** die [Graph-Storage des Backends](#graph-storage-für-die-code-graphen)
+  (ArcadeDB, eingebettet oder extern) – im Local-Mode direkt, mit Team-Server über GraphQL. Datenmodell mit
+  Typ-Vererbung statt mehrerer Labels: `Class`, `Interface`, `Enum`, `Record`, `Annotation` erben von `Type`,
+  `Constructor`, `Method`, `Field` von `Member`, alle (auch `Package`, `File`, `External`) von `CodeNode {g, uid, id,
+  kind, name, file, line, …, community, t}` – `MATCH (n:Type)` findet alle Typen; echte Kantentypen `CALLS`,
+  `EXTENDS`, … mit `{conf, score, count, line}`, dazu `SourceFile {g, path, sha256, …}` für die Änderungserkennung
+  und `GraphBranch {branchKey, root, branch, commitId, graphId, pendingGraphId, stats, communities, …}` als Anker.
+  `g` ist die `graphId` des Branches (siehe Generationen in der Graph-Storage); eindeutiger Index auf `uid = g|id`
+  für den Knoten-Lookup beim Kantenimport. Alle Abfragen laufen als OpenCypher in der Datenbank
+  (`ArcadeGraphReader`), der Graph wird nie komplett geladen. Gemessen an diesem Repository (590 Dateien, 15.800
+  Knoten, 48.500 Kanten, eingebettet): Aufbau 4,4 s, Prüfung „aktuell?“ 0,6 s, Abfragen 0,1–1 s; das Entfernen der
+  alten Generation (≈ 4,5 s) läuft danach im Hintergrund. Ältere Einstellungen `storage=neo4j` gelten als
+  `database`.
 * **Ablage Datei** (`storage=file`): `devtools-fileinfo@<branch>.graph` (ohne Git `devtools-fileinfo.graph`) im
   Projektwurzelverzeichnis: JSON mit `stats`, `communities`, `files` (Pfad, SHA-256, Zeilen, Syntaxfehler), `nodes`,
   `edges` – ein Eintrag je Zeile, damit Diffs lesbar bleiben. Kompakt: Kanten sind Arrays
@@ -1059,14 +1093,15 @@ Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekunde
   Typ, Datei oder `lines='von-bis'`; Typen/Dateien über 150 Zeilen als Gliederung mit Signaturen und Zeilenbereichen;
   liest das Arbeitsverzeichnis und warnt, wenn die Datei seit `graph_build` geändert wurde), `graph_explain` (alles zu einem Knoten), `graph_neighbors`
   (Aufrufbaum, `direction=in` = wer ruft mich), `graph_path` (kürzester Weg, ohne Abkürzung über externe Typen;
-  Neo4j: `shortestPath`), `graph_query` (Frage → Stichworte inkl. CamelCase und einfacher Wortstämme wie *gebucht* ~
+  Datenbank: `allShortestPaths`), `graph_query` (Frage → Stichworte inkl. CamelCase und einfacher Wortstämme wie *gebucht* ~
   `buchen` → beste Treffer, Testcode nachrangig → verbindender Teilgraph), `graph_branches` (gespeicherte Branches),
-  `graph_cypher` (freies, nur lesendes Cypher – Lesetransaktion, `$g` ist auf Projekt+Branch gesetzt und Pflicht).
-  Beide Ablagen liefern dieselben Antworten (`Neo4jGraphStorageTest` vergleicht die Ausgaben).
-* **Einstellungen:** Projekte/Sammelordner, Standardprojekt, Ablage (`neo4j`/`file`), Neo4j-URI, -Benutzer,
-  -Passwort (verschlüsselt), -Datenbank, Ausschlüsse (Ordnername außerhalb von `src/`, relativer Pfad oder
-  `*.endung`), Tests einbeziehen, max. Dateien. *Verbindung testen* prüft Neo4j und listet die gespeicherten Branches.
-  Lokaler Server z.B.: `podman run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/<passwort> neo4j`.
+  `graph_cypher` (freies, nur lesendes OpenCypher – schreibende Klauseln lehnt die Datenbank in Abfragen ab, `$g` ist
+  auf Projekt+Branch gesetzt und Pflicht). Beide Ablagen liefern dieselben Antworten (`DatabaseGraphStorageTest`
+  vergleicht die Ausgaben direkt, `GraphQlGraphProviderTest` über die GraphQL-API).
+* **Einstellungen:** Projekte/Sammelordner, Standardprojekt, Ablage (`database`/`file`), Ausschlüsse (Ordnername
+  außerhalb von `src/`, relativer Pfad oder `*.endung`), Tests einbeziehen, max. Dateien. Eingebettete oder externe
+  ArcadeDB stellt das Backend ein (`devtools.graph.*`). *Verbindung testen* prüft die Graph-Storage (mit Version) und
+  listet die gespeicherten Branches.
 * **Indizieren in der App:** Im Modul unter **Aktionen** ein Projekt wählen und *Indizieren* klicken (optional
   *Komplett neu*) – mit Fortschrittsbalken, Abbrechen und dem Stand der vorhandenen Graph-Datei. Läuft mit der
   gespeicherten Konfiguration und auch bei inaktivem Modul, d.h. ohne dass `graph_*`-Tools beim LLM erscheinen.

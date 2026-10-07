@@ -25,8 +25,27 @@ dependencies {
     implementation("io.cucumber:gherkin:42.0.1")
     // MQTT-Broker für die Kooperation der Desktop-Apps (HiveMQ CE, eingebettet; devtools.broker.*)
     api("com.hivemq:hivemq-community-edition-embedded:2026.5")
+    implementation("com.arcadedb:arcadedb-engine:26.10.1") {
+        exclude(group = "org.graalvm.polyglot", module = "js")
+        exclude(group = "org.graalvm.js")
+        exclude(group = "org.graalvm.truffle")
+        exclude(group = "org.graalvm.regex")
+    }
+    implementation("com.arcadedb:arcadedb-network:26.10.1") {
+        exclude(group = "org.graalvm.polyglot", module = "js")
+        exclude(group = "org.graalvm.js")
+        exclude(group = "org.graalvm.truffle")
+        exclude(group = "org.graalvm.regex")
+    }
 
     testImplementation("org.springframework.graphql:spring-graphql-test")
+    // Externe Graph-Storage im Test: ArcadeDB-Server in derselben JVM
+    testImplementation("com.arcadedb:arcadedb-server:26.10.1") {
+        exclude(group = "org.graalvm.polyglot", module = "js")
+        exclude(group = "org.graalvm.js")
+        exclude(group = "org.graalvm.truffle")
+        exclude(group = "org.graalvm.regex")
+    }
     // MQTT-Client für die Tests des Brokers
     testImplementation("com.hivemq:hivemq-mqtt-client:1.4.0")
     // SkillTestSupport: schlanker Skill-Kontext, auch für die UI-Tests der Desktop-App

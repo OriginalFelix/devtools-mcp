@@ -14,10 +14,10 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
 import systems.grebe.devtools.mcp.modules.graph.GraphReader.Direction;
-import systems.grebe.devtools.mcp.modules.graph.GraphStorage.Key;
-import systems.grebe.devtools.mcp.modules.graph.GraphStorage.Stored;
+import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Key;
+import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Stored;
 
-/** Tools des Graph-Moduls: Code-Graph je Projekt und Branch bauen (Neo4j oder Datei) und abfragen. */
+/** Tools des Graph-Moduls: Code-Graph je Projekt und Branch bauen (Graph-Storage des Backends oder Datei) und abfragen. */
 public class GraphTools {
 
     private static final String PROJECT_PARAM = "Projektname (Ordnername) oder Pfad; leer = Standardprojekt";
@@ -33,7 +33,7 @@ public class GraphTools {
     private static final Set<Relation> DEFAULT_PATH_RELATIONS = EnumSet.of(Relation.CALLS, Relation.INSTANTIATES,
             Relation.EXTENDS, Relation.IMPLEMENTS, Relation.OVERRIDES, Relation.HAS_TYPE, Relation.CONTAINS);
 
-    /** Schreibende Cypher-Klauseln – zusätzlich zum Lesemodus der Transaktion, für eine verständliche Meldung. */
+    /** Schreibende Cypher-Klauseln – zusätzlich zur lesenden Abfrage der Datenbank, für eine verständliche Meldung. */
     private static final Pattern WRITE_CLAUSE = Pattern.compile(
             "\\b(CREATE|MERGE|DELETE|DETACH|SET|REMOVE|DROP|LOAD\\s+CSV|FOREACH)\\b|\\bCALL\\s+(db|dbms|apoc)\\.(?!labels|"
                     + "relationshipTypes|propertyKeys|schema)", Pattern.CASE_INSENSITIVE);
@@ -55,7 +55,7 @@ public class GraphTools {
     @Tool(name = "build", description = "Baut den Code-Graphen eines Java-Projekts für den ausgecheckten Git-Branch "
             + "(tree-sitter-AST, lokal, ohne LLM): Pakete, Dateien, Klassen/Interfaces/Enums/Records, Methoden, "
             + "Konstruktoren, Felder, Imports, Vererbung, Überschreibungen, Aufrufgraph und Communities. Speichert ihn "
-            + "je Projekt und Branch (Standard: Neo4j-Datenbank). Baut nur neu, wenn sich Quelldateien geändert haben "
+            + "je Projekt und Branch (Standard: Graph-Datenbank des Backends). Baut nur neu, wenn sich Quelldateien geändert haben "
             + "(SHA-256), außer force=true; entfernt Graphen von Branches, die es in Git nicht mehr gibt. Liefert danach "
             + "den Bericht wie graph_report." + ShellHints.GRAPH)
     public String build(
@@ -200,7 +200,7 @@ public class GraphTools {
             @ToolParam(required = false, description = "Max. Quelltextzeilen insgesamt (Standard 400, max. 3000)")
             Integer maxLines) {
         GraphService.Opened g = open(project, null);
-        return g.note() + new GraphSource(g.reader(), service.key(project, null).root()).read(node, lines, outline,
+        return g.note() + new GraphSource(g.reader(), service.key(project, null).path()).read(node, lines, outline,
                 context == null ? 0 : Math.max(0, Math.min(context, 50)),
                 maxLines == null ? 400 : Math.max(1, Math.min(maxLines, 3000)));
     }
@@ -282,15 +282,15 @@ public class GraphTools {
         return g.note() + new GraphQueries(g.reader()).query(question, maxNodes == null ? 25 : Math.max(3, Math.min(maxNodes, 100)));
     }
 
-    @Tool(name = "cypher", description = "Lesende Cypher-Abfrage direkt auf dem Code-Graphen in Neo4j – für Fragen, die "
-            + "die anderen graph_*-Tools nicht abdecken (Zählungen, Muster, Metriken). $g ist bereits auf den Graphen "
-            + "von Projekt+Branch gesetzt und muss in jedem MATCH stehen. Modell: (:CodeNode:<Class|Interface|Enum|"
-            + "Record|Annotation|Constructor|Method|Field|Package|File|External>[:Type|:Member] {g, uid=g+'|'+id, id, kind, name, "
-            + "file, line, endLine, modifiers, signature, doc, community, t=Typ-ID}), Kanten :CALLS|INSTANTIATES|EXTENDS|"
-            + "IMPLEMENTS|OVERRIDES|HAS_TYPE|ANNOTATED_WITH|IMPORTS|CONTAINS {conf (null=EXTRACTED), score, count, line}, "
-            + "(:SourceFile {g, path, sha256, lines, parseErrors}). Beispiel: MATCH (m:Method {g:$g})<-[c:CALLS]-() "
-            + "RETURN m.id, sum(coalesce(c.count,1)) AS n ORDER BY n DESC LIMIT 10. Nur lesend; nur mit Neo4j-Ablage."
-            + ShellHints.GRAPH)
+    @Tool(name = "cypher", description = "Lesende OpenCypher-Abfrage direkt auf dem Code-Graphen in der Graph-Datenbank "
+            + "(ArcadeDB) – für Fragen, die die anderen graph_*-Tools nicht abdecken (Zählungen, Muster, Metriken). $g ist "
+            + "bereits auf den Graphen von Projekt+Branch gesetzt und muss in jedem MATCH stehen. Modell: Knotentypen Class, "
+            + "Interface, Enum, Record, Annotation (erben von Type), Constructor, Method, Field (erben von Member), Package, "
+            + "File, External – alle erben von CodeNode {g, uid=g+'|'+id, id, kind, name, file, line, endLine, modifiers, "
+            + "signature, doc, community, t=Typ-ID}; Kanten :CALLS|INSTANTIATES|EXTENDS|IMPLEMENTS|OVERRIDES|HAS_TYPE|"
+            + "ANNOTATED_WITH|IMPORTS|CONTAINS {conf (null=EXTRACTED), score, count, line}; (:SourceFile {g, path, sha256, "
+            + "lines, parseErrors}). Beispiel: MATCH (m:Method {g:$g})<-[c:CALLS]-() RETURN m.id, sum(coalesce(c.count,1)) "
+            + "AS n ORDER BY n DESC LIMIT 10. Nur lesend; nur mit Datenbank-Ablage." + ShellHints.GRAPH)
     public String cypher(
             @ToolParam(required = false, description = PROJECT_PARAM) String project,
             @ToolParam(description = "Cypher (nur lesend), muss $g verwenden") String query,
@@ -309,12 +309,8 @@ public class GraphTools {
             throw new IllegalArgumentException("Die Abfrage muss den Graphen über $g eingrenzen, z.B. "
                     + "MATCH (n:CodeNode {g: $g}) – sonst liefe sie über alle Projekte und Branches.");
         }
-        GraphReader reader = service.graph(project, branch);
-        if (!(reader instanceof Neo4jGraphReader neo)) {
-            throw new IllegalStateException("graph_cypher braucht die Neo4j-Ablage (Modul-Einstellung 'Ablage' = neo4j).");
-        }
         int max = limit == null ? 100 : Math.max(1, Math.min(limit, 1000));
-        Neo4jGraphReader.CypherResult r = neo.cypher(query, params, max);
+        GraphReader.QueryResult r = service.graph(project, branch).query(query, params, max);
         StringBuilder sb = new StringBuilder();
         sb.append(r.rows().size()).append(r.truncated() ? "+" : "").append(" Zeile(n) · ")
                 .append(String.join(" | ", r.columns())).append('\n');

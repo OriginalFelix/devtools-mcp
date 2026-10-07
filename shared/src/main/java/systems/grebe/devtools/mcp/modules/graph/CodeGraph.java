@@ -16,79 +16,79 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * {@link Confidence#INFERRED} ist eine Ableitung (z.B. über den Rückgabetyp einer Aufrufkette),
  * {@link Confidence#AMBIGUOUS} hat mehrere mögliche Ziele (z.B. Überladungen gleicher Stelligkeit).
  */
-final class CodeGraph {
+public final class CodeGraph {
 
-    static final String FORMAT = "devtools-fileinfo-graph";
-    static final int VERSION = 2;
+    public static final String FORMAT = "devtools-fileinfo-graph";
+    public static final int VERSION = 2;
 
-    enum Kind {
+    public enum Kind {
         PACKAGE, FILE, CLASS, INTERFACE, ENUM, RECORD, ANNOTATION, CONSTRUCTOR, METHOD, FIELD, EXTERNAL;
 
-        boolean isType() {
+        public boolean isType() {
             return this == CLASS || this == INTERFACE || this == ENUM || this == RECORD || this == ANNOTATION;
         }
 
-        boolean isMember() {
+        public boolean isMember() {
             return this == CONSTRUCTOR || this == METHOD || this == FIELD;
         }
 
-        String label() {
+        public String label() {
             return name().toLowerCase(Locale.ROOT);
         }
     }
 
-    enum Relation {
+    public enum Relation {
         CONTAINS, IMPORTS, EXTENDS, IMPLEMENTS, OVERRIDES, CALLS, INSTANTIATES, HAS_TYPE, ANNOTATED_WITH;
 
-        String label() {
+        public String label() {
             return name().toLowerCase(Locale.ROOT);
         }
     }
 
-    enum Confidence { EXTRACTED, INFERRED, AMBIGUOUS }
+    public enum Confidence { EXTRACTED, INFERRED, AMBIGUOUS }
 
     /** Knoten. {@code community} gilt für Typen und Member (vom Typ geerbt). */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record Node(String id, Kind kind, String name, String file, Integer line, Integer endLine, String modifiers,
+    public record Node(String id, Kind kind, String name, String file, Integer line, Integer endLine, String modifiers,
                 String signature, String doc, Integer community) {
 
-        Node withCommunity(Integer c) {
+        public Node withCommunity(Integer c) {
             return new Node(id, kind, name, file, line, endLine, modifiers, signature, doc, c);
         }
 
-        String location() {
+        public String location() {
             return file == null ? "" : file + (line == null ? "" : ":" + line);
         }
     }
 
     /** Gerichtete Kante; {@code score} fehlt bei 1.0, {@code count} (Anzahl Fundstellen) fehlt bei 1. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record Edge(String from, String to, Relation rel, Confidence conf, Double score, Integer count, Integer line) {
+    public record Edge(String from, String to, Relation rel, Confidence conf, Double score, Integer count, Integer line) {
 
-        double scoreValue() {
+        public double scoreValue() {
             return score == null ? 1.0 : score;
         }
 
-        int countValue() {
+        public int countValue() {
             return count == null ? 1 : count;
         }
     }
 
     /** Eingelesene Quelldatei mit SHA-256 – daran erkennt {@code graph_build}, ob neu gebaut werden muss. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record FileEntry(String path, String sha256, int lines, Boolean parseErrors) {
+    public record FileEntry(String path, String sha256, int lines, Boolean parseErrors) {
     }
 
-    record Community(int id, String label, int size, List<String> top) {
+    public record Community(int id, String label, int size, List<String> top) {
     }
 
     /** Inhalt eines gespeicherten Graphen; {@code branch}/{@code commit} fehlen außerhalb von Git. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record GraphFile(String format, int version, String project, String root, String branch, String commit,
+    public record GraphFile(String format, int version, String project, String root, String branch, String commit,
                      String builtAt, String generator, Map<String, Object> stats, List<FileEntry> files,
                      List<Community> communities, List<Node> nodes, List<Edge> edges) {
 
-        GraphFile withBranch(String newBranch, String newCommit) {
+        public GraphFile withBranch(String newBranch, String newCommit) {
             return new GraphFile(format, version, project, root, newBranch, newCommit, builtAt, generator, stats, files,
                     communities, nodes, edges);
         }
@@ -100,7 +100,7 @@ final class CodeGraph {
     private final Map<String, List<Edge>> in = new HashMap<>();
     private final Map<Integer, Community> communities = new HashMap<>();
 
-    CodeGraph(GraphFile data) {
+    public CodeGraph(GraphFile data) {
         this.data = data;
         for (Node n : data.nodes()) {
             byId.put(n.id(), n);
@@ -114,32 +114,32 @@ final class CodeGraph {
         }
     }
 
-    GraphFile data() {
+    public GraphFile data() {
         return data;
     }
 
-    List<Node> nodes() {
+    public List<Node> nodes() {
         return data.nodes();
     }
 
-    List<Edge> edges() {
+    public List<Edge> edges() {
         return data.edges();
     }
 
-    Node node(String id) {
+    public Node node(String id) {
         return byId.get(id);
     }
 
-    List<Edge> outgoing(String id) {
+    public List<Edge> outgoing(String id) {
         return out.getOrDefault(id, Collections.emptyList());
     }
 
-    List<Edge> incoming(String id) {
+    public List<Edge> incoming(String id) {
         return in.getOrDefault(id, Collections.emptyList());
     }
 
     /** Anzahl Kanten ohne {@code contains}. */
-    int degree(String id) {
+    public int degree(String id) {
         int d = 0;
         for (Edge e : outgoing(id)) {
             if (e.rel() != Relation.CONTAINS) {
@@ -154,18 +154,18 @@ final class CodeGraph {
         return d;
     }
 
-    Community community(Integer id) {
+    public Community community(Integer id) {
         return id == null ? null : communities.get(id);
     }
 
     /** Besitzer eines Members (Typ-ID vor dem '#'). */
-    static String ownerOf(String memberId) {
+    public static String ownerOf(String memberId) {
         int i = memberId.indexOf('#');
         return i < 0 ? memberId : memberId.substring(0, i);
     }
 
     /** Kurzname für Ausgaben: Typen einfach, Member als {@code Typ#name(…)}. */
-    static String shortName(Node n) {
+    public static String shortName(Node n) {
         if (n.kind().isMember()) {
             String owner = ownerOf(n.id());
             String simpleOwner = owner.substring(owner.lastIndexOf('.') + 1);

@@ -7,11 +7,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
-import systems.grebe.devtools.mcp.modules.graph.GraphStorage.Key;
-import systems.grebe.devtools.mcp.modules.graph.GraphStorage.Stored;
+import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Key;
+import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Stored;
 
 /** UI-Aktion „Indizieren“: baut den Code-Graphen eines Projekts für den ausgecheckten Branch. */
 final class GraphIndexAction implements ModuleAction {
@@ -20,6 +21,12 @@ final class GraphIndexAction implements ModuleAction {
     static final String FORCE = "force";
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
             .withZone(ZoneId.systemDefault());
+
+    private final Supplier<GraphProvider> database;
+
+    GraphIndexAction(Supplier<GraphProvider> database) {
+        this.database = database;
+    }
 
     @Override
     public String id() {
@@ -33,14 +40,14 @@ final class GraphIndexAction implements ModuleAction {
 
     @Override
     public String description() {
-        return "Baut den Code-Graphen des gewählten Projekts für den ausgecheckten Git-Branch und speichert ihn (Neo4j "
-                + "oder Datei, siehe Ablage). Ohne „Komplett neu“ nur, wenn sich Quelldateien geändert haben. Graphen "
-                + "gelöschter Branches werden dabei entfernt.";
+        return "Baut den Code-Graphen des gewählten Projekts für den ausgecheckten Git-Branch und speichert ihn "
+                + "(Graph-Datenbank des Backends oder Datei, siehe Ablage). Ohne „Komplett neu“ nur, wenn sich "
+                + "Quelldateien geändert haben. Graphen gelöschter Branches werden dabei entfernt.";
     }
 
     @Override
     public List<String> targets(ModuleConfig config) {
-        return new ArrayList<>(new GraphService(config).projects().all().keySet());
+        return new ArrayList<>(new GraphService(config, database).projects().all().keySet());
     }
 
     @Override
@@ -53,7 +60,7 @@ final class GraphIndexAction implements ModuleAction {
         if (target == null) {
             return null;
         }
-        GraphService service = new GraphService(config);
+        GraphService service = new GraphService(config, database);
         Key key;
         try {
             key = service.key(target, null);
@@ -88,7 +95,8 @@ final class GraphIndexAction implements ModuleAction {
         if (target == null || target.isBlank()) {
             return ActionResult.failed("Bitte ein Projekt wählen (Projekte in der Konfiguration eintragen und speichern).");
         }
-        GraphService.BuildResult r = new GraphService(config).build(target, null, flags.contains(FORCE), progress);
+        GraphService.BuildResult r = new GraphService(config, database).build(target, null, flags.contains(FORCE),
+                progress);
         Map<String, Object> s = r.graph().info().stats();
         String removed = r.removedBranches().isEmpty() ? ""
                 : " Entfernt (Branch gelöscht): " + String.join(", ", r.removedBranches()) + ".";
