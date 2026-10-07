@@ -652,7 +652,7 @@ nach Neustart). Einstellungen, Schlüssel und das eingebettete Backend liegen in
 ### Clients verbinden
 
 **„Client verbinden…“** in der App zeigt fertige Befehle und Konfigurationen für die gängigen Clients, mit Port, Token
-und dem Pfad des laufenden Jars. Zwei Wege:
+und dem Pfad des Jars für den stdio-Proxy. Zwei Wege:
 
 * **Streamable HTTP** – jeder MCP-Client (Claude Code, Claude Desktop, Cursor, VS Code, Hermes …):
   ```bash
@@ -662,8 +662,11 @@ und dem Pfad des laufenden Jars. Zwei Wege:
 * **stdio-Proxy** – für Claude Code, wenn neue E-Mails die Sitzung von sich aus anstoßen sollen (Channels, siehe
   unten). Der Proxy liest Port und Token selbst aus den Einstellungen:
   ```bash
-  claude mcp add devtools -- java -jar /pfad/zu/devtools-mcp-0.1.0-SNAPSHOT.jar stdio
+  claude mcp add devtools -- java -jar ~/.devtools-mcp/devtools-mcp.jar stdio
   ```
+  Die App legt beim Start eine Kopie ihres Jars unter diesem festen Pfad ab und hält sie aktuell (siehe
+  [unten](#fester-pfad-des-jars)). Unter Windows den absoluten Pfad angeben, z.B.
+  `C:\Users\<name>\.devtools-mcp\devtools-mcp.jar` – `~` setzt dort keine Shell ein.
 
 Nur einen der beiden Einträge unter demselben Namen anlegen – sonst gibt es jedes Tool doppelt. `claude mcp list`
 zeigt, ob die Verbindung steht.
@@ -676,7 +679,7 @@ eigene, vollständige App je Sitzung (zweiter Port, gesperrte Datenbank, doppelt
 das Jar einen **stdio-Proxy** mit, der an die laufende App andockt:
 
 ```bash
-claude mcp add devtools -- java -jar /pfad/zu/devtools-mcp.jar stdio
+claude mcp add devtools -- java -jar ~/.devtools-mcp/devtools-mcp.jar stdio
 ```
 
 ```bash
@@ -692,7 +695,7 @@ claude --dangerously-load-development-channels server:devtools
   und meldet `tools/list_changed`. Startet Claude Code vor der App, wartet `initialize` bis zu 15 Sekunden.
 * Port und Zugriffstoken liest der Proxy aus `~/.devtools-mcp/settings.json`, abweichend `--url http://127.0.0.1:8765`,
   `--token …` bzw. `DEVTOOLS_MCP_AUTH_TOKEN`. Gebraucht wird dieselbe Java-Version wie für die App; „Client
-  verbinden…“ zeigt den Befehl mit dem Pfad des laufenden Jars.
+  verbinden…“ zeigt den fertigen Befehl.
 * Ohne den Schalter `--dangerously-load-development-channels` funktioniert alles außer den Benachrichtigungen. Er ist
   nötig, weil Channels in Claude Code eine *Research Preview* sind, und wirkt nur interaktiv (nicht mit `-p`).
   Voraussetzungen von Claude Code: Anmeldung über claude.ai oder Console-API-Key (nicht Bedrock/Vertex/Foundry), in
@@ -704,6 +707,17 @@ claude --dangerously-load-development-channels server:devtools
   [Rückrufe](#rückrufe--ergebnis-lang-laufender-aktionen-an-das-llm) – liegengebliebene Rückrufe gehen an die nächste
   Sitzung, die sich verbindet.
 
+#### Fester Pfad des Jars
+
+Damit der Eintrag in Claude Code nicht vom Ablageort oder der Version des Jars abhängt, kopiert die App beim Start ihr
+eigenes Jar nach `~/.devtools-mcp/devtools-mcp.jar` (bzw. in den Ordner aus `DEVTOOLS_MCP_HOME`) – nur, wenn Größe
+oder Änderungszeit abweichen. Nach einem Update der App genügt also ein Neustart; der Eintrag bleibt gleich.
+
+* Ersetzt wird über eine temporäre Datei und ein Umbenennen – ein Proxy liest nie ein halb geschriebenes Jar.
+* Unter Windows sperrt ein laufender Proxy die Datei. Dann bleibt die alte Kopie, bis alle Proxys beendet sind (die
+  App versucht es jede Minute erneut, Hinweis im Log). Ein alter Proxy arbeitet mit der neuen App weiter.
+* Beim Start aus der IDE (`bootRun`) gibt es kein Jar und damit keine Kopie.
+
 ### Schnellstart: neue E-Mails in Claude Code
 
 1. App starten, Modul **Mail (IMAP)** einschalten und ein Konto anlegen: Server, Benutzer, Passwort – bzw. für
@@ -712,7 +726,7 @@ claude --dangerously-load-development-channels server:devtools
    *Überwachte Ordner* steht auf `INBOX`; *Verbindung testen* muss „verbunden, IDLE ja“ zeigen.
 2. In Claude Code den stdio-Proxy eintragen (einmalig) und Claude Code mit dem Channel starten:
    ```bash
-   claude mcp add devtools -- java -jar /pfad/zu/devtools-mcp-0.1.0-SNAPSHOT.jar stdio
+   claude mcp add devtools -- java -jar ~/.devtools-mcp/devtools-mcp.jar stdio
    ```
    ```bash
    claude --dangerously-load-development-channels server:devtools
@@ -1778,6 +1792,7 @@ desktop/
   core/ChannelEvents      ── Ereignisse an laufende Sitzungen; server/ChannelEventsController: GET /mcp/channel/events (SSE)
   channel/ChannelBridge   ── `java -jar … stdio`: stdio-Proxy zur App (Tools + Claude-Code-Channel), `… channel`: nur
                              Benachrichtigungen
+  channel/BridgeJar       ── Kopie des laufenden Jars unter ~/.devtools-mcp/devtools-mcp.jar (fester Pfad für den Proxy)
   modules/mail/           ── IMAP: MailTools/MailWriteTools, MailWatcher (IDLE/Abfrage, Meldungen), MailCommand, MailState,
                              MailSender (SMTP), MailOAuth (Exchange Online), MailAccountService (SPI für Plugins)
   remote/                 ── EmbeddedBackend + EmbeddedAccounts (erstes Konto), BackendConnection (Anmeldung,
