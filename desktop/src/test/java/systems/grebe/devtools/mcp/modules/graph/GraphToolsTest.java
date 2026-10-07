@@ -519,31 +519,18 @@ class GraphToolsTest {
         assertThat(tools().report(null, 5, null)).contains("Syntax- oder Lesefehlern", "src/main/java/com/acme/shop/Broken.java");
     }
 
-    /** Plattform → Ressourcenname der nativen Bibliothek (liegt in den bonede-Artefakten). */
+    /**
+     * Syntaxbäume nur über die Wasm-Module in Chicory: keine nativen Bibliotheken (Windows blockiert unsignierte DLLs,
+     * die JNI-Bindings org.treesitter stürzen bei vollem Heap mit SIGSEGV ab).
+     */
     @Test
-    void resolvesNativeLibraryPerPlatform() {
-        assertThat(TreeSitterNatives.resource("tree-sitter", "Mac OS X", "aarch64")).isEqualTo("lib/aarch64-macos-tree-sitter.dylib");
-        assertThat(TreeSitterNatives.resource("tree-sitter-java", "Linux", "amd64")).isEqualTo("lib/x86_64-linux-gnu-tree-sitter-java.so");
-        // Windows: eigene Kernbibliothek (bonede exportiert dort nur JNI), Grammatik weiter von bonede
-        assertThat(TreeSitterNatives.resource("tree-sitter", "Windows 11", "amd64")).isEqualTo("natives/x86_64-windows-tree-sitter.dll");
-        assertThat(TreeSitterNatives.resource("tree-sitter-java", "Windows 11", "amd64")).isEqualTo("lib/x86_64-windows-tree-sitter-java.dll");
-        assertThatThrownBy(() -> TreeSitterNatives.resource("tree-sitter", "Windows 11", "aarch64"))
-                .hasMessageContaining("nicht verfügbar");
-        for (String os : List.of("Mac OS X|aarch64", "Mac OS X|x86_64", "Linux|aarch64", "Linux|amd64", "Windows 11|amd64")) {
-            String[] p = os.split("\\|");
-            for (String lib : List.of("tree-sitter", "tree-sitter-java")) {
-                String res = TreeSitterNatives.resource(lib, p[0], p[1]);
-                assertThat(getClass().getClassLoader().getResource(res)).as(res).isNotNull();
-            }
-        }
-    }
-
-    /** Die JNI-Bindings (org.treesitter) stürzen bei vollem Heap mit SIGSEGV ab – sie dürfen nicht benutzt werden. */
-    @Test
-    void graphCodeDoesNotUseJniBindings() throws Exception {
-        try (Stream<Path> files = Files.walk(Path.of("src/main/java/systems/grebe/devtools/mcp/modules/graph"))) {
-            for (Path f : files.filter(p -> p.toString().endsWith(".java")).toList()) {
-                assertThat(Files.readString(f)).as(f.toString()).doesNotContain("import org.treesitter");
+    void graphCodeLoadsNoNativeLibraries() throws Exception {
+        for (String dir : List.of("modules/graph", "syntax")) {
+            try (Stream<Path> files = Files.walk(Path.of("src/main/java/systems/grebe/devtools/mcp", dir))) {
+                for (Path f : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                    assertThat(Files.readString(f)).as(f.toString()).doesNotContain("import org.treesitter",
+                            "jtreesitter", "java.lang.foreign", "System.load");
+                }
             }
         }
     }
