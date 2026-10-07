@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.revwalk.RevCommit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -31,6 +32,8 @@ class GitToolsExtendedTest {
     GitReadTools read;
     GitWriteTools write;
     GitIntegrateTools integrate;
+    GitCherryPickTools pick;
+    GitResolveTools resolve;
     GitDiscardTools discard;
 
     @BeforeEach
@@ -56,6 +59,8 @@ class GitToolsExtendedTest {
         read = new GitReadTools(s);
         write = new GitWriteTools(s);
         integrate = new GitIntegrateTools(s);
+        pick = new GitCherryPickTools(s);
+        resolve = new GitResolveTools(s);
         discard = new GitDiscardTools(s);
         return s;
     }
@@ -88,8 +93,20 @@ class GitToolsExtendedTest {
         var base = ModuleConfig.of(module.configSchema(), Map.of(GitModule.REPOSITORIES, parent.toString()));
         assertThat(module.createTools(base)).extracting(t -> t.getToolDefinition().name())
                 .contains("tags", "remotes", "stash_list", "reflog", "compare", "grep", "stash", "tag", "reset",
-                        "rename_branch")
+                        "rename_branch", "cherry_pick", "continue", "abort")
                 .doesNotContain("push", "merge", "restore");
+        var noPick = ModuleConfig.of(module.configSchema(), Map.of(GitModule.REPOSITORIES, parent.toString(),
+                GitModule.ALLOW_CHERRY_PICK, "false"));
+        assertThat(module.createTools(noPick)).extracting(t -> t.getToolDefinition().name())
+                .doesNotContain("cherry_pick", "continue", "abort");
+        var readOnly = ModuleConfig.of(module.configSchema(), Map.of(GitModule.REPOSITORIES, parent.toString(),
+                GitModule.ALLOW_WRITE, "false"));
+        assertThat(module.createTools(readOnly)).extracting(t -> t.getToolDefinition().name())
+                .doesNotContain("cherry_pick", "commit");
+        var integrateOnly = ModuleConfig.of(module.configSchema(), Map.of(GitModule.REPOSITORIES, parent.toString(),
+                GitModule.ALLOW_CHERRY_PICK, "false", GitModule.ALLOW_INTEGRATE, "true"));
+        assertThat(module.createTools(integrateOnly)).extracting(t -> t.getToolDefinition().name())
+                .contains("merge", "continue", "abort").doesNotContain("cherry_pick");
         var all = ModuleConfig.of(module.configSchema(), Map.of(GitModule.REPOSITORIES, parent.toString(),
                 GitModule.ALLOW_SYNC, "true", GitModule.ALLOW_INTEGRATE, "true", GitModule.ALLOW_DISCARD, "true"));
         assertThat(module.createTools(all)).extracting(t -> t.getToolDefinition().name())
@@ -179,13 +196,13 @@ class GitToolsExtendedTest {
         String out = integrate.merge(null, "other", null, null);
         assertThat(out).contains("Konflikte in:", "App.java", "git_continue");
         assertThat(read.status(null)).contains("Zustand: Merge mit Konflikten", "Konflikte (1)");
-        assertThatThrownBy(() -> integrate.continueOperation(null, null)).hasMessageContaining("ungelöste Konflikte");
+        assertThatThrownBy(() -> resolve.continueOperation(null, null)).hasMessageContaining("ungelöste Konflikte");
         assertThatThrownBy(() -> integrate.rebase(null, "other")).hasMessageContaining("Es läuft bereits");
 
-        assertThat(integrate.abort(null)).contains("abgebrochen");
+        assertThat(resolve.abort(null)).contains("abgebrochen");
         assertThat(read.status(null)).contains("sauber").doesNotContain("Zustand");
         assertThat(Files.readString(repo.resolve("App.java"))).contains("int a = 3");
-        assertThat(integrate.abort(null)).contains("Es läuft kein");
+        assertThat(resolve.abort(null)).contains("Es läuft kein");
     }
 
     @Test
@@ -199,7 +216,7 @@ class GitToolsExtendedTest {
         integrate.merge(null, "other", null, null);
         Files.writeString(repo.resolve("App.java"), "class App {\n  int a = 100;\n}\n");
         write.stage(null, List.of("App.java"));
-        assertThat(integrate.continueOperation(null, null)).contains("abgeschlossen: Commit", "Merge");
+        assertThat(resolve.continueOperation(null, null)).contains("abgeschlossen: Commit", "Merge");
         assertThat(read.log(null, null, null, null, 1, null, null)).contains("Merge");
         assertThat(read.status(null)).contains("sauber");
     }
@@ -223,11 +240,136 @@ class GitToolsExtendedTest {
 
         write.checkout(null, "main");
         String hash = read.log(null, "topic", null, null, 1, null, null).substring(0, 8);
-        assertThat(integrate.cherryPick(null, List.of(hash))).contains("Übernommen: " + hash, "Topic");
+        assertThat(pick.cherryPick(null, List.of(hash), null, null, null)).contains("Übernommen: " + hash, "Topic");
         assertThat(Files.exists(repo.resolve("t.txt"))).isTrue();
 
         assertThat(integrate.revert(null, "HEAD")).contains("Revert-Commit", "Revert \"Topic\"");
         assertThat(Files.exists(repo.resolve("t.txt"))).isFalse();
+    }
+
+    // ------------------------------------------------------------------ Cherry-Pick
+
+    /** Branch 'feature' ab dem zweiten Commit mit drei Commits; main bleibt stehen. */
+    private void featureBranch() throws Exception {
+        try (Git git = open()) {
+            git.checkout().setCreateBranch(true).setName("feature").call();
+            commit(git, "a.txt", "a", "A");
+            commit(git, "b.txt", "b", "B");
+            commit(git, "c.txt", "c", "C");
+            git.checkout().setName("main").call();
+        }
+    }
+
+    @Test
+    void cherryPickRangeKeepsOrderAndSkipsAlreadyApplied() throws Exception {
+        featureBranch();
+        String out = pick.cherryPick(null, List.of("feature~2..feature"), null, null, null);
+        assertThat(out.lines().toList()).hasSize(2);
+        assertThat(out).containsSubsequence("Übernommen", "B", "Übernommen", "C").doesNotContain("  A");
+        assertThat(read.log(null, null, null, null, 2, null, null)).containsSubsequence("C", "B");
+        assertThat(Files.exists(repo.resolve("a.txt"))).isFalse();
+
+        assertThat(pick.cherryPick(null, List.of("feature"), null, null, null))
+                .startsWith("Übersprungen (Änderungen bereits enthalten)");
+        assertThatThrownBy(() -> pick.cherryPick(null, List.of("feature..feature"), null, null, null))
+                .hasMessageContaining("enthält keine Commits");
+        assertThatThrownBy(() -> pick.cherryPick(null, List.of("main...feature"), null, null, null))
+                .hasMessageContaining("'a..b'");
+    }
+
+    @Test
+    void cherryPickRecordsOriginAndKeepsAuthor() throws Exception {
+        try (Git git = open()) {
+            git.checkout().setCreateBranch(true).setName("feature").call();
+            Files.writeString(repo.resolve("x.txt"), "x");
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("Fremder Commit").setAuthor("Anna", "anna@example.com").call();
+            git.checkout().setName("main").call();
+        }
+        pick.cherryPick(null, List.of("feature"), true, null, null);
+        try (Git git = open()) {
+            RevCommit head = git.log().setMaxCount(1).call().iterator().next();
+            String full = git.getRepository().resolve("feature").name();
+            assertThat(head.getFullMessage()).contains("Fremder Commit", "(cherry picked from commit " + full + ")");
+            assertThat(head.getAuthorIdent().getName()).isEqualTo("Anna");
+            assertThat(head.getCommitterIdent().getName()).isEqualTo("Tester");
+        }
+        assertThatThrownBy(() -> pick.cherryPick(null, List.of("feature"), true, true, null))
+                .hasMessageContaining("noCommit");
+    }
+
+    @Test
+    void cherryPickNoCommitOnlyStages() throws Exception {
+        featureBranch();
+        String head = read.log(null, null, null, null, 1, null, null);
+        assertThat(pick.cherryPick(null, List.of("feature~1", "feature"), null, true, null))
+                .contains("Gestaged:", "  B", "  C", "git_commit");
+        assertThat(read.log(null, null, null, null, 1, null, null)).isEqualTo(head);
+        assertThat(read.status(null)).contains("b.txt", "c.txt");
+    }
+
+    @Test
+    void cherryPickMergeCommitNeedsMainline() throws Exception {
+        featureBranch();
+        try (Git git = open()) {
+            git.checkout().setCreateBranch(true).setName("merged").call();
+            commit(git, "m.txt", "m", "Auf merged");
+            git.merge().include(git.getRepository().resolve("feature")).setMessage("Merge feature").call();
+            git.checkout().setName("main").call();
+        }
+        assertThatThrownBy(() -> pick.cherryPick(null, List.of("merged"), null, null, null))
+                .hasMessageContaining("Merge-Commit", "mainline");
+        assertThatThrownBy(() -> pick.cherryPick(null, List.of("merged"), null, null, 3))
+                .hasMessageContaining("nur 2 Eltern");
+        assertThat(read.log(null, null, null, null, 1, null, null)).contains("Wert geändert");
+
+        assertThat(pick.cherryPick(null, List.of("merged"), null, null, 1)).contains("Übernommen", "Merge feature");
+        assertThat(Files.exists(repo.resolve("a.txt"))).isTrue();
+        assertThat(Files.exists(repo.resolve("m.txt"))).isFalse();
+    }
+
+    @Test
+    void cherryPickConflictListsRestAndContinueKeepsAuthorAndOrigin() throws Exception {
+        try (Git git = open()) {
+            git.checkout().setCreateBranch(true).setName("other").call();
+            Files.writeString(repo.resolve("App.java"), "class App {\n  int a = 99;\n}\n");
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("Andere Änderung").setAuthor("Anna", "anna@example.com").call();
+            commit(git, "danach.txt", "d", "Danach");
+            git.checkout().setName("main").call();
+            commit(git, "App.java", "class App {\n  int a = 3;\n}\n", "Haupt-Änderung");
+        }
+        String rest = read.log(null, "other", null, null, 1, null, null).substring(0, 8);
+        String out = pick.cherryPick(null, List.of("other~1", "other"), true, null, null);
+        assertThat(out).contains("Konflikt beim Übernehmen", "Andere Änderung", "App.java",
+                "Noch nicht übernommen (danach erneut git_cherry_pick): " + rest, "git_continue");
+        assertThat(read.status(null)).contains("Cherry-Pick mit Konflikten");
+        assertThatThrownBy(() -> pick.cherryPick(null, List.of("other"), null, null, null))
+                .hasMessageContaining("Es läuft bereits");
+
+        Files.writeString(repo.resolve("App.java"), "class App {\n  int a = 100;\n}\n");
+        write.stage(null, List.of("App.java"));
+        assertThat(resolve.continueOperation(null, null)).contains("Cherry-Pick abgeschlossen", "Andere Änderung");
+        try (Git git = open()) {
+            RevCommit head = git.log().setMaxCount(1).call().iterator().next();
+            assertThat(head.getAuthorIdent().getName()).isEqualTo("Anna");
+            assertThat(head.getFullMessage()).contains("(cherry picked from commit").doesNotContain("# Conflicts", "#\t");
+        }
+        assertThat(pick.cherryPick(null, List.of(rest), null, null, null)).contains("Übernommen", "Danach");
+    }
+
+    @Test
+    void cherryPickConflictAbortRestores() throws Exception {
+        try (Git git = open()) {
+            git.checkout().setCreateBranch(true).setName("other").call();
+            commit(git, "App.java", "class App {\n  int a = 99;\n}\n", "Andere Änderung");
+            git.checkout().setName("main").call();
+            commit(git, "App.java", "class App {\n  int a = 3;\n}\n", "Haupt-Änderung");
+        }
+        pick.cherryPick(null, List.of("other"), null, null, null);
+        assertThat(resolve.abort(null)).contains("Cherry-Pick abgebrochen");
+        assertThat(read.status(null)).contains("sauber");
+        assertThat(Files.readString(repo.resolve("App.java"))).contains("int a = 3");
     }
 
     // ------------------------------------------------------------------ Verwerfen
