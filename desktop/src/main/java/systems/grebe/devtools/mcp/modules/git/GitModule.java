@@ -82,8 +82,11 @@ public class GitModule implements ToolModule {
                 ebenfalls erkannt. Nur dort aufgeführte Repositories sind freigegeben.
                 - Liegt ein Repository nicht in dieser Liste („nicht freigegeben“), dem Nutzer das sagen und ihm \
                 anbieten, es in der DevTools-App freizugeben; erst auf seinen Wunsch die Shell verwenden.
-                - Fehlt ein schreibendes Tool, ist sein Schalter in der App aus (Schreiben, Remote-Abgleich, Integrieren, \
-                Verwerfen) – dann nachfragen statt per Shell auszuweichen.
+                - Fehlt eines der Tools aus der Tabelle (z.B. `git_push`), ist sein Schalter in der App aus: \
+                `allowWrite` (Branches, Stage, Commit, Stash, Tag), `allowSync` (`git_fetch`, `git_pull`, `git_push`), \
+                `allowIntegrate` (Merge, Rebase, Cherry-Pick, Revert, Continue/Abort), `allowDiscard` (Restore, \
+                Löschen). Dann NICHT per Shell ausweichen, sondern mit `permissions_request` (z.B. `tool=git_push`, \
+                kurze Begründung) beim Nutzer anfragen; lehnt er ab, ihm sagen, was fehlt.
                 - Konflikte nach Merge/Rebase/Cherry-Pick: `git_status` zeigt Dateien und Zustand; Dateien bereinigen, \
                 `git_stage`, dann `git_continue` – oder `git_abort` für den Ausgangszustand.
                 - `git_push` und Verwerfendes (`git_restore`, `git_reset mode=hard`, Löschen) nur auf ausdrücklichen \

@@ -111,13 +111,29 @@ final class GitSupport {
         }
         Path p;
         try {
-            p = Path.of(wanted).toAbsolutePath().normalize();
+            p = realPath(Path.of(wanted));
         } catch (InvalidPathException e) {
             return null;
         }
         // der speziellste Worktree gewinnt (Worktrees liegen oft im Haupt-Repository, z.B. .claude/worktrees)
-        return all.stream().filter(w -> p.startsWith(w.dir()))
+        return all.stream().filter(w -> p.startsWith(realPath(w.dir())))
                 .max(Comparator.comparingInt(w -> w.dir().getNameCount())).orElse(null);
+    }
+
+    /**
+     * Pfad mit aufgelösten Symlinks (z.B. macOS {@code /var} → {@code /private/var}; git schreibt den echten Pfad
+     * nach {@code gitdir}); existiert der Pfad nicht, wird der nächste vorhandene Elternordner aufgelöst.
+     */
+    private static Path realPath(Path p) {
+        Path abs = p.toAbsolutePath().normalize();
+        for (Path base = abs; base != null; base = base.getParent()) {
+            try {
+                return base.toRealPath().resolve(base.relativize(abs));
+            } catch (IOException e) {
+                // weiter mit dem Elternordner
+            }
+        }
+        return abs;
     }
 
     /** Verknüpfte Worktrees aller freigegebenen Repositories (aus {@code .git/worktrees/*}/gitdir). */
