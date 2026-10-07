@@ -67,6 +67,8 @@ public class GraphModule implements ToolModule {
                 `lines='von-bis'` – statt ganzer Dateien. Große Typen/Dateien kommen als Gliederung.
                 - `graph_explain`: alles zu einem Knoten; `graph_neighbors` (direction=in, relations=[calls]): wer ruft das \
                 auf (statt `grep` nach Aufrufstellen); `graph_path`: wie hängen zwei Stellen zusammen.
+                - Gibt es für das Projekt noch keinen Graphen (ausgecheckter Branch), bauen die Abfrage-Tools ihn beim ersten \
+                Aufruf automatisch und suchen dann – vorher kein `graph_build` nötig.
                 - `graph_build`: nach größeren Änderungen; baut nur neu, wenn sich Quelldateien geändert haben.
                 - Graphen gibt es je Git-Branch: ohne `branch` gilt der ausgecheckte; `graph_branches` listet die \
                 gespeicherten, mit `branch` lassen sich andere abfragen (z.B. Vergleich mit master).

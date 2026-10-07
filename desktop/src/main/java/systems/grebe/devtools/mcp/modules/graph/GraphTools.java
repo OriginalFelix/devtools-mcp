@@ -44,8 +44,12 @@ public class GraphTools {
         this.service = service;
     }
 
-    private GraphQueries queries(String project, String branch) {
-        return new GraphQueries(service.graph(project, branch));
+    /**
+     * Graph zum Abfragen; fehlt der des ausgecheckten Branches, wird er gebaut und {@link GraphService.Opened#note()}
+     * meldet das in der Ausgabe.
+     */
+    private GraphService.Opened open(String project, String branch) {
+        return service.open(project, branch);
     }
 
     @Tool(name = "build", description = "Baut den Code-Graphen eines Java-Projekts für den ausgecheckten Git-Branch "
@@ -108,7 +112,8 @@ public class GraphTools {
             @ToolParam(required = false, description = PROJECT_PARAM) String project,
             @ToolParam(required = false, description = "Einträge je Abschnitt (Standard 10)") Integer top,
             @ToolParam(required = false, description = BRANCH_PARAM) String branch) {
-        return queries(project, branch).report(top == null ? 10 : Math.max(1, Math.min(top, 50)));
+        GraphService.Opened g = open(project, branch);
+        return g.note() + new GraphQueries(g.reader()).report(top == null ? 10 : Math.max(1, Math.min(top, 50)));
     }
 
     @Tool(name = "find", description = "Sucht Knoten im Code-Graphen nach Namen (exakt vor Präfix vor Teilstring, '*' als "
@@ -121,14 +126,15 @@ public class GraphTools {
                     + "constructor, field, file, external") String kind,
             @ToolParam(required = false, description = "Max. Treffer (Standard 30)") Integer limit,
             @ToolParam(required = false, description = BRANCH_PARAM) String branch) {
-        GraphQueries q = queries(project, branch);
+        GraphService.Opened g = open(project, branch);
+        GraphQueries q = new GraphQueries(g.reader());
         Kind k = GraphQueries.kind(kind);
         int max = limit == null ? 30 : Math.max(1, Math.min(limit, 200));
         List<Node> hits = q.find(name, k, max);
         if (hits.isEmpty()) {
-            return "Keine Treffer für '" + name + "'" + (k == null ? "" : " (Art " + k.label() + ")") + ".";
+            return g.note() + "Keine Treffer für '" + name + "'" + (k == null ? "" : " (Art " + k.label() + ")") + ".";
         }
-        StringBuilder sb = new StringBuilder(hits.size() + " Treffer:\n");
+        StringBuilder sb = new StringBuilder(g.note()).append(hits.size()).append(" Treffer:\n");
         hits.forEach(n -> sb.append(q.line(n)).append('\n'));
         return sb.toString().stripTrailing();
     }
@@ -139,7 +145,8 @@ public class GraphTools {
             + "Namensmuster ('*Dao') oder Pfad/Pfadmuster ('shop/repo/*.java'); related = Knoten, deren verbundene "
             + "Dateien gesucht sind (direction=in: wer verwendet/ruft/implementiert ihn, out: was er verwendet) mit "
             + "Begründung je Datei. Danach mit graph_read nur die nötigen Stellen lesen. Statt `find`, `grep -rl`, "
-            + "Glob oder dem Öffnen vieler Dateien verwenden." + ShellHints.GRAPH)
+            + "Glob oder dem Öffnen vieler Dateien verwenden. Fehlt der Graph des Projekts, wird er automatisch gebaut "
+            + "– vorher kein graph_build nötig." + ShellHints.GRAPH)
     public String files(
             @ToolParam(required = false, description = PROJECT_PARAM) String project,
             @ToolParam(required = false, description = "Suchtext: Name, Stichworte, '*'-Muster oder Pfad(muster); "
@@ -160,13 +167,14 @@ public class GraphTools {
             throw new IllegalArgumentException("Genau eins angeben: query (Name, Stichworte, Muster, Pfad) oder related "
                     + "(Knoten, deren verbundene Dateien gesucht sind).");
         }
-        GraphFiles f = new GraphFiles(service.graph(project, branch));
+        GraphService.Opened g = open(project, branch);
+        GraphFiles f = new GraphFiles(g.reader());
         boolean includeTests = !Boolean.FALSE.equals(tests);
         int max = limit == null ? 20 : Math.max(1, Math.min(limit, 200));
         if (hasQuery) {
-            return f.search(query, includeTests, max);
+            return g.note() + f.search(query, includeTests, max);
         }
-        return f.related(related, direction(direction, Direction.BOTH),
+        return g.note() + f.related(related, direction(direction, Direction.BOTH),
                 GraphQueries.relations(relations, GraphFiles.DEFAULT_RELATIONS),
                 depth == null ? 1 : Math.max(1, Math.min(depth, 3)), includeTests, max);
     }
@@ -177,7 +185,8 @@ public class GraphTools {
             + "Member mit Signatur, Javadoc-Satz und Zeilenbereich, ohne Rümpfe); outline=true/false erzwingt das. "
             + "lines='von-bis' liest einen Bereich der Datei des Knotens. Ausgabe mit Zeilennummern. Mehrere Knoten in "
             + "einem Aufruf möglich. Liest das Arbeitsverzeichnis (ausgecheckter Branch). Statt `cat`/`sed -n` oder dem "
-            + "vollständigen Lesen großer Dateien verwenden." + ShellHints.GRAPH)
+            + "vollständigen Lesen großer Dateien verwenden. Fehlt der Graph des Projekts, wird er automatisch gebaut."
+            + ShellHints.GRAPH)
     public String read(
             @ToolParam(required = false, description = PROJECT_PARAM) String project,
             @ToolParam(description = "Ein oder mehrere Knoten – " + NODE_PARAM + ", z.B. ['OrderService#save', "
@@ -190,8 +199,8 @@ public class GraphTools {
                     + "für Javadoc/Annotationen)") Integer context,
             @ToolParam(required = false, description = "Max. Quelltextzeilen insgesamt (Standard 400, max. 3000)")
             Integer maxLines) {
-        GraphReader reader = service.graph(project, null);
-        return new GraphSource(reader, service.key(project, null).root()).read(node, lines, outline,
+        GraphService.Opened g = open(project, null);
+        return g.note() + new GraphSource(g.reader(), service.key(project, null).root()).read(node, lines, outline,
                 context == null ? 0 : Math.max(0, Math.min(context, 50)),
                 maxLines == null ? 400 : Math.max(1, Math.min(maxLines, 3000)));
     }
@@ -214,8 +223,9 @@ public class GraphTools {
             @ToolParam(description = NODE_PARAM) String node,
             @ToolParam(required = false, description = "Max. Einträge je Relation (Standard 25)") Integer limit,
             @ToolParam(required = false, description = BRANCH_PARAM) String branch) {
-        GraphQueries q = queries(project, branch);
-        return q.explain(q.resolve(node), limit == null ? 25 : Math.max(1, Math.min(limit, 200)));
+        GraphService.Opened g = open(project, branch);
+        GraphQueries q = new GraphQueries(g.reader());
+        return g.note() + q.explain(q.resolve(node), limit == null ? 25 : Math.max(1, Math.min(limit, 200)));
     }
 
     @Tool(name = "neighbors", description = "Durchläuft den Code-Graphen ab einem Knoten als Baum – z.B. wer eine Methode "
@@ -234,8 +244,9 @@ public class GraphTools {
             @ToolParam(required = false, description = BRANCH_PARAM) String branch) {
         Direction dir = direction(direction, Direction.OUT);
         Set<Relation> rels = GraphQueries.relations(relations, DEFAULT_NEIGHBOR_RELATIONS);
-        GraphQueries q = queries(project, branch);
-        return q.neighbors(q.resolve(node), dir, rels, depth == null ? 1 : Math.max(1, Math.min(depth, 6)),
+        GraphService.Opened g = open(project, branch);
+        GraphQueries q = new GraphQueries(g.reader());
+        return g.note() + q.neighbors(q.resolve(node), dir, rels, depth == null ? 1 : Math.max(1, Math.min(depth, 6)),
                 limit == null ? 80 : Math.max(1, Math.min(limit, 500)));
     }
 
@@ -251,8 +262,9 @@ public class GraphTools {
             List<String> relations,
             @ToolParam(required = false, description = "Max. Schritte (Standard 8)") Integer maxDepth,
             @ToolParam(required = false, description = BRANCH_PARAM) String branch) {
-        GraphQueries q = queries(project, branch);
-        return q.path(q.resolve(from), q.resolve(to), GraphQueries.relations(relations, DEFAULT_PATH_RELATIONS),
+        GraphService.Opened g = open(project, branch);
+        GraphQueries q = new GraphQueries(g.reader());
+        return g.note() + q.path(q.resolve(from), q.resolve(to), GraphQueries.relations(relations, DEFAULT_PATH_RELATIONS),
                 Boolean.TRUE.equals(directed), maxDepth == null ? 8 : Math.max(1, Math.min(maxDepth, 20)));
     }
 
@@ -266,7 +278,8 @@ public class GraphTools {
             String question,
             @ToolParam(required = false, description = "Max. Knoten im Teilgraphen (Standard 25)") Integer maxNodes,
             @ToolParam(required = false, description = BRANCH_PARAM) String branch) {
-        return queries(project, branch).query(question, maxNodes == null ? 25 : Math.max(3, Math.min(maxNodes, 100)));
+        GraphService.Opened g = open(project, branch);
+        return g.note() + new GraphQueries(g.reader()).query(question, maxNodes == null ? 25 : Math.max(3, Math.min(maxNodes, 100)));
     }
 
     @Tool(name = "cypher", description = "Lesende Cypher-Abfrage direkt auf dem Code-Graphen in Neo4j – für Fragen, die "
