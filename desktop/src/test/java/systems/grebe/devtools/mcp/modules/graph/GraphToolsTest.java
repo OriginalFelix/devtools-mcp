@@ -225,6 +225,118 @@ class GraphToolsTest {
     }
 
     @Test
+    void filesToolFindsFilesWithLineRanges() {
+        GraphTools t = tools();
+        t.build(null, false);
+        String byName = t.files(null, "OrderRepository", null, null, null, null, null, null, null);
+        assertThat(byName).startsWith("4 Dateien (Stichworte [orderrepository, order, repository]):\n"
+                        + "src/main/java/com/acme/shop/repo/OrderRepository.java  (10 Z.)\n"
+                        + "  OrderRepository [interface] Z5-9 · OrderRepository#findById(long) Z6 · "
+                        + "OrderRepository#save(Order) Z8")
+                .contains("JpaOrderRepository#save(Order) Z12-15", "graph_read");
+
+        assertThat(t.files(null, "shop/repo/*.java", null, null, null, null, null, null, null))
+                .startsWith("2 Dateien (Pfad):\n")
+                .contains("src/main/java/com/acme/shop/repo/OrderRepository.java  (10 Z.)\n"
+                        + "  OrderRepository [interface] Z5-9\n")
+                .doesNotContain("OrderService");
+        assertThat(t.files(null, "OrderService.java", null, null, null, null, null, null, null))
+                .startsWith("1 Datei (Pfad):\nsrc/main/java/com/acme/shop/OrderService.java  (45 Z.)");
+        assertThat(t.files(null, "*Repository", null, null, null, null, null, 2, null))
+                .startsWith("3 Dateien (Namensmuster, die besten 2):\n");
+        assertThat(t.files(null, "Nirgendwo", null, null, null, null, null, null, null)).startsWith("Keine Datei passt");
+
+        // Wer verwendet OrderRepository – mit Begründung und Zeile je Datei
+        String users = t.files(null, null, List.of("OrderRepository"), "in", null, null, null, null, null);
+        assertThat(users).contains("Ausgang:\n  com.acme.shop.repo.OrderRepository  [interface]  Z5-9\n",
+                        "2 verbundene Dateien (verwenden den Ausgang):",
+                        "  OrderService#save(Order) --calls--> OrderRepository#save(Order) (Z25)",
+                        "  JpaOrderRepository --implements--> OrderRepository (Z6)")
+                .doesNotContain("Order.java ");
+
+        // Was OrderService#save über zwei Ebenen aufruft; Aufrufe in der eigenen Datei zählen mit
+        String deep = t.files(null, null, List.of("OrderService#save"), "out", List.of("calls"), 2, null, null, null);
+        assertThat(deep).contains("vom Ausgang verwendet, Tiefe 2",
+                "src/main/java/com/acme/shop/OrderService.java  (45 Z.)  [Ausgangsdatei]",
+                "OrderService#save(Order) --calls--> Money#add(int) (INFERRED 0.8, Z26)");
+
+        assertThatThrownBy(() -> t.files(null, "x", List.of("OrderService"), null, null, null, null, null, null))
+                .hasMessageContaining("Genau eins angeben");
+        assertThatThrownBy(() -> t.files(null, null, null, null, null, null, null, null, null))
+                .hasMessageContaining("Genau eins angeben");
+    }
+
+    @Test
+    void filesToolCanHideTests() throws Exception {
+        Path test = project.resolve("src/test/java/com/acme/shop/OrderServiceTest.java");
+        Files.createDirectories(test.getParent());
+        Files.writeString(test, "package com.acme.shop;\nclass OrderServiceTest { void saves() { new OrderService(null)"
+                + ".save(null); } }\n");
+        GraphTools t = tools();
+        t.build(null, false);
+        assertThat(t.files(null, null, List.of("OrderService#save"), "in", null, null, null, null, null))
+                .contains("src/test/java/com/acme/shop/OrderServiceTest.java");
+        assertThat(t.files(null, null, List.of("OrderService#save"), "in", null, null, false, null, null))
+                .doesNotContain("OrderServiceTest");
+        assertThat(t.files(null, "OrderService", null, null, null, null, false, null, null))
+                .doesNotContain("OrderServiceTest");
+    }
+
+    @Test
+    void readToolReadsMembersOutlinesAndRanges() {
+        GraphTools t = tools();
+        t.build(null, false);
+        assertThat(t.read(null, List.of("OrderService#save"), null, null, null, null)).isEqualTo("""
+                src/main/java/com/acme/shop/OrderService.java:24-30  (45 Z.)  com.acme.shop.OrderService#save(Order) [method]
+                24\t    public void save(Order o) {
+                25\t        repo.save(o);
+                26\t        o.total().add(1);
+                27\t        validate(o);
+                28\t        Util.check(o);
+                29\t        printer.print(o);
+                30\t    }""");
+
+        // Überladungen und mehrere Knoten in einem Aufruf, mit Kontextzeilen
+        String several = t.read(null, List.of("OrderRepository#save", "Printer#print"), null, null, 1, null);
+        assertThat(several).contains("OrderRepository.java:7-9  (10 Z.)", "8\t    void save(Order o);",
+                "com.acme.shop.Printer#print(Order) [method]", "com.acme.shop.Printer#print(String) [method]",
+                "24\t    void print(String s) {").doesNotContain("Achtung");
+
+        // Gliederung: Signaturen und Zeilenbereiche ohne Rümpfe
+        String outline = t.read(null, List.of("OrderService.java"), null, true, null, null);
+        assertThat(outline).startsWith("src/main/java/com/acme/shop/OrderService.java  (45 Z.)  Gliederung\n"
+                        + "Z7-40 public class OrderService  – Service für Aufträge.\n"
+                        + "  Z8 private final OrderRepository repo\n")
+                .contains("  Z24-30 public void save(Order o)\n", "Z42-44 interface Service\n  Z43 void start()\n")
+                .doesNotContain("repo.save(o)");
+
+        assertThat(t.read(null, List.of("Order.java"), "5+3", null, null, null)).isEqualTo("""
+                src/main/java/com/acme/shop/Order.java:5-7  (32 Z.)
+                5\t    Money total() {
+                6\t        return new Money();
+                7\t    }""");
+
+        assertThat(t.read(null, List.of("OrderService"), null, null, null, 5))
+                .contains("7\tpublic class OrderService implements Service {", "11\t")
+                .endsWith("… abgeschnitten nach Zeile 11 (maxLines erhöhen oder mit lines='12-40' weiterlesen)");
+
+        assertThatThrownBy(() -> t.read(null, List.of("java.util.List"), null, null, null, null))
+                .hasMessageContaining("keinen Quelltext");
+        assertThatThrownBy(() -> t.read(null, List.of("Order.java"), "40-50", null, null, null))
+                .hasMessageContaining("außerhalb der Datei (1-32)");
+    }
+
+    @Test
+    void readToolWarnsWhenFileChangedSinceBuild() throws Exception {
+        GraphTools t = tools();
+        t.build(null, false);
+        Path file = project.resolve("src/main/java/com/acme/shop/repo/OrderRepository.java");
+        Files.writeString(file, "// neu\n// noch neuer\n" + Files.readString(file));
+        assertThat(t.read(null, List.of("OrderRepository#save"), null, null, null, null))
+                .contains("Achtung: Datei wurde seit graph_build geändert");
+    }
+
+    @Test
     void queryMatchesWordFormsAndPrefersProductionCode() throws Exception {
         assertThat(GraphQueries.stem("gebucht")).isEqualTo(GraphQueries.stem("buchen")).isEqualTo("buch");
         assertThat(GraphQueries.stem("gespeichert")).isEqualTo(GraphQueries.stem("speichern"));

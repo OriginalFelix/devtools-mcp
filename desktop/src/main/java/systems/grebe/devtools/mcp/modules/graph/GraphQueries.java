@@ -70,19 +70,29 @@ final class GraphQueries {
      * @throws IllegalArgumentException mit Kandidatenliste, wenn nichts oder mehrere Knoten passen
      */
     Node resolve(String spec) {
-        List<Node> hits = candidates(spec);
+        List<Node> hits = resolveAll(spec);
         if (hits.size() == 1) {
             return hits.getFirst();
         }
+        List<String> ids = hits.stream().limit(15).map(n -> n.id() + " [" + n.kind().label() + "]").toList();
+        throw new IllegalArgumentException("'" + spec + "' ist mehrdeutig (" + hits.size() + " Treffer): "
+                + String.join(", ", ids) + (hits.size() > 15 ? " …" : "") + ". Genaue ID angeben.");
+    }
+
+    /**
+     * Alle Knoten zu einer Knotenangabe (z.B. sämtliche Überladungen von {@code Typ#methode}).
+     *
+     * @throws IllegalArgumentException mit ähnlichen Namen, wenn nichts passt
+     */
+    List<Node> resolveAll(String spec) {
+        List<Node> hits = candidates(spec);
         if (hits.isEmpty()) {
             List<Node> similar = find(spec.replaceAll("[#(].*", "").replaceAll(".*\\.", ""), null, 8);
             throw new IllegalArgumentException("Kein Knoten '" + spec + "' im Graphen."
                     + (similar.isEmpty() ? " Mit graph_find nach dem Namen suchen." : " Ähnlich: "
                     + String.join(", ", similar.stream().map(Node::id).toList()) + ". Genaue ID aus graph_find übernehmen."));
         }
-        List<String> ids = hits.stream().limit(15).map(n -> n.id() + " [" + n.kind().label() + "]").toList();
-        throw new IllegalArgumentException("'" + spec + "' ist mehrdeutig (" + hits.size() + " Treffer): "
-                + String.join(", ", ids) + (hits.size() > 15 ? " …" : "") + ". Genaue ID angeben.");
+        return hits;
     }
 
     private List<Node> candidates(String raw) {
@@ -97,6 +107,12 @@ final class GraphQueries {
         Node file = g.node("file:" + spec.replace('\\', '/'));
         if (file != null) {
             return List.of(file);
+        }
+        if (spec.endsWith(".java")) {
+            List<Node> files = g.filesNamed(spec.replace('\\', '/'));
+            if (!files.isEmpty()) {
+                return files; // 'OrderService.java' – sonst hielte die Auflösung 'java' für einen Member
+            }
         }
         String typePart;
         String memberPart;
@@ -255,7 +271,7 @@ final class GraphQueries {
         return sb.toString();
     }
 
-    private static String edgeTag(Edge e) {
+    static String edgeTag(Edge e) {
         StringBuilder sb = new StringBuilder();
         if (e.conf() != Confidence.EXTRACTED) {
             sb.append(e.conf().name());
@@ -603,61 +619,11 @@ final class GraphQueries {
                     + "Fachbegriffe angeben, z.B. 'Wie wird ein Auftrag gespeichert?' → Begriffe auftrag, gespeichert.");
         }
         // Kandidaten: Name/ID/Doku enthält einen Begriff oder dessen Stamm (ein Stamm ist immer Teil des Namens)
-        Set<String> needles = new LinkedHashSet<>(terms);
-        terms.forEach(t -> {
-            String stem = stem(t);
-            if (stem != null) {
-                needles.add(stem);
-            }
-        });
-        List<Node> candidates = g.search(new NodeSearch(EnumSet.complementOf(EnumSet.of(Kind.PACKAGE, Kind.FILE,
-                Kind.EXTERNAL)), new ArrayList<>(needles), true, null, null, MAX_CANDIDATES));
-        record Scored(Node n, double score) {
-        }
-        List<Scored> raw = new ArrayList<>();
-        for (Node n : candidates) {
-            double s = 0;
-            Set<String> nameParts = new HashSet<>(terms(n.name()));
-            String nameLower = n.name().toLowerCase(Locale.ROOT);
-            String idLower = n.id().toLowerCase(Locale.ROOT);
-            String doc = n.doc() == null ? "" : n.doc().toLowerCase(Locale.ROOT);
-            for (String t : terms) {
-                String stem = stem(t);
-                if (nameLower.equals(t)) {
-                    s += 6;
-                } else if (nameParts.contains(t)) {
-                    s += 3;
-                } else if (nameLower.contains(t)) {
-                    s += 2;
-                } else if (stem != null && nameParts.stream().anyMatch(part -> stem.equals(stem(part)))) {
-                    s += 2; // gebucht ~ buchen, gespeichert ~ speichern
-                } else if (idLower.contains(t)) {
-                    s += 0.5;
-                }
-                if (doc.contains(t)) {
-                    s += 1;
-                }
-            }
-            if (s > 0) {
-                raw.add(new Scored(n, s));
-            }
-        }
-        if (raw.isEmpty()) {
+        List<Scored> scored = rank(terms, needles(terms), EnumSet.complementOf(EnumSet.of(Kind.PACKAGE,
+                Kind.FILE, Kind.EXTERNAL)));
+        if (scored.isEmpty()) {
             return "Kein Knoten passt zu " + terms + ". Mit graph_find nach Namensteilen suchen.";
         }
-        Map<String, Integer> degrees = g.degrees(raw.stream().map(x -> x.n().id()).toList());
-        List<Scored> scored = new ArrayList<>(raw.size());
-        for (Scored x : raw) {
-            double s = x.score() + Math.log1p(degrees.getOrDefault(x.n().id(), 0)) * 0.3;
-            if (x.n().kind().isType()) {
-                s += 0.5;
-            }
-            if (isTestCode(x.n())) {
-                s *= 0.4; // Tests nennen Fachbegriffe oft im Namen, erklären den Ablauf aber selten
-            }
-            scored.add(new Scored(x.n(), s));
-        }
-        scored.sort(Comparator.comparingDouble((Scored x) -> -x.score()).thenComparing(x -> x.n().id()));
         int seeds = Math.max(1, Math.min(8, maxNodes / 3));
         List<Node> seedNodes = scored.stream().limit(seeds).map(Scored::n).toList();
 
@@ -746,6 +712,75 @@ final class GraphQueries {
         }
         sb.append("\nVertiefen: graph_explain <Knoten>, graph_neighbors <Knoten>, graph_path <von> <nach>.");
         return sb.toString();
+    }
+
+    /** Bewerteter Treffer einer Stichwortsuche. */
+    record Scored(Node n, double score) {
+    }
+
+    /** Suchbegriffe samt Wortstämmen – die Nadeln für {@link NodeSearch}. */
+    static List<String> needles(List<String> terms) {
+        Set<String> needles = new LinkedHashSet<>(terms);
+        terms.forEach(t -> {
+            String stem = stem(t);
+            if (stem != null) {
+                needles.add(stem);
+            }
+        });
+        return new ArrayList<>(needles);
+    }
+
+    /**
+     * Knoten zu Suchbegriffen, bewertet nach Name, Wortstamm, ID und Doku plus Vernetzung; Typen leicht bevorzugt,
+     * Testcode abgewertet. Absteigend sortiert.
+     */
+    List<Scored> rank(List<String> terms, List<String> needles, Set<Kind> kinds) {
+        List<Node> candidates = g.search(new NodeSearch(kinds, needles, true, null, null, MAX_CANDIDATES));
+        List<Scored> raw = new ArrayList<>();
+        for (Node n : candidates) {
+            double s = 0;
+            Set<String> nameParts = new HashSet<>(terms(n.name()));
+            String nameLower = n.name().toLowerCase(Locale.ROOT);
+            String idLower = n.id().toLowerCase(Locale.ROOT);
+            String doc = n.doc() == null ? "" : n.doc().toLowerCase(Locale.ROOT);
+            for (String t : terms) {
+                String stem = stem(t);
+                if (nameLower.equals(t)) {
+                    s += 6;
+                } else if (nameParts.contains(t)) {
+                    s += 3;
+                } else if (nameLower.contains(t)) {
+                    s += 2;
+                } else if (stem != null && nameParts.stream().anyMatch(part -> stem.equals(stem(part)))) {
+                    s += 2; // gebucht ~ buchen, gespeichert ~ speichern
+                } else if (idLower.contains(t)) {
+                    s += 0.5;
+                }
+                if (doc.contains(t)) {
+                    s += 1;
+                }
+            }
+            if (s > 0) {
+                raw.add(new Scored(n, s));
+            }
+        }
+        if (raw.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Integer> degrees = g.degrees(raw.stream().map(x -> x.n().id()).toList());
+        List<Scored> scored = new ArrayList<>(raw.size());
+        for (Scored x : raw) {
+            double s = x.score() + Math.log1p(degrees.getOrDefault(x.n().id(), 0)) * 0.3;
+            if (x.n().kind().isType()) {
+                s += 0.5;
+            }
+            if (isTestCode(x.n())) {
+                s *= 0.4; // Tests nennen Fachbegriffe oft im Namen, erklären den Ablauf aber selten
+            }
+            scored.add(new Scored(x.n(), s));
+        }
+        scored.sort(Comparator.comparingDouble((Scored x) -> -x.score()).thenComparing(x -> x.n().id()));
+        return scored;
     }
 
     /**

@@ -123,7 +123,15 @@ class Neo4jGraphStorageTest {
                 new Q("path directed", t -> t.path(null, "OrderService#save", "Money#add", true, List.of("calls"), 4, null)),
                 new Q("no path", t -> t.path(null, "Money", "Weird", true, List.of("calls"), 3, null)),
                 new Q("query", t -> t.query(null, "Wie wird ein Order gespeichert (save)?", null, null)),
-                new Q("query small", t -> t.query(null, "Printer print", 6, null)));
+                new Q("query small", t -> t.query(null, "Printer print", 6, null)),
+                new Q("files name", t -> t.files(null, "OrderRepository", null, null, null, null, null, null, null)),
+                new Q("files path", t -> t.files(null, "shop/repo/*.java", null, null, null, null, null, null, null)),
+                new Q("files glob", t -> t.files(null, "*Repository", null, null, null, null, null, null, null)),
+                new Q("files users", t -> t.files(null, null, List.of("OrderRepository"), "in", null, null, null, null, null)),
+                new Q("files deep", t -> t.files(null, null, List.of("OrderService#save"), "out", List.of("calls"), 2,
+                        null, null, null)),
+                new Q("read member", t -> t.read(null, List.of("Printer#print"), null, null, 1, null)),
+                new Q("read outline", t -> t.read(null, List.of("OrderService.java"), null, true, null, null)));
         for (Q q : queries) {
             assertThat(q.call().apply(neo)).as(q.name()).isEqualTo(q.call().apply(file));
         }
