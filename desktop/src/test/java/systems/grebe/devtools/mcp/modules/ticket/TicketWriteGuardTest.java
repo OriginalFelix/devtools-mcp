@@ -67,6 +67,7 @@ class TicketWriteGuardTest {
                 .hasSize(read.size() + 1).contains(tool));
         assertThat(toolNames(Map.ofEntries(switches.keySet().stream().map(k -> Map.entry(k, "true")).toArray(Map.Entry[]::new))))
                 .hasSize(read.size() + switches.size());
+        assertThat(toolNames(Map.of("allowLink", "true"))).hasSize(read.size() + 2).contains("link", "unlink");
     }
 
     @Test

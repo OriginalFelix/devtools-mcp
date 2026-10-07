@@ -8,6 +8,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Ein angebundenes Ticket-System. Alle Methoden sind blockierend und werfen {@link IllegalStateException} bzw.
@@ -180,6 +181,32 @@ public interface TicketSystem {
         throw unsupported("Zeiten buchen");
     }
 
+    /**
+     * Arten, wie sich ein Ticket mit einem anderen verknüpfen lässt – je Richtung ein Eintrag ({@code blocks} und
+     * {@code is blocked by}), Namen wie in {@link #links}. Auswahl für {@link #link} per {@link #pickLinkType}.
+     */
+    default List<LinkType> linkTypes(String project) {
+        throw unsupported("Verknüpfen");
+    }
+
+    /**
+     * Verknüpft zwei Tickets desselben Systems: „{@code key} {@code type.name()} {@code target}“, z.B. ABC-1 blocks ABC-2.
+     *
+     * @param type aus {@link #linkTypes(String)}
+     */
+    default WriteResult link(String key, String project, LinkType type, String target) {
+        throw unsupported("Verknüpfen");
+    }
+
+    /**
+     * Entfernt eine Verknüpfung zwischen {@code key} und {@code target} (Auswahl per {@link #pickLink}).
+     *
+     * @param relation Beziehung aus Sicht von {@code key} wie in {@link #links}; {@code null} = die einzige vorhandene
+     */
+    default WriteResult unlink(String key, String project, String target, String relation) {
+        throw unsupported("Verknüpfung entfernen");
+    }
+
     /** Löscht einen Kommentar eines Tickets. */
     default WriteResult deleteComment(String key, String project, String commentId) {
         throw unsupported("Kommentare löschen");
@@ -287,6 +314,70 @@ public interface TicketSystem {
 
     private static String names(List<Board> boards) {
         return String.join(", ", boards.stream().map(b -> b.name() + " (" + b.id() + ")").toList());
+    }
+
+    /**
+     * Wählt eine Verknüpfungsart per ID oder Name – exakt vor eindeutigem Teilstring, ohne Groß-/Kleinschreibung;
+     * {@code _}, {@code -} und Leerzeichen gelten gleich ({@code is_blocked_by} = {@code is blocked by}).
+     */
+    static LinkType pickLinkType(List<LinkType> types, String ref, String system) {
+        if (ref == null || ref.isBlank()) {
+            throw new IllegalArgumentException(system + ": keine Verknüpfungsart angegeben ('relation'). Möglich: "
+                    + describeLinkTypes(types));
+        }
+        String r = ref.trim();
+        for (LinkType t : types) {
+            if (t.id().equals(r)) {
+                return t;
+            }
+        }
+        String n = normalizeRelation(r);
+        List<LinkType> exact = types.stream().filter(t -> normalizeRelation(t.name()).equals(n)).toList();
+        if (exact.size() == 1) {
+            return exact.getFirst();
+        }
+        List<LinkType> partial = (exact.isEmpty() ? types : exact).stream()
+                .filter(t -> normalizeRelation(t.name()).contains(n)).toList();
+        if (partial.size() == 1) {
+            return partial.getFirst();
+        }
+        throw new IllegalArgumentException(system + ": Verknüpfungsart '" + r + "' ist nicht eindeutig oder unbekannt. "
+                + "Möglich (per ID angeben): " + describeLinkTypes(partial.isEmpty() ? types : partial));
+    }
+
+    /** {@code blocks [Blocks:outward], is blocked by [Blocks:inward]}. */
+    static String describeLinkTypes(List<LinkType> types) {
+        return types.isEmpty() ? "keine" : String.join(", ", types.stream().map(t -> t.name() + " [" + t.id() + "]").toList());
+    }
+
+    /**
+     * Wählt unter den vorhandenen Verknüpfungen zwischen {@code key} und {@code target} genau eine – passend zu
+     * {@code relation} (wie {@link #pickLinkType} verglichen) oder, ohne Angabe, die einzige.
+     *
+     * @param found Verknüpfungen zwischen beiden Tickets, {@code relationOf} liefert ihre Beziehung aus Sicht von key
+     */
+    static <T> T pickLink(List<T> found, Function<T, String> relationOf, String relation,
+                          String system, String key, String target) {
+        List<T> hits = relation == null || relation.isBlank() ? found : found.stream()
+                .filter(f -> normalizeRelation(relationOf.apply(f)).equals(normalizeRelation(relation))).toList();
+        if (hits.size() == 1) {
+            return hits.getFirst();
+        }
+        String existing = found.isEmpty() ? "keine" : String.join(", ", found.stream().map(relationOf).toList());
+        if (found.isEmpty()) {
+            throw new IllegalArgumentException(system + ": zwischen " + key + " und " + target + " gibt es keine "
+                    + "Verknüpfung (ticket_links zeigt die vorhandenen).");
+        }
+        if (hits.isEmpty()) {
+            throw new IllegalArgumentException(system + ": zwischen " + key + " und " + target + " gibt es keine "
+                    + "Verknüpfung '" + relation.trim() + "' – vorhanden: " + existing + ".");
+        }
+        throw new IllegalArgumentException(system + ": zwischen " + key + " und " + target + " gibt es mehrere "
+                + "Verknüpfungen (" + existing + ") – mit 'relation' eine auswählen.");
+    }
+
+    private static String normalizeRelation(String s) {
+        return s == null ? "" : s.trim().toLowerCase(Locale.ROOT).replaceAll("[\\s_-]+", " ");
     }
 
     // ------------------------------------------------------------------ Modell
@@ -421,6 +512,15 @@ public interface TicketSystem {
      * @param relation Beziehung aus Sicht des Tickets, z.B. „Parent“, „Unteraufgabe“, „blocks“, „is blocked by“, „Merge Request“
      */
     record Link(String relation, String key, String title, String status, String url) { }
+
+    /**
+     * Art einer Verknüpfung aus Sicht des Tickets, das verknüpft wird.
+     *
+     * @param id vom Provider vergeben, stabil (Jira {@code Blocks:outward}, GitLab {@code is_blocked_by}, {@code parent} …)
+     * @param name Beziehung wie in {@link Link#relation()}, z.B. „blocks“, „Parent“
+     * @param inverse dieselbe Verknüpfung aus Sicht des anderen Tickets, z.B. „is blocked by“
+     */
+    record LinkType(String id, String name, String inverse) { }
 
     /**
      * Ergebnis einer schreibenden Aktion.

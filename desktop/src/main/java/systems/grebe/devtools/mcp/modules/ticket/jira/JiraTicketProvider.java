@@ -422,6 +422,59 @@ public class JiraTicketProvider implements TicketProvider {
                     text(issue.path("fields").path("status").path("name")), http.baseUrl() + "/browse/" + key);
         }
 
+        /** Linktypen der Instanz, je Richtung ein Eintrag ({@code <Typ>:outward}/{@code <Typ>:inward}); ungerichtete einmal. */
+        @Override
+        public List<LinkType> linkTypes(String project) {
+            List<LinkType> out = new ArrayList<>();
+            for (JsonNode t : http().getJson("/rest/api/2/issueLinkType").path("issueLinkTypes")) {
+                String name = text(t.path("name"));
+                String outward = HttpJson.first(text(t.path("outward")), name);
+                String inward = HttpJson.first(text(t.path("inward")), name);
+                out.add(new LinkType(name + ":outward", outward, inward));
+                if (!inward.equalsIgnoreCase(outward)) {
+                    out.add(new LinkType(name + ":inward", inward, outward));
+                }
+            }
+            return out;
+        }
+
+        @Override
+        public WriteResult link(String key, String project, LinkType type, String target) {
+            String k = issueKey(key);
+            String t = issueKey(target);
+            int colon = type.id().lastIndexOf(':');
+            if (colon <= 0) {
+                throw new IllegalArgumentException("Jira: unbekannte Verknüpfungsart '" + type.id() + "'.");
+            }
+            boolean outward = type.id().endsWith(":outward");
+            var body = HttpJson.object();
+            body.putObject("type").put("name", type.id().substring(0, colon));
+            // Jira: das inwardIssue trägt die outward-Beschreibung („inwardIssue blocks outwardIssue“)
+            body.putObject("inwardIssue").put("key", outward ? k : t);
+            body.putObject("outwardIssue").put("key", outward ? t : k);
+            http().post("/rest/api/2/issueLink", body);
+            return new WriteResult(k, "verknüpft: " + k + " " + type.name() + " " + t, http.baseUrl() + "/browse/" + k);
+        }
+
+        @Override
+        public WriteResult unlink(String key, String project, String target, String relation) {
+            String k = issueKey(key);
+            String t = issueKey(target);
+            record Found(String relation, String id) { }
+            List<Found> found = new ArrayList<>();
+            for (JsonNode l : http().getJson("/rest/api/2/issue/" + HttpJson.enc(k) + query("fields", "issuelinks"))
+                    .path("fields").path("issuelinks")) {
+                boolean out = l.path("outwardIssue").isObject();
+                if (t.equals(text(l.path(out ? "outwardIssue" : "inwardIssue").path("key")))) {
+                    found.add(new Found(text(l.path("type").path(out ? "outward" : "inward")), text(l.path("id"))));
+                }
+            }
+            Found hit = TicketSystem.pickLink(found, Found::relation, relation, "Jira", k, t);
+            http.delete("/rest/api/2/issueLink/" + HttpJson.enc(hit.id()));
+            return new WriteResult(k, "Verknüpfung entfernt: " + k + " " + hit.relation() + " " + t,
+                    http.baseUrl() + "/browse/" + k);
+        }
+
         @Override
         public List<Transition> transitions(String key, String project) {
             String k = issueKey(key);
