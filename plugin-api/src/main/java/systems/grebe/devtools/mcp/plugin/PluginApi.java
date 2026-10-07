@@ -6,8 +6,13 @@ public final class PluginApi {
     /**
      * Wird erhöht, wenn die API um Methoden wächst, die ältere Apps nicht kennen. Plugins mit höherer
      * {@code api-version} als diese werden abgewiesen, ältere laufen weiter.
+     *
+     * <ul>
+     *   <li>1 – Plugins, Module, Provider-SPIs (Tickets, Chat, Git-Server, Container)</li>
+     *   <li>2 – {@code DatabaseConnectionProvider}: Verbindungen des JDBC-Moduls für Plugins</li>
+     * </ul>
      */
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     private PluginApi() {
     }
