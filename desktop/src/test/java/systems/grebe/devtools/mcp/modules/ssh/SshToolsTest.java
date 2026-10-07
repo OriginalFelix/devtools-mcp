@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -205,6 +206,22 @@ class SshToolsTest {
     }
 
     @Test
+    void stdoutAndStderrKeepTheirOrder() {
+        SshShellTools shell = new SshShellTools(module.environment(config("geheim", Map.of())));
+        shell.open("prod", false);
+        List<String> expected = new ArrayList<>();
+        for (int i = 0; i < 40; i++) {
+            expected.add("z" + i);
+        }
+        expected.add("letzte");
+        for (int run = 0; run < 5; run++) {
+            String result = shell.exec(null, "mix", null);
+            assertThat(result).startsWith("Exit-Code 0");
+            assertThat(result.lines().skip(1).toList()).isEqualTo(expected);
+        }
+    }
+
+    @Test
     void longRunningCommandIsStreamedThenNextCommandRuns() {
         SshShellTools shell = new SshShellTools(module.environment(config("geheim", Map.of())));
         shell.open("prod", false);
@@ -301,7 +318,7 @@ class SshToolsTest {
 
     /**
      * Zeilenweise Shell: {@code { befehl} + {@code }; echo "__DTMCP_x_$?__"} wie von ssh_shell_exec; kennt cd, pwd, fail
-     * (Exit 2), slow (1,5 s), ask (liest eine Antwort von stdin) und exit.
+     * (Exit 2), mix (abwechselnd stdout/stderr, zuletzt stderr), slow (1,5 s), ask (liest eine Antwort von stdin) und exit.
      */
     private static final class FakeShell implements Command {
         private InputStream in;
@@ -354,6 +371,12 @@ class SshToolsTest {
                             case "fail" -> {
                                 print(err, "kaputt\n");
                                 code = 2;
+                            }
+                            case "mix" -> {
+                                for (int i = 0; i < 40; i++) {
+                                    print(i % 2 == 0 ? out : err, "z" + i + "\n");
+                                }
+                                print(err, "letzte\n");
                             }
                             case "slow" -> {
                                 print(out, "start\n");

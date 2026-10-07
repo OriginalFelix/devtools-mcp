@@ -1,11 +1,12 @@
 package systems.grebe.devtools.mcp.modules.ssh;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.Reader;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -19,10 +20,10 @@ import com.jcraft.jsch.Session;
 import systems.grebe.devtools.mcp.core.ToolProgress;
 
 /**
- * Offene interaktive Shells. Jede Shell hat eine eigene SSH-Sitzung; ein Hintergrund-Thread liest ihre Ausgabe
- * fortlaufend in einen Puffer, den die Tools stückweise abholen – so kann das LLM die Ausgabe eines laufenden Befehls
- * lesen, weitere Eingaben schicken und danach den nächsten Befehl in derselben Shell (gleiches Verzeichnis, gleiche
- * Variablen) ausführen. Über alle Konfigurationsänderungen hinweg dieselbe Instanz.
+ * Offene interaktive Shells. Jede Shell hat eine eigene SSH-Sitzung; ihre Ausgabe (stdout und stderr in
+ * Ankunftsreihenfolge) landet fortlaufend in einem Puffer, den die Tools stückweise abholen – so kann das LLM die
+ * Ausgabe eines laufenden Befehls lesen, weitere Eingaben schicken und danach den nächsten Befehl in derselben Shell
+ * (gleiches Verzeichnis, gleiche Variablen) ausführen. Über alle Konfigurationsänderungen hinweg dieselbe Instanz.
  */
 final class SshShells {
 
@@ -57,32 +58,72 @@ final class SshShells {
             this.channel = channel;
             this.stdin = stdin;
             this.maxChars = maxChars;
+            channel.setOutputStream(new Sink());
+            channel.setExtOutputStream(new Sink());
         }
 
-        private void pump(InputStream in) {
-            try (Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
-                char[] buf = new char[8192];
-                int n;
-                while ((n = r.read(buf)) > 0) {
-                    synchronized (this) {
-                        pending.append(buf, 0, n);
-                        if (pending.length() > maxChars) {
-                            int cut = pending.length() - maxChars;
-                            pending.delete(0, cut);
-                            dropped += cut;
-                        }
-                        lastOutput = System.currentTimeMillis();
-                        notifyAll();
+        /**
+         * Nimmt einen Ausgabestrom des Kanals entgegen. JSch schreibt stdout und stderr aus seinem Sitzungs-Thread in der
+         * Reihenfolge, in der sie ankommen – direkt in den Puffer statt über je einen Lese-Thread, damit sie nicht
+         * gegeneinander laufen: sonst kann stderr eines Befehls erst nach seiner Endmarkierung im Puffer landen (fehlt im
+         * Ergebnis) oder vor seiner Anfangsmarkierung (wird mit dem Echo abgeschnitten).
+         */
+        private final class Sink extends OutputStream {
+            private final CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPLACE).onUnmappableCharacter(CodingErrorAction.REPLACE);
+            /** Angefangenes Mehrbyte-Zeichen vom Ende des letzten Pakets. */
+            private ByteBuffer rest = ByteBuffer.allocate(0);
+            private boolean closed;
+
+            @Override
+            public void write(int b) {
+                write(new byte[] {(byte) b}, 0, 1);
+            }
+
+            @Override
+            public void write(byte[] b, int off, int len) {
+                synchronized (Shell.this) {
+                    if (closed) {
+                        return;
                     }
-                }
-            } catch (IOException ignored) {
-                // Kanal geschlossen
-            } finally {
-                synchronized (this) {
-                    readers--;
-                    notifyAll();
+                    ByteBuffer in = ByteBuffer.allocate(rest.remaining() + len).put(rest).put(b, off, len).flip();
+                    CharBuffer out = CharBuffer.allocate(in.remaining());
+                    decoder.decode(in, out, false);
+                    rest = in.slice();
+                    append(out.flip());
                 }
             }
+
+            @Override
+            public void close() {
+                synchronized (Shell.this) {
+                    if (closed) {
+                        return;
+                    }
+                    closed = true;
+                    CharBuffer out = CharBuffer.allocate(rest.remaining() + 1);
+                    decoder.decode(rest, out, true);
+                    decoder.flush(out);
+                    append(out.flip());
+                    readers--;
+                    Shell.this.notifyAll();
+                }
+            }
+        }
+
+        /** Hängt Ausgabe an den Puffer; bei Überlauf fällt der älteste Teil weg. Nur unter {@code this}. */
+        private void append(CharSequence text) {
+            if (text.isEmpty()) {
+                return;
+            }
+            pending.append(text);
+            if (pending.length() > maxChars) {
+                int cut = pending.length() - maxChars;
+                pending.delete(0, cut);
+                dropped += cut;
+            }
+            lastOutput = System.currentTimeMillis();
+            notifyAll();
         }
 
         /** Beide Ausgabeströme sind zu Ende (Shell mit exit beendet oder Verbindung weg). */
@@ -211,19 +252,13 @@ final class SshShells {
         if (pty) {
             ch.setPtyType("xterm", 200, 50, 0, 0);
         }
+        Shell shell;
         try {
-            InputStream out = ch.getInputStream();
-            InputStream err = ch.getExtInputStream();
             OutputStream in = ch.getOutputStream();
-            ch.connect(15_000);
-            Shell shell;
             synchronized (this) {
                 shell = new Shell("sh" + (++counter), c, pty, session, ch, in, maxChars);
-                shells.put(shell.id, shell);
             }
-            Thread.ofVirtual().name("ssh-shell-" + shell.id + "-out").start(() -> shell.pump(out));
-            Thread.ofVirtual().name("ssh-shell-" + shell.id + "-err").start(() -> shell.pump(err));
-            return shell;
+            ch.connect(15_000);
         } catch (IOException e) {
             ch.disconnect();
             session.disconnect();
@@ -233,6 +268,10 @@ final class SshShells {
             session.disconnect();
             throw e;
         }
+        synchronized (this) {
+            shells.put(shell.id, shell);
+        }
+        return shell;
     }
 
     synchronized Shell get(String id) {
