@@ -675,6 +675,11 @@ public final class ChannelBridge {
         }
     }
 
+    /** Sitzung bei der App (Proxy), {@code null} vor {@code initialize} – für Tests. */
+    String sessionId() {
+        return sessionId;
+    }
+
     boolean initialized() {
         return initialized;
     }
