@@ -9,7 +9,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Git** (JGit; Netzwerk über installiertes git) | `git_list_repositories` (inkl. Worktrees als `<repo>/<ordner>`), `git_status` (inkl. laufendem Merge/Rebase), `git_log` (auch `contentChange` wie `git log -S`), `git_diff`, `git_show_commit`, `git_branches`, `git_tags`, `git_remotes`, `git_stash_list`, `git_reflog`, `git_compare` (merge-base, voraus/zurück, Commits je Seite), `git_grep`, `git_blame`, `git_file_at_revision` · schreibend (Standard an): `git_create_branch`, `git_checkout`, `git_rename_branch`, `git_stage`, `git_unstage`, `git_commit`, `git_reset` (soft/mixed), `git_stash` (push/apply/pop), `git_tag` · je Schalter (Standard aus): Remote-Abgleich `git_fetch`, `git_pull` (ff-only/rebase/merge), `git_push` (nie Force, nie auf „Nie pushen auf“, Standard main/master) · Integrieren `git_merge`, `git_rebase`, `git_cherry_pick`, `git_revert`, `git_continue`, `git_abort` · Verwerfen `git_restore`, `git_reset mode=hard`, `git_delete_branch`, `git_delete_tag`, `git_stash_drop` |
 | **SonarQube** / SonarCloud | `sonar_list_projects`, `sonar_quality_gate`, `sonar_issues`, `sonar_issue_detail`, `sonar_rule`, `sonar_measures`, `sonar_hotspots`, `sonar_source` |
 | **Build** (Gradle/Maven) | `build_list_projects`, `build_run`, `build_test`, `build_test_report` |
-| **Code-Graph** (Java, tree-sitter) | `graph_build`, `graph_branches`, `graph_report`, `graph_find`, `graph_explain`, `graph_neighbors`, `graph_path`, `graph_query`, `graph_cypher` – je Projekt und Git-Branch in Neo4j (Spring Data Neo4j) oder als Datei im Projekt (Standard: aus) |
+| **Code-Graph** (Java, tree-sitter) | `graph_build`, `graph_branches`, `graph_report`, `graph_find`, `graph_files`, `graph_read`, `graph_explain`, `graph_neighbors`, `graph_path`, `graph_query`, `graph_cypher` – je Projekt und Git-Branch in Neo4j (Spring Data Neo4j) oder als Datei im Projekt (Standard: aus) |
 | **JVM-Diagnose** (jcmd) | `jvm_processes`, `jvm_info`, `jvm_threads` (inkl. Deadlock-Erkennung), `jvm_heap`, `jvm_native_memory` · invasiv: `jvm_heap_dump`, `jvm_gc_run`, `jvm_jcmd` (Allowlist) |
 | **Flight Recorder** | `jfr_record`, `jfr_start`, `jfr_status`, `jfr_dump`, `jfr_stop`, `jfr_analyze` (cpu/allocation/gc/locks/io/exceptions/threads), `jfr_flamegraph` |
 | **async-profiler** 4.5 | `asprof_profile`, `asprof_start`, `asprof_stop`, `asprof_status` – Linux/macOS nativ, unter Windows für JVMs in Docker/Podman-Containern (Standard: aus) |
@@ -755,7 +755,11 @@ Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekunde
 * **Aktualität:** `graph_build` baut nur neu, wenn sich eine Quelldatei geändert hat (SHA-256) oder Dateien
   hinzugekommen/entfallen sind; die Abfrage-Tools bauen, falls der Graph des ausgecheckten Branches fehlt.
 * **Abfragen:** `graph_report` (God Nodes, meistaufgerufene Methoden, Communities, überraschende Verbindungen zwischen
-  Paketen), `graph_find` (Name, `*`-Platzhalter), `graph_explain` (alles zu einem Knoten), `graph_neighbors`
+  Paketen), `graph_find` (Name, `*`-Platzhalter), `graph_files` (Dateien nach Name, Stichworten, `*`-Muster oder
+  Pfad – oder mit `related` über Kanten, z.B. alle Dateien, die einen Typ verwenden – je Datei Länge und passende
+  Typen/Member mit Zeilenbereich bzw. Begründung), `graph_read` (Quelltext gezielt: Methode inkl. aller Überladungen,
+  Typ, Datei oder `lines='von-bis'`; Typen/Dateien über 150 Zeilen als Gliederung mit Signaturen und Zeilenbereichen;
+  liest das Arbeitsverzeichnis und warnt, wenn die Datei seit `graph_build` geändert wurde), `graph_explain` (alles zu einem Knoten), `graph_neighbors`
   (Aufrufbaum, `direction=in` = wer ruft mich), `graph_path` (kürzester Weg, ohne Abkürzung über externe Typen;
   Neo4j: `shortestPath`), `graph_query` (Frage → Stichworte inkl. CamelCase und einfacher Wortstämme wie *gebucht* ~
   `buchen` → beste Treffer, Testcode nachrangig → verbindender Teilgraph), `graph_branches` (gespeicherte Branches),

@@ -206,7 +206,7 @@ class McpServerIntegrationTest {
                     Map.entry("decompile_", ShellHints.DECOMPILE), Map.entry("pr_", ShellHints.PR),
                     Map.entry("scripts_", ShellHints.SCRIPTS), Map.entry("permissions_", ShellHints.PERMISSIONS));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(175); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(177); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -459,7 +459,8 @@ class McpServerIntegrationTest {
         registry.setModuleEnabled("graph", true);
         try {
             assertThat(toolNames()).contains("graph_build", "graph_report", "graph_find", "graph_explain",
-                    "graph_neighbors", "graph_path", "graph_query", "graph_branches", "graph_cypher");
+                    "graph_neighbors", "graph_path", "graph_query", "graph_branches", "graph_cypher", "graph_files",
+                    "graph_read");
             McpSchema.CallToolResult built = client.callTool(callRequest("graph_build", Map.of()));
             assertThat(built.isError()).isNotEqualTo(Boolean.TRUE);
             // Graph je Branch: das Test-Repository steht auf "main"
@@ -471,6 +472,11 @@ class McpServerIntegrationTest {
             assertThat(text(client.callTool(callRequest("graph_neighbors",
                     Map.of("node", "Greeter#helper", "direction", "in", "relations", List.of("calls"))))))
                     .contains("<-- calls demo.Greeter#greet(String)");
+
+            assertThat(text(client.callTool(callRequest("graph_files", Map.of("query", "Greeter")))))
+                    .contains("src/main/java/demo/Greeter.java  (6 Z.)", "Greeter [class] Z2-5");
+            assertThat(text(client.callTool(callRequest("graph_read", Map.of("node", List.of("Greeter#helper"))))))
+                    .contains("src/main/java/demo/Greeter.java:4-4", "4\t    private String helper(String n) { return n; }");
 
             McpSchema.CallToolResult unknown = client.callTool(callRequest("graph_explain", Map.of("node", "Nix")));
             assertThat(unknown.isError()).isTrue();

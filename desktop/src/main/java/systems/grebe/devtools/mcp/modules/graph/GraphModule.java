@@ -61,6 +61,10 @@ public class GraphModule implements ToolModule {
                 - `graph_report`: Überblick (God Nodes, Communities, überraschende Verbindungen) – vor Architekturfragen.
                 - `graph_query`: Frage in Stichworten → passende Typen/Methoden und ihr Zusammenhang.
                 - `graph_find`: Klassen/Methoden nach Namen (statt `grep -r "class Foo"`).
+                - `graph_files`: Dateien finden – nach Name, Stichworten, Muster oder Pfad (`query`) oder über Kanten \
+                (`related`, z.B. wer einen Typ verwendet) – mit Zeilenbereichen je Treffer (statt `find`/`grep -rl`/Glob).
+                - `graph_read`: nur die nötige Stelle lesen – Methode (`Typ#methode`), Typ, Gliederung einer Datei oder \
+                `lines='von-bis'` – statt ganzer Dateien. Große Typen/Dateien kommen als Gliederung.
                 - `graph_explain`: alles zu einem Knoten; `graph_neighbors` (direction=in, relations=[calls]): wer ruft das \
                 auf (statt `grep` nach Aufrufstellen); `graph_path`: wie hängen zwei Stellen zusammen.
                 - `graph_build`: nach größeren Änderungen; baut nur neu, wenn sich Quelldateien geändert haben.

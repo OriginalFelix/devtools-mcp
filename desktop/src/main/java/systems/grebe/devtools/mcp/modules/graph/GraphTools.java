@@ -133,6 +133,79 @@ public class GraphTools {
         return sb.toString().stripTrailing();
     }
 
+    @Tool(name = "files", description = "Findet Dateien über den Code-Graphen und liefert je Datei Pfad, Länge und die "
+            + "passenden Typen/Methoden mit Zeilenbereich (Z von-bis) – kompakt statt Trefferzeilen. Zwei Arten: "
+            + "query = Name ('OrderService'), Stichworte ('Auftrag speichern', CamelCase/Wortstämme/Javadoc), "
+            + "Namensmuster ('*Dao') oder Pfad/Pfadmuster ('shop/repo/*.java'); related = Knoten, deren verbundene "
+            + "Dateien gesucht sind (direction=in: wer verwendet/ruft/implementiert ihn, out: was er verwendet) mit "
+            + "Begründung je Datei. Danach mit graph_read nur die nötigen Stellen lesen. Statt `find`, `grep -rl`, "
+            + "Glob oder dem Öffnen vieler Dateien verwenden." + ShellHints.GRAPH)
+    public String files(
+            @ToolParam(required = false, description = PROJECT_PARAM) String project,
+            @ToolParam(required = false, description = "Suchtext: Name, Stichworte, '*'-Muster oder Pfad(muster); "
+                    + "alternativ related") String query,
+            @ToolParam(required = false, description = "Knoten, deren verbundene Dateien gesucht sind – " + NODE_PARAM
+                    + "; bei Typen/Dateien zählen alle Member") List<String> related,
+            @ToolParam(required = false, description = "Nur mit related: in = wer verwendet den Knoten, out = was er "
+                    + "verwendet, both (Standard)") String direction,
+            @ToolParam(required = false, description = "Nur mit related: " + REL_PARAM + "; Standard alle außer contains")
+            List<String> relations,
+            @ToolParam(required = false, description = "Nur mit related: Tiefe (Standard 1, max. 3)") Integer depth,
+            @ToolParam(required = false, description = "false = Testdateien ausblenden (Standard true)") Boolean tests,
+            @ToolParam(required = false, description = "Max. Dateien (Standard 20)") Integer limit,
+            @ToolParam(required = false, description = BRANCH_PARAM) String branch) {
+        boolean hasQuery = query != null && !query.isBlank();
+        boolean hasRelated = related != null && related.stream().anyMatch(r -> r != null && !r.isBlank());
+        if (hasQuery == hasRelated) {
+            throw new IllegalArgumentException("Genau eins angeben: query (Name, Stichworte, Muster, Pfad) oder related "
+                    + "(Knoten, deren verbundene Dateien gesucht sind).");
+        }
+        GraphFiles f = new GraphFiles(service.graph(project, branch));
+        boolean includeTests = !Boolean.FALSE.equals(tests);
+        int max = limit == null ? 20 : Math.max(1, Math.min(limit, 200));
+        if (hasQuery) {
+            return f.search(query, includeTests, max);
+        }
+        return f.related(related, direction(direction, Direction.BOTH),
+                GraphQueries.relations(relations, GraphFiles.DEFAULT_RELATIONS),
+                depth == null ? 1 : Math.max(1, Math.min(depth, 3)), includeTests, max);
+    }
+
+    @Tool(name = "read", description = "Liest Quelltext gezielt über den Code-Graphen statt ganzer Dateien: eine "
+            + "Methode/ein Feld/einen Konstruktor (alle Überladungen bei 'Typ#methode'), einen Typ oder eine Datei. "
+            + "Typen und Dateien über " + GraphSource.AUTO_OUTLINE_LINES + " Zeilen kommen als Gliederung (Typen und "
+            + "Member mit Signatur, Javadoc-Satz und Zeilenbereich, ohne Rümpfe); outline=true/false erzwingt das. "
+            + "lines='von-bis' liest einen Bereich der Datei des Knotens. Ausgabe mit Zeilennummern. Mehrere Knoten in "
+            + "einem Aufruf möglich. Liest das Arbeitsverzeichnis (ausgecheckter Branch). Statt `cat`/`sed -n` oder dem "
+            + "vollständigen Lesen großer Dateien verwenden." + ShellHints.GRAPH)
+    public String read(
+            @ToolParam(required = false, description = PROJECT_PARAM) String project,
+            @ToolParam(description = "Ein oder mehrere Knoten – " + NODE_PARAM + ", z.B. ['OrderService#save', "
+                    + "'OrderRepository'] oder ['OrderService.java']") List<String> node,
+            @ToolParam(required = false, description = "Zeilenbereich in der Datei des (einen) Knotens: 'von-bis', "
+                    + "'von+anzahl', 'von-' (bis Ende) oder 'von'") String lines,
+            @ToolParam(required = false, description = "true = nur Gliederung, false = immer Quelltext; Standard nach "
+                    + "Länge") Boolean outline,
+            @ToolParam(required = false, description = "Zusätzliche Zeilen vor und nach dem Knoten (Standard 0, z.B. 3 "
+                    + "für Javadoc/Annotationen)") Integer context,
+            @ToolParam(required = false, description = "Max. Quelltextzeilen insgesamt (Standard 400, max. 3000)")
+            Integer maxLines) {
+        GraphReader reader = service.graph(project, null);
+        return new GraphSource(reader, service.key(project, null).root()).read(node, lines, outline,
+                context == null ? 0 : Math.max(0, Math.min(context, 50)),
+                maxLines == null ? 400 : Math.max(1, Math.min(maxLines, 3000)));
+    }
+
+    private static Direction direction(String direction, Direction fallback) {
+        return switch (direction == null || direction.isBlank() ? "" : direction.strip().toLowerCase(Locale.ROOT)) {
+            case "" -> fallback;
+            case "in", "incoming", "callers" -> Direction.IN;
+            case "both", "all" -> Direction.BOTH;
+            case "out", "outgoing", "callees" -> Direction.OUT;
+            default -> throw new IllegalArgumentException("direction muss in, out oder both sein.");
+        };
+    }
+
     @Tool(name = "explain", description = "Erklärt einen Knoten des Code-Graphen: Art, Ort, Signatur, Javadoc, Community, "
             + "enthaltene Member und alle ein- und ausgehenden Beziehungen (Aufrufe, Vererbung, Überschreibungen, "
             + "Typverwendungen) mit Sicherheit (EXTRACTED/INFERRED/AMBIGUOUS) und Zeilennummer." + ShellHints.GRAPH)
@@ -159,12 +232,7 @@ public class GraphTools {
             @ToolParam(required = false, description = "Tiefe (Standard 1, max. 6)") Integer depth,
             @ToolParam(required = false, description = "Max. Einträge (Standard 80)") Integer limit,
             @ToolParam(required = false, description = BRANCH_PARAM) String branch) {
-        Direction dir = switch (direction == null ? "out" : direction.strip().toLowerCase(Locale.ROOT)) {
-            case "in", "incoming", "callers" -> Direction.IN;
-            case "both", "all" -> Direction.BOTH;
-            case "out", "outgoing", "callees", "" -> Direction.OUT;
-            default -> throw new IllegalArgumentException("direction muss in, out oder both sein.");
-        };
+        Direction dir = direction(direction, Direction.OUT);
         Set<Relation> rels = GraphQueries.relations(relations, DEFAULT_NEIGHBOR_RELATIONS);
         GraphQueries q = queries(project, branch);
         return q.neighbors(q.resolve(node), dir, rels, depth == null ? 1 : Math.max(1, Math.min(depth, 6)),
