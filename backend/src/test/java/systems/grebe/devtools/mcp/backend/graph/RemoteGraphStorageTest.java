@@ -73,7 +73,7 @@ class RemoteGraphStorageTest extends GraphStorageTest {
         try (GraphStorage wrongPassword = new GraphStorage(GraphStorage.Settings.remote("127.0.0.1", port, database,
                 "root", "falsch"))) {
             assertThatThrownBy(wrongPassword::check).isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("ist nicht verfügbar").hasMessageContaining("devtools.graph.host");
+                    .hasMessageContaining("ist nicht verfügbar").hasMessageContaining("devtools.graph.*");
         }
         try (GraphStorage noServer = new GraphStorage(GraphStorage.Settings.remote("127.0.0.1", 1, database, "root",
                 PASSWORD))) {

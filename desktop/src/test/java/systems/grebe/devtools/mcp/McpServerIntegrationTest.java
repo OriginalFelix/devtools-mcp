@@ -21,6 +21,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.annotation.DirtiesContext;
 import systems.grebe.devtools.mcp.channel.ChannelBridge;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
@@ -35,6 +36,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** End-to-End: echter MCP-Client über Streamable HTTP gegen den eingebetteten Server. */
+// Kontext nach der Klasse schließen: die Graph-Datenbank des Backends hält sonst Dateien im temporären Ordner offen
+@DirtiesContext
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"devtools.local-user.email=mcp@example.com", "devtools.login.username=tester",
                 "devtools.login.password=tester-passwort"})

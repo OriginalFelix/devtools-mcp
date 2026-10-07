@@ -155,6 +155,31 @@ class GraphStorageTest {
     }
 
     @Test
+    void startsReportsStatusAndSwitchesToOtherSettings() {
+        List<String> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+        storage.addStatusListener(() -> seen.add(storage.status()));
+        assertThat(storage.status()).isEqualTo("nicht gestartet");
+        assertThat(storage.start()).startsWith("läuft: " + storage.describe()).contains("ArcadeDB 26.");
+        storage.write(MAIN, graph("c1"));
+
+        // andere eingebettete Datenbank: sofort umgestellt, dort gibt es den Graphen noch nicht
+        Path other = dir.resolve("andere");
+        assertThat(storage.configure(GraphStorage.Settings.embedded(other))).startsWith("läuft: ArcadeDB eingebettet")
+                .contains(other.toString());
+        assertThat(storage.reader(MAIN)).isNull();
+        assertThat(seen).anyMatch(s -> s.startsWith("läuft:")).contains("wird gestartet …");
+
+        // nicht erreichbarer Server: Fehler im Status statt einer Ausnahme
+        assertThat(storage.configure(GraphStorage.Settings.remote("127.0.0.1", 1, "x", "root", "pw")))
+                .startsWith("Fehler: ArcadeDB 127.0.0.1:1/x ist nicht verfügbar");
+        assertThatThrownBy(() -> storage.reader(MAIN)).isInstanceOf(IllegalStateException.class);
+
+        // zurück: der Graph ist wieder da
+        storage.configure(create().settings());
+        assertThat(storage.reader(MAIN).info().commit()).isEqualTo("c1");
+    }
+
+    @Test
     void abortedBuildsLeaveNothingBehind() throws Exception {
         String g = storage.begin(GraphStorage.LOCAL, MAIN);
         storage.writeFiles(GraphStorage.LOCAL, g, graph("c1").files());

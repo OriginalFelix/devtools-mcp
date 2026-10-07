@@ -34,6 +34,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.annotation.DirtiesContext;
 import systems.grebe.devtools.mcp.DevToolsMcpApplication;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ChannelEvents;
@@ -45,6 +46,8 @@ import tools.jackson.databind.json.JsonMapper;
  * im Proxy-Betrieb, eine neue Sitzung nach deren Ablauf und ein klarer Fehler, wenn die App nicht läuft. Tools,
  * Rückfragen und {@code tools/list_changed} prüft {@code McpServerIntegrationTest} mit einem echten MCP-Client.
  */
+// Kontext nach der Klasse schließen: die Graph-Datenbank des Backends hält sonst Dateien im temporären Ordner offen
+@DirtiesContext
 @SpringBootTest(classes = {DevToolsMcpApplication.class, ChannelBridgeAppIntegrationTest.Config.class},
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"devtools.local-user.email=stdio@example.com", "devtools.login.username=tester",

@@ -36,12 +36,17 @@ import javafx.util.StringConverter;
 import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
+import systems.grebe.devtools.mcp.backend.graph.GraphStorage;
+import systems.grebe.devtools.mcp.config.GraphDatabaseSettings;
+import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.config.TeamSettings;
 import systems.grebe.devtools.mcp.remote.BackendConnection;
+import systems.grebe.devtools.mcp.remote.EmbeddedBackend;
 
 /**
  * Tab „Backend“: eingebettet oder Team-Server (Adresse, wirksam nach Neustart), Verbindungsstatus, angemeldeter
- * Benutzer mit Rollen (Abmelden, Passwort ändern), aktives Profil und die Projekte mit ihrem lokalen Verzeichnis.
+ * Benutzer mit Rollen (Abmelden, Passwort ändern), aktives Profil, die Graph-Datenbank des eingebetteten Backends
+ * (eingebettete oder externe ArcadeDB) und die Projekte mit ihrem lokalen Verzeichnis.
  * Netzwerkzugriffe laufen im Hintergrund.
  */
 public class BackendView extends BorderPane {
@@ -62,10 +67,30 @@ public class BackendView extends BorderPane {
     private final Button newProject = new Button("Neues Projekt…");
     private final ObservableList<ProjectInfo> projects = FXCollections.observableArrayList();
     private final TableView<ProjectInfo> table = new TableView<>(projects);
+    private static final String GRAPH_EMBEDDED = "Eingebettet (in dieser App)";
+    private static final String GRAPH_REMOTE = "Externer ArcadeDB-Server";
+
+    private final GraphStorage graphs;
+    private final SettingsStore store;
+    private final ComboBox<String> graphMode = new ComboBox<>(FXCollections.observableArrayList(GRAPH_EMBEDDED,
+            GRAPH_REMOTE));
+    private final TextField graphHost = new TextField();
+    private final TextField graphPort = new TextField();
+    private final TextField graphDatabase = new TextField();
+    private final TextField graphUser = new TextField();
+    private final PasswordField graphPassword = new PasswordField();
+    private final Button graphApply = new Button("Übernehmen");
+    private final Label graphStatus = new Label();
     private boolean updating;
 
-    public BackendView(BackendConnection backend) {
+    /**
+     * @param graphs Graph-Storage des eingebetteten Backends; {@code null} mit Team-Server (dann stellt der Server sie
+     *               ein)
+     */
+    public BackendView(BackendConnection backend, GraphStorage graphs, SettingsStore store) {
         this.backend = backend;
+        this.graphs = graphs;
+        this.store = store;
         setPadding(new Insets(16));
 
         TeamSettings current = backend.serverSettings();
@@ -141,13 +166,103 @@ public class BackendView extends BorderPane {
         newProject.setOnAction(e -> createProject());
         table();
 
-        VBox top = new VBox(12, grid, help, projectsTitle, projectsHelp, newProject);
+        VBox top = new VBox(12, grid, help, graphSection(), projectsTitle, projectsHelp, newProject);
         top.setPadding(new Insets(0, 0, 12, 0));
         setTop(top);
         setCenter(table);
 
         backend.addListener(() -> Platform.runLater(this::refresh));
         refresh();
+    }
+
+    /** Graph-Datenbank für den Code-Graphen: eingebettet (Standard) oder ein externer ArcadeDB-Server. */
+    private VBox graphSection() {
+        Label title = new Label("Graph-Datenbank");
+        title.getStyleClass().add("section-title");
+        Label help = new Label("Das Backend startet für die Code-Graphen eine ArcadeDB – eingebettet in dieser App "
+                + "(Standard) oder als Verbindung zu einem externen ArcadeDB-Server. Fehlt die Datenbank auf dem Server, "
+                + "wird sie angelegt. Änderungen gelten sofort.");
+        help.setWrapText(true);
+        help.getStyleClass().add("form-help");
+
+        graphHost.setPromptText("localhost");
+        graphPort.setPrefColumnCount(6);
+        graphDatabase.setPromptText("devtools");
+        graphUser.setPromptText("root");
+        HBox server = new HBox(8, graphHost, new Label("Port"), graphPort);
+        server.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(graphHost, Priority.ALWAYS);
+        graphStatus.setWrapText(true);
+        graphStatus.getStyleClass().add("status-text");
+
+        GridPane form = new GridPane();
+        form.setHgap(12);
+        form.setVgap(8);
+        form.addRow(0, new Label("Datenbank"), graphMode);
+        form.addRow(1, new Label("Server"), server);
+        form.addRow(2, new Label("Datenbank-Name"), graphDatabase);
+        form.addRow(3, new Label("Benutzer"), graphUser);
+        form.addRow(4, new Label("Passwort"), graphPassword);
+        form.add(graphApply, 1, 5);
+        form.addRow(6, new Label("Status"), graphStatus);
+        GridPane.setHgrow(server, Priority.ALWAYS);
+
+        if (graphs == null) {
+            form.setDisable(true);
+            graphStatus.setText("Die Graph-Datenbank stellt der Team-Server bereit (devtools.graph.* auf dem Server).");
+            return new VBox(8, title, help, form);
+        }
+        GraphDatabaseSettings saved = store.graph();
+        GraphStorage.Settings current = graphs.settings();
+        boolean remote = saved.configured() ? saved.remote() : current.mode() == GraphStorage.Mode.REMOTE;
+        graphMode.setValue(remote ? GRAPH_REMOTE : GRAPH_EMBEDDED);
+        graphHost.setText(saved.configured() ? saved.host() : blank(current.host()));
+        graphPort.setText(String.valueOf(saved.configured() || current.port() <= 0 ? saved.port() : current.port()));
+        graphDatabase.setText(saved.configured() ? saved.database() : blank(current.database()));
+        graphUser.setText(saved.configured() ? saved.user() : blank(current.user()));
+        graphPassword.setText(saved.configured() ? saved.password() : blank(current.password()));
+        graphMode.setOnAction(e -> updateGraphFields());
+        graphApply.getStyleClass().add("accent");
+        graphApply.setOnAction(e -> applyGraph());
+        updateGraphFields();
+        graphs.addStatusListener(() -> Platform.runLater(() -> graphStatus.setText(graphs.status())));
+        graphStatus.setText(graphs.status());
+        return new VBox(8, title, help, form);
+    }
+
+    private static String blank(String s) {
+        return s == null ? "" : s;
+    }
+
+    private void updateGraphFields() {
+        boolean remote = GRAPH_REMOTE.equals(graphMode.getValue());
+        for (javafx.scene.Node n : List.of(graphHost, graphPort, graphDatabase, graphUser, graphPassword)) {
+            n.setDisable(!remote);
+        }
+    }
+
+    /** Speichert die Einstellung und stellt die Graph-Storage im Hintergrund um. */
+    private void applyGraph() {
+        int port;
+        try {
+            port = graphPort.getText().isBlank() ? GraphDatabaseSettings.DEFAULT_PORT
+                    : Integer.parseInt(graphPort.getText().strip());
+        } catch (NumberFormatException e) {
+            graphStatus.setText("Fehler: Der Port muss eine Zahl sein.");
+            return;
+        }
+        GraphDatabaseSettings value = new GraphDatabaseSettings(GRAPH_REMOTE.equals(graphMode.getValue())
+                ? GraphDatabaseSettings.REMOTE : GraphDatabaseSettings.EMBEDDED, graphHost.getText(), port,
+                graphDatabase.getText(), graphUser.getText(), graphPassword.getText());
+        graphApply.setDisable(true);
+        graphStatus.setText("wird gestartet …");
+        CompletableFuture.supplyAsync(() -> {
+            store.saveGraph(value);
+            return graphs.configure(EmbeddedBackend.graphSettings(value));
+        }).whenComplete((r, e) -> Platform.runLater(() -> {
+            graphApply.setDisable(false);
+            graphStatus.setText(e != null ? "Fehler: " + (e.getCause() != null ? e.getCause() : e).getMessage() : r);
+        }));
     }
 
     private void table() {

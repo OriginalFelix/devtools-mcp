@@ -903,6 +903,12 @@ Die Code-Graphen des Moduls [Code-Graph](#code-graph-java) liegen zentral im Bac
 **eingebettet** (Standard: Datenbank `graphdb/` im Datenverzeichnis des Backends, im selben Prozess) oder **extern**
 (ein ArcadeDB-Server über HTTP). Abfragen laufen als OpenCypher in der Datenbank (native Engine von ArcadeDB).
 
+Das Backend startet die Datenbank **immer beim Hochfahren** (im Hintergrund, der Start wartet nicht darauf); Fehler
+stehen im Status und im Log. In der Desktop-App stellt man sie im Reiter **Backend** unter *Graph-Datenbank* ein
+(eingebettet oder externer Server mit Host, Port, Datenbank, Benutzer, Passwort – verschlüsselt in `settings.json`);
+*Übernehmen* stellt sofort um. Diese Einstellung hat Vorrang vor den Properties; ohne sie gelten die Properties. Mit
+Team-Server stellt der Server die Graph-Datenbank ein.
+
 | Property | Standard | |
 |---|---|---|
 | `devtools.graph.mode` | `embedded` | `embedded` oder `remote` (externer ArcadeDB-Server) |

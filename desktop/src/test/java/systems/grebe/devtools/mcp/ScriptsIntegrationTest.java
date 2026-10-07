@@ -24,6 +24,7 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.context.ApplicationContext;
+import org.springframework.test.annotation.DirtiesContext;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptBackend;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptCache;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
@@ -37,6 +38,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * aus dem Modul-Formular, Fehler mit Zeile, Namenskonflikte, Änderungen „von woanders“ per Subscription und
  * Instructions für neue Sessions.
  */
+// Kontext nach der Klasse schließen: die Graph-Datenbank des Backends hält sonst Dateien im temporären Ordner offen
+@DirtiesContext
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"devtools.local-user.email=scripts@example.com", "devtools.login.username=tester",
                 "devtools.login.password=tester-passwort"})
