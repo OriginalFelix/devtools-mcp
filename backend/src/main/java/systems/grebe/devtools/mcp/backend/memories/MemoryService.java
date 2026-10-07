@@ -67,7 +67,6 @@ public class MemoryService implements MemoryBackend {
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("yyyy-MM-dd")
             .withZone(ZoneId.systemDefault());
     private static final Logger LOG = LoggerFactory.getLogger(MemoryService.class);
-    private static final String TEMPORARY = "temporär";
 
     private final MemoryRepository memories;
     private final SkillOwner users;
@@ -105,10 +104,13 @@ public class MemoryService implements MemoryBackend {
         return (int) memories.countByOwner(users.email());
     }
 
-    /** Ob die Memory temporär ist; unbekannte oder fremde Memories wie bei {@link #view}. */
+    /**
+     * Ob die Memory ohne Freigabe für dauerhafte Memories geändert werden darf (temporär oder Rückruf); unbekannte oder
+     * fremde Memories wie bei {@link #view}.
+     */
     @Transactional(readOnly = true)
     public boolean temporary(long id) {
-        return find(users.email(), id).isTemporary();
+        return find(users.email(), id).isEphemeral();
     }
 
     @Override
@@ -199,8 +201,8 @@ public class MemoryService implements MemoryBackend {
     private static String render(Memory m) {
         StringBuilder sb = new StringBuilder("# #").append(m.getId()).append(' ').append(m.getTitle()).append('\n');
         List<String> parts = new ArrayList<>();
-        if (m.isTemporary()) {
-            parts.add(TEMPORARY);
+        if (m.isEphemeral()) {
+            parts.add(m.getType().label());
         }
         if (m.getProject() != null) {
             parts.add("Projekt " + m.getProject());
@@ -235,7 +237,8 @@ public class MemoryService implements MemoryBackend {
         List<Long> earlier = r == null ? List.of() : sameReference(user, r);
         Memory m = memories.save(new Memory(user, t, body, p, s, r, tg, type, Instant.now()));
         changed();
-        String msg = "Memory #" + m.getId() + (m.isTemporary() ? " (" + TEMPORARY + ")" : "") + " gespeichert.";
+        String msg = "Memory #" + m.getId() + (m.isEphemeral() ? " (" + m.getType().label() + ")" : "")
+                + " gespeichert.";
         if (!earlier.isEmpty()) {
             msg += " Zu '" + r + "' gibt es außerdem " + earlier.stream().map(id -> "#" + id)
                     .collect(Collectors.joining(", ")) + " – Ergänzungen zu einer bestehenden Aktion besser mit "
@@ -257,7 +260,8 @@ public class MemoryService implements MemoryBackend {
             requireTemporary(m, "geändert");
             if (type == MemoryViews.Type.PERMANENT) {
                 throw new IllegalArgumentException("Memory #" + id + " dauerhaft zu machen braucht die Freigabe für "
-                        + "dauerhafte Memories (permissions_request) – ohne sie bleibt sie temporär.");
+                        + "dauerhafte Memories (permissions_request) – ohne sie bleibt sie " + m.getType().label()
+                        + ".");
             }
         }
         Instant now = Instant.now();
@@ -294,7 +298,7 @@ public class MemoryService implements MemoryBackend {
         }
         if (type != null && type != m.getType()) {
             m.setType(type);
-            changes.add(type == MemoryViews.Type.TEMPORARY ? "jetzt " + TEMPORARY : "jetzt dauerhaft");
+            changes.add("jetzt " + type.label());
         }
         if (changes.isEmpty()) {
             return "Keine Änderung an Memory #" + id + " – mindestens ein Feld angeben (z.B. append).";
@@ -342,12 +346,11 @@ public class MemoryService implements MemoryBackend {
                 and.add(cb.like(cb.concat(cb.concat(",", root.<String>get("tags")), ","),
                         "%," + t.toLowerCase(Locale.ROOT).replaceAll("\\s+", "-") + ",%"));
             }
-            if (type == MemoryViews.Type.TEMPORARY) {
-                and.add(cb.equal(root.get("type"), type.name()));
-            } else if (type == MemoryViews.Type.PERMANENT) {
+            if (type == MemoryViews.Type.PERMANENT) {
                 // leer = Memory von vor dem Typ, also dauerhaft
-                and.add(cb.or(cb.isNull(root.get("type")), cb.notEqual(root.get("type"),
-                        MemoryViews.Type.TEMPORARY.name())));
+                and.add(cb.or(cb.isNull(root.get("type")), cb.equal(root.get("type"), type.name())));
+            } else if (type != null) {
+                and.add(cb.equal(root.get("type"), type.name()));
             }
             if (since != null) {
                 and.add(cb.greaterThanOrEqualTo(root.get("createdAt"), since));
@@ -427,8 +430,8 @@ public class MemoryService implements MemoryBackend {
 
     private static String meta(Memory m) {
         List<String> parts = new ArrayList<>();
-        if (m.isTemporary()) {
-            parts.add(TEMPORARY);
+        if (m.isEphemeral()) {
+            parts.add(m.getType().label());
         }
         if (m.getProject() != null) {
             parts.add(m.getProject());
@@ -458,7 +461,11 @@ public class MemoryService implements MemoryBackend {
             sb.append(" mit Tag '").append(tag.strip()).append('\'');
         }
         if (type != null) {
-            sb.append(type == MemoryViews.Type.TEMPORARY ? " (nur temporäre)" : " (nur dauerhafte)");
+            sb.append(switch (type) {
+                case PERMANENT -> " (nur dauerhafte)";
+                case TEMPORARY -> " (nur temporäre)";
+                case INVOCATION -> " (nur Rückrufe)";
+            });
         }
         if (days != null) {
             sb.append(" der letzten ").append(days).append(days == 1 ? " Tag" : " Tage");
@@ -473,12 +480,12 @@ public class MemoryService implements MemoryBackend {
                 + " gibt es nicht (oder sie gehört einem anderen Benutzer). Mit memories_search suchen."));
     }
 
-    /** Ohne Freigabe für dauerhafte Memories: nur temporäre dürfen geändert bzw. gelöscht werden. */
+    /** Ohne Freigabe für dauerhafte Memories: nur temporäre und Rückrufe dürfen geändert bzw. gelöscht werden. */
     private static void requireTemporary(Memory m, String action) {
-        if (!m.isTemporary()) {
+        if (!m.isEphemeral()) {
             throw new IllegalArgumentException("Memory #" + m.getId() + " ist dauerhaft und darf hier nicht "
-                    + action + " werden – ohne Freigabe nur temporäre Memories. Freigabe für dauerhafte Memories mit "
-                    + "permissions_request anfragen oder den Nutzer fragen.");
+                    + action + " werden – ohne Freigabe nur temporäre Memories und Rückrufe. Freigabe für dauerhafte "
+                    + "Memories mit permissions_request anfragen oder den Nutzer fragen.");
         }
     }
 

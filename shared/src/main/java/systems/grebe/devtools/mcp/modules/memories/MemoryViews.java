@@ -11,11 +11,27 @@ public final class MemoryViews {
 
     /**
      * Lebensdauer einer Memory. Standard ist {@link #PERMANENT}; {@link #TEMPORARY} nur, wenn LLM oder Nutzer es
-     * ausdrücklich angeben (Zwischenstände, Notizen für die laufende Aufgabe). Temporäre Memories dürfen ohne die
-     * Freigaben für dauerhafte Memories geändert und gelöscht werden.
+     * ausdrücklich angeben (Zwischenstände, Notizen für die laufende Aufgabe). {@link #INVOCATION} hält fest, was zu
+     * tun ist, wenn eine lang laufende Aktion fertig ist (Rückruf über den Channel); die App löscht sie, sobald der
+     * Rückruf an alle verbundenen LLMs zugestellt ist. Temporäre und Invocation-Memories dürfen ohne die Freigaben für
+     * dauerhafte Memories geändert und gelöscht werden.
      */
     public enum Type {
-        PERMANENT, TEMPORARY;
+        PERMANENT, TEMPORARY, INVOCATION;
+
+        /** Kurzlebig: ohne Freigabe für dauerhafte Memories änderbar und löschbar. */
+        public boolean ephemeral() {
+            return this != PERMANENT;
+        }
+
+        /** Bezeichnung für Ausgaben, z.B. „temporär“. */
+        public String label() {
+            return switch (this) {
+                case PERMANENT -> "dauerhaft";
+                case TEMPORARY -> "temporär";
+                case INVOCATION -> "Rückruf";
+            };
+        }
 
         /** {@code null} gilt als {@link #PERMANENT} (Standard, auch für Memories aus der Zeit vor dem Typ). */
         public static Type orDefault(Type type) {
@@ -36,6 +52,15 @@ public final class MemoryViews {
 
         public boolean temporary() {
             return type == Type.TEMPORARY;
+        }
+
+        public boolean invocation() {
+            return type == Type.INVOCATION;
+        }
+
+        /** Ohne Freigabe für dauerhafte Memories änderbar (temporär oder Rückruf). */
+        public boolean ephemeral() {
+            return type != null && type.ephemeral();
         }
     }
 }

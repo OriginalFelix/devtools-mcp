@@ -65,7 +65,7 @@ public class Memory {
     @Column(length = 500)
     private String tags;
 
-    /** PERMANENT oder TEMPORARY; leer bei Memories von vor dem Typ (= dauerhaft). */
+    /** PERMANENT, TEMPORARY oder INVOCATION; leer bei Memories von vor dem Typ (= dauerhaft). */
     @Column(length = 16)
     private String type;
 
@@ -170,6 +170,11 @@ public class Memory {
 
     public boolean isTemporary() {
         return getType() == MemoryViews.Type.TEMPORARY;
+    }
+
+    /** Temporär oder Rückruf: ohne Freigabe für dauerhafte Memories änderbar. */
+    public boolean isEphemeral() {
+        return getType().ephemeral();
     }
 
     public Instant getCreatedAt() {

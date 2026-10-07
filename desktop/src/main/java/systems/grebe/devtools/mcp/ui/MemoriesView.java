@@ -106,7 +106,7 @@ public class MemoriesView extends BorderPane {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.getColumns().add(col("Nr.", 48, m -> "#" + m.id()));
         table.getColumns().add(col("Zeit", 100, m -> TIME.format(m.createdAt())));
-        table.getColumns().add(col("Typ", 70, m -> m.temporary() ? "temporär" : "dauerhaft"));
+        table.getColumns().add(col("Typ", 70, m -> MemoryViews.Type.orDefault(m.type()).label()));
         table.getColumns().add(col("Projekt", 100, m -> orEmpty(m.project())));
         table.getColumns().add(col("Skill", 110, m -> orEmpty(m.skill())));
         table.getColumns().add(col("Bezug", 90, m -> orEmpty(m.reference())));
@@ -165,8 +165,8 @@ public class MemoriesView extends BorderPane {
 
     static String metaLine(MemoryViews.Entry m) {
         List<String> parts = new ArrayList<>();
-        if (m.temporary()) {
-            parts.add("temporär");
+        if (m.ephemeral()) {
+            parts.add(m.type().label());
         }
         if (m.project() != null) {
             parts.add("Projekt: " + m.project());

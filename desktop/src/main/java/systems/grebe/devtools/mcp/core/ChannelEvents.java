@@ -46,12 +46,30 @@ public class ChannelEvents {
     public record Event(long id, String source, String content, Map<String, String> meta, Instant time) {
     }
 
+    /**
+     * Ergebnis einer Veröffentlichung.
+     *
+     * @param listeners verbundene Brücken beim Senden
+     * @param delivered davon ohne Fehler erreicht
+     */
+    public record Delivery(long id, int listeners, int delivered) {
+    }
+
     private final Deque<Event> recent = new ArrayDeque<>();
     private final List<Consumer<Event>> listeners = new CopyOnWriteArrayList<>();
+    private final List<Runnable> subscribeListeners = new CopyOnWriteArrayList<>();
     private long lastId;
 
     /** Veröffentlicht ein Ereignis an alle verbundenen Brücken; liefert seine ID. */
     public long publish(String source, String content, Map<String, String> meta) {
+        return deliver(source, content, meta).id();
+    }
+
+    /**
+     * Veröffentlicht ein Ereignis an alle verbundenen Brücken und zählt, wie viele es erreicht hat (eine Brücke, deren
+     * Verbindung abgerissen ist, wirft beim Senden).
+     */
+    public Delivery deliver(String source, String content, Map<String, String> meta) {
         Map<String, String> clean = new LinkedHashMap<>();
         clean.put("event_source", source);
         if (meta != null) {
@@ -69,14 +87,18 @@ public class ChannelEvents {
                 recent.removeFirst();
             }
         }
+        int count = 0;
+        int delivered = 0;
         for (Consumer<Event> l : listeners) {
+            count++;
             try {
                 l.accept(e);
+                delivered++;
             } catch (RuntimeException ex) {
                 LOG.debug("Ereignis {} nicht zustellbar: {}", e.id(), ex.toString());
             }
         }
-        return e.id();
+        return new Delivery(e.id(), count, delivered);
     }
 
     /** Ereignisse nach {@code id} (für das Nachholen nach einer Unterbrechung). */
@@ -89,10 +111,27 @@ public class ChannelEvents {
      * ({@code afterId < 0}: nichts nachholen). Abmelden über {@link #unsubscribe}.
      */
     public List<Event> subscribe(Consumer<Event> listener, long afterId) {
+        List<Event> missed;
         synchronized (this) {
             listeners.add(listener);
-            return afterId < 0 ? List.of() : new ArrayList<>(since(afterId));
+            missed = afterId < 0 ? List.of() : new ArrayList<>(since(afterId));
         }
+        if (!subscribeListeners.isEmpty()) {
+            // nicht im Thread des Aufrufers: der richtet die Verbindung erst noch fertig ein
+            Thread.ofVirtual().name("channel-subscribed").start(() -> subscribeListeners.forEach(r -> {
+                try {
+                    r.run();
+                } catch (RuntimeException ex) {
+                    LOG.warn("Reaktion auf neue Brücke fehlgeschlagen", ex);
+                }
+            }));
+        }
+        return missed;
+    }
+
+    /** Wird nach jeder neu verbundenen Brücke aufgerufen (z.B. um Liegengebliebenes zuzustellen). */
+    public void addSubscribeListener(Runnable listener) {
+        subscribeListeners.add(listener);
     }
 
     public void unsubscribe(Consumer<Event> listener) {

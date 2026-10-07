@@ -46,8 +46,13 @@ public class ChannelEventsController {
         SseEmitter emitter = new SseEmitter(0L);
         Stream stream = new Stream(emitter);
         long after = parse(lastEventId);
-        for (ChannelEvents.Event e : events.subscribe(stream, after)) {
-            stream.accept(e);
+        try {
+            for (ChannelEvents.Event e : events.subscribe(stream, after)) {
+                stream.accept(e);
+            }
+        } catch (RuntimeException e) {
+            events.unsubscribe(stream); // Verbindung schon wieder weg
+            return emitter;
         }
         ScheduledFuture<?> beat = heartbeat.scheduleAtFixedRate(stream::ping, HEARTBEAT_SECONDS, HEARTBEAT_SECONDS,
                 TimeUnit.SECONDS);
@@ -75,7 +80,10 @@ public class ChannelEventsController {
         }
     }
 
-    /** Ein verbundener Client; sendet jedes Ereignis höchstens einmal und in Reihenfolge. */
+    /**
+     * Ein verbundener Client; sendet jedes Ereignis höchstens einmal und in Reihenfolge. Scheitert das Senden, wirft
+     * {@link #accept} – so zählt {@link ChannelEvents#deliver} nur, was die Brücke erreicht hat.
+     */
     private static final class Stream implements Consumer<ChannelEvents.Event> {
         private final SseEmitter emitter;
         private long lastSent;
@@ -100,6 +108,7 @@ public class ChannelEventsController {
                 lastSent = e.id();
             } catch (IOException | IllegalStateException ex) {
                 emitter.completeWithError(ex);
+                throw new IllegalStateException("Brücke nicht erreichbar: " + ex.getMessage(), ex);
             }
         }
 

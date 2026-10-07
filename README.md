@@ -29,7 +29,9 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
-| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` |
+| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` · Typ dauerhaft, temporär oder **Rückruf** (`INVOCATION`) |
+| **Rückrufe** (Invocations) | lang laufende Aktion fertig → das LLM bekommt Ergebnis und hinterlegte Memory (Typ `INVOCATION`) per Channel, auch in einer später gestarteten Sitzung; danach wird die Memory gelöscht: `invocations_list`, `invocations_cancel` (siehe [Rückrufe](#rückrufe--ergebnis-lang-laufender-aktionen-an-das-llm)) |
+| **Kooperation** (MQTT 5, z.B. HiveMQ) | Austausch zwischen Claude-Instanzen auf verschiedenen Rechnern – anderer Nutzer oder eigenes weiteres Gerät: `share_peers`, `share_send` (Notiz, Memories, Skills, Dateien; Rückfrage bei Nutzer 1), `share_inbox`, `share_view`, `share_accept` (Rückfrage bei Nutzer 2), `share_decline` – Broker zentral oder intern, optional Ende-zu-Ende verschlüsselt, neue Angebote und Antworten als Rückruf per Channel (siehe [Kooperation](#kooperation-zwischen-instanzen-und-geräten)) (Modul Standard: aus) |
 | **Skripte** (Groovy 5 oder Java per `javac`) | `scripts_list`, `scripts_view` (Quelltext, Historie, ohne Namen die Referenz) · je Schalter (Standard aus): `scripts_save`, `scripts_delete` – jedes Skript wird zur Laufzeit ein eigenes Modul mit Tools `<skript>_*`, gespeichert im Backend (siehe [Skripte](#skripte--eigene-tools-zur-laufzeit)) |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
@@ -635,6 +637,10 @@ claude --dangerously-load-development-channels server:devtools
   Team-/Enterprise-Organisationen muss der Administrator Channels erlauben (`channelsEnabled`).
 * `java -jar devtools-mcp.jar channel` liefert nur die Benachrichtigungen (ohne Tools) – für einen zweiten Eintrag
   neben dem HTTP-Eintrag.
+* Ereignisse holt der Proxy erst, wenn Claude Code die Sitzung initialisiert hat. Neben neuen Mails kommen so
+  Angebote und Antworten der [Kooperation](#kooperation-zwischen-instanzen-und-geräten) und
+  [Rückrufe](#rückrufe--ergebnis-lang-laufender-aktionen-an-das-llm) – liegengebliebene Rückrufe gehen an die nächste
+  Sitzung, die sich verbindet.
 
 ## Bedienung
 
@@ -1029,6 +1035,73 @@ Entscheidungen, Datum.
   im Tab **Memories** der App geht Löschen immer), „Max. Zeichen je Memory“ (Standard 20 000).
 * **Sparsam ausgeliefert:** Standard 5 Treffer mit einer Zeile plus kurzem Ausschnitt; bei genau einem Treffer kommt
   die Memory direkt vollständig.
+* **Typ:** `PERMANENT` (Standard), `TEMPORARY` (nur ausdrücklich, für Zwischenstände) oder `INVOCATION` (Rückruf, siehe
+  unten). Temporäre und Rückruf-Memories darf das LLM ohne die Schalter anlegen, ändern und löschen.
+
+### Rückrufe – Ergebnis lang laufender Aktionen an das LLM
+
+Wartet eine Aufgabe auf etwas, das dauert (die Antwort eines anderen Nutzers, später weitere Aktionen), soll die
+Sitzung nicht blockieren – und der Zusammenhang darf nicht verloren gehen, wenn Claude Code inzwischen geschlossen
+wurde. Dafür gibt es den **Invocation-Service** (`core/InvocationService`):
+
+1. Das LLM legt vor der Aktion eine Memory vom Typ **`INVOCATION`** an: Titel = worauf gewartet wird, Inhalt = kurz,
+   was dann zu tun ist (`memories_save(type=INVOCATION, …)`).
+2. Es gibt die Memory-ID dem Tool der Aktion (Parameter `invocation`, z.B. `share_send`). Das Modul meldet damit einen
+   Rückruf an – optional mit Ablauf (danach kommt der Rückruf als „keine Rückmeldung“).
+3. Ist die Aktion fertig, löst das Modul den Rückruf aus. Die App stellt ihn als `<channel>`-Nachricht mit den
+   Attributen `invocation` und `memory` zu – Ergebnis plus hinterlegte Memory – und zwar an **alle** gerade
+   verbundenen Sitzungen (stdio-Proxy). Ist keine verbunden, bleibt er liegen (`~/.devtools-mcp/invocations.json`,
+   übersteht Neustarts) und geht an die nächste Sitzung, die sich verbindet.
+4. Nach der Zustellung entfernt die App den Rückruf und löscht die Memory, sobald kein anderer Rückruf mehr an ihr
+   hängt.
+
+Module können Rückrufe auch selbst anlegen und sofort auslösen (`InvocationService.notify`) – so meldet die Kooperation
+eingehende Angebote auch einer später gestarteten Sitzung. `invocations_list` zeigt wartende und noch nicht
+zugestellte Rückrufe, `invocations_cancel` bricht einen ab. Der stdio-Proxy holt Ereignisse erst, nachdem Claude Code
+die Sitzung initialisiert hat – vorher gingen sie verloren, ein Rückruf gilt mit der Zustellung aber als erledigt.
+
+### Kooperation zwischen Instanzen und Geräten
+
+Zwei Claude-Instanzen auf verschiedenen Rechnern tauschen Kontext aus – zwei Nutzer, oder ein Nutzer mit mehreren
+Geräten. Übertragen wird über einen **MQTT-5-Broker**, zentral (z.B. HiveMQ Cloud) oder intern im Firmennetz
+(HiveMQ CE, Mosquitto …), und nur mit **Zustimmung beider Nutzer**:
+
+1. **Nutzer 1 sendet.** `share_send(to, title, note, memories, skills, files, invocation)` packt eine Notiz (Stand,
+   Ergebnisse, offene Punkte), Memories (Nummern), Skills (mit Zusatzdateien) und Dateien zu einem Angebot. Bevor
+   etwas den Rechner verlässt, bestätigt Nutzer 1 es selbst – im MCP-Client (Elicitation) oder per Dialog der App
+   (*Rückfrage beim Senden und Annehmen*, `auto`/`client`/`app`). Mit `invocation` kommt die Antwort als Rückruf.
+2. **Die App von Nutzer 2 meldet es.** Das Angebot landet im Eingang (`share_inbox`, `share_view`) und geht als Rückruf
+   an seine Sitzungen – auch an eine, die er erst später startet.
+3. **Nutzer 2 nimmt an.** `share_accept` fragt ihn ebenfalls selbst; alternativ in der App unter *Module → Kooperation
+   → Aktionen → Annehmen/Ablehnen* (der Klick ist die Zustimmung). Übernommen wird so:
+   * Notiz und Memories → **temporäre Memories** (Tag `geteilt`, mit Herkunftsvermerk) – dauerhaft macht sie der
+     Empfänger bei Bedarf selbst,
+   * Skills → eigene Skills; gibt es den Namen schon, als `<name>-<absender>` – nie überschrieben,
+   * Dateien → je Angebot ein eigener Ordner unter *Empfangene Dateien ablegen in* (Standard
+     `~/.devtools-mcp/share-received`), nichts wird überschrieben.
+
+   `share_decline` lehnt ab. In beiden Fällen erfährt Nutzer 1 die Antwort (`kind=accepted`/`declined`, mit Kommentar),
+   der Inhalt wird beim Empfänger danach nicht mehr aufbewahrt.
+
+**Broker und Topics.** Je Instanz eine Verbindung mit stabiler Client-ID und persistenter Sitzung (`cleanStart=false`,
+*Aufbewahrung beim Broker*, Standard 7 Tage): Angebote an eine gerade getrennte Instanz stellt der Broker zu, sobald sie
+sich wieder verbindet. Topics unter dem Präfix (Standard `devtools-mcp`): `…/inbox/<adresse>` (QoS 1) und
+`…/presence/<adresse>/<instanz>` (retained, Testament „offline“) – `share_peers` zeigt daraus, wer online ist.
+Adresse ist standardmäßig die E-Mail des Benutzerkontos; weitere eigene Geräte tragen dieselbe ein, jedes bekommt das
+Angebot, die sendende Instanz ignoriert ihr eigenes. Broker-Adresse als `mqtts://host:8883`, `mqtt://host:1883`,
+`wss://host/mqtt` oder `ws://host:8000/mqtt`, optional mit Benutzer und Passwort.
+
+**Sicherheit.**
+* *Team-Schlüssel (Ende-zu-Ende)*: gemeinsames Passwort aller Beteiligten; Nachrichten werden mit AES-256-GCM
+  verschlüsselt (Schlüssel per PBKDF2 aus Passwort und Präfix), der Broker sieht nur Adressen. Nachrichten ohne oder mit
+  anderem Schlüssel werden verworfen – das schützt auch vor untergeschobenen Absendern. Ohne Schlüssel TLS und
+  Zugriffsregeln am Broker verwenden.
+* *Austausch nur mit*: Adresse, `@domain` oder `domain` je Zeile – gilt für Senden und Empfangen.
+* Dateien nur aus *Dateien senden aus* (inkl. Unterverzeichnissen, auch über Symlinks nicht hinaus), *Max. Größe je
+  Angebot* (Standard 1024 KB) beim Senden und Empfangen – größere lehnt der Empfänger automatisch ab.
+* Angebote sind Inhalte anderer Menschen: Das LLM soll sie als Information behandeln, nie selbst annehmen oder
+  weitersenden; angenommen wird nur nach Bestätigung durch den Nutzer.
+* Eingang und Ausgang stehen in `~/.devtools-mcp/share-state.json` (Inhalt nur bis zur Entscheidung).
 
 ### Hinweise des Servers: Skills und Memories finden das LLM
 

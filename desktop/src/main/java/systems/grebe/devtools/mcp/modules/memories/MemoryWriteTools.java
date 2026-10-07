@@ -13,8 +13,10 @@ import systems.grebe.devtools.mcp.core.ShellHints;
  */
 public class MemoryWriteTools {
 
-    static final String TYPE = "PERMANENT (Standard) oder TEMPORARY – temporär nur, wenn ausdrücklich gewünscht oder "
-            + "für kurzlebige Zwischenstände";
+    static final String TYPE = "PERMANENT (Standard), TEMPORARY – nur, wenn ausdrücklich gewünscht oder für kurzlebige "
+            + "Zwischenstände – oder INVOCATION: Rückruf, kurz was zu tun ist, wenn eine lang laufende Aktion fertig "
+            + "ist; die ID an das Tool der Aktion geben (z.B. share_send invocation=…), nach der Zustellung wird sie "
+            + "automatisch gelöscht";
 
     private final MemoryBackend service;
     private final int maxContentChars;
@@ -30,7 +32,8 @@ public class MemoryWriteTools {
             + "Fehleranalyse, Fix, PR, Deployment oder Entscheidung: was getan wurde, Ergebnis, Begründung, offene "
             + "Punkte – mit Ticket-/PR-Nummern. Folgeaktion zur selben Sache: memories_update mit append. Standard "
             + "dauerhaft; type=TEMPORARY nur ausdrücklich – temporäre Memories dürfen ohne Freigabe geändert und "
-            + "gelöscht werden. Keine Geheimnisse." + ShellHints.MEMORIES)
+            + "gelöscht werden. type=INVOCATION für Rückrufe nach lang laufenden Aktionen. Keine Geheimnisse."
+            + ShellHints.MEMORIES)
     public String save(
             @ToolParam(description = "Eine Zeile, was getan wurde, z.B. 'Ticket ABC-123 reviewt: Kriterien fehlen'") String title,
             @ToolParam(description = "Markdown: Ergebnis, Begründung, offene Punkte") String content,
@@ -40,9 +43,9 @@ public class MemoryWriteTools {
             @ToolParam(required = false, description = "Schlagwörter") List<String> tags,
             @ToolParam(required = false, description = TYPE) String type) {
         MemoryViews.Type t = type(type);
-        if (temporaryOnly && t != MemoryViews.Type.TEMPORARY) {
+        if (temporaryOnly && (t == null || !t.ephemeral())) {
             throw new IllegalArgumentException("Dauerhafte Memories anzulegen ist nicht freigegeben (Schalter "
-                    + "„Anlegen und Nachtragen erlauben“ aus). Nur mit type=TEMPORARY – oder die Freigabe mit "
+                    + "„Anlegen und Nachtragen erlauben“ aus). Nur mit type=TEMPORARY bzw. INVOCATION – oder die Freigabe mit "
                     + "permissions_request(module='memories', setting='" + MemoriesModule.ALLOW_WRITE + "') anfragen.");
         }
         return service.save(title, content, t, project, skill, reference, tags, maxContentChars);
@@ -60,7 +63,7 @@ public class MemoryWriteTools {
             @ToolParam(required = false, description = "Neuer Skill") String skill,
             @ToolParam(required = false, description = "Neuer Bezug") String reference,
             @ToolParam(required = false, description = "Neue Tags") List<String> tags,
-            @ToolParam(required = false, description = "Neuer Typ: PERMANENT oder TEMPORARY") String type) {
+            @ToolParam(required = false, description = "Neuer Typ: PERMANENT, TEMPORARY oder INVOCATION") String type) {
         return service.update(id, title, content, append, type(type), project, skill, reference, tags, temporaryOnly,
                 maxContentChars);
     }
@@ -73,7 +76,9 @@ public class MemoryWriteTools {
         return switch (raw.strip().toLowerCase(Locale.ROOT)) {
             case "permanent", "dauerhaft" -> MemoryViews.Type.PERMANENT;
             case "temporary", "temp", "temporär", "temporaer" -> MemoryViews.Type.TEMPORARY;
-            default -> throw new IllegalArgumentException("Unbekannter Typ '" + raw + "': PERMANENT oder TEMPORARY.");
+            case "invocation", "callback", "rückruf", "rueckruf" -> MemoryViews.Type.INVOCATION;
+            default -> throw new IllegalArgumentException("Unbekannter Typ '" + raw
+                    + "': PERMANENT, TEMPORARY oder INVOCATION.");
         };
     }
 }
