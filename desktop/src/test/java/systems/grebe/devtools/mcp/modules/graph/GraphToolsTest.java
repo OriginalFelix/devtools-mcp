@@ -379,6 +379,32 @@ class GraphToolsTest {
     }
 
     @Test
+    void callsThroughInterfacesReachTheImplementations() {
+        CodeGraph g = graph();
+        String load = "com.acme.shop.OrderService#load(long)";
+        // der Aufruf aufs Interface bleibt, dazu eine abgeleitete Kante zur Implementierung
+        assertThat(edge(g, load, "com.acme.shop.repo.OrderRepository#findById(long)", Relation.CALLS).conf())
+                .isEqualTo(Confidence.EXTRACTED);
+        Edge dispatched = edge(g, load, "com.acme.shop.repo.JpaOrderRepository#findById(long)", Relation.CALLS);
+        assertThat(dispatched.conf()).isEqualTo(Confidence.INFERRED);
+        assertThat(dispatched.score()).isEqualTo(GraphBuilder.DISPATCH_SCORE);
+        // so findet graph_path die Aufrufkette bis in die Implementierung
+        assertThat(tools().path(null, "OrderService#start", "JpaOrderRepository#findById", true, List.of("calls"), 4,
+                null)).doesNotStartWith("Kein Pfad").contains("JpaOrderRepository#findById", "INFERRED");
+    }
+
+    @Test
+    void searchTermsKeepUmlautsAndWildcardsStayCheap() {
+        assertThat(GraphQueries.terms("Wie wird ein Graph veröffentlicht?")).contains("veröffentlicht")
+                .doesNotContain("ver", "ffentlicht");
+        assertThat(GraphQueries.terms("ÄnderungsZähler")).contains("änderungszähler", "änderungs", "zähler");
+        // kein doppeltes .* (*name* ergab .*.*name.*.* – ArcadeDB brach das mit regexTimeout ab)
+        assertThat(GraphQueries.globRegex("*terms*".split("\\*", -1), false)).isEqualTo(".*\\Qterms\\E.*");
+        assertThat(GraphQueries.globRegex("*terms*".split("\\*", -1), true)).isEqualTo(".*\\Qterms\\E.*");
+        assertThat(GraphQueries.globRegex("order*dao".split("\\*", -1), true)).isEqualTo("\\Qorder\\E.*\\Qdao\\E");
+    }
+
+    @Test
     void globMatchingIsAnchoredLikeShellPatterns() {
         String[] dao = "*dao".split("\\*", -1);
         assertThat(GraphQueries.globMatches(dao, "orderdao", true)).isTrue();

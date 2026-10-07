@@ -83,8 +83,13 @@ public class GraphModule implements ToolModule {
     @Override
     public String instructions() {
         return """
-                Für Struktur- und Architekturfragen zu freigegebenen Java-Projekten den Code-Graphen verwenden, statt \
-                Dateien mit `grep`, `find` oder vielen Einzel-Reads zu durchsuchen:
+                **Immer zuerst den Graphen:** Bevor in einem freigegebenen Java-Projekt Dateien gesucht oder gelesen \
+                werden – auch bei scheinbar einfachen Fragen wie „wo steht X?“ oder „welche Datei macht Y?“ –, zuerst \
+                `graph_files`, `graph_query` oder `graph_find` aufrufen und danach mit `graph_read` nur die nötigen \
+                Stellen lesen. `grep`, `rg`, `find`, Glob oder das Öffnen ganzer Dateien erst, wenn der Graph nichts \
+                liefert (z.B. Nicht-Java-Dateien, Konfiguration, Texte in Strings oder Kommentaren) – dann kurz sagen, \
+                warum.
+                Für Struktur- und Architekturfragen ebenso den Code-Graphen verwenden:
                 - `graph_report`: Überblick (God Nodes, Communities, überraschende Verbindungen) – vor Architekturfragen.
                 - `graph_query`: Frage in Stichworten → passende Typen/Methoden und ihr Zusammenhang.
                 - `graph_find`: Klassen/Methoden nach Namen (statt `grep -r "class Foo"`).
@@ -93,7 +98,8 @@ public class GraphModule implements ToolModule {
                 - `graph_read`: nur die nötige Stelle lesen – Methode (`Typ#methode`), Typ, Gliederung einer Datei oder \
                 `lines='von-bis'` – statt ganzer Dateien. Große Typen/Dateien kommen als Gliederung.
                 - `graph_explain`: alles zu einem Knoten; `graph_neighbors` (direction=in, relations=[calls]): wer ruft das \
-                auf (statt `grep` nach Aufrufstellen); `graph_path`: wie hängen zwei Stellen zusammen.
+                auf (statt `grep` nach Aufrufstellen); `graph_path`: wie hängen zwei Stellen zusammen. Aufrufe über \
+                Interfaces und Oberklassen führen als INFERRED-Kanten bis in die Implementierungen. Aufrufe über \n                Interfaces und Oberklassen führen als INFERRED-Kanten bis in die Implementierungen.
                 - Gibt es für das Projekt noch keinen Graphen (ausgecheckter Branch), bauen die Abfrage-Tools ihn beim ersten \
                 Aufruf automatisch und suchen dann – vorher kein `graph_build` nötig.
                 - `graph_build`: nach größeren Änderungen; baut nur neu, wenn sich Quelldateien geändert haben.

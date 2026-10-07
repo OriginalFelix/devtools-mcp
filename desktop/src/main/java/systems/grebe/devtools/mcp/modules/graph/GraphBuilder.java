@@ -16,15 +16,19 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HexFormat;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,7 +53,7 @@ final class GraphBuilder {
 
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(GraphBuilder.class);
 
-    static final String GENERATOR = "devtools-mcp graph (tree-sitter-java) 2";
+    static final String GENERATOR = "devtools-mcp graph (tree-sitter-java) 3";
 
     /** Relationen, die für die Community-Erkennung zählen – mit Gewicht. */
     private static final Map<Relation, Double> COMMUNITY_WEIGHT = Map.of(
@@ -243,6 +247,7 @@ final class GraphBuilder {
                 futures.set(i, null); // Ergebnis freigeben
                 report(progress, "Aufrufe und Referenzen", i + 1, n, 0.45, 0.85);
             }
+            dispatchEdges(edges);
             progress.update("Communities …", 0.9);
             return finish(files, nodes, edges, projectName);
         }
@@ -349,6 +354,62 @@ final class GraphBuilder {
         }
     }
 
+    /** Höchstens so viele Implementierungen je aufgerufener Methode bekommen abgeleitete Aufrufkanten. */
+    static final int MAX_DISPATCH = 12;
+    /** Score der abgeleiteten Aufrufe einer Implementierung über Interface/Oberklasse. */
+    static final double DISPATCH_SCORE = 0.7;
+
+    /**
+     * Aufrufe über Interfaces und Oberklassen: Ein Aufruf einer Methode, die überschrieben wird, bekommt je
+     * überschreibender Methode (auch über mehrere Stufen) eine abgeleitete Kante {@code calls} (INFERRED, Score
+     * {@value #DISPATCH_SCORE}, Anzahl wie beim Aufruf). So führen Aufrufketten, {@code graph_path} und „wer ruft das
+     * auf“ bis in die Implementierungen. Bei mehr als {@value #MAX_DISPATCH} Implementierungen (z.B. {@code run()})
+     * unterbleibt das – die Kanten wären Rauschen. Vorhandene Kanten bleiben unverändert.
+     */
+    static void dispatchEdges(Map<String, EdgeAcc> edges) {
+        Map<String, List<String>> overriders = new HashMap<>();
+        for (EdgeAcc e : edges.values()) {
+            if (e.rel == Relation.OVERRIDES) {
+                overriders.computeIfAbsent(e.to, k -> new ArrayList<>()).add(e.from);
+            }
+        }
+        if (overriders.isEmpty()) {
+            return;
+        }
+        Map<String, List<String>> implementations = new HashMap<>();
+        List<EdgeAcc> calls = edges.values().stream()
+                .filter(e -> e.rel == Relation.CALLS && overriders.containsKey(e.to)).toList();
+        for (EdgeAcc call : calls) {
+            List<String> impls = implementations.computeIfAbsent(call.to, m -> transitiveOverriders(m, overriders));
+            if (impls.size() > MAX_DISPATCH) {
+                continue;
+            }
+            double score = Math.min(DISPATCH_SCORE, call.conf == Confidence.EXTRACTED ? 1.0 : call.score);
+            for (String impl : impls) {
+                String key = edgeKey(call.from, impl, Relation.CALLS);
+                if (impl.equals(call.from) || edges.containsKey(key)) {
+                    continue; // super-Aufruf der Implementierung selbst bzw. schon direkt verbunden
+                }
+                EdgeAcc acc = new EdgeAcc(call.from, impl, Relation.CALLS, Confidence.INFERRED, score, call.line);
+                acc.count = call.count;
+                edges.put(key, acc);
+            }
+        }
+    }
+
+    /** Alle Methoden, die {@code method} direkt oder über Zwischenstufen überschreiben, sortiert. */
+    private static List<String> transitiveOverriders(String method, Map<String, List<String>> overriders) {
+        Set<String> seen = new TreeSet<>();
+        Deque<String> todo = new ArrayDeque<>(overriders.getOrDefault(method, List.of()));
+        while (!todo.isEmpty() && seen.size() <= MAX_DISPATCH) {
+            String m = todo.pop();
+            if (seen.add(m)) {
+                todo.addAll(overriders.getOrDefault(m, List.of()));
+            }
+        }
+        return new ArrayList<>(seen);
+    }
+
     private GraphFile finish(List<FileEntry> files, Map<String, Node> nodes, Map<String, EdgeAcc> edges, String project) {
         List<Edge> edgeList = new ArrayList<>(edges.size());
         edges.values().forEach(a -> edgeList.add(a.toEdge()));
@@ -408,9 +469,13 @@ final class GraphBuilder {
         }
     }
 
+    private static String edgeKey(String from, String to, Relation rel) {
+        return from + '\u0000' + to + '\u0000' + rel.ordinal();
+    }
+
     private static void edge(Map<String, EdgeAcc> edges, String from, String to, Relation rel, Confidence conf,
                              double score, Integer line) {
-        String key = from + '\u0000' + to + '\u0000' + rel.ordinal();
+        String key = edgeKey(from, to, rel);
         EdgeAcc acc = edges.get(key);
         if (acc == null) {
             acc = new EdgeAcc(from, to, rel, conf, score, line);

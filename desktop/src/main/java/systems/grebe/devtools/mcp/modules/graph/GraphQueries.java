@@ -30,7 +30,8 @@ import systems.grebe.devtools.mcp.modules.graph.GraphReader.TypeLink;
  */
 final class GraphQueries {
 
-    private static final Pattern CAMEL = Pattern.compile("(?<=[a-z0-9])(?=[A-Z])|[^A-Za-z0-9]+");
+    /** CamelCase und Trennzeichen – Buchstaben aller Sprachen, damit „veröffentlicht“ ein Wort bleibt. */
+    private static final Pattern CAMEL = Pattern.compile("(?<=[\\p{Ll}\\p{N}])(?=\\p{Lu})|[^\\p{L}\\p{N}]+");
     private static final Set<String> STOP_WORDS = Set.of("the", "a", "an", "and", "or", "of", "to", "in", "is", "are",
             "what", "which", "who", "how", "where", "does", "do", "with", "from", "for", "by", "on", "der", "die",
             "das", "und", "oder", "wie", "wo", "was", "wer", "welche", "welcher", "wird", "werden", "von", "mit", "im",
@@ -207,13 +208,26 @@ final class GraphQueries {
         StringBuilder sb = new StringBuilder(whole ? "" : ".*");
         for (int i = 0; i < parts.length; i++) {
             if (i > 0) {
-                sb.append(".*");
+                any(sb);
             }
             if (!parts[i].isEmpty()) {
                 sb.append(Pattern.quote(parts[i]));
             }
         }
-        return sb.append(whole ? "" : ".*").toString();
+        if (!whole) {
+            any(sb);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Hängt {@code .*} an, außer es steht schon da: {@code *name*} ergäbe sonst {@code .*.*name.*.*} – das kostet
+     * kubisch viele Versuche, und ArcadeDB bricht so eine Abfrage mit {@code regexTimeout} ab.
+     */
+    private static void any(StringBuilder sb) {
+        if (sb.length() < 2 || !sb.substring(sb.length() - 2).equals(".*")) {
+            sb.append(".*");
+        }
     }
 
     /**
