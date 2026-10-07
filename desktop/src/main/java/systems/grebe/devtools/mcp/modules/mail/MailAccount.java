@@ -13,9 +13,14 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
  * @param folders freigegebene Ordner (Postfächer); leer = das ganze Konto. Ein Eintrag mit {@code *} am Ende gibt alle
  *                Ordner frei, die so beginnen ({@code Projekte/*} = alle Unterordner von Projekte).
  * @param watch   Ordner, deren neue Mails gemeldet werden; leer = keine Überwachung
+ * @param auth    {@link #PASSWORD_AUTH} oder {@link #MICROSOFT} (Exchange Online: OAuth2 per Device Code, XOAUTH2)
+ * @param tenant  nur Microsoft: Tenant-ID oder Domain
+ * @param clientId nur Microsoft: Anwendungs-ID der App-Registrierung in Entra ID
+ * @param authority nur Microsoft: Anmelde-Endpunkt (aus den Modul-Einstellungen)
  */
 record MailAccount(String name, String host, int port, String security, String username, String password,
-                   List<String> folders, List<String> watch, String description) {
+                   List<String> folders, List<String> watch, String description, String auth, String tenant,
+                   String clientId, String authority) {
 
     static final String NAME = "name";
     static final String HOST = "host";
@@ -26,12 +31,23 @@ record MailAccount(String name, String host, int port, String security, String u
     static final String FOLDERS = "folders";
     static final String WATCH = "watch";
     static final String DESCRIPTION = "description";
+    static final String AUTH = "auth";
+    static final String TENANT = "tenant";
+    static final String CLIENT_ID = "clientId";
+
+    static final String PASSWORD_AUTH = "password";
+    static final String MICROSOFT = "microsoft";
+    static final String DEFAULT_AUTHORITY = "https://login.microsoftonline.com";
 
     static final String SSL = "ssl";
     static final String STARTTLS = "starttls";
     static final String PLAIN = "none";
 
     static MailAccount of(Map<String, String> r) {
+        return of(r, DEFAULT_AUTHORITY);
+    }
+
+    static MailAccount of(Map<String, String> r, String authority) {
         String security = trim(r.get(SECURITY)).toLowerCase(Locale.ROOT);
         if (!List.of(SSL, STARTTLS, PLAIN).contains(security)) {
             security = SSL;
@@ -43,9 +59,20 @@ record MailAccount(String name, String host, int port, String security, String u
             port = security.equals(SSL) ? 993 : 143;
         }
         String password = r.get(PASSWORD);
-        return new MailAccount(trim(r.get(NAME)), trim(r.get(HOST)), port, security, trim(r.get(USERNAME)),
+        String auth = MICROSOFT.equalsIgnoreCase(trim(r.get(AUTH))) ? MICROSOFT : PASSWORD_AUTH;
+        String host = trim(r.get(HOST));
+        if (host.isEmpty() && auth.equals(MICROSOFT)) {
+            host = "outlook.office365.com";
+        }
+        String tenant = trim(r.get(TENANT));
+        return new MailAccount(trim(r.get(NAME)), host, port, security, trim(r.get(USERNAME)),
                 password == null || password.isEmpty() ? null : password, lines(r.get(FOLDERS)), lines(r.get(WATCH)),
-                trim(r.get(DESCRIPTION)));
+                trim(r.get(DESCRIPTION)), auth, tenant.isEmpty() ? "organizations" : tenant, trim(r.get(CLIENT_ID)),
+                authority == null || authority.isBlank() ? DEFAULT_AUTHORITY : authority.strip().replaceAll("/+$", ""));
+    }
+
+    boolean microsoft() {
+        return auth.equals(MICROSOFT);
     }
 
     private static List<String> lines(String v) {

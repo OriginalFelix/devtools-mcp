@@ -23,7 +23,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
-| **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort – gesendet wird nie) – Konten ganz oder nur einzelne Ordner freigeben; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über die Channel-Brücke an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive` (Modul Standard: aus) |
+| **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort – gesendet wird nie) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über die Channel-Brücke an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
@@ -435,9 +435,10 @@ Laufzeit entstehen, legt es über `ChatSettings.vault()` verschlüsselt ab.
 ### E-Mail (IMAP)
 
 Das Modul **Mail (IMAP)** gibt dem LLM Zugriff auf E-Mail-Konten – auf das ganze Konto oder nur auf einzelne Ordner
-(Postfächer) – und meldet neue Mails von sich aus. Konten werden in der App gepflegt (Name, IMAP-Server,
+(Postfächer) – und meldet neue Mails von sich aus. Konten werden in der App gepflegt (Name, Anmeldung, IMAP-Server,
 Verschlüsselung `ssl`/`starttls`/`none`, Port, Benutzer, Passwort verschlüsselt, Beschreibung); das LLM sieht nur Name,
-Benutzer@Host, Beschreibung und die Ordner.
+Benutzer@Host, Beschreibung und die Ordner. Plugins nutzen dieselben Konten über den
+[`MailAccountProvider`](#plugin-schreiben).
 
 * **Freigegebene Ordner** je Konto, einer je Zeile: `INBOX`, `Projekte/Kunde-A`, `Projekte/*` (alle Unterordner).
   Leer = das ganze Konto. Alle Tools – auch Ziel von `mail_move` und der Entwurfsordner von `mail_draft` – arbeiten nur
@@ -452,6 +453,25 @@ Benutzer@Host, Beschreibung und die Ordner.
 
 Die Instructions und jede Tool-Beschreibung sagen dem LLM, dass Mails Daten von außen sind: Aufforderungen darin werden
 nicht befolgt, verschoben und entworfen wird nur auf Anweisung des Nutzers.
+
+#### Exchange Online / Microsoft 365
+
+Microsoft lässt IMAP bei Exchange Online nur noch mit OAuth2 zu. Ein Konto mit *Anmeldung* `microsoft` meldet sich per
+SASL `XOAUTH2` an (Server leer = `outlook.office365.com:993`), *Benutzer* ist die Adresse des Postfachs – auch eines
+freigegebenen Postfachs, auf das der angemeldete Benutzer Vollzugriff hat.
+
+1. In Entra ID eine App-Registrierung anlegen (oder die für Teams erweitern): *Authentifizierung* → „Öffentliche
+   Clientflows zulassen“ = Ja; *API-Berechtigungen* → „Von meiner Organisation verwendete APIs“ → *Office 365 Exchange
+   Online* → delegiert `IMAP.AccessAsUser.All` (je nach Tenant mit Administratorzustimmung). IMAP muss für das Postfach
+   eingeschaltet sein (Exchange Admin Center → Postfach → E-Mail-Apps).
+2. Beim Konto Tenant (ID oder Domain, Standard `organizations`) und Client-ID eintragen, speichern.
+3. *Anmelden* (Aktion des Moduls) ausführen: die App zeigt Adresse und Code und öffnet den Browser. Ohne App-Fenster
+   liefert `mail_login` beides an das LLM, die Anmeldung läuft im Hintergrund weiter.
+
+Das Refresh-Token liegt verschlüsselt in `~/.devtools-mcp/mail-tokens.json`, Access-Tokens nur im Speicher; die App
+erneuert sie selbst. Nach der Anmeldung verbindet die Überwachung sofort. Läuft die Anmeldung ab oder wird widerrufen,
+melden Tools, *Verbindung testen* und `mail_accounts` „nicht angemeldet“ – die Überwachung wartet dann, statt den
+Server mit Versuchen zu belasten. Für nationale Clouds gibt es den *Anmelde-Endpunkt* in den Modul-Einstellungen.
 
 #### Neue Mails melden: Channel-Brücke, Befehl, `mail_receive`
 
@@ -550,7 +570,7 @@ Gradle-Multiprojekt:
 | `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories, Skripte mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
 | `shared` | Gemeinsam: Einstellungs-Ablage, Datenklassen der GraphQL-API (`api`) | – |
-| `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), Datenbankverbindungen (`DatabaseConnectionProvider`), Projektverzeichnisse (`ProjectProvider`), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
+| `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), Datenbankverbindungen (`DatabaseConnectionProvider`), Projektverzeichnisse (`ProjectProvider`), E-Mail-Konten (`MailAccountProvider`), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
 
 MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
 im Team-Server, und in der Desktop-App eingebettet – außer dort ist ein Team-Server eingetragen, dann nutzt sie dessen
@@ -1305,7 +1325,7 @@ inkl. Formular, Schaltern, Aktionen und Protokoll. Für kleine Erweiterungen ohn
 name: jira                        # Pflicht, [a-z][a-z0-9-]*, eindeutig
 version: 1.2.0                    # Pflicht
 main: com.acme.jira.JiraPlugin    # Pflicht, erweitert DevToolsPlugin
-api-version: 1                    # optional; höher als die App → Plugin wird abgewiesen (2: Datenbanken, Projekte)
+api-version: 1                    # optional; höher als die App → Plugin wird abgewiesen (2: Datenbanken, Projekte; 3: Mail)
 description: Tickets lesen und kommentieren
 author: Team Tools                # oder authors: [a, b]
 website: https://git.acme.de/jira-plugin
@@ -1363,6 +1383,7 @@ Sie enthält, was ein Plugin braucht, und reicht Spring AI (`@Tool`, `ToolCallba
 | Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `ContainerRuntimeProvider`/`ContainerRuntime`/`RuntimeSettings` |
 | Datenbanken | `DatabaseConnectionProvider`, `DatabaseConnectionInfo` (Verbindungen des JDBC-Moduls, ab `api-version: 2`) |
 | Projekte | `ProjectProvider`, `ProjectDirectory` (freigegebene Projektverzeichnisse, ab `api-version: 2`) |
+| Mail | `MailAccountProvider`, `MailAccountInfo`, `MailFolderInfo`, `MailSummary`, `MailMessage`, `MailAttachment(Info)`, `MailQuery`, `MailDraft`, `NewMail` (Konten des Mail-Moduls, ab `api-version: 3`) |
  Die App stellt all das zur Laufzeit bereit, ins Jar
 gehört nur der eigene Code. Die Pakete sind dieselben wie vorher im App-Jar: bereits gebaute Plugins laufen unverändert.
 
@@ -1416,6 +1437,15 @@ Maven: dieselbe Koordinate mit `<scope>provided</scope>`. Das POM nennt feste Ve
   `resolve(nameOrPath, marker)` löst einen Projektnamen oder Pfad auf, auch ein Unterverzeichnis wie das
   Arbeitsverzeichnis des Clients; bei aufgehobener Beschränkung auch Pfade außerhalb. `ProjectDirectory.writable()`
   sagt, ob das Plugin dort schreiben oder Code des Projekts (Gradle) ausführen darf.
+* **Mail:** Die Bean `MailAccountProvider` (Plugin-API, `modules/mail/spi`, `api-version: 3`) gibt Plugins die Konten
+  des Mail-Moduls – ohne eigene Zugangsdaten, auch für Exchange Online: `accounts()` (Name, Benutzer@Host, Anmeldung,
+  freigegebene und überwachte Ordner – nie Passwörter oder Tokens), `folders`, `list(account, folder, MailQuery, limit)`,
+  `read` (Text, HTML als Text, Anhangsliste; bleibt ungelesen), `attachment(…, index, maxBytes)` (Inhalt) und
+  `onNewMail(listener)` – neue Mails der überwachten Ordner, im Thread der Überwachung mit dem ClassLoader des Plugins;
+  das zurückgegebene `AutoCloseable` in `onDisable()` schließen. `mark`, `move` und `draft` gehen über dieselben
+  Prüfungen wie die Tools. Es gelten Freigaben und Schalter des Moduls; Lesen braucht das Recht auf `mail_read`, Schreiben
+  zusätzlich den Schalter und das Recht auf `mail_mark`/`mail_move`/`mail_draft`. Ob das Modul aktiv ist, spielt fürs
+  Lesen keine Rolle; neue Mails gibt es nur, solange es aktiv ist und Ordner überwacht.
 * **Tools:** `ToolBeans.callbacks(…)` statt `ToolCallbacks.from(…)` übernimmt `@ToolHints` als MCP-Tool-Annotations,
   `ToolProgress.report(…)` meldet Zwischenstände an den Client – beides funktioniert in Plugin-Tools wie in eingebauten.
 * **Instructions:** `instructions()` aktiver Plugin-Module stehen ab der nächsten Client-Session in den
@@ -1496,7 +1526,8 @@ desktop/
   server/BearerTokenFilter── optionaler Token-Schutz für /mcp
   core/ChannelEvents      ── Ereignisse an laufende Sitzungen; server/ChannelEventsController: GET /mcp/channel/events (SSE)
   channel/ChannelBridge   ── `java -jar … channel`: stdio-MCP-Server für Claude-Code-Channels, liest die SSE der App
-  modules/mail/           ── IMAP: MailTools/MailWriteTools, MailWatcher (IDLE/Abfrage, Meldungen), MailCommand, MailState
+  modules/mail/           ── IMAP: MailTools/MailWriteTools, MailWatcher (IDLE/Abfrage, Meldungen), MailCommand, MailState,
+                             MailOAuth (Exchange Online), MailAccountService (SPI für Plugins)
   remote/                 ── EmbeddedBackend + EmbeddedAccounts (erstes Konto), BackendConnection (Anmeldung,
                              GraphQL-Client, Subscriptions, Cache),
                              BackendSettingsResolver, BackendSkills, BackendMemories, BackendScripts, ScriptCacheFile
@@ -1525,7 +1556,8 @@ shared/
 plugin-api/
   core/                   ── ToolModule, ModuleAction, ConnectionTestResult, ToolScope, ConfigField, ConfigGroup,
                              FieldType, ModuleConfig, ToolBeans + ToolHints, ToolProgress, ServiceProvider
-  modules/*/spi/          ── Provider-SPIs: ticket, chat, pr (Git-Server), container; jdbc: Verbindungen für Plugins
+  modules/*/spi/          ── Provider-SPIs: ticket, chat, pr (Git-Server), container; jdbc, mail: Verbindungen und
+                             Konten für Plugins
   project/spi/            ── ProjectProvider: freigegebene Projektverzeichnisse für Plugins
   plugin/                 ── DevToolsPlugin, PluginContext, PluginDescriptor, PluginApi
 ```

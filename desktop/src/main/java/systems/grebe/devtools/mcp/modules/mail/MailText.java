@@ -85,17 +85,33 @@ final class MailText {
         return new Content(text.strip(), c.plain.isEmpty() && !c.html.isEmpty(), c.attachments);
     }
 
+    /** Teil des Anhangs Nummer {@code index} (Reihenfolge wie in {@link Content#attachments()}). */
+    static Part attachmentPart(Part message, int index) throws MessagingException, IOException {
+        Collector c = new Collector();
+        c.walk(message, false);
+        if (index < 0 || index >= c.parts.size()) {
+            throw new IllegalArgumentException("Anhang " + index + " gibt es nicht (" + c.parts.size() + " Anhänge).");
+        }
+        return c.parts.get(index);
+    }
+
     private static final class Collector {
         final List<String> plain = new ArrayList<>();
         final List<String> html = new ArrayList<>();
         final List<Attachment> attachments = new ArrayList<>();
+        final List<Part> parts = new ArrayList<>();
+
+        private void attach(Part p, String name) throws MessagingException {
+            attachments.add(new Attachment(name, baseType(p), p.getSize()));
+            parts.add(p);
+        }
 
         void walk(Part p, boolean inAlternative) throws MessagingException, IOException {
             String filename = filename(p);
             boolean attachment = Part.ATTACHMENT.equalsIgnoreCase(p.getDisposition()) || filename != null
                     && !p.isMimeType("multipart/*");
             if (attachment) {
-                attachments.add(new Attachment(filename == null ? "(ohne Namen)" : filename, baseType(p), p.getSize()));
+                attach(p, filename == null ? "(ohne Namen)" : filename);
                 return;
             }
             if (p.isMimeType("multipart/alternative")) {
@@ -121,7 +137,7 @@ final class MailText {
                     walk(mp.getBodyPart(i), inAlternative);
                 }
             } else if (p.isMimeType("message/rfc822")) {
-                attachments.add(new Attachment("weitergeleitete Mail", "message/rfc822", p.getSize()));
+                attach(p, "weitergeleitete Mail");
             } else if (p.isMimeType("text/plain")) {
                 plain.add(text(p));
             } else if (p.isMimeType("text/html")) {
@@ -129,7 +145,7 @@ final class MailText {
                     html.add(text(p));
                 }
             } else {
-                attachments.add(new Attachment("(eingebettet)", baseType(p), p.getSize()));
+                attach(p, "(eingebettet)");
             }
         }
     }

@@ -62,6 +62,9 @@ public class MailTools {
         StringBuilder sb = new StringBuilder();
         for (MailAccount a : all) {
             sb.append(a.name()).append("  ").append(a.target()).append(" (").append(a.security()).append(')');
+            if (a.microsoft()) {
+                sb.append("  [Microsoft: ").append(env.watcher().oauth().status(a)).append(']');
+            }
             if (!a.description().isEmpty()) {
                 sb.append("  – ").append(a.description());
             }

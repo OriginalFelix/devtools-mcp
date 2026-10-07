@@ -13,10 +13,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import jakarta.annotation.PreDestroy;
 import jakarta.mail.FetchProfile;
@@ -153,6 +155,7 @@ public class MailWatcher implements AutoCloseable {
     private final ObjectProvider<ToolRegistry> registry;
     private final ChannelEvents channel;
     private final MailState state;
+    private final MailOAuth oauth;
     private final MailCommand command = new MailCommand();
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(
             Thread.ofPlatform().daemon().name("mail-idle-refresh").factory());
@@ -165,14 +168,29 @@ public class MailWatcher implements AutoCloseable {
     private int dropped;
 
     @Autowired
-    public MailWatcher(ObjectProvider<ToolRegistry> registry, ChannelEvents channel, SettingsStore store) {
-        this(registry, channel, new MailState(store.file().toAbsolutePath().getParent().resolve("mail-state.json")));
+    public MailWatcher(ObjectProvider<ToolRegistry> registry, ChannelEvents channel, SettingsStore store,
+                       MailOAuth oauth) {
+        this(registry, channel, new MailState(store.file().toAbsolutePath().getParent().resolve("mail-state.json")),
+                oauth);
     }
 
-    MailWatcher(ObjectProvider<ToolRegistry> registry, ChannelEvents channel, MailState state) {
+    MailWatcher(ObjectProvider<ToolRegistry> registry, ChannelEvents channel, MailState state, MailOAuth oauth) {
         this.registry = registry;
         this.channel = channel;
         this.state = state;
+        this.oauth = oauth;
+        // nach einer Anmeldung sofort verbinden statt den nächsten Versuch abzuwarten
+        oauth.addLoginListener(this::wake);
+    }
+
+    MailOAuth oauth() {
+        return oauth;
+    }
+
+    /** Weckt wartende Überwachungen eines Kontos (nach Fehler oder fehlender Anmeldung) für einen neuen Versuch. */
+    synchronized void wake(String accountName) {
+        watches.values().stream().filter(w -> w.spec.account().name().equals(accountName))
+                .forEach(FolderWatch::wake);
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -300,6 +318,15 @@ public class MailWatcher implements AutoCloseable {
 
     // ------------------------------------------------------------------ Melden
 
+    private final List<Consumer<List<NewMail>>> listeners =
+            new CopyOnWriteArrayList<>();
+
+    /** Meldet neue Mails zusätzlich an {@code listener} (z.B. für Plugins); schließen meldet ihn ab. */
+    AutoCloseable addListener(Consumer<List<NewMail>> listener) {
+        listeners.add(listener);
+        return () -> listeners.remove(listener);
+    }
+
     /** Meldet die neuen Mails eines Ordners (aufsteigend nach UID). */
     void deliver(Spec spec, List<NewMail> mails) {
         if (mails.isEmpty()) {
@@ -312,6 +339,13 @@ public class MailWatcher implements AutoCloseable {
                 dropped++;
             }
             inbox.notifyAll();
+        }
+        for (var l : listeners) {
+            try {
+                l.accept(mails);
+            } catch (RuntimeException e) {
+                LOG.warn("Listener für neue Mails ({}) fehlgeschlagen", l.getClass().getName(), e);
+            }
         }
         Settings s = settings;
         List<NewMail> notify = mails.stream()
@@ -349,6 +383,7 @@ public class MailWatcher implements AutoCloseable {
         final Settings.WatchKey key;
         final String stateKey;
         private volatile boolean running = true;
+        private volatile boolean waiting;
         private volatile Store store;
         private volatile Folder folder;
         private Thread thread;
@@ -363,6 +398,13 @@ public class MailWatcher implements AutoCloseable {
         FolderWatch start() {
             thread = Thread.ofPlatform().daemon().name("mail-watch-" + spec.label()).start(this);
             return this;
+        }
+
+        /** Bricht das Warten auf den nächsten Versuch ab (nur zwischen zwei Versuchen wirksam). */
+        void wake() {
+            if (waiting) {
+                thread.interrupt();
+            }
         }
 
         void stop() {
@@ -385,7 +427,8 @@ public class MailWatcher implements AutoCloseable {
                     }
                     String msg = MailConnector.describe(spec.account(), e);
                     boolean auth = e instanceof jakarta.mail.AuthenticationFailedException
-                            || e.getCause() instanceof jakarta.mail.AuthenticationFailedException;
+                            || e.getCause() instanceof jakarta.mail.AuthenticationFailedException
+                            || e instanceof MailOAuth.NotLoggedInException;
                     if (auth) {
                         backoff = MAX_BACKOFF; // nicht durch Wiederholen das Konto sperren lassen
                     }
@@ -395,7 +438,9 @@ public class MailWatcher implements AutoCloseable {
                 } finally {
                     disconnect();
                 }
+                waiting = true;
                 sleep(backoff);
+                waiting = false;
                 backoff = Math.min(MAX_BACKOFF, backoff * 2);
             }
         }
@@ -403,7 +448,7 @@ public class MailWatcher implements AutoCloseable {
         private void connectAndWatch() throws MessagingException {
             // Lesezeitlimit über der IDLE-Auffrischung, sonst bräche jedes ruhige IDLE mit Zeitüberschreitung ab
             Duration read = Duration.ofMinutes(key.refreshMinutes() + 2L);
-            Store s = MailConnector.connect(spec.account(), CONNECT_TIMEOUT, read);
+            Store s = MailConnector.connect(spec.account(), oauth, CONNECT_TIMEOUT, read);
             store = s;
             Folder f = s.getFolder(spec.folder());
             if (!f.exists()) {

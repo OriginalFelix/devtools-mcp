@@ -50,7 +50,9 @@ final class MailEnvironment {
     }
 
     static List<MailAccount> accounts(ModuleConfig c) {
-        return c.getRecords(MailModule.ACCOUNTS).stream().map(MailAccount::of).filter(a -> !a.name().isEmpty()).toList();
+        String authority = c.getString(MailModule.MS_AUTHORITY, MailAccount.DEFAULT_AUTHORITY);
+        return c.getRecords(MailModule.ACCOUNTS).stream().map(r -> MailAccount.of(r, authority))
+                .filter(a -> !a.name().isEmpty()).toList();
     }
 
     List<MailAccount> accounts() {
@@ -152,7 +154,7 @@ final class MailEnvironment {
 
     <T> T withStore(MailAccount a, StoreAction<T> action) {
         for (int attempt = 0; ; attempt++) {
-            Store store = sessions.get(a, timeout);
+            Store store = sessions.get(a, watcher.oauth(), timeout);
             try {
                 return action.run(store);
             } catch (FolderClosedException | StoreClosedException e) {
@@ -185,7 +187,7 @@ final class MailEnvironment {
 
         private final Map<String, Pooled> pool = new HashMap<>();
 
-        synchronized Store get(MailAccount a, Duration timeout) {
+        synchronized Store get(MailAccount a, MailOAuth oauth, Duration timeout) {
             Pooled p = pool.get(a.name());
             long now = System.currentTimeMillis();
             if (p != null && (!p.account().equals(a) || now - p.lastUsed() > IDLE_MILLIS || !p.store().isConnected())) {
@@ -193,7 +195,7 @@ final class MailEnvironment {
                 pool.remove(a.name());
                 p = null;
             }
-            Store store = p != null ? p.store() : MailConnector.connect(a, timeout, timeout);
+            Store store = p != null ? p.store() : MailConnector.connect(a, oauth, timeout, timeout);
             pool.put(a.name(), new Pooled(a, store, now));
             return store;
         }

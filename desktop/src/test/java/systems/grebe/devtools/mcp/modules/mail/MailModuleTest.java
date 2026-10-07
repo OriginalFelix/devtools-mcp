@@ -49,7 +49,7 @@ class MailModuleTest {
     void setUp() throws Exception {
         user = GREEN_MAIL.setUser(ADDRESS, USER, PASSWORD);
         watcher = new MailWatcher(new StaticListableBeanFactory().getBeanProvider(ToolRegistry.class), channel,
-                MailState.inMemory());
+                MailState.inMemory(), MailOAuth.inMemory());
         withStore(store -> {
             for (String name : List.of("Projekte", "Projekte/Kunde-A", "Privat", "Archiv", "Drafts")) {
                 store.getFolder(name).create(Folder.HOLDS_MESSAGES);
@@ -250,13 +250,15 @@ class MailModuleTest {
     void watcherSkipsBacklogOnFirstStartAndResumesAfterRestart() throws Exception {
         MailState state = MailState.inMemory();
         watcher.close();
-        watcher = new MailWatcher(new StaticListableBeanFactory().getBeanProvider(ToolRegistry.class), channel, state);
+        watcher = new MailWatcher(new StaticListableBeanFactory().getBeanProvider(ToolRegistry.class), channel, state,
+                MailOAuth.inMemory());
         deliver("INBOX", "a@example.com", "Alt", "x");
         startWatching(true, List.of(), null);
         watcher.close();
 
         deliver("INBOX", "b@example.com", "Während der Pause", "y");
-        watcher = new MailWatcher(new StaticListableBeanFactory().getBeanProvider(ToolRegistry.class), channel, state);
+        watcher = new MailWatcher(new StaticListableBeanFactory().getBeanProvider(ToolRegistry.class), channel, state,
+                MailOAuth.inMemory());
         startWatching(true, List.of(), null);
         assertThat(receiveAtLeast(1)).extracting(MailWatcher.NewMail::subject).containsExactly("Während der Pause");
     }
