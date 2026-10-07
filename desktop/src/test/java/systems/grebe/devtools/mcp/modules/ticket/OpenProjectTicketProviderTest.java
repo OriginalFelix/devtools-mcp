@@ -227,13 +227,13 @@ class OpenProjectTicketProviderTest {
                 + "\"_links\":{\"children\":[{\"href\":\"/api/v3/work_packages/9\"}]}}");
         TicketEnvironment env = env();
 
-        assertThat(new TicketCreateTools(env).create("Neu", "Text", null, "bug", null, null, null))
+        assertThat(new TicketCreateTools(env).create("Neu", "Text", null, "bug", null, null, null, null))
                 .startsWith("#60: angelegt (Bug)\n" + op.url() + "/work_packages/60");
         assertThat(op.last("/api/v3/projects/demo/work_packages").body())
                 .isEqualTo("{\"subject\":\"Neu\",\"description\":{\"raw\":\"Text\"},\"_links\":{\"type\":{\"href\":\"/api/v3/types/2\"}}}");
-        assertThatThrownBy(() -> new TicketCreateTools(env).create("Neu", null, null, "Epic", null, null, null))
+        assertThatThrownBy(() -> new TicketCreateTools(env).create("Neu", null, null, "Epic", null, null, null, null))
                 .hasMessageContaining("Typ 'Epic'").hasMessageContaining("Gültig: Task, Bug");
-        assertThatThrownBy(() -> new TicketCreateTools(env).create("Neu", null, null, null, List.of("x"), null, null))
+        assertThatThrownBy(() -> new TicketCreateTools(env).create("Neu", null, null, null, List.of("x"), null, null, null))
                 .hasMessageContaining("kennt keine Labels");
 
         TicketDeleteTools own = new TicketDeleteTools(env, true);

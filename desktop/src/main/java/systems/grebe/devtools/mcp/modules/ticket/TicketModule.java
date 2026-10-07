@@ -122,7 +122,8 @@ public class TicketModule implements ToolModule {
                 gebuchte Arbeitszeiten.
                 - Schreiben, nur wenn angeboten (einzeln in der App schaltbar): `ticket_comment`, `ticket_transition` \
                 (Ziel aus `ticket_transitions`, optional mit Kommentar im selben Aufruf), `ticket_assign`, `ticket_update` (auch \
-                weitere Felder per `fields`, z.B. Jira-Custom-Fields), `ticket_create`, `ticket_log_time` (Zeit buchen; \
+                weitere Felder per `fields`, z.B. Jira-Custom-Fields), `ticket_create` (Pflichtfelder wie Jira-Komponenten \
+                gleich per `fields`), `ticket_log_time` (Zeit buchen; \
                 Dauer vom Nutzer, nicht geschätzt), `ticket_delete_comment`, \
                 `ticket_delete` (standardmäßig nur selbst angelegte; Schließen ist meist richtiger). Nur auf ausdrückliche \
                 Anweisung des Nutzers schreiben und das Ergebnis mit Link melden. Fehlt ein schreibendes Tool, ist es \
