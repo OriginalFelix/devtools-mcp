@@ -589,20 +589,82 @@ Backend. Die Desktop-App spricht in beiden Fällen dieselbe GraphQL-API.
 
 ## Starten
 
+Kurz: Jar bauen, die App einmal mit Fenster starten (erstes Konto anlegen, Module einschalten), dann den Client
+verbinden. Die App läuft danach im Tray weiter und ist für alle Clients auf diesem Rechner zuständig.
+
+### Voraussetzungen
+
+* **JDK 25** (`java -version` muss 25 oder neuer zeigen). Ältere Versionen brechen mit
+  `UnsupportedClassVersionError` ab.
+* Das Jar enthält JavaFX für **die Plattform, auf der es gebaut wurde** (macOS Intel/Apple Silicon, Windows, Linux) –
+  für einen anderen Rechner dort bauen.
+
+### Bauen
+
 ```bash
-./gradlew :desktop:bootRun          # Desktop-App (Entwicklung, Backend eingebettet)
-./gradlew :desktop:bootJar          # desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar → java -jar …
+./gradlew :desktop:bootJar          # desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar
+./gradlew :desktop:bootRun          # Desktop-App direkt aus den Quellen (Entwicklung, Backend eingebettet)
 ./gradlew :server:bootRun           # Team-Server auf Port 8080
 ./gradlew :server:bootJar :server:war   # Server als Jar (Jetty) bzw. WAR für WildFly
 ./gradlew build                     # alles inkl. Tests
 ```
 
-Der MCP-Server der Desktop-App lauscht auf `http://127.0.0.1:8765/mcp` (Streamable HTTP, nur localhost).
-Über **„Client verbinden…“** zeigt die App fertige Konfigurationen, z.B.:
+### App starten
+
+**Mit Fenster** (der Normalfall):
 
 ```bash
-claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
+java -jar desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar
 ```
+
+1. Beim allerersten Start legt man im Anmeldefenster das Administrator-Konto des eingebetteten Backends an, danach
+   meldet man sich bei jedem Start an (oder trägt unter *Backend ändern…* einen Team-Server ein).
+2. Links die gewünschten **Module** einschalten und rechts konfigurieren (*Speichern*, *Verbindung testen*).
+3. Fenster schließen – die App läuft im System-Tray weiter, *Beenden* über das Tray-Menü. Unter *Einstellungen* lässt
+   sich „Minimiert im Tray starten“ einschalten, z.B. für den Autostart.
+
+**Ohne Fenster** (Server, Autostart ohne Anmeldedialog) mit `--headless`; angemeldet wird über ein persönliches
+Desktop-Token (siehe [Backend und Team-Server](#backend-und-team-server)) oder `DEVTOOLS_MCP_USER` +
+`DEVTOOLS_MCP_PASSWORD`:
+
+```bash
+DEVTOOLS_MCP_TOKEN=<desktop-token> java -jar devtools-mcp-0.1.0-SNAPSHOT.jar --headless
+```
+
+Ohne Anmeldung läuft der MCP-Server ohne Tools (siehe [Benutzer, Rollen und Rechte](#benutzer-rollen-und-rechte)).
+
+**Autostart** – die App sollte laufen, bevor ein Client verbindet; für die Mail-Überwachung am besten immer:
+
+* macOS: *Systemeinstellungen → Allgemein → Anmeldeobjekte* mit einem kleinen Skript, das `java -jar …` startet,
+  oder ein LaunchAgent (`~/Library/LaunchAgents/…plist` mit `ProgramArguments` = `java`, `-jar`, Pfad zum Jar und
+  `RunAtLoad` = `true`).
+* Windows: Verknüpfung auf `javaw -jar C:\pfad\devtools-mcp-0.1.0-SNAPSHOT.jar` im Autostart-Ordner
+  (`shell:startup`).
+* Linux: Desktop-Autostart (`~/.config/autostart/*.desktop`) mit Fenster, ohne Fenster eine systemd-User-Unit mit
+  `--headless` und `Environment=DEVTOOLS_MCP_TOKEN=…`.
+
+**Port und Daten:** Der MCP-Server lauscht nur auf `http://127.0.0.1:8765/mcp` (Port unter *Einstellungen*, wirksam
+nach Neustart). Einstellungen, Schlüssel und das eingebettete Backend liegen in `~/.devtools-mcp/` (änderbar über
+`DEVTOOLS_MCP_HOME`). Es darf nur eine App je Datenordner laufen.
+
+### Clients verbinden
+
+**„Client verbinden…“** in der App zeigt fertige Befehle und Konfigurationen für die gängigen Clients, mit Port, Token
+und dem Pfad des laufenden Jars. Zwei Wege:
+
+* **Streamable HTTP** – jeder MCP-Client (Claude Code, Claude Desktop, Cursor, VS Code, Hermes …):
+  ```bash
+  claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
+  ```
+  Mit Zugriffstoken (*Einstellungen*) zusätzlich `--header "Authorization: Bearer <token>"`.
+* **stdio-Proxy** – für Claude Code, wenn neue E-Mails die Sitzung von sich aus anstoßen sollen (Channels, siehe
+  unten). Der Proxy liest Port und Token selbst aus den Einstellungen:
+  ```bash
+  claude mcp add devtools -- java -jar /pfad/zu/devtools-mcp-0.1.0-SNAPSHOT.jar stdio
+  ```
+
+Nur einen der beiden Einträge unter demselben Namen anlegen – sonst gibt es jedes Tool doppelt. `claude mcp list`
+zeigt, ob die Verbindung steht.
 
 ### Claude Code über stdio: Tools und Channel
 
@@ -635,6 +697,43 @@ claude --dangerously-load-development-channels server:devtools
   Team-/Enterprise-Organisationen muss der Administrator Channels erlauben (`channelsEnabled`).
 * `java -jar devtools-mcp.jar channel` liefert nur die Benachrichtigungen (ohne Tools) – für einen zweiten Eintrag
   neben dem HTTP-Eintrag.
+
+### Schnellstart: neue E-Mails in Claude Code
+
+1. App starten, Modul **Mail (IMAP)** einschalten und ein Konto anlegen: Server, Benutzer, Passwort – bzw. für
+   Exchange Online *Anmeldung* `microsoft`, Tenant und Client-ID (siehe
+   [Exchange Online / Microsoft 365](#exchange-online--microsoft-365)), speichern und die Aktion *Anmelden* ausführen.
+   *Überwachte Ordner* steht auf `INBOX`; *Verbindung testen* muss „verbunden, IDLE ja“ zeigen.
+2. In Claude Code den stdio-Proxy eintragen (einmalig) und Claude Code mit dem Channel starten:
+   ```bash
+   claude mcp add devtools -- java -jar /pfad/zu/devtools-mcp-0.1.0-SNAPSHOT.jar stdio
+   ```
+   ```bash
+   claude --dangerously-load-development-channels server:devtools
+   ```
+3. Claude sagen, was mit neuen Mails passieren soll – im Gespräch oder dauerhaft in der `CLAUDE.md`, z.B. „Bei neuen
+   Mails von Kunden: zusammenfassen und einen Antwortentwurf mit `mail_draft` anlegen, nichts senden“. Ohne Vorgabe
+   informiert Claude nur.
+4. Testen: eine Mail an das Konto schicken – nach wenigen Sekunden erscheint sie in der Sitzung. `mail_accounts` zeigt,
+   ob die Überwachung läuft und wie viele stdio-Proxys verbunden sind.
+
+Soll ohne offene Sitzung reagiert werden, statt (oder zusätzlich zu) Schritt 2 den *Befehl bei neuer E-Mail* setzen,
+z.B. `claude -p "…" --allowedTools "mcp__devtools__mail_*"` (siehe
+[Neue Mails melden](#neue-mails-melden-channel-befehl-mail_receive)).
+
+### Fehlersuche
+
+| Symptom | Ursache / Abhilfe |
+|---|---|
+| `UnsupportedClassVersionError` | Java älter als 25 – `java -version` prüfen; im Proxy-Eintrag ggf. den vollen Pfad zum JDK-25-`java` angeben. |
+| Tools fehlen, `claude mcp list` zeigt „failed“ | App läuft nicht oder ist nicht angemeldet. Der Proxy meldet dann „DevTools-App nicht erreichbar … läuft die App?“ – App starten, ggf. `--url http://127.0.0.1:<port>` angeben. |
+| HTTP 401 | Zugriffstoken stimmt nicht: Header des HTTP-Eintrags anpassen bzw. beim Proxy `--token`/`DEVTOOLS_MCP_AUTH_TOKEN` (sonst liest er es aus den Einstellungen). |
+| Port belegt beim Start | Läuft die App schon (Tray)? Sonst unter *Einstellungen* einen anderen Port wählen – „Client verbinden…“ zeigt danach die neuen Befehle. |
+| Neue Mails kommen nicht in der Sitzung an | Claude Code ohne `--dangerously-load-development-channels server:devtools` gestartet, mit `-p` (Channels nur interaktiv) oder die Organisation erlaubt Channels nicht (`channelsEnabled`). In der App: Modul an, *Neue Mails an Claude Code melden* an, Ordner unter *Überwachte Ordner* und freigegeben, Absenderfilter und „nur ungelesene“ prüfen. `mail_receive` zeigt, ob die Mail überhaupt erkannt wurde. |
+| Exchange: „nicht angemeldet“ | Aktion *Anmelden* bzw. `mail_login` ausführen; nach dem Eintragen eines SMTP-Servers neu anmelden (Berechtigung `SMTP.Send`). |
+
+Meldungen des Proxys stehen in Claude Codes MCP-Log (`claude --debug`), die der App im Tab **Aufrufe** und auf der
+Konsole bzw. im Log der App.
 
 ## Bedienung
 
