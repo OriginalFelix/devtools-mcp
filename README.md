@@ -753,7 +753,8 @@ Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekunde
   zum Neubau. Abfragen laufen auf dem geladenen Graphen (höchstens zwei im Speicher). Soll die Datei nicht ins
   Repository, `devtools-fileinfo*.graph` in `.gitignore` aufnehmen.
 * **Aktualität:** `graph_build` baut nur neu, wenn sich eine Quelldatei geändert hat (SHA-256) oder Dateien
-  hinzugekommen/entfallen sind; die Abfrage-Tools bauen, falls der Graph des ausgecheckten Branches fehlt.
+  hinzugekommen/entfallen sind; die Abfrage-Tools bauen, falls der Graph des ausgecheckten Branches fehlt, und
+  suchen dann – ein Hinweis vor der Antwort meldet den Aufbau.
 * **Abfragen:** `graph_report` (God Nodes, meistaufgerufene Methoden, Communities, überraschende Verbindungen zwischen
   Paketen), `graph_find` (Name, `*`-Platzhalter), `graph_files` (Dateien nach Name, Stichworten, `*`-Muster oder
   Pfad – oder mit `related` über Kanten, z.B. alle Dateien, die einen Typ verwenden – je Datei Länge und passende

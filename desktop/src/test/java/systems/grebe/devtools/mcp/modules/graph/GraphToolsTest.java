@@ -267,6 +267,24 @@ class GraphToolsTest {
     }
 
     @Test
+    void searchBuildsMissingGraphFirstAndSaysSo() {
+        GraphTools t = tools();
+        assertThat(GraphStore.files(project)).isEmpty();
+        String first = t.files(null, "OrderRepository", null, null, null, null, null, null, null);
+        assertThat(first).startsWith("Noch kein Graph für " + project.getFileName() + " (Branch ")
+                .contains(" – eben gebaut in ", " ms, 4 Dateien.\n\n4 Dateien (Stichworte ")
+                .contains("src/main/java/com/acme/shop/repo/OrderRepository.java  (10 Z.)");
+        // danach ohne Hinweis – der Graph ist gespeichert
+        assertThat(t.files(null, "OrderRepository", null, null, null, null, null, null, null)).startsWith("4 Dateien");
+    }
+
+    @Test
+    void readBuildsMissingGraphFirst() {
+        assertThat(tools().read(null, List.of("OrderRepository#save"), null, null, null, null))
+                .startsWith("Noch kein Graph für ").contains("8\t    void save(Order o);");
+    }
+
+    @Test
     void filesToolCanHideTests() throws Exception {
         Path test = project.resolve("src/test/java/com/acme/shop/OrderServiceTest.java");
         Files.createDirectories(test.getParent());

@@ -226,15 +226,36 @@ final class GraphService {
      * anderer Branch muss bereits gespeichert sein.
      */
     GraphReader graph(String project, String branch) {
+        return open(project, branch).reader();
+    }
+
+    /** Graph samt Aufbau-Ergebnis, falls er eben erst gebaut wurde. */
+    record Opened(GraphReader reader, BuildResult built) {
+
+        /** Hinweis für die Tool-Ausgabe, wenn der Graph eben gebaut wurde; sonst leer. */
+        String note() {
+            if (built == null) {
+                return "";
+            }
+            return "Noch kein Graph für " + built.key().project() + " (Branch " + built.key().branchLabel()
+                    + ") – eben gebaut in " + built.duration().toMillis() + " ms, " + reader.info().stat("files")
+                    + " Dateien.\n\n";
+        }
+    }
+
+    /** Wie {@link #graph(String, String)}, meldet aber, ob der Graph dafür gebaut wurde. */
+    Opened open(String project, String branch) {
         Key key = key(project, branch);
         GraphReader reader = storage().reader(key);
         if (reader != null) {
-            return reader;
+            return new Opened(reader, null);
         }
         GitState git = GitState.of(key.root());
         String current = git == null ? null : git.branch();
         if (key.branch() == null || key.branch().equals(current)) {
-            return build(project, null, false, ModuleAction.Progress.NONE).graph();
+            BuildResult r = build(project, null, false, ModuleAction.Progress.NONE);
+            // parallel gebaut oder unverändert gespeichert: kein Hinweis nötig
+            return new Opened(r.graph(), r.rebuilt() ? r : null);
         }
         List<String> stored = storage().branches(key.root()).stream().map(s -> s.branch() == null ? "(ohne Git)"
                 : s.branch()).toList();
