@@ -24,6 +24,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
+import systems.grebe.devtools.mcp.channel.BridgeJar;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
@@ -82,7 +83,8 @@ public class MainView extends BorderPane {
         });
         Button connect = new Button("Client verbinden…");
         connect.getStyleClass().add("accent");
-        connect.setOnAction(e -> new ClientConfigDialog(stage, endpoint, store.server()).showAndWait());
+        connect.setOnAction(e -> new ClientConfigDialog(stage, endpoint, store.server(),
+                BridgeJar.path(store.dir())).showAndWait());
         Button settings = new Button("Einstellungen…");
         settings.setOnAction(e -> openSettings());
         toolCount.getStyleClass().add("badge");
