@@ -87,7 +87,7 @@ public class GraphTools {
             + "graph_*-Tools mit branch aufrufen." + ShellHints.GRAPH)
     public String branches(@ToolParam(required = false, description = PROJECT_PARAM) String project) {
         Key current = service.key(project, null);
-        List<Stored> stored = service.storage().branches(current.root());
+        List<Stored> stored = service.storage().branches(current);
         StringBuilder sb = new StringBuilder("Projekt ").append(current.project()).append(" (").append(current.root())
                 .append("), ausgecheckt: ").append(current.branchLabel()).append(", Ablage: ")
                 .append(service.storage().describe()).append('\n');

@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.LongPredicate;
 
 import com.arcadedb.Constants;
 import com.arcadedb.database.BasicDatabase;
@@ -98,8 +99,8 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .build();
 
-    /** Bereich der direkten Zugriffe (Local-Mode); Benutzer der GraphQL-API haben {@code user:<id>}. */
-    static final String LOCAL = "";
+    /** Version der Schlüssel in {@code GraphBranch}; Branches älterer Versionen (nach Pfad) entfernt der Start. */
+    static final int KEY_VERSION = 2;
 
     public enum Mode { EMBEDDED, REMOTE }
 
@@ -140,12 +141,12 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
     }
 
     /** Kopfdaten beim Umschalten auf eine neue Generation ({@code stats} als JSON). */
-    public record Header(String commit, String builtAt, String generator, int version, long files, long nodes,
-                         long edges, String stats, List<Community> communities) {
+    public record Header(String commit, String builtAt, String builtBy, String generator, int version, long files,
+                         long nodes, long edges, String stats, List<Community> communities) {
 
-        static Header of(GraphFile data) {
-            return new Header(data.commit(), data.builtAt(), data.generator(), data.version(), data.files().size(),
-                    data.nodes().size(), data.edges().size(), JSON.writeValueAsString(data.stats()),
+        static Header of(GraphFile data, String builtBy) {
+            return new Header(data.commit(), data.builtAt(), builtBy, data.generator(), data.version(),
+                    data.files().size(), data.nodes().size(), data.edges().size(), JSON.writeValueAsString(data.stats()),
                     data.communities() == null ? List.of() : data.communities());
         }
     }
@@ -346,6 +347,14 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
                 CREATE INDEX IF NOT EXISTS ON `GraphBranch` (projectKey) NOTUNIQUE;
                 """);
         d.command("sqlscript", sql.toString());
+        // Branches älterer Schlüssel (nach Pfad) – ihre Generationen entfernt danach der Aufräumer. Eigenes Kommando:
+        // im selben Skript kennt ArcadeDB den eben angelegten Typ noch nicht.
+        String old = "DELETE FROM GraphBranch WHERE keyVersion IS NULL OR keyVersion < " + KEY_VERSION;
+        if (d instanceof Database local) {
+            local.transaction(() -> local.command("sql", old).close());
+        } else {
+            d.command("sql", old).close();
+        }
     }
 
     /** Beschreibung samt ArcadeDB-Version; öffnet dabei die Datenbank. */
@@ -455,16 +464,20 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         }
     }
 
-    static String rootKey(String root) {
-        return root.replace('\\', '/');
+    /**
+     * Schlüssel des Projekts: ein Backend-Projekt gilt für alle Benutzer gemeinsam ({@code project:<id>}), andere
+     * Verzeichnisse nach Namen im Bereich des Benutzers ({@code <bereich>|name:<name>}). Pfad und Rechner gehen nicht
+     * ein – derselbe Branch desselben Projekts ist überall derselbe Graph.
+     */
+    static String projectKey(Access a, Key key) {
+        if (key.projectId() != null) {
+            return "project:" + key.projectId();
+        }
+        return (a.owner().isEmpty() ? "" : a.owner() + "|") + "name:" + key.project().strip().toLowerCase(Locale.ROOT);
     }
 
-    static String projectKey(String owner, String root) {
-        return (owner.isEmpty() ? "" : owner + "|") + rootKey(root);
-    }
-
-    static String branchKey(String owner, String root, String branch) {
-        return projectKey(owner, root) + "@" + (branch == null ? "" : branch);
+    static String branchKey(Access a, Key key) {
+        return projectKey(a, key) + "@" + (key.branch() == null ? "" : key.branch());
     }
 
     private static Map<String, Object> params(Object... kv) {
@@ -494,40 +507,85 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
                 (String) b.get("generator"), stats, communities, locationOf((String) b.get("branchKey")));
     }
 
+    // ------------------------------------------------------------------ Zugriffsrechte
+
+    /**
+     * Wer zugreift: der eigene Bereich (für Verzeichnisse ohne Backend-Projekt) und die Rechte auf Backend-Projekte.
+     *
+     * @param owner    {@code ""} im Local-Mode, über die GraphQL-API {@code user:<id>}
+     * @param canRead  Projekt sichtbar (eigenes oder freigegebenes)
+     * @param canWrite Graph-Aufbau erlaubt (Eigentümer oder Freigabe mit Schreibrecht)
+     */
+    public record Access(String owner, LongPredicate canRead, LongPredicate canWrite) {
+
+        /** Direkter Zugriff im Local-Mode: eigener Bereich, alle Projekte. */
+        public static final Access LOCAL = new Access("", id -> true, id -> true);
+    }
+
+    private static Long projectIdOf(Map<String, Object> b) {
+        return b.get("projectId") instanceof Number n ? n.longValue() : null;
+    }
+
+    private static void requireRead(Access a, Long projectId) {
+        if (projectId != null && !a.canRead().test(projectId)) {
+            throw new IllegalArgumentException("Kein Zugriff auf das Projekt " + projectId + " – es ist weder eigenes "
+                    + "noch freigegeben.");
+        }
+    }
+
+    private static void requireWrite(Access a, Long projectId) {
+        requireRead(a, projectId);
+        if (projectId != null && !a.canWrite().test(projectId)) {
+            throw new IllegalArgumentException("Das Projekt " + projectId + " ist nur zum Lesen freigegeben – den Graphen "
+                    + "bauen dürfen der Eigentümer und Freigaben mit Schreibrecht.");
+        }
+    }
+
+    /** Gespeicherter Branch sichtbar: Backend-Projekt nach Rechten, sonst nur im eigenen Bereich. */
+    private static boolean readable(Access a, Map<String, Object> b) {
+        Long p = projectIdOf(b);
+        return p != null ? a.canRead().test(p) : a.owner().equals(b.get("owner"));
+    }
+
+    private static boolean writable(Access a, Map<String, Object> b) {
+        Long p = projectIdOf(b);
+        return p != null ? a.canRead().test(p) && a.canWrite().test(p) : a.owner().equals(b.get("owner"));
+    }
+
     // ------------------------------------------------------------------ GraphProvider (Local-Mode)
 
     @Override
     public String location(Key key) {
-        return location(LOCAL, key);
+        return location(Access.LOCAL, key);
     }
 
     @Override
     public State state(Key key) {
-        return state(LOCAL, key);
+        return state(Access.LOCAL, key);
     }
 
     @Override
     public GraphReader reader(Key key) {
-        return reader(LOCAL, key);
+        return reader(Access.LOCAL, key);
     }
 
     @Override
     public GraphReader write(Key key, GraphFile data) {
-        return write(LOCAL, key, data);
+        return write(Access.LOCAL, key, data, GraphProvider.localBuilder());
     }
 
     @Override
-    public List<Stored> branches(String root) {
-        return branches(LOCAL, root);
+    public List<Stored> branches(Key project) {
+        return branches(Access.LOCAL, project);
     }
 
     @Override
-    public boolean delete(String root, String branch) {
-        return delete(LOCAL, root, branch);
+    public boolean delete(Key key) {
+        return delete(Access.LOCAL, key);
     }
 
-    /** Die Ablage aus Sicht eines Benutzers der GraphQL-API: seine Graphen sind von denen anderer getrennt. */
-    public GraphProvider forOwner(String owner) {
+    /** Die Ablage aus Sicht eines Benutzers der GraphQL-API (eigener Bereich, Rechte auf die Projekte). */
+    public GraphProvider forAccess(Access a) {
         GraphStorage s = this;
         return new GraphProvider() {
             @Override
@@ -542,44 +600,45 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
 
             @Override
             public String location(Key key) {
-                return s.location(owner, key);
+                return s.location(a, key);
             }
 
             @Override
             public State state(Key key) {
-                return s.state(owner, key);
+                return s.state(a, key);
             }
 
             @Override
             public GraphReader reader(Key key) {
-                return s.reader(owner, key);
+                return s.reader(a, key);
             }
 
             @Override
             public GraphReader write(Key key, GraphFile data) {
-                return s.write(owner, key, data);
+                return s.write(a, key, data, GraphProvider.localBuilder());
             }
 
             @Override
-            public List<Stored> branches(String root) {
-                return s.branches(owner, root);
+            public List<Stored> branches(Key project) {
+                return s.branches(a, project);
             }
 
             @Override
-            public boolean delete(String root, String branch) {
-                return s.delete(owner, root, branch);
+            public boolean delete(Key key) {
+                return s.delete(a, key);
             }
         };
     }
 
     // ------------------------------------------------------------------ Lesen
 
-    String location(String owner, Key key) {
-        return locationOf(branchKey(owner, key.root(), key.branch()));
+    String location(Access a, Key key) {
+        return locationOf(branchKey(a, key));
     }
 
-    State state(String owner, Key key) {
-        Map<String, Object> b = branchRow(branchKey(owner, key.root(), key.branch()));
+    State state(Access a, Key key) {
+        requireRead(a, key.projectId());
+        Map<String, Object> b = branchRow(branchKey(a, key));
         if (b == null || b.get("graphId") == null || !(b.get("version") instanceof Number v)
                 || v.intValue() != CodeGraph.VERSION) {
             return null;
@@ -590,8 +649,9 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         return new State((String) b.get("generator"), hashes);
     }
 
-    GraphReader reader(String owner, Key key) {
-        Map<String, Object> b = branchRow(branchKey(owner, key.root(), key.branch()));
+    GraphReader reader(Access a, Key key) {
+        requireRead(a, key.projectId());
+        Map<String, Object> b = branchRow(branchKey(a, key));
         if (b == null || b.get("graphId") == null) {
             return null;
         }
@@ -599,30 +659,30 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
     }
 
     /**
-     * Leser für eine Generation des Benutzers (GraphQL: die App fragt mit der ID aus {@code graph}).
+     * Leser für eine Generation (GraphQL: die App fragt mit der ID aus {@code graph}).
      *
-     * @throws IllegalArgumentException wenn es sie nicht (mehr) gibt oder sie einem anderen gehört
+     * @throws IllegalArgumentException wenn es sie nicht (mehr) gibt oder der Benutzer sie nicht sehen darf
      */
-    public ArcadeGraphReader reader(String owner, String graphId) {
-        List<Map<String, Object>> r = rows("sql", "SELECT FROM GraphBranch WHERE graphId = :g AND owner = :o",
-                params("g", graphId, "o", owner));
-        if (r.isEmpty()) {
+    public ArcadeGraphReader reader(Access a, String graphId) {
+        List<Map<String, Object>> r = rows("sql", "SELECT FROM GraphBranch WHERE graphId = :g", params("g", graphId));
+        if (r.isEmpty() || !readable(a, r.getFirst())) {
             throw new IllegalArgumentException("Graph " + graphId + " gibt es nicht mehr (inzwischen neu gebaut oder "
                     + "gelöscht) – erneut abfragen.");
         }
         return new ArcadeGraphReader(this, graphId, info(r.getFirst()));
     }
 
-    List<Stored> branches(String owner, String root) {
+    List<Stored> branches(Access a, Key project) {
+        requireRead(a, project.projectId());
         List<Stored> out = new ArrayList<>();
         for (Map<String, Object> b : rows("sql", "SELECT FROM GraphBranch WHERE projectKey = :p",
-                params("p", projectKey(owner, root)))) {
+                params("p", projectKey(a, project)))) {
             if (b.get("graphId") == null) {
                 continue; // erster Aufbau läuft noch oder ist abgebrochen
             }
             out.add(new Stored((String) b.get("branch"), (String) b.get("commitId"), (String) b.get("builtAt"),
                     number(b.get("files")), number(b.get("nodes")), number(b.get("edges")),
-                    locationOf((String) b.get("branchKey"))));
+                    locationOf((String) b.get("branchKey")), (String) b.get("builtBy")));
         }
         out.sort(Comparator.comparing(s -> s.branch() == null ? "" : s.branch()));
         return out;
@@ -634,16 +694,16 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
 
     // ------------------------------------------------------------------ Schreiben
 
-    GraphReader write(String owner, Key key, GraphFile data) {
-        String g = begin(owner, key);
+    GraphReader write(Access a, Key key, GraphFile data, String builtBy) {
+        String g = begin(a, key);
         try {
-            writeFiles(owner, g, data.files());
-            writeNodes(owner, g, data.nodes());
-            writeEdges(owner, g, data.edges());
-            return publish(owner, key, g, Header.of(data));
+            writeFiles(a, g, data.files());
+            writeNodes(a, g, data.nodes());
+            writeEdges(a, g, data.edges());
+            return publish(a, key, g, Header.of(data, builtBy));
         } catch (RuntimeException e) {
             try {
-                abort(owner, g);
+                abort(a, g);
             } catch (RuntimeException suppressed) {
                 e.addSuppressed(suppressed); // bleibt als pendingGraphId stehen und wird beim nächsten Aufbau ersetzt
             }
@@ -657,19 +717,22 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
      *
      * @return ID der neuen Generation für {@code writeFiles}/{@code writeNodes}/{@code writeEdges}/{@code publish}
      */
-    public String begin(String owner, Key key) {
+    public String begin(Access a, Key key) {
+        requireWrite(a, key.projectId());
         String g = UUID.randomUUID().toString();
-        exec("sql", "UPDATE GraphBranch SET branchKey = :k, projectKey = :p, owner = :o, root = :root, project = :n, "
-                        + "branch = :b, pendingGraphId = :g UPSERT WHERE branchKey = :k",
-                params("k", branchKey(owner, key.root(), key.branch()), "p", projectKey(owner, key.root()), "o", owner,
-                        "root", key.root(), "n", key.project(), "b", key.branch(), "g", g));
+        exec("sql", "UPDATE GraphBranch SET branchKey = :k, projectKey = :p, projectId = :pid, owner = :o, "
+                        + "keyVersion = :kv, root = :root, project = :n, branch = :b, pendingGraphId = :g "
+                        + "UPSERT WHERE branchKey = :k",
+                params("k", branchKey(a, key), "p", projectKey(a, key), "pid", key.projectId(),
+                        "o", key.projectId() == null ? a.owner() : "", "kv", KEY_VERSION, "root", key.root(),
+                        "n", key.project(), "b", key.branch(), "g", g));
         return g;
     }
 
-    /** Die Generation muss für einen Branch des Benutzers vorgemerkt sein – sonst wird nicht geschrieben. */
-    private void requirePending(String owner, String g) {
-        if (rows("sql", "SELECT branchKey FROM GraphBranch WHERE pendingGraphId = :g AND owner = :o",
-                params("g", g, "o", owner)).isEmpty()) {
+    /** Die Generation muss für einen Branch vorgemerkt sein, den der Benutzer bauen darf – sonst wird nicht geschrieben. */
+    private void requirePending(Access a, String g) {
+        List<Map<String, Object>> r = rows("sql", "SELECT FROM GraphBranch WHERE pendingGraphId = :g", params("g", g));
+        if (r.isEmpty() || !writable(a, r.getFirst())) {
             throw new IllegalArgumentException("Kein laufender Aufbau mit der ID " + g + " (abgebrochen oder von einem "
                     + "neueren abgelöst).");
         }
@@ -681,8 +744,8 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         }
     }
 
-    public void writeFiles(String owner, String g, List<FileEntry> files) {
-        requirePending(owner, g);
+    public void writeFiles(Access a, String g, List<FileEntry> files) {
+        requirePending(a, g);
         List<Map<String, Object>> rows = new ArrayList<>(Math.min(files.size(), BATCH));
         for (FileEntry f : files) {
             Map<String, Object> r = new HashMap<>();
@@ -708,8 +771,8 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         rows.clear();
     }
 
-    public void writeNodes(String owner, String g, List<Node> nodes) {
-        requirePending(owner, g);
+    public void writeNodes(Access a, String g, List<Node> nodes) {
+        requirePending(a, g);
         Map<Kind, List<Map<String, Object>>> byKind = new EnumMap<>(Kind.class);
         for (Node n : nodes) {
             List<Map<String, Object>> rows = byKind.computeIfAbsent(n.kind(), k -> new ArrayList<>());
@@ -751,8 +814,8 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         rows.clear();
     }
 
-    public void writeEdges(String owner, String g, List<Edge> edges) {
-        requirePending(owner, g);
+    public void writeEdges(Access a, String g, List<Edge> edges) {
+        requirePending(a, g);
         Map<Relation, List<Map<String, Object>>> byRel = new EnumMap<>(Relation.class);
         for (Edge e : edges) {
             List<Map<String, Object>> rows = byRel.computeIfAbsent(e.rel(), k -> new ArrayList<>());
@@ -785,16 +848,19 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
      * Schaltet den Branch auf die vorgemerkte Generation um – ein einziges Kommando, also atomar. Die vorige
      * Generation entfernt der Aufräumer.
      */
-    public ArcadeGraphReader publish(String owner, Key key, String g, Header h) {
-        String bkey = branchKey(owner, key.root(), key.branch());
+    public ArcadeGraphReader publish(Access a, Key key, String g, Header h) {
+        requireWrite(a, key.projectId());
+        String bkey = branchKey(a, key);
         List<Map<String, Object>> r = exec("sql", "UPDATE GraphBranch SET graphId = :g, pendingGraphId = null, "
-                        + "commitId = :commit, builtAt = :builtAt, generator = :generator, version = :version, "
-                        + "files = :files, nodes = :nodes, edges = :edges, stats = :stats, communities = :communities "
+                        + "commitId = :commit, builtAt = :builtAt, builtBy = :builtBy, generator = :generator, "
+                        + "version = :version, files = :files, nodes = :nodes, edges = :edges, stats = :stats, "
+                        + "communities = :communities, root = :root, project = :n "
                         + "RETURN AFTER WHERE branchKey = :k AND pendingGraphId = :g",
-                params("g", g, "k", bkey, "commit", h.commit(), "builtAt", h.builtAt(), "generator", h.generator(),
-                        "version", h.version(), "files", h.files(), "nodes", h.nodes(), "edges", h.edges(),
-                        "stats", h.stats(), "communities", JSON.writeValueAsString(
-                                h.communities() == null ? List.of() : h.communities())));
+                params("g", g, "k", bkey, "commit", h.commit(), "builtAt", h.builtAt(), "builtBy", h.builtBy(),
+                        "generator", h.generator(), "version", h.version(), "files", h.files(), "nodes", h.nodes(),
+                        "edges", h.edges(), "stats", h.stats(), "communities", JSON.writeValueAsString(
+                                h.communities() == null ? List.of() : h.communities()),
+                        "root", key.root(), "n", key.project()));
         if (r.isEmpty()) {
             throw new IllegalStateException("Der Aufbau " + g + " für " + bkey + " wurde abgebrochen oder von einem "
                     + "neueren abgelöst.");
@@ -804,14 +870,18 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
     }
 
     /** Verwirft eine vorgemerkte Generation (der Aufräumer entfernt, was schon geschrieben ist). */
-    public void abort(String owner, String g) {
-        exec("sql", "UPDATE GraphBranch SET pendingGraphId = null WHERE pendingGraphId = :g AND owner = :o",
-                params("g", g, "o", owner));
+    public void abort(Access a, String g) {
+        List<Map<String, Object>> r = rows("sql", "SELECT FROM GraphBranch WHERE pendingGraphId = :g", params("g", g));
+        if (r.isEmpty() || !writable(a, r.getFirst())) {
+            return;
+        }
+        exec("sql", "UPDATE GraphBranch SET pendingGraphId = null WHERE pendingGraphId = :g", params("g", g));
         scheduleCleanup();
     }
 
-    boolean delete(String owner, String root, String branch) {
-        String bkey = branchKey(owner, root, branch);
+    boolean delete(Access a, Key key) {
+        requireWrite(a, key.projectId());
+        String bkey = branchKey(a, key);
         if (branchRow(bkey) == null) {
             return false;
         }

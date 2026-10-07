@@ -929,8 +929,16 @@ Desktop-App z.B. als `-Ddevtools.graph.mode=remote …` bzw. Umgebungsvariablen 
   App): `graph(key)` liefert Kopfdaten und die ID der aktuellen Generation, `graphNodes`, `graphEdges`, `graphSearch`,
   `graphShortestPath`, `graphQuery` (lesendes OpenCypher) … lesen damit; gespeichert wird in Portionen
   (`beginGraph` → `writeGraphFiles`/`-Nodes`/`-Edges` → `publishGraph`). `BackendGraphs` entscheidet bei jedem Zugriff.
-* **Je Benutzer getrennt:** Über die API hat jeder Benutzer einen eigenen Bereich (`user:<id>`), Projekte gleicher
-  Pfade verschiedener Rechner stören sich nicht.
+* **Projekt + Branch statt Pfad:** Ein Graph gehört zum Projekt und zum Git-Branch – Pfad und Rechner spielen keine
+  Rolle. Ist das Verzeichnis einem **Backend-Projekt** zugeordnet (Name aus dem `ProjectProvider`, eindeutig als
+  `name@eigentümer`), teilen sich alle mit Zugriff auf das Projekt denselben Graphen je Branch (`project:<id>`):
+  lesen darf, wer das Projekt sieht, bauen der Eigentümer und Freigaben mit Schreibrecht. Andere Verzeichnisse gelten
+  nach Namen im Bereich des Benutzers (`user:<id>|name:<name>`, im Local-Mode `name:<name>`) – auf zwei Rechnern
+  derselbe Graph, gleich benannte Ordner verschiedener Benutzer bleiben getrennt. Graphen älterer Versionen (nach Pfad)
+  entfernt der erste Start.
+* **Gebaut von:** Jeder Graph merkt sich, wer ihn gebaut hat (`builtBy` = Betriebssystem-Benutzer@Rechner). Graphen
+  gelöschter Branches entfernt die App nur, wenn sie sie selbst gebaut hat – einen Branch, den jemand anders nur lokal
+  hat, kennt das eigene Git nicht. Bauen zwei mit unterschiedlichem Stand desselben Branches, gilt der zuletzt gebaute.
 * **Generationen:** Jeder Aufbau schreibt eine neue Generation (`g`) und schaltet `GraphBranch.graphId` am Ende mit
   einem einzigen Kommando um – Leser sehen nie einen halben Graphen. Ersetzte, abgebrochene und gelöschte Generationen
   entfernt ein Aufräumer im Hintergrund (auch Reste nach einem Absturz beim nächsten Start). Jede Schreiboperation ist
@@ -1093,9 +1101,10 @@ Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Um
 * **Communities:** Louvain über die auf Typen hochgezogenen Kanten, deterministisch (graphify verwendet Leiden).
   Member erben die Community ihres Typs.
 * **Je Projekt und Branch:** Gebaut wird immer der im Arbeitsverzeichnis ausgecheckte Git-Branch (JGit); gespeichert
-  wird unter Projektwurzel + Branch, ohne Git genau ein Graph. Alle Abfrage-Tools nehmen optional `branch` und lesen
+  wird unter Projekt + Branch (Datenbank: siehe Graph-Storage, Datei: im Projektverzeichnis), ohne Git genau ein Graph. Alle Abfrage-Tools nehmen optional `branch` und lesen
   dann einen anderen gespeicherten Branch (`graph_branches` listet sie); ohne Angabe gilt der ausgecheckte. Nach
-  jedem Aufbau werden Graphen von Branches gelöscht, die es weder lokal noch auf einem Remote mehr gibt.
+  jedem Aufbau werden Graphen von Branches gelöscht, die es weder lokal noch auf einem Remote mehr gibt (in der
+  Datenbank nur die auf diesem Rechner gebauten).
 * **Ablage Datenbank (Standard, `storage=database`):** die [Graph-Storage des Backends](#graph-storage-für-die-code-graphen)
   (ArcadeDB, eingebettet oder extern) – im Local-Mode direkt, mit Team-Server über GraphQL. Datenmodell mit
   Typ-Vererbung statt mehrerer Labels: `Class`, `Interface`, `Enum`, `Record`, `Annotation` erben von `Type`,

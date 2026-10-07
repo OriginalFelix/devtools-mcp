@@ -1,14 +1,14 @@
 # Code-Graphen in der Graph-Storage des Backends (ArcadeDB) – für Desktop-Apps, die mit einem Team-Server arbeiten
-# (im Local-Mode greift die App direkt auf die Ablage zu). Jeder Benutzer sieht nur seine eigenen Graphen. Ein Graph
-# gehört zu Projekt (Projektwurzel auf dem Rechner der App) und Branch; „graph“ liefert die ID der aktuellen
-# Generation, alle Lese-Operationen nehmen diese ID. Nach einem Neubau ist eine alte ID ungültig (Fehler BAD_REQUEST).
+# (im Local-Mode greift die App direkt auf die Ablage zu). Ein Graph gehört zu Projekt und Branch – unabhängig von Pfad
+# und Rechner: Graphen von Backend-Projekten (projectId) teilen sich alle mit Zugriff auf das Projekt (Lesen: sichtbar,
+# Bauen: Schreibrecht), andere Projekte gelten je Benutzer nach Namen. „graph“ liefert die ID der aktuellen Generation, alle Lese-Operationen nehmen diese ID. Nach einem Neubau ist eine alte ID ungültig (Fehler BAD_REQUEST).
 # Schreiben in Schritten: beginGraph → writeGraphFiles/-Nodes/-Edges (beliebig oft, in Portionen) → publishGraph.
 
 extend type Query {
     "Beschreibung der Ablage mit Version, z.B. „ArcadeDB eingebettet (…) · ArcadeDB 26.10.1“; prüft die Verbindung."
     graphStorage: String!
-    "Gespeicherte Graphen eines Projekts, nach Branch sortiert."
-    graphBranches(root: String!): [StoredGraph!]!
+    "Gespeicherte Graphen des Projekts (branch des Schlüssels egal), nach Branch sortiert."
+    graphBranches(key: GraphKeyInput!): [StoredGraph!]!
     "Stand eines Graphen (Generator, SHA-256 je Datei) – ob neu gebaut werden muss; null = keiner."
     graphState(key: GraphKeyInput!): GraphState
     "Kopfdaten des Graphen von Projekt + Branch; null = keiner gespeichert."
@@ -44,17 +44,19 @@ extend type Mutation {
     publishGraph(key: GraphKeyInput!, graph: ID!, header: GraphHeaderInput!): GraphHead!
     "Verwirft eine vorgemerkte Generation."
     abortGraph(graph: ID!): Boolean!
-    "Löscht den Graphen eines Branches (branch leer = Projekt ohne Git); false, wenn es keinen gab."
-    deleteGraph(root: String!, branch: String): Boolean!
+    "Löscht den Graphen des Branches (branch leer = Projekt ohne Git); false, wenn es keinen gab."
+    deleteGraph(key: GraphKeyInput!): Boolean!
 }
 
 input GraphKeyInput {
-    "Anzeigename (Ordnername)."
+    "Projektname wie im ProjectProvider der App; Backend-Projekte als name@eigentümer."
     project: String!
-    "Absoluter Pfad der Projektwurzel auf dem Rechner der App."
+    "Absoluter Pfad der Projektwurzel auf dem Rechner der App (nur zur Anzeige)."
     root: String!
     "Leer = Projekt ohne Git."
     branch: String
+    "Backend-Projekt: Graph für alle mit Zugriff gemeinsam. Leer = Projekt nur nach Namen, je Benutzer."
+    projectId: Int
 }
 
 enum CodeNodeKind { PACKAGE FILE CLASS INTERFACE ENUM RECORD ANNOTATION CONSTRUCTOR METHOD FIELD EXTERNAL }
@@ -150,6 +152,8 @@ type GraphHead {
 input GraphHeaderInput {
     commit: String
     builtAt: String
+    "Wer gebaut hat (Betriebssystem-Benutzer@Rechner) – Graphen gelöschter Branches entfernt nur, wer sie gebaut hat."
+    builtBy: String
     generator: String
     version: Int!
     files: Int!
@@ -164,6 +168,7 @@ type StoredGraph {
     branch: String
     commit: String
     builtAt: String
+    builtBy: String
     files: Int!
     nodes: Int!
     edges: Int!

@@ -64,8 +64,8 @@ final class FileGraphProvider implements GraphProvider {
     }
 
     @Override
-    public List<Stored> branches(String rootPath) {
-        Path root = Path.of(rootPath);
+    public List<Stored> branches(Key project) {
+        Path root = project.path();
         List<Stored> out = new ArrayList<>();
         for (Path file : GraphStore.files(root)) {
             try {
@@ -75,7 +75,7 @@ final class FileGraphProvider implements GraphProvider {
                     continue; // Datei ohne Branch-Kopf (ältere Version) gehört zu keinem Branch
                 }
                 out.add(new Stored(branch, (String) h.get("commit"), (String) h.get("builtAt"), number(h.get("files")),
-                        number(h.get("nodes")), number(h.get("edges")), file.toString()));
+                        number(h.get("nodes")), number(h.get("edges")), file.toString(), null));
             } catch (IOException | RuntimeException e) {
                 // unlesbare Datei überspringen
             }
@@ -89,8 +89,9 @@ final class FileGraphProvider implements GraphProvider {
     }
 
     @Override
-    public boolean delete(String rootPath, String branch) {
-        Path root = Path.of(rootPath);
+    public boolean delete(Key key) {
+        Path root = key.path();
+        String branch = key.branch();
         try {
             return Files.deleteIfExists(GraphStore.fileFor(root, branch));
         } catch (IOException e) {

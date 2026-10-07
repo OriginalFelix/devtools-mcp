@@ -23,6 +23,7 @@ import systems.grebe.devtools.mcp.backend.account.Role;
 import systems.grebe.devtools.mcp.backend.account.RoleService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.backend.profile.Profile;
+import systems.grebe.devtools.mcp.backend.profile.ProfileRepository;
 import systems.grebe.devtools.mcp.backend.profile.ProfileService;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
@@ -288,5 +289,22 @@ class EmbeddedBackendIntegrationTest {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    @Autowired
+    ProfileRepository profileRepository;
+
+    /** Überschreibungen entfallener Felder (z.B. aus der Neo4j-Zeit) dürfen das Speichern nicht blockieren. */
+    @Test
+    void staleOverridesOfRemovedFieldsDoNotBlockSaving() {
+        long profileId = profiles.activeProfile(localUserId()).id();
+        profileRepository.replaceOverrides(Overrides.Level.PROFILE, profileId, "graph", List.of(
+                new ProfileRepository.OverrideRow("neo4jUser", "neo4j", false),
+                new ProfileRepository.OverrideRow("storage", "neo4j", false),
+                new ProfileRepository.OverrideRow("includeTests", "false", false)));
+        registry.updateConfig("graph", Map.of("maxFiles", "1234"));
+        assertThat(profiles.overrides(Overrides.Level.PROFILE, profileId, "graph").values())
+                .containsEntry("maxFiles", "1234").containsEntry("includeTests", "false")
+                .doesNotContainKeys("neo4jUser", "storage");
     }
 }

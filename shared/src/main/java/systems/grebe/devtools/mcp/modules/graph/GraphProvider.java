@@ -26,16 +26,28 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.GraphFile;
 public interface GraphProvider {
 
     /**
-     * Graph eines Projekts auf einem Branch.
+     * Graph eines Projekts auf einem Branch. In der Datenbank identifiziert ihn das Projekt – ein Backend-Projekt
+     * ({@code projectId}) für alle Benutzer mit Zugriff gemeinsam, sonst der Projektname im Bereich des Benutzers – und
+     * der Branch; Pfad und Rechner spielen keine Rolle. Die Datei-Ablage liegt im Projektverzeichnis ({@code root}).
      *
-     * @param project Anzeigename des Projekts (Ordnername)
-     * @param root    Projektwurzel (absoluter Pfad auf dem Rechner der App) – identifiziert das Projekt in der Ablage
-     * @param branch  Branch, {@code null} ohne Git
+     * @param project   Projektname wie im {@code ProjectProvider}; Backend-Projekte eindeutig als {@code name@eigentümer}
+     * @param root      Projektwurzel (absoluter Pfad auf dem Rechner der App)
+     * @param branch    Branch, {@code null} ohne Git
+     * @param projectId Backend-Projekt, {@code null} für andere Verzeichnisse
      */
-    record Key(String project, String root, String branch) {
+    record Key(String project, String root, String branch, Long projectId) {
+
+        public Key(String project, String root, String branch) {
+            this(project, root, branch, null);
+        }
 
         public Key(String project, Path root, String branch) {
-            this(project, root.toString(), branch);
+            this(project, root.toString(), branch, null);
+        }
+
+        /** Derselbe Graph auf einem anderen Branch. */
+        public Key withBranch(String other) {
+            return new Key(project, root, other, projectId);
         }
 
         /** Branch für Ausgaben. */
@@ -53,8 +65,38 @@ public interface GraphProvider {
     record State(String generator, Map<String, String> fileHashes) {
     }
 
-    /** Übersicht über einen gespeicherten Graphen. */
-    record Stored(String branch, String commit, String builtAt, long files, long nodes, long edges, String location) {
+    /**
+     * Übersicht über einen gespeicherten Graphen.
+     *
+     * @param builtBy wer ihn zuletzt gebaut hat ({@link #localBuilder()}); {@code null} bei der Datei-Ablage
+     */
+    record Stored(String branch, String commit, String builtAt, long files, long nodes, long edges, String location,
+                  String builtBy) {
+    }
+
+    /**
+     * Wer auf diesem Rechner baut: {@code <betriebssystem-benutzer>@<rechner>}. Graphen gelöschter Branches entfernt
+     * die App nur, wenn sie hier gebaut wurden – den Branch eines anderen kennt das eigene Git womöglich nicht.
+     */
+    static String localBuilder() {
+        return LocalBuilder.VALUE;
+    }
+
+    /** Einmal ermittelt – die Namensauflösung des Rechners kann dauern. */
+    final class LocalBuilder {
+
+        static final String VALUE = System.getProperty("user.name", "?") + "@" + host();
+
+        private LocalBuilder() {
+        }
+
+        private static String host() {
+            try {
+                return java.net.InetAddress.getLocalHost().getHostName();
+            } catch (java.io.IOException e) {
+                return System.getenv().getOrDefault("COMPUTERNAME", System.getenv().getOrDefault("HOSTNAME", "?"));
+            }
+        }
     }
 
     /** Kurzbeschreibung der Ablage für Meldungen, z.B. {@code ArcadeDB eingebettet (…/graphdb)}. */
@@ -83,10 +125,10 @@ public interface GraphProvider {
     /**
      * Gespeicherte Graphen des Projekts, nach Branch sortiert.
      *
-     * @param root Projektwurzel wie in {@link Key#root()}
+     * @param project Projekt; der Branch des Schlüssels spielt keine Rolle
      */
-    List<Stored> branches(String root);
+    List<Stored> branches(Key project);
 
-    /** Löscht den Graphen eines Branches; {@code true}, wenn es einen gab. */
-    boolean delete(String root, String branch);
+    /** Löscht den Graphen des Branches; {@code true}, wenn es einen gab. */
+    boolean delete(Key key);
 }
