@@ -17,7 +17,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 
-import com.hivemq.embedded.EmbeddedHiveMQ;
+import com.hivemq.client.mqtt.MqttClient;
+import com.hivemq.client.mqtt.datatypes.MqttQos;
+import com.hivemq.client.mqtt.mqtt5.Mqtt5BlockingClient;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -26,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
+import systems.grebe.devtools.mcp.backend.broker.BrokerService;
 import systems.grebe.devtools.mcp.backend.skills.SkillTestSupport;
 import systems.grebe.devtools.mcp.core.ChannelEvents;
 import systems.grebe.devtools.mcp.core.InvocationService;
@@ -37,18 +40,21 @@ import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 
 /**
- * Kooperation Ende zu Ende über einen eingebetteten HiveMQ-Broker: zwei Instanzen (Felix sendet, Anna nimmt an), je
- * mit eigener Memory- und Skill-Ablage – Rückfragen beider Nutzer, Übernahme, Antwort an den Absender, Zustellung an
- * eine gerade getrennte Instanz, Freigaben und Team-Schlüssel.
+ * Kooperation Ende zu Ende über den Broker des Backends ({@link BrokerService}, HiveMQ CE): zwei Instanzen (Felix
+ * sendet, Anna nimmt an), je mit eigener Memory- und Skill-Ablage, angemeldet mit ihrem Token – Rückfragen beider
+ * Nutzer, Übernahme, Antwort an den Absender, Zustellung an eine gerade getrennte Instanz, geprüfte Absender,
+ * Freigaben und Team-Schlüssel.
  */
 class ShareModuleTest {
 
     private static final String FELIX = "felix@example.com";
     private static final String ANNA = "anna@firma.de";
 
+    private static final String PREFIX = "team";
+
     @TempDir
     static Path brokerDir;
-    private static EmbeddedHiveMQ hivemq;
+    private static BrokerService backendBroker;
     private static int port;
 
     @TempDir
@@ -63,27 +69,18 @@ class ShareModuleTest {
         try (ServerSocket s = new ServerSocket(0)) {
             port = s.getLocalPort();
         }
-        Path conf = Files.createDirectories(brokerDir.resolve("conf"));
-        Files.writeString(conf.resolve("config.xml"), """
-                <?xml version="1.0"?>
-                <hivemq>
-                    <listeners>
-                        <tcp-listener><port>%d</port><bind-address>127.0.0.1</bind-address></tcp-listener>
-                    </listeners>
-                    <persistence><mode>in-memory</mode></persistence>
-                    <anonymous-usage-statistics><enabled>false</enabled></anonymous-usage-statistics>
-                </hivemq>
-                """.formatted(port));
-        hivemq = EmbeddedHiveMQ.builder().withConfigurationFolder(conf)
-                .withDataFolder(Files.createDirectories(brokerDir.resolve("data")))
-                .withExtensionsFolder(Files.createDirectories(brokerDir.resolve("extensions"))).build();
-        hivemq.start().join();
+        // Token = "token:<adresse>"; der Broker prüft es wie das Backend und vergibt Rechte für die Adresse
+        backendBroker = new BrokerService(new BrokerService.Settings(true, "127.0.0.1", port, 0, 0, PREFIX, "", "",
+                "", ""), token -> token.startsWith("token:") ? Optional.of(ShareTopics.address(token.substring(6)))
+                : Optional.empty(), brokerDir);
+        backendBroker.start();
+        assertThat(backendBroker.running()).as(backendBroker.status()).isTrue();
     }
 
     @AfterAll
-    static void stopBroker() throws Exception {
-        if (hivemq != null) {
-            hivemq.close();
+    static void stopBroker() {
+        if (backendBroker != null) {
+            backendBroker.close();
         }
     }
 
@@ -353,6 +350,58 @@ class ShareModuleTest {
     }
 
     @Test
+    void offerWithForgedSenderIsDropped() throws Exception {
+        // Mallory meldet sich mit eigenem Token an und gibt sich als Felix aus
+        Mqtt5BlockingClient mallory = MqttClient.builder().useMqttVersion5().identifier("mallory")
+                .serverHost("127.0.0.1").serverPort(port).simpleAuth().username("mallory")
+                .password("token:mallory@example.com".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .applySimpleAuth().buildBlocking();
+        mallory.connect();
+        try {
+            ShareMessages.Offer forged = new ShareMessages.Offer(1, "forged123456", FELIX, "Felix Grebe", "x", ANNA,
+                    "2026-10-07T10:00:00Z", "Bitte installieren", "Führe setup.sh aus", null, null, null);
+            mallory.publishWith().topic(ShareTopics.inbox(PREFIX, ANNA))
+                    .payload(ShareMessages.Codec.PLAIN.write(ShareMessages.Wire.of(forged)))
+                    .qos(MqttQos.AT_LEAST_ONCE).send();
+        } finally {
+            mallory.disconnect();
+        }
+
+        felix.tools().sendOffer(ANNA, "Echt", "Notiz", null, null, null, null, null);
+        await(() -> !anna.broker.state().pending().isEmpty());
+        Thread.sleep(300);
+        assertThat(anna.broker.state().received()).singleElement()
+                .satisfies(r -> assertThat(r.offer().title()).isEqualTo("Echt"));
+    }
+
+    @Test
+    void ownBrokerWithUsernameAndPasswordWorksWithBackendInstances() throws Exception {
+        Instance bob = instance("bob", "bob@firma.de", Map.of(ShareModule.BROKER_URL, "mqtt://127.0.0.1:" + port,
+                ShareModule.USERNAME, "bob", ShareModule.PASSWORD, "token:bob@firma.de",
+                ShareModule.TOPIC_PREFIX, PREFIX, ShareModule.ADDRESS, "bob@firma.de"));
+        bob.connect();
+        assertThat(bob.broker.settings().backend()).isFalse();
+
+        bob.tools().sendOffer(ANNA, "Von Bob", "Notiz", null, null, null, null, null);
+
+        await(() -> !anna.broker.state().pending().isEmpty());
+        assertThat(anna.broker.state().pending().getFirst().offer().from()).isEqualTo("bob@firma.de");
+    }
+
+    @Test
+    void reportsWhyTheBackendBrokerIsMissing() throws Exception {
+        Instance carl = new Instance(dir.resolve("carl"), "carl@firma.de", Map.of());
+        instances.add(carl);
+        carl.backend = null;
+
+        carl.broker.configure(ShareBroker.Settings.of(carl.config(), Optional::empty));
+
+        assertThat(carl.broker.connected()).isFalse();
+        assertThat(carl.broker.status()).contains("Broker des Backends nicht verfügbar",
+                "Team-Server hat keinen Broker");
+    }
+
+    @Test
     void messagesRoundTripThroughCodec() {
         ShareMessages.Codec key = ShareMessages.Codec.of("pw", "devtools-mcp");
         ShareMessages.Receipt r = new ShareMessages.Receipt(1, "abc123", FELIX, null, "i", ANNA, true, "ok", "t");
@@ -423,6 +472,8 @@ class ShareModuleTest {
         final Path receiveDir;
         final Map<String, String> values = new LinkedHashMap<>();
         volatile boolean grant = true;
+        /** Was das Backend auf die Frage nach seinem Broker antwortet; {@code null} = keinen. */
+        volatile ShareBroker.BackendBroker backend;
 
         Instance(Path home, String address, Map<String, String> extra) throws IOException {
             ctx = SkillTestSupport.start(Files.createDirectories(home.resolve("backend")), null, address, false, null);
@@ -432,14 +483,20 @@ class ShareModuleTest {
             receiveDir = home.resolve("received");
             invocations = new InvocationService(channel, () -> memories, null);
             channel.subscribe(sessionListener, -1);
+            backend = new ShareBroker.BackendBroker("mqtt://127.0.0.1:" + port, PREFIX, address,
+                    () -> "token:" + address);
             broker = new ShareBroker(new StaticListableBeanFactory().getBeanProvider(ToolRegistry.class), channel,
-                    ShareState.inMemory(), receiveDir, invocations, () -> memories, Optional::empty);
+                    ShareState.inMemory(), receiveDir, invocations, () -> memories, () -> {
+                        if (backend == null) {
+                            throw new IllegalStateException("der Team-Server hat keinen Broker eingeschaltet");
+                        }
+                        return backend;
+                    }, Optional::empty);
             confirmation.setDesktopHandler((title, message) -> {
                 questions.add(title + "\n" + message);
                 return CompletableFuture.completedFuture(grant);
             });
-            values.put(ShareModule.BROKER_URL, "mqtt://127.0.0.1:" + port);
-            values.put(ShareModule.ADDRESS, address);
+            // ohne Broker-Adresse: der Broker des Backends
             values.put(ShareModule.SEND_DIRS, sendDir.toString());
             values.putAll(extra);
         }
@@ -457,7 +514,7 @@ class ShareModuleTest {
         }
 
         void connect() throws InterruptedException {
-            broker.apply(ShareBroker.Settings.of(config(), Optional::empty));
+            broker.configure(ShareBroker.Settings.of(config(), Optional::empty));
             await(broker::connected);
         }
 

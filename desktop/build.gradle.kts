@@ -109,8 +109,6 @@ dependencies {
     testImplementation("org.apache.sshd:sshd-sftp:2.15.0")
     // Eingebetteter IMAP-/SMTP-Server für die Tests des Mail-Moduls
     testImplementation("com.icegreen:greenmail-junit5:2.1.3")
-    // Eingebetteter MQTT-Broker (HiveMQ CE) für die Tests der Kooperation
-    testImplementation("com.hivemq:hivemq-community-edition-embedded:2026.5")
     // Tests des Dolt-Moduls gegen Dolt-/Doltgres-Container: Treiber, die die App sonst per Maven lädt (Boot-BOM)
     testRuntimeOnly("com.mysql:mysql-connector-j")
     testRuntimeOnly("org.postgresql:postgresql")

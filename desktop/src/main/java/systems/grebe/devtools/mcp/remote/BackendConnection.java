@@ -679,6 +679,12 @@ public class BackendConnection {
         return embedded() ? "http://127.0.0.1:" + env.getProperty("local.server.port", "8765") : store.team().url();
     }
 
+    /** Token der laufenden Anmeldung (Sitzungs- oder Desktop-Token), z.B. als Passwort beim Broker des Backends. */
+    public Optional<String> token() {
+        Session s = session;
+        return s == null || s.token() == null ? Optional.empty() : Optional.of(s.token());
+    }
+
     /** Jemand ist angemeldet und es gibt einen Stand (vom Backend oder aus dem Cache). */
     public boolean signedIn() {
         State s = state;

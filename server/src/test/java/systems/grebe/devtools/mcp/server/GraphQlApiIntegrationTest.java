@@ -33,6 +33,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.socket.client.StandardWebSocketClient;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+import systems.grebe.devtools.mcp.api.BrokerInfo;
 import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.api.ModuleDescriptor;
 import systems.grebe.devtools.mcp.api.ModuleOverlay;
@@ -53,6 +54,7 @@ import systems.grebe.devtools.mcp.backend.project.Project;
 import systems.grebe.devtools.mcp.backend.project.ProjectService;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
+import systems.grebe.devtools.mcp.modules.share.ShareTopics;
 import systems.grebe.devtools.mcp.profile.Overrides;
 import systems.grebe.devtools.mcp.web.WebLogin;
 
@@ -183,6 +185,16 @@ class GraphQlApiIntegrationTest {
         String jwt = token(u);
         accounts.update(u.id(), null, null, null, false); // gesperrt
         assertThat(errorType(client(jwt).document("{ me { id } }").executeSync())).isEqualTo("UNAUTHORIZED");
+    }
+
+    @Test
+    void brokerIsOffUnlessConfigured() {
+        assertThat(errorType(client(null).document("{ broker { enabled } }").executeSync())).isEqualTo("UNAUTHORIZED");
+        BrokerInfo b = client(token(newUser())).document("{ broker { enabled host port tlsPort websocketPort "
+                + "topicPrefix } }").retrieveSync("broker").toEntity(BrokerInfo.class);
+        assertThat(b.enabled()).isFalse();
+        assertThat(b.port()).isZero();
+        assertThat(b.topicPrefix()).isEqualTo(ShareTopics.DEFAULT_PREFIX);
     }
 
     private static final String LOGIN = """
