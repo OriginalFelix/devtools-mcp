@@ -89,25 +89,29 @@ final class MailConnector {
             return where + "Anmeldung fehlgeschlagen – Benutzer und Passwort prüfen (in der DevTools-App; manche "
                     + "Anbieter verlangen ein App-Passwort)." + suffix(e.getMessage());
         }
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            if (t instanceof UnknownHostException) {
-                return where + "Host nicht gefunden.";
-            }
-            if (t instanceof ConnectException) {
-                return where + "Verbindung abgelehnt – stimmen Port " + a.port() + " und Verschlüsselung ("
-                        + a.security() + ")?";
-            }
-            if (t instanceof SocketTimeoutException) {
-                return where + "Zeitüberschreitung.";
-            }
-            if (t instanceof SSLException) {
-                return where + "TLS-Fehler (" + t.getMessage() + ") – Verschlüsselung (ssl/starttls/none) und Port prüfen.";
-            }
-        }
-        return where + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        return where + network(e, a.port(), a.security());
     }
 
-    private static String suffix(String msg) {
+    /** Netzwerk- und TLS-Fehler (IMAP wie SMTP) als Satz ohne Präfix. */
+    static String network(Exception e, int port, String security) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof UnknownHostException) {
+                return "Host nicht gefunden.";
+            }
+            if (t instanceof ConnectException) {
+                return "Verbindung abgelehnt – stimmen Port " + port + " und Verschlüsselung (" + security + ")?";
+            }
+            if (t instanceof SocketTimeoutException) {
+                return "Zeitüberschreitung.";
+            }
+            if (t instanceof SSLException) {
+                return "TLS-Fehler (" + t.getMessage() + ") – Verschlüsselung (ssl/starttls/none) und Port prüfen.";
+            }
+        }
+        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+    }
+
+    static String suffix(String msg) {
         return msg == null || msg.isBlank() ? "" : " Server: " + msg.strip();
     }
 }

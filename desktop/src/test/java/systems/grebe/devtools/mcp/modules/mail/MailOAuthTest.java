@@ -15,6 +15,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -23,7 +24,11 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.icegreen.greenmail.util.GreenMail;
+import com.icegreen.greenmail.util.ServerSetupTest;
 import com.sun.net.httpserver.HttpExchange;
+import jakarta.mail.Message;
+import jakarta.mail.internet.MimeMessage;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +54,8 @@ class MailOAuthTest {
         entra = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         entra.createContext("/tenant-x/oauth2/v2.0/devicecode", ex -> {
             Map<String, String> form = form(ex);
-            assertThat(form).containsEntry("client_id", "cid").containsEntry("scope", MailOAuth.SCOPES);
+            assertThat(form).containsEntry("client_id", "cid");
+            assertThat(form.get("scope")).startsWith(MailOAuth.SCOPES);
             respond(ex, 200, "{\"device_code\":\"DC\",\"user_code\":\"ABCD-1234\",\"verification_uri\":"
                     + "\"https://microsoft.com/devicelogin\",\"expires_in\":600,\"interval\":1}");
         });
@@ -145,6 +151,36 @@ class MailOAuthTest {
                 .hasMessageContaining("neu anmelden").hasMessageContaining("AADSTS70008").hasMessageNotContaining("Trace");
         assertThat(oauth.loggedIn(a)).isFalse();
         assertThatThrownBy(() -> oauth.accessToken(a)).hasMessageContaining("nicht angemeldet");
+    }
+
+    @Test
+    void sendsViaSmtpXoauth2AndAsksForSmtpSend() throws Exception {
+        GreenMail smtp = new GreenMail(ServerSetupTest.SMTP);
+        smtp.start();
+        try {
+            smtp.setUser(MAILBOX, MAILBOX, "AT1");
+            Map<String, String> r = account();
+            r.put(MailAccount.SMTP_HOST, "127.0.0.1");
+            r.put(MailAccount.SMTP_PORT, Integer.toString(smtp.getSmtp().getPort()));
+            r.put(MailAccount.SMTP_SECURITY, MailAccount.PLAIN);
+            MailAccount a = MailAccount.of(r, authority());
+            assertThat(a.canSend()).isTrue();
+            // mit SMTP-Server fordert die Anmeldung zusätzlich SMTP.Send an (gleiche Zielgruppe, ein Token)
+            assertThat(MailOAuth.scopes(a)).isEqualTo(MailOAuth.SCOPES + " " + MailOAuth.SMTP_SCOPE);
+
+            MailOAuth oauth = MailOAuth.inMemory();
+            oauth.login(a, p -> { });
+            MimeMessage m = new MimeMessage(MailSender.session(a, Duration.ofSeconds(10)));
+            m.setFrom(MAILBOX);
+            m.setRecipients(Message.RecipientType.TO, "kunde@kunde-a.de");
+            m.setSubject("Per XOAUTH2");
+            m.setText("Hallo");
+            MailSender.send(a, oauth, m, Duration.ofSeconds(10));
+            assertThat(smtp.getReceivedMessages()).singleElement()
+                    .satisfies(x -> assertThat(x.getSubject()).isEqualTo("Per XOAUTH2"));
+        } finally {
+            smtp.stop();
+        }
     }
 
     @Test

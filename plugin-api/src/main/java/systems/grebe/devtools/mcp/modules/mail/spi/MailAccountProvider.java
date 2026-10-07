@@ -24,7 +24,7 @@ import java.util.function.Consumer;
  * <p>Es gelten die Einstellungen des Mail-Moduls: Konten, Anmeldung (auch Exchange Online per OAuth2), freigegebene
  * Ordner – nur dort wird gelesen und geschrieben – und die Schalter. Lesen setzt voraus, dass der Benutzer
  * {@code mail_read} nutzen darf, Schreiben zusätzlich den jeweiligen Schalter und das Recht auf das Tool
- * ({@code mail_mark}, {@code mail_move}, {@code mail_draft}). Ob das Mail-Modul selbst aktiv ist, spielt fürs Lesen
+ * ({@code mail_mark}, {@code mail_move}, {@code mail_draft}, {@code mail_send}). Ob das Mail-Modul selbst aktiv ist, spielt fürs Lesen
  * keine Rolle; neue Mails meldet es nur, solange es aktiv ist und Ordner überwacht. Passwörter und Tokens verlassen die
  * App nicht über diese Schnittstelle.
  *
@@ -86,4 +86,14 @@ public interface MailAccountProvider {
 
     /** Legt einen Entwurf im Entwurfsordner an (muss freigegeben sein). Braucht „Entwürfe anlegen erlauben“. */
     String draft(String account, MailDraft draft);
+
+    /**
+     * Sendet per SMTP. Braucht „Senden erlauben“, einen SMTP-Server am Konto und – sofern nicht abgeschaltet – die
+     * Zustimmung des Nutzers, die die App per Dialog einholt (blockiert bis zur Antwort, höchstens wenige Minuten). Es
+     * gelten die erlaubten Empfänger und die Grenze pro Stunde des Moduls.
+     *
+     * @return Ergebnis als Text
+     * @throws IllegalStateException wenn nicht gesendet wurde (abgelehnt, nicht erlaubt, Server-Fehler)
+     */
+    String send(String account, MailSend mail);
 }

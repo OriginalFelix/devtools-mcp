@@ -17,10 +17,13 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
  * @param tenant  nur Microsoft: Tenant-ID oder Domain
  * @param clientId nur Microsoft: Anwendungs-ID der App-Registrierung in Entra ID
  * @param authority nur Microsoft: Anmelde-Endpunkt (aus den Modul-Einstellungen)
+ * @param smtpHost  SMTP-Server für den Versand; leer = das Konto sendet nicht
+ * @param smtpSecurity {@link #SSL}, {@link #STARTTLS} oder {@link #PLAIN}
+ * @param from      Absender beim Senden, z.B. {@code Felix <felix@example.com>}; leer = Benutzer, falls eine Adresse
  */
 record MailAccount(String name, String host, int port, String security, String username, String password,
                    List<String> folders, List<String> watch, String description, String auth, String tenant,
-                   String clientId, String authority) {
+                   String clientId, String authority, String smtpHost, int smtpPort, String smtpSecurity, String from) {
 
     static final String NAME = "name";
     static final String HOST = "host";
@@ -34,6 +37,10 @@ record MailAccount(String name, String host, int port, String security, String u
     static final String AUTH = "auth";
     static final String TENANT = "tenant";
     static final String CLIENT_ID = "clientId";
+    static final String SMTP_HOST = "smtpHost";
+    static final String SMTP_PORT = "smtpPort";
+    static final String SMTP_SECURITY = "smtpSecurity";
+    static final String FROM = "fromAddress";
 
     static final String PASSWORD_AUTH = "password";
     static final String MICROSOFT = "microsoft";
@@ -65,10 +72,39 @@ record MailAccount(String name, String host, int port, String security, String u
             host = "outlook.office365.com";
         }
         String tenant = trim(r.get(TENANT));
+        String smtpSecurity = trim(r.get(SMTP_SECURITY)).toLowerCase(Locale.ROOT);
+        if (!List.of(SSL, STARTTLS, PLAIN).contains(smtpSecurity)) {
+            smtpSecurity = STARTTLS;
+        }
+        int smtpPort;
+        try {
+            smtpPort = Integer.parseInt(trim(r.get(SMTP_PORT)));
+        } catch (NumberFormatException e) {
+            smtpPort = switch (smtpSecurity) {
+                case SSL -> 465;
+                case STARTTLS -> 587;
+                default -> 25;
+            };
+        }
         return new MailAccount(trim(r.get(NAME)), host, port, security, trim(r.get(USERNAME)),
                 password == null || password.isEmpty() ? null : password, lines(r.get(FOLDERS)), lines(r.get(WATCH)),
                 trim(r.get(DESCRIPTION)), auth, tenant.isEmpty() ? "organizations" : tenant, trim(r.get(CLIENT_ID)),
-                authority == null || authority.isBlank() ? DEFAULT_AUTHORITY : authority.strip().replaceAll("/+$", ""));
+                authority == null || authority.isBlank() ? DEFAULT_AUTHORITY : authority.strip().replaceAll("/+$", ""),
+                trim(r.get(SMTP_HOST)), smtpPort, smtpSecurity, trim(r.get(FROM)));
+    }
+
+    /** Ob das Konto senden kann (SMTP-Server eingetragen). */
+    boolean canSend() {
+        return !smtpHost.isEmpty();
+    }
+
+    /** Absender beim Senden: eingetragen, sonst der Benutzer, wenn er eine Adresse ist; sonst leer. */
+    String sender() {
+        return !from.isEmpty() ? from : username.contains("@") ? username : "";
+    }
+
+    String smtpTarget() {
+        return smtpHost + ":" + smtpPort;
     }
 
     boolean microsoft() {

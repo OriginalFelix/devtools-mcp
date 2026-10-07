@@ -3,10 +3,13 @@ package systems.grebe.devtools.mcp.modules.mail;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -28,6 +31,7 @@ import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
 import jakarta.mail.Store;
 import jakarta.mail.UIDFolder;
+import jakarta.mail.internet.MimeMessage;
 import org.eclipse.angus.mail.imap.IMAPFolder;
 import org.eclipse.angus.mail.imap.IMAPStore;
 import org.slf4j.Logger;
@@ -74,7 +78,7 @@ public class MailWatcher implements AutoCloseable {
 
     /** Eine neu eingegangene Mail. */
     record NewMail(String account, String folder, long uid, String from, String fromAddress, String subject,
-                   Date date, boolean seen) {
+                   Date date, boolean seen, String messageId) {
 
         String header() {
             return account + "/" + folder + " UID " + uid + " – " + MailText.time(date) + " – von " + from
@@ -123,24 +127,7 @@ public class MailWatcher implements AutoCloseable {
 
         /** Ob Meldungen (Channel, Befehl) für diesen Absender rausgehen: leer = alle. */
         boolean notifies(String address) {
-            if (senders.isEmpty()) {
-                return true;
-            }
-            String a = address.toLowerCase(Locale.ROOT);
-            for (String raw : senders) {
-                String s = raw.strip().toLowerCase(Locale.ROOT);
-                if (s.isEmpty()) {
-                    continue;
-                }
-                if (s.startsWith("*@")) {
-                    s = s.substring(1);
-                }
-                boolean match = s.startsWith("@") ? a.endsWith(s) : s.contains("@") ? a.equals(s) : a.endsWith("@" + s);
-                if (match) {
-                    return true;
-                }
-            }
-            return false;
+            return senders.isEmpty() || matchesAddress(senders, address);
         }
 
         /** Was die Verbindung eines Ordners betrifft – ändert sich das, wird neu verbunden. */
@@ -316,6 +303,59 @@ public class MailWatcher implements AutoCloseable {
         }
     }
 
+    /** Ob {@code address} zu einem Eintrag passt: Adresse, {@code @domain}/{@code *@domain} oder {@code domain}. */
+    static boolean matchesAddress(List<String> patterns, String address) {
+        String a = address.toLowerCase(Locale.ROOT);
+        for (String raw : patterns) {
+            String s = raw.strip().toLowerCase(Locale.ROOT);
+            if (s.isEmpty()) {
+                continue;
+            }
+            if (s.startsWith("*@")) {
+                s = s.substring(1);
+            }
+            boolean match = s.startsWith("@") ? a.endsWith(s) : s.contains("@") ? a.equals(s) : a.endsWith("@" + s);
+            if (match) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------------------ Gesendet (Schleifen vermeiden, Grenze)
+
+    private final Set<String> sentIds = Collections.newSetFromMap(new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+            return size() > 500;
+        }
+    });
+    private final Deque<Long> sendTimes = new ArrayDeque<>();
+
+    /**
+     * Merkt sich eine selbst gesendete Mail: kommt sie in einem überwachten Ordner an (z.B. an sich selbst gesendet),
+     * gehen dafür weder Channel noch Befehl los – sonst könnte ein Agent auf seine eigene Mail antworten, endlos.
+     */
+    synchronized void sent(String messageId) {
+        sendTimes.addLast(System.currentTimeMillis());
+        if (messageId != null) {
+            sentIds.add(messageId);
+        }
+    }
+
+    synchronized boolean ownMail(String messageId) {
+        return messageId != null && sentIds.contains(messageId);
+    }
+
+    /** Ob in der letzten Stunde weniger als {@code perHour} Mails gesendet wurden. */
+    synchronized boolean sendQuotaLeft(int perHour) {
+        long hourAgo = System.currentTimeMillis() - 3_600_000;
+        while (!sendTimes.isEmpty() && sendTimes.peekFirst() < hourAgo) {
+            sendTimes.removeFirst();
+        }
+        return sendTimes.size() < perHour;
+    }
+
     // ------------------------------------------------------------------ Melden
 
     private final List<Consumer<List<NewMail>>> listeners =
@@ -332,14 +372,6 @@ public class MailWatcher implements AutoCloseable {
         if (mails.isEmpty()) {
             return;
         }
-        synchronized (inbox) {
-            inbox.addAll(mails);
-            while (inbox.size() > MAX_PENDING) {
-                inbox.removeFirst();
-                dropped++;
-            }
-            inbox.notifyAll();
-        }
         for (var l : listeners) {
             try {
                 l.accept(mails);
@@ -349,7 +381,8 @@ public class MailWatcher implements AutoCloseable {
         }
         Settings s = settings;
         List<NewMail> notify = mails.stream()
-                .filter(m -> !(s.onlyUnseen() && m.seen()) && s.notifies(m.fromAddress())).toList();
+                .filter(m -> !(s.onlyUnseen() && m.seen()) && s.notifies(m.fromAddress()) && !ownMail(m.messageId()))
+                .toList();
         int skipped = Math.max(0, notify.size() - MAX_NOTIFY);
         if (skipped > 0) {
             notify = notify.subList(skipped, notify.size());
@@ -365,6 +398,15 @@ public class MailWatcher implements AutoCloseable {
                         "uid", Long.toString(m.uid()), "from", m.fromAddress(), "subject", m.subject()));
             }
             command.submit(s.command(), m);
+        }
+        // zuletzt: wer per mail_receive wartet, sieht die Mail erst, wenn Channel und Befehl schon Bescheid wissen
+        synchronized (inbox) {
+            inbox.addAll(mails);
+            while (inbox.size() > MAX_PENDING) {
+                inbox.removeFirst();
+                dropped++;
+            }
+            inbox.notifyAll();
         }
     }
 
@@ -551,7 +593,7 @@ public class MailWatcher implements AutoCloseable {
                 out.add(new NewMail(spec.account().name(), spec.folder(), uid,
                         MailText.addresses(m.getFrom()), MailText.senderAddress(m), MailText.subject(m),
                         m.getReceivedDate() != null ? m.getReceivedDate() : m.getSentDate(),
-                        m.isSet(Flags.Flag.SEEN)));
+                        m.isSet(Flags.Flag.SEEN), m instanceof MimeMessage mm ? mm.getMessageID() : null));
             }
             // erst merken, dann melden: ein Absturz beim Melden soll nicht zu doppelten Läufen führen
             state.put(stateKey, new MailState.Position(f.getUIDValidity(), max));

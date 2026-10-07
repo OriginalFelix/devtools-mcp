@@ -66,7 +66,7 @@ class MailAccountServiceTest {
         account.put(MailAccount.WATCH, "INBOX\nPrivat");
         values.put(MailModule.ACCOUNTS, ModuleConfig.formatRecords(List.of(account)));
         MailModule module = new MailModule(watcher);
-        service = new MailAccountService(watcher, () -> ModuleConfig.of(module.configSchema(), values),
+        service = new MailAccountService(watcher, null, () -> ModuleConfig.of(module.configSchema(), values),
                 (moduleId, tool) -> !denied.contains(tool));
         Properties p = new Properties();
         Store store = Session.getInstance(p).getStore("imap");

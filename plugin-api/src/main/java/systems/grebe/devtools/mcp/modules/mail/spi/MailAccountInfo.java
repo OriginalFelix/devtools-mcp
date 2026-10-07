@@ -12,9 +12,10 @@ import java.util.List;
  * @param folders     freigegebene Ordner (auch Muster wie {@code Projekte/*}); leer = das ganze Konto
  * @param watched     überwachte Ordner, deren neue Mails {@link MailAccountProvider#onNewMail} meldet
  * @param loggedIn    bei {@code microsoft}: ob eine Anmeldung vorliegt; sonst immer {@code true}
+ * @param sender      Absenderadresse beim Senden; leer, wenn das Konto nicht senden kann (kein SMTP-Server)
  */
 public record MailAccountInfo(String name, String address, String auth, String description, List<String> folders,
-                              List<String> watched, boolean loggedIn) {
+                              List<String> watched, boolean loggedIn, String sender) {
 
     public MailAccountInfo {
         folders = List.copyOf(folders);

@@ -30,6 +30,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.core.UserConfirmation;
 import systems.grebe.devtools.mcp.modules.mail.spi.MailAccountInfo;
 import systems.grebe.devtools.mcp.modules.mail.spi.MailAccountProvider;
 import systems.grebe.devtools.mcp.modules.mail.spi.MailAttachment;
@@ -38,6 +39,7 @@ import systems.grebe.devtools.mcp.modules.mail.spi.MailDraft;
 import systems.grebe.devtools.mcp.modules.mail.spi.MailFolderInfo;
 import systems.grebe.devtools.mcp.modules.mail.spi.MailMessage;
 import systems.grebe.devtools.mcp.modules.mail.spi.MailQuery;
+import systems.grebe.devtools.mcp.modules.mail.spi.MailSend;
 import systems.grebe.devtools.mcp.modules.mail.spi.MailSummary;
 import systems.grebe.devtools.mcp.modules.mail.spi.NewMail;
 
@@ -54,26 +56,30 @@ public class MailAccountService implements MailAccountProvider, AutoCloseable {
     private static final int MAX_LIST = 500;
 
     private final MailWatcher watcher;
+    private final UserConfirmation confirmation;
     private final Supplier<ModuleConfig> config;
     private final BiPredicate<String, String> toolPermitted;
     private final MailEnvironment.Sessions sessions = new MailEnvironment.Sessions();
 
     @Autowired
-    public MailAccountService(MailWatcher watcher, ObjectProvider<ToolRegistry> registry) {
+    public MailAccountService(MailWatcher watcher, UserConfirmation confirmation,
+                              ObjectProvider<ToolRegistry> registry) {
         // Registry erst beim Aufruf holen – sie wird mit allen Modulen aufgebaut
-        this(watcher, () -> registry.getObject().config(MailModule.ID),
+        this(watcher, confirmation, () -> registry.getObject().config(MailModule.ID),
                 (moduleId, tool) -> registry.getObject().toolPermitted(moduleId, tool));
     }
 
     /** Für Tests: Konfiguration und Rechte direkt. */
-    MailAccountService(MailWatcher watcher, Supplier<ModuleConfig> config, BiPredicate<String, String> toolPermitted) {
+    MailAccountService(MailWatcher watcher, UserConfirmation confirmation, Supplier<ModuleConfig> config,
+                       BiPredicate<String, String> toolPermitted) {
         this.watcher = watcher;
+        this.confirmation = confirmation;
         this.config = config;
         this.toolPermitted = toolPermitted;
     }
 
     private MailEnvironment env() {
-        return new MailEnvironment(config.get(), sessions, watcher);
+        return new MailEnvironment(config.get(), sessions, watcher, confirmation);
     }
 
     private void require(String tool) {
@@ -97,7 +103,7 @@ public class MailAccountService implements MailAccountProvider, AutoCloseable {
         MailEnvironment env = env();
         return env.accounts().stream().map(a -> new MailAccountInfo(a.name(), a.target(), a.auth(), a.description(),
                 a.folders(), a.watch().stream().filter(a::allows).toList(),
-                !a.microsoft() || watcher.oauth().loggedIn(a))).toList();
+                !a.microsoft() || watcher.oauth().loggedIn(a), a.canSend() ? a.sender() : "")).toList();
     }
 
     @Override
@@ -260,6 +266,17 @@ public class MailAccountService implements MailAccountProvider, AutoCloseable {
         }
         return new MailWriteTools.Draft(env()).draft(account, draft.to(), draft.cc(), draft.subject(), draft.body(),
                 draft.replyToUid(), draft.replyToFolder());
+    }
+
+    @Override
+    public String send(String account, MailSend mail) {
+        requireSwitch(MailModule.ALLOW_SEND, "Senden erlauben", "mail_send");
+        if (mail == null) {
+            throw new IllegalArgumentException("'mail' fehlt.");
+        }
+        // ohne MCP-Client: Rückfrage per Dialog der App (bzw. abgelehnt, wenn nur der Client fragen darf)
+        return new MailWriteTools.Send(env()).sendMail(account, mail.to(), mail.cc(), mail.bcc(), mail.subject(),
+                mail.body(), mail.replyToUid(), mail.replyToFolder(), mail.quote(), null);
     }
 
     @PreDestroy

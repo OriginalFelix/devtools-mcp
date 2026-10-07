@@ -295,7 +295,7 @@ class MailModuleTest {
         assertThat(MailCommand.tokenize("claude -p \"a b {uid}\" --x 'c d'")).containsExactly("claude", "-p",
                 "a b {uid}", "--x", "c d");
         assertThat(MailCommand.arguments("x {account}/{folder} {uid}", new MailWatcher.NewMail("acc", "INBOX", 7,
-                "", "", "", null, false))).containsExactly("x", "acc/INBOX", "7");
+                "", "", "", null, false, null))).containsExactly("x", "acc/INBOX", "7");
         assertThatThrownBy(() -> MailCommand.tokenize("claude \"offen")).hasMessageContaining("Anführungszeichen");
     }
 
@@ -355,7 +355,8 @@ class MailModuleTest {
         MailModule module = new MailModule(watcher);
         Map<String, String> values = new LinkedHashMap<>(accountValues(account));
         values.putAll(extra);
-        return new MailEnvironment(ModuleConfig.of(module.configSchema(), values), new MailEnvironment.Sessions(), watcher);
+        return new MailEnvironment(ModuleConfig.of(module.configSchema(), values), new MailEnvironment.Sessions(), watcher,
+                null);
     }
 
     private MailTools tools(Map<String, String> account, Map<String, String> extra) {

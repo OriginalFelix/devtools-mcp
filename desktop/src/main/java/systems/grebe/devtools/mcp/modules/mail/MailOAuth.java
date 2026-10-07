@@ -35,9 +35,9 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Anmeldung von Exchange-Online-Konten (Microsoft 365) für IMAP per OAuth2: Entra ID als öffentlicher Client mit der
- * delegierten Berechtigung {@code IMAP.AccessAsUser.All}, Device-Code-Flow (der Nutzer gibt im Browser einen Code ein),
+ * delegierten Berechtigung {@code IMAP.AccessAsUser.All} (beim Senden auch {@code SMTP.Send}), Device-Code-Flow (der Nutzer gibt im Browser einen Code ein),
  * danach Refresh-Token. Die Refresh-Tokens liegen verschlüsselt wie die Geheimnisse in {@code settings.json} in
- * {@code mail-tokens.json}, Access-Tokens nur im Speicher. IMAP meldet sich damit per SASL {@code XOAUTH2} an.
+ * {@code mail-tokens.json}, Access-Tokens nur im Speicher. IMAP und SMTP melden sich damit per SASL {@code XOAUTH2} an.
  *
  * <p>Microsoft erlaubt für Exchange Online keine IMAP-Anmeldung mit Passwort mehr.
  */
@@ -49,6 +49,8 @@ public class MailOAuth {
 
     /** {@code offline_access} für das Refresh-Token; die Zielgruppe ist Exchange Online, nicht Graph. */
     static final String SCOPES = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All";
+    /** Zusätzlich für Konten, die senden: gleiche Zielgruppe, ein Token für IMAP und SMTP. */
+    static final String SMTP_SCOPE = "https://outlook.office.com/SMTP.Send";
     static final String DEVICE_CODE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
     private static final DateTimeFormatter HHMM = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -103,6 +105,11 @@ public class MailOAuth {
         return new MailOAuth(null, UnaryOperator.identity(), UnaryOperator.identity());
     }
 
+    /** Berechtigungen eines Kontos: IMAP, beim Senden auch SMTP. */
+    static String scopes(MailAccount a) {
+        return a.canSend() ? SCOPES + " " + SMTP_SCOPE : SCOPES;
+    }
+
     /** Schlüssel einer Anmeldung: Endpunkt, Tenant, App und Postfach. */
     static String key(MailAccount a) {
         return a.authority() + "|" + a.tenant() + "|" + a.clientId() + "|" + a.username().toLowerCase(java.util.Locale.ROOT);
@@ -136,7 +143,7 @@ public class MailOAuth {
         form.put("client_id", a.clientId());
         form.put("grant_type", "refresh_token");
         form.put("refresh_token", refresh);
-        form.put("scope", SCOPES);
+        form.put("scope", scopes(a));
         try {
             JsonNode token = post(endpoint(a, "token"), form);
             synchronized (this) {
@@ -145,7 +152,8 @@ public class MailOAuth {
         } catch (OAuthException e) {
             if ("invalid_grant".equals(e.code) || "interaction_required".equals(e.code)) {
                 store(key, null);
-                throw new NotLoggedInException("Konto '" + a.name() + "': Anmeldung abgelaufen oder widerrufen – neu "
+                throw new NotLoggedInException("Konto '" + a.name() + "': Anmeldung abgelaufen, widerrufen oder ohne "
+                        + "eine neu nötige Berechtigung (z.B. SMTP.Send nach dem Eintragen eines SMTP-Servers) – neu "
                         + "anmelden (mail_login bzw. Aktion „Anmelden“). " + e.getMessage());
             }
             throw new IllegalStateException("Konto '" + a.name() + "': Token nicht erneuerbar: " + e.getMessage(), e);
@@ -200,7 +208,7 @@ public class MailOAuth {
         String key = key(a);
         JsonNode code;
         try {
-            code = post(endpoint(a, "devicecode"), Map.of("client_id", a.clientId(), "scope", SCOPES));
+            code = post(endpoint(a, "devicecode"), Map.of("client_id", a.clientId(), "scope", scopes(a)));
         } catch (OAuthException e) {
             // häufig: AADSTS7000218 = „Öffentliche Clientflows zulassen“ ist in der App-Registrierung aus
             throw new IllegalStateException("Anmeldung konnte nicht starten (" + e.code + "): " + e.getMessage()

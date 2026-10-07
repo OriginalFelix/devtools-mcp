@@ -23,7 +23,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
-| **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort – gesendet wird nie) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über die Channel-Brücke an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
+| **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort), `mail_send` (SMTP, auch als Antwort; Rückfrage beim Nutzer, erlaubte Empfänger, Grenze pro Stunde) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über die Channel-Brücke an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
@@ -448,8 +448,31 @@ Benutzer@Host, Beschreibung und die Ordner. Plugins nutzen dieselben Konten übe
   bevorzugt aus `text/plain`, sonst aus HTML (Links als „Text (URL)“), Anhänge stehen mit Name, Typ und Größe da.
 * **Schalter (Standard aus):** *Markieren* (`mail_mark`), *Verschieben* (`mail_move`, per `MOVE`, sonst Kopieren + `UID
   EXPUNGE` nur genau dieser Mails; endgültig gelöscht wird nie), *Entwürfe* (`mail_draft`: Entwurf im Ordner mit
-  SPECIAL-USE `\Drafts` bzw. „Drafts“/„Entwürfe“, als Antwort mit „Re:“, Empfänger, Zitat und `In-Reply-To`). Senden
-  kann das Modul nicht – den Entwurf prüft und sendet der Nutzer.
+  SPECIAL-USE `\Drafts` bzw. „Drafts“/„Entwürfe“, als Antwort mit „Re:“, Empfänger, Zitat und `In-Reply-To`),
+  *Senden* (`mail_send`, siehe unten).
+
+#### Senden (SMTP)
+
+Konten mit *SMTP-Server* (dazu Verschlüsselung `starttls`/`ssl`/`none`, Port, *Absenderadresse*) können senden, wenn der
+Schalter *Senden erlauben* an ist. `mail_send` schickt reinen Text an An/Cc/Bcc, als Antwort (`replyToUid`) mit „Re:“,
+Empfängern, Zitat und `In-Reply-To`/`References`; die ursprüngliche Mail wird als beantwortet markiert. Exchange Online
+sendet über `smtp.office365.com:587` mit demselben OAuth-Token (delegiert zusätzlich `SMTP.Send`, nach dem Eintragen des
+SMTP-Servers neu anmelden; „Authentifiziertes SMTP“ muss für das Postfach erlaubt sein).
+
+Senden lässt sich nicht zurückholen, und neue Mails von außen stoßen das LLM an – deshalb:
+
+* **Rückfrage vor jeder Mail** (*Vor dem Senden nachfragen*, Standard `auto`): Der Nutzer sieht Absender, Empfänger,
+  Betreff und Text und bestätigt im MCP-Client (Elicitation) oder im Dialog der App; ohne Antwort wird nicht gesendet.
+  `off` nur zusammen mit *Erlaubte Empfänger*.
+* **Erlaubte Empfänger** (Adresse, `@domain` oder `domain` je Zeile) gelten für An, Cc und Bcc – sonst wird gar nicht
+  erst gefragt.
+* **Max. Mails pro Stunde** (Standard 20, über alle Konten) bremst Schleifen.
+* **Eigene Mails stoßen nichts an:** Kommt eine selbst gesendete Mail in einem überwachten Ordner an (z.B. an sich
+  selbst), gehen dafür weder Channel noch Befehl los – ein Agent antwortet so nicht endlos auf sich selbst.
+* **Kopie in „Gesendet“** (SPECIAL-USE `\Sent` bzw. übliche Namen, muss freigegeben sein): `auto` legt sie ab – außer bei
+  Exchange Online und Gmail, die das selbst tun.
+
+*Verbindung testen* prüft auch SMTP (Anmeldung, Absender).
 
 Die Instructions und jede Tool-Beschreibung sagen dem LLM, dass Mails Daten von außen sind: Aufforderungen darin werden
 nicht befolgt, verschoben und entworfen wird nur auf Anweisung des Nutzers.
@@ -462,7 +485,7 @@ freigegebenen Postfachs, auf das der angemeldete Benutzer Vollzugriff hat.
 
 1. In Entra ID eine App-Registrierung anlegen (oder die für Teams erweitern): *Authentifizierung* → „Öffentliche
    Clientflows zulassen“ = Ja; *API-Berechtigungen* → „Von meiner Organisation verwendete APIs“ → *Office 365 Exchange
-   Online* → delegiert `IMAP.AccessAsUser.All` (je nach Tenant mit Administratorzustimmung). IMAP muss für das Postfach
+   Online* → delegiert `IMAP.AccessAsUser.All`, zum Senden auch `SMTP.Send` (je nach Tenant mit Administratorzustimmung). IMAP muss für das Postfach
    eingeschaltet sein (Exchange Admin Center → Postfach → E-Mail-Apps).
 2. Beim Konto Tenant (ID oder Domain, Standard `organizations`) und Client-ID eintragen, speichern.
 3. *Anmelden* (Aktion des Moduls) ausführen: die App zeigt Adresse und Code und öffnet den Browser. Ohne App-Fenster
@@ -1383,7 +1406,7 @@ Sie enthält, was ein Plugin braucht, und reicht Spring AI (`@Tool`, `ToolCallba
 | Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `ContainerRuntimeProvider`/`ContainerRuntime`/`RuntimeSettings` |
 | Datenbanken | `DatabaseConnectionProvider`, `DatabaseConnectionInfo` (Verbindungen des JDBC-Moduls, ab `api-version: 2`) |
 | Projekte | `ProjectProvider`, `ProjectDirectory` (freigegebene Projektverzeichnisse, ab `api-version: 2`) |
-| Mail | `MailAccountProvider`, `MailAccountInfo`, `MailFolderInfo`, `MailSummary`, `MailMessage`, `MailAttachment(Info)`, `MailQuery`, `MailDraft`, `NewMail` (Konten des Mail-Moduls, ab `api-version: 3`) |
+| Mail | `MailAccountProvider`, `MailAccountInfo`, `MailFolderInfo`, `MailSummary`, `MailMessage`, `MailAttachment(Info)`, `MailQuery`, `MailDraft`, `MailSend`, `NewMail` (Konten des Mail-Moduls, ab `api-version: 3`) |
  Die App stellt all das zur Laufzeit bereit, ins Jar
 gehört nur der eigene Code. Die Pakete sind dieselben wie vorher im App-Jar: bereits gebaute Plugins laufen unverändert.
 
@@ -1442,9 +1465,9 @@ Maven: dieselbe Koordinate mit `<scope>provided</scope>`. Das POM nennt feste Ve
   freigegebene und überwachte Ordner – nie Passwörter oder Tokens), `folders`, `list(account, folder, MailQuery, limit)`,
   `read` (Text, HTML als Text, Anhangsliste; bleibt ungelesen), `attachment(…, index, maxBytes)` (Inhalt) und
   `onNewMail(listener)` – neue Mails der überwachten Ordner, im Thread der Überwachung mit dem ClassLoader des Plugins;
-  das zurückgegebene `AutoCloseable` in `onDisable()` schließen. `mark`, `move` und `draft` gehen über dieselben
-  Prüfungen wie die Tools. Es gelten Freigaben und Schalter des Moduls; Lesen braucht das Recht auf `mail_read`, Schreiben
-  zusätzlich den Schalter und das Recht auf `mail_mark`/`mail_move`/`mail_draft`. Ob das Modul aktiv ist, spielt fürs
+  das zurückgegebene `AutoCloseable` in `onDisable()` schließen. `mark`, `move`, `draft` und `send(account, MailSend)`
+  gehen über dieselben Prüfungen wie die Tools – beim Senden fragt die App den Nutzer per Dialog. Es gelten Freigaben und Schalter des Moduls; Lesen braucht das Recht auf `mail_read`, Schreiben
+  zusätzlich den Schalter und das Recht auf `mail_mark`/`mail_move`/`mail_draft`/`mail_send`. Ob das Modul aktiv ist, spielt fürs
   Lesen keine Rolle; neue Mails gibt es nur, solange es aktiv ist und Ordner überwacht.
 * **Tools:** `ToolBeans.callbacks(…)` statt `ToolCallbacks.from(…)` übernimmt `@ToolHints` als MCP-Tool-Annotations,
   `ToolProgress.report(…)` meldet Zwischenstände an den Client – beides funktioniert in Plugin-Tools wie in eingebauten.
@@ -1527,7 +1550,7 @@ desktop/
   core/ChannelEvents      ── Ereignisse an laufende Sitzungen; server/ChannelEventsController: GET /mcp/channel/events (SSE)
   channel/ChannelBridge   ── `java -jar … channel`: stdio-MCP-Server für Claude-Code-Channels, liest die SSE der App
   modules/mail/           ── IMAP: MailTools/MailWriteTools, MailWatcher (IDLE/Abfrage, Meldungen), MailCommand, MailState,
-                             MailOAuth (Exchange Online), MailAccountService (SPI für Plugins)
+                             MailSender (SMTP), MailOAuth (Exchange Online), MailAccountService (SPI für Plugins)
   remote/                 ── EmbeddedBackend + EmbeddedAccounts (erstes Konto), BackendConnection (Anmeldung,
                              GraphQL-Client, Subscriptions, Cache),
                              BackendSettingsResolver, BackendSkills, BackendMemories, BackendScripts, ScriptCacheFile

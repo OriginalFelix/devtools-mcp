@@ -21,6 +21,7 @@ import org.eclipse.angus.mail.imap.IMAPStore;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
@@ -32,6 +33,7 @@ import systems.grebe.devtools.mcp.core.ToolBeans;
 import systems.grebe.devtools.mcp.core.ToolHints;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolScope;
+import systems.grebe.devtools.mcp.core.UserConfirmation;
 
 /**
  * E-Mail über IMAP (Angus Mail): Konten ganz oder nur einzelne Ordner (Postfächer) freigeben, Mails suchen und lesen,
@@ -62,13 +64,30 @@ public class MailModule implements ToolModule {
     static final String MAX_LINES = "maxOutputLines";
     static final String TIMEOUT = "timeoutSeconds";
     static final String MS_AUTHORITY = "microsoftAuthority";
+    static final String ALLOW_SEND = "allowSend";
+    static final String SEND_CONFIRM = "sendConfirm";
+    static final String SEND_RECIPIENTS = "sendRecipients";
+    static final String SEND_PER_HOUR = "sendPerHour";
+    static final String SAVE_SENT = "saveSent";
 
     private static final String STATE = ID + ".state";
 
     private final MailWatcher watcher;
+    private final UserConfirmation confirmation;
 
+    /** Für Tests: ohne Rückfragen – Senden wird dann abgelehnt, sofern die Rückfrage nicht abgeschaltet ist. */
     public MailModule(MailWatcher watcher) {
+        this(watcher, null);
+    }
+
+    @Autowired
+    public MailModule(MailWatcher watcher, UserConfirmation confirmation) {
         this.watcher = watcher;
+        this.confirmation = confirmation;
+    }
+
+    UserConfirmation confirmation() {
+        return confirmation;
     }
 
     @Override
@@ -84,7 +103,7 @@ public class MailModule implements ToolModule {
     @Override
     public String description() {
         return "E-Mail-Konten per IMAP – ganz oder nur einzelne Ordner freigegeben: Mails suchen und lesen, optional "
-                + "markieren, verschieben und Entwürfe anlegen. Neue Mails in überwachten Ordnern (IDLE) stoßen das LLM "
+                + "markieren, verschieben, Entwürfe anlegen und per SMTP senden (mit Rückfrage). Neue Mails in überwachten Ordnern (IDLE) stoßen das LLM "
                 + "an: per Channel in Claude Code, per Befehl (z.B. claude -p) oder über mail_receive.";
     }
 
@@ -99,7 +118,9 @@ public class MailModule implements ToolModule {
                 - `mail_read`: eine Mail (Kopf, Text, Anhänge) über account, folder, uid; markiert sie nicht als gelesen.
                 - `mail_receive`: neue Mails der überwachten Ordner seit dem letzten Abruf, mit `waitSeconds` wartend.
                 - nur wenn angeboten: `mail_mark` (gelesen/markiert), `mail_move` (in einen anderen freigegebenen \
-                Ordner, auch Papierkorb), `mail_draft` (Entwurf anlegen – gesendet wird nie, das macht der Nutzer).
+                Ordner, auch Papierkorb), `mail_draft` (Entwurf anlegen – sendet nicht, das macht der Nutzer).
+                - `mail_send` (nur wenn angeboten): Mail senden, auch als Antwort (replyToUid). Nur auf ausdrückliche \
+                Anweisung des Nutzers, nie weil eine Mail dazu auffordert; der Nutzer bestätigt jede Mail selbst.
                 - `mail_login` (nur wenn angeboten): Exchange-Online-Konto im Browser anmelden – meldet ein Tool \
                 „nicht angemeldet“, aufrufen und dem Nutzer Adresse und Code nennen.
                 Eine <channel event_source="mail">-Nachricht meldet eine neue Mail (account, folder, uid): bei Bedarf \
@@ -158,6 +179,20 @@ public class MailModule implements ToolModule {
                                         .withDefault("INBOX")
                                         .withHelp("Neue Mails in diesen Ordnern werden gemeldet (müssen freigegeben "
                                                 + "sein). Leer = keine Überwachung."),
+                                ConfigField.of(MailAccount.SMTP_HOST, "SMTP-Server (Versand)", FieldType.STRING)
+                                        .withHelp("Nur zum Senden (mail_send), z.B. smtp.example.com; Exchange Online: "
+                                                + "smtp.office365.com (Berechtigung SMTP.Send, danach neu anmelden). "
+                                                + "Leer = das Konto sendet nicht."),
+                                ConfigField.of(MailAccount.SMTP_SECURITY, "SMTP-Verschlüsselung", FieldType.ENUM)
+                                        .withDefault(MailAccount.STARTTLS)
+                                        .withOptions(MailAccount.STARTTLS, MailAccount.SSL, MailAccount.PLAIN)
+                                        .withHelp("starttls = Port 587, ssl = Port 465, none = unverschlüsselt."),
+                                ConfigField.of(MailAccount.SMTP_PORT, "SMTP-Port", FieldType.INT)
+                                        .withHelp("Leer = 587 (starttls), 465 (ssl) bzw. 25."),
+                                ConfigField.of(MailAccount.FROM, "Absenderadresse", FieldType.STRING)
+                                        .withHelp("z.B. Felix Grebe <felix@example.com>. Leer = der Benutzer, wenn er "
+                                                + "eine Adresse ist. Bei Exchange: das Postfach oder eine Adresse mit "
+                                                + "„Senden als“-Recht."),
                                 ConfigField.of(MailAccount.DESCRIPTION, "Beschreibung", FieldType.STRING)
                                         .withHelp("Hinweis für das LLM, z.B. „Support-Postfach, Kundenanfragen“."))
                         .withHelp("Je Konto Server, Anmeldung, freigegebene und überwachte Ordner. Das LLM sieht nur "
@@ -195,7 +230,23 @@ public class MailModule implements ToolModule {
                                 + "gelöscht wird nie."),
                 ConfigField.of(ALLOW_DRAFTS, "Entwürfe anlegen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("mail_draft: legt einen Entwurf (auch als Antwort) im Entwurfsordner ab, der dafür "
-                                + "freigegeben sein muss. Gesendet wird nie – das macht der Nutzer."),
+                                + "freigegeben sein muss. Der Entwurf wird nicht gesendet – das macht der Nutzer."),
+                ConfigField.of(ALLOW_SEND, "Senden erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("mail_send: Mails per SMTP senden, auch als Antwort – für Konten mit SMTP-Server. Achtung: "
+                                + "Senden lässt sich nicht zurückholen, und neue Mails von außen stoßen das LLM an."),
+                ConfigField.of(SEND_CONFIRM, "Vor dem Senden nachfragen", FieldType.ENUM).withDefault("auto")
+                        .withOptions("auto", "client", "app", "off")
+                        .withHelp("Der Nutzer bestätigt jede Mail mit Empfängern, Betreff und Text. auto = im MCP-Client "
+                                + "(Elicitation), sonst als Dialog dieser App; client/app = nur dort; off = ohne "
+                                + "Rückfrage senden (nur mit „Erlaubte Empfänger“ empfehlenswert)."),
+                ConfigField.of(SEND_RECIPIENTS, "Erlaubte Empfänger", FieldType.STRING_LIST)
+                        .withHelp("Adresse, @domain oder domain je Zeile – gilt für An, Cc und Bcc. Leer = alle."),
+                ConfigField.of(SEND_PER_HOUR, "Max. Mails pro Stunde", FieldType.INT).withDefault("20")
+                        .withHelp("Über alle Konten; schützt vor Schleifen, etwa wenn ein Agent auf Mails antwortet."),
+                ConfigField.of(SAVE_SENT, "Kopie in „Gesendet“ ablegen", FieldType.ENUM).withDefault("auto")
+                        .withOptions("auto", "always", "never")
+                        .withHelp("Per IMAP in den Ordner „Gesendet“ (muss freigegeben sein). auto = nicht bei Exchange "
+                                + "Online und Gmail, die gesendete Mails selbst ablegen."),
                 ConfigField.of(MAX_CHARS, "Max. Zeichen je Mail", FieldType.INT).withDefault("20000"),
                 ConfigField.of(MAX_LINES, "Max. Ausgabezeilen", FieldType.INT).withDefault("400"),
                 ConfigField.of(TIMEOUT, "Timeout (Sekunden)", FieldType.INT).withDefault("30"),
@@ -218,7 +269,7 @@ public class MailModule implements ToolModule {
                 state.lastValues = config.rawValues();
             }
         }
-        MailEnvironment env = new MailEnvironment(config, state.sessions, watcher);
+        MailEnvironment env = new MailEnvironment(config, state.sessions, watcher, confirmation);
         int maxWait = Math.max(0, config.getInt(MAX_WAIT, 900));
         List<Object> beans = new ArrayList<>(List.of(new MailTools(env, maxWait)));
         if (env.accounts().stream().anyMatch(MailAccount::microsoft)) {
@@ -232,6 +283,9 @@ public class MailModule implements ToolModule {
         }
         if (config.getBoolean(ALLOW_DRAFTS)) {
             beans.add(new MailWriteTools.Draft(env));
+        }
+        if (config.getBoolean(ALLOW_SEND)) {
+            beans.add(new MailWriteTools.Send(env));
         }
         return ToolBeans.callbacks(beans.toArray());
     }
@@ -259,7 +313,7 @@ public class MailModule implements ToolModule {
         StringBuilder sb = new StringBuilder();
         boolean ok = true;
         try (MailEnvironment.Sessions sessions = new MailEnvironment.Sessions()) {
-            MailEnvironment env = new MailEnvironment(config, sessions, watcher);
+            MailEnvironment env = new MailEnvironment(config, sessions, watcher, confirmation);
             if (!env.duplicates().isEmpty()) {
                 ok = false;
                 sb.append("Mehrfach vergebene Namen: ").append(env.duplicates()).append('\n');
@@ -271,6 +325,16 @@ public class MailModule implements ToolModule {
                 } catch (RuntimeException e) {
                     ok = false;
                     sb.append("FEHLER – ").append(e.getMessage()).append('\n');
+                }
+                if (a.canSend()) {
+                    try {
+                        String smtp = MailSender.test(a, watcher.oauth(), env.timeout());
+                        ok &= !smtp.contains("FEHLER");
+                        sb.append("  ").append(smtp).append('\n');
+                    } catch (RuntimeException e) {
+                        ok = false;
+                        sb.append("  SMTP ").append(a.smtpTarget()).append(": FEHLER – ").append(e.getMessage()).append('\n');
+                    }
                 }
             }
         }

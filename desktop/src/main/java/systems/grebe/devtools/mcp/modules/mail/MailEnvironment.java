@@ -8,12 +8,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import io.modelcontextprotocol.server.McpSyncServerExchange;
+import jakarta.mail.Address;
 import jakarta.mail.Folder;
 import jakarta.mail.FolderClosedException;
 import jakarta.mail.MessagingException;
 import jakarta.mail.Store;
 import jakarta.mail.StoreClosedException;
+import jakarta.mail.internet.InternetAddress;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.core.UserConfirmation;
 
 /** Ausgewertete Konfiguration des Mail-Moduls: Konten, Freigaben, Grenzen – und der Zugriff auf die Ordner. */
 final class MailEnvironment {
@@ -35,10 +39,27 @@ final class MailEnvironment {
     private final Duration timeout;
     private final int maxLines;
     private final int maxChars;
+    private final UserConfirmation confirmation;
+    /** {@code null} = ohne Rückfrage senden. */
+    private final UserConfirmation.Channel sendConfirm;
+    private final List<String> sendRecipients;
+    private final int sendPerHour;
+    private final String saveSent;
 
-    MailEnvironment(ModuleConfig c, Sessions sessions, MailWatcher watcher) {
+    MailEnvironment(ModuleConfig c, Sessions sessions, MailWatcher watcher, UserConfirmation confirmation) {
         this.sessions = sessions;
         this.watcher = watcher;
+        this.confirmation = confirmation;
+        String confirm = c.getString(MailModule.SEND_CONFIRM, "auto").toLowerCase(Locale.ROOT);
+        this.sendConfirm = switch (confirm) {
+            case "off" -> null;
+            case "client" -> UserConfirmation.Channel.CLIENT;
+            case "app" -> UserConfirmation.Channel.APP;
+            default -> UserConfirmation.Channel.AUTO;
+        };
+        this.sendRecipients = c.getList(MailModule.SEND_RECIPIENTS);
+        this.sendPerHour = Math.max(1, c.getInt(MailModule.SEND_PER_HOUR, 20));
+        this.saveSent = c.getString(MailModule.SAVE_SENT, "auto").toLowerCase(Locale.ROOT);
         this.timeout = Duration.ofSeconds(Math.max(5, c.getInt(MailModule.TIMEOUT, 30)));
         this.maxLines = Math.max(50, c.getInt(MailModule.MAX_LINES, 400));
         this.maxChars = Math.max(1000, c.getInt(MailModule.MAX_CHARS, 20_000));
@@ -73,6 +94,67 @@ final class MailEnvironment {
 
     int maxChars() {
         return maxChars;
+    }
+
+    Duration timeout() {
+        return timeout;
+    }
+
+    // ------------------------------------------------------------------ Senden: Regeln
+
+    /** Nur freigegebene Empfänger (Adresse, @domain oder domain); leer = alle. */
+    void requireRecipientsAllowed(Address[] recipients) {
+        if (sendRecipients.isEmpty()) {
+            return;
+        }
+        List<String> denied = new ArrayList<>();
+        for (Address r : recipients) {
+            String address = r instanceof InternetAddress ia && ia.getAddress() != null ? ia.getAddress() : r.toString();
+            if (!MailWatcher.matchesAddress(sendRecipients, address)) {
+                denied.add(address);
+            }
+        }
+        if (!denied.isEmpty()) {
+            throw new IllegalStateException("Nicht gesendet: Empfänger " + denied + " sind nicht freigegeben. Erlaubt: "
+                    + sendRecipients + " (DevTools-App → Module → Mail → Erlaubte Empfänger).");
+        }
+    }
+
+    /** Höchstens {@code sendPerHour} Mails in der letzten Stunde (über alle Konten). */
+    void requireSendQuota() {
+        if (!watcher.sendQuotaLeft(sendPerHour)) {
+            throw new IllegalStateException("Nicht gesendet: Grenze von " + sendPerHour + " Mails pro Stunde erreicht "
+                    + "(DevTools-App → Module → Mail → Max. Mails pro Stunde).");
+        }
+    }
+
+    /** Fragt den Nutzer, sofern eingestellt; wirft, wenn er ablehnt oder niemand gefragt werden kann. */
+    void confirmSend(McpSyncServerExchange exchange, String question) {
+        if (sendConfirm == null) {
+            return;
+        }
+        if (confirmation == null) {
+            throw new IllegalStateException("Nicht gesendet: keine Rückfrage beim Nutzer möglich.");
+        }
+        UserConfirmation.Result r = confirmation.ask(exchange, sendConfirm, "E-Mail senden?", question);
+        switch (r.answer()) {
+            case GRANTED -> { }
+            case DECLINED -> throw new IllegalStateException("Nicht gesendet: vom Nutzer abgelehnt (" + r.via() + "). "
+                    + "Nicht erneut versuchen, ohne dass der Nutzer es ausdrücklich will.");
+            default -> throw new IllegalStateException("Nicht gesendet: keine Rückfrage möglich (" + r.via() + "). Der "
+                    + "Nutzer kann einen Entwurf (mail_draft) selbst senden oder die Rückfrage in der App umstellen.");
+        }
+    }
+
+    /** Ob eine Kopie in „Gesendet“ abgelegt wird; {@code auto}: nicht bei Exchange Online und Gmail (legen selbst ab). */
+    boolean saveSent(MailAccount a) {
+        return switch (saveSent) {
+            case "always" -> true;
+            case "never" -> false;
+            default -> !a.microsoft() && !a.smtpHost().toLowerCase(Locale.ROOT).endsWith("office365.com")
+                    && !a.smtpHost().toLowerCase(Locale.ROOT).endsWith("gmail.com")
+                    && !a.smtpHost().toLowerCase(Locale.ROOT).endsWith("googlemail.com");
+        };
     }
 
     /** Konto nach Name (ohne Groß-/Kleinschreibung); ohne Name das einzige. */
