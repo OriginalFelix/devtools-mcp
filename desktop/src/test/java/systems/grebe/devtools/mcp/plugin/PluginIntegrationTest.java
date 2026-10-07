@@ -194,6 +194,20 @@ class PluginIntegrationTest {
     }
 
     @Test
+    void apiOnlyPluginGetsMailAccounts() throws Exception {
+        // Plugin-API 3: das Mail-SPI kommt auch bei einem Plugin an, das nur gegen die API gebaut ist
+        Path jar = TestPlugins.springPlugin("mailer", "1.0", "mailer",
+                        "systems.grebe.devtools.mcp.modules.mail.spi.MailAccountProvider").apiOnly()
+                .build(work.resolve("mailer.jar"));
+        PluginManager.PluginInfo info = plugins.install(jar, null);
+        assertThat(info.state()).as(String.valueOf(info.error())).isEqualTo(PluginManager.State.ENABLED);
+        McpSchema.CallToolResult r = client.callTool(McpSchema.CallToolRequest.builder("mailer_info")
+                .arguments(Map.of()).build());
+        assertThat(((McpSchema.TextContent) r.content().getFirst()).text()).contains("bean=MailAccountService");
+        plugins.uninstall("mailer");
+    }
+
+    @Test
     void removedSpringPluginReleasesItsClassLoader() throws Exception {
         // Parent-BeanFactory, Spring- und JSON-Caches dürfen keine Plugin-Klassen festhalten – sonst bleibt bei jedem
         // Update/Entfernen ein kompletter ClassLoader samt Klassen im Speicher

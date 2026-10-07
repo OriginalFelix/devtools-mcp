@@ -23,6 +23,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
+| **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort), `mail_send` (SMTP, auch als Antwort; Rückfrage beim Nutzer, erlaubte Empfänger, Grenze pro Stunde) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über den stdio-Proxy (Channel) an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
@@ -389,8 +390,10 @@ Modul an den gespeicherten IDs der zuletzt gesendeten (Matrix zusätzlich an der
 Konto **ohne** das Modul geschrieben wurde, gilt als Nachricht des Nutzers. So funktioniert Teams, wo das Modul unter dem
 Konto des Nutzers schreibt, und Matrix auch ohne eigenes Bot-Konto.
 
-Von sich aus in eine laufende Sitzung schreiben (Push) kann der Server nicht: Die *Channels* von Claude Code
+Von sich aus in eine laufende Sitzung schreiben (Push) kann der MCP-Server selbst nicht: Die *Channels* von Claude Code
 (`notifications/claude/channel`) gibt es nur für per stdio gestartete MCP-Server, DevTools MCP spricht Streamable HTTP.
+Dafür gibt es den [stdio-Proxy](#claude-code-über-stdio-tools-und-channel) (bisher meldet darüber nur das Mail-Modul);
+Chat-Nachrichten holt das LLM weiter mit `chat_receive`.
 
 In der UI wählt „Aktiv“ (Mehrfachauswahl) die Systeme; darunter stehen die Felder und die Standard-Unterhaltung des
 gerade gewählten aktiven Systems, ein Umschalter wechselt zwischen ihnen.
@@ -428,6 +431,114 @@ aktiv); das Modul selbst ist danach in der App einzuschalten.
 Ein weiteres System (z.B. Slack, Mattermost) braucht eine `ChatProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider`; Anmeldedaten, die zur
 Laufzeit entstehen, legt es über `ChatSettings.vault()` verschlüsselt ab.
+
+### E-Mail (IMAP)
+
+Das Modul **Mail (IMAP)** gibt dem LLM Zugriff auf E-Mail-Konten – auf das ganze Konto oder nur auf einzelne Ordner
+(Postfächer) – und meldet neue Mails von sich aus. Konten werden in der App gepflegt (Name, Anmeldung, IMAP-Server,
+Verschlüsselung `ssl`/`starttls`/`none`, Port, Benutzer, Passwort verschlüsselt, Beschreibung); das LLM sieht nur Name,
+Benutzer@Host, Beschreibung und die Ordner. Plugins nutzen dieselben Konten über den
+[`MailAccountProvider`](#plugin-schreiben).
+
+* **Freigegebene Ordner** je Konto, einer je Zeile: `INBOX`, `Projekte/Kunde-A`, `Projekte/*` (alle Unterordner).
+  Leer = das ganze Konto. Alle Tools – auch Ziel von `mail_move` und der Entwurfsordner von `mail_draft` – arbeiten nur
+  in freigegebenen Ordnern; *Verbindung testen* zeigt, welche es gibt und ob der Server IDLE kann.
+* **Lesen:** `mail_list` listet neueste zuerst (UID, Datum, `*` ungelesen, `!` markiert, `@` Anhang) und filtert per
+  IMAP-`SEARCH`; `mail_read` liest über Konto, Ordner und UID – mit `BODY.PEEK`, die Mail bleibt ungelesen. Text kommt
+  bevorzugt aus `text/plain`, sonst aus HTML (Links als „Text (URL)“), Anhänge stehen mit Name, Typ und Größe da.
+* **Schalter (Standard aus):** *Markieren* (`mail_mark`), *Verschieben* (`mail_move`, per `MOVE`, sonst Kopieren + `UID
+  EXPUNGE` nur genau dieser Mails; endgültig gelöscht wird nie), *Entwürfe* (`mail_draft`: Entwurf im Ordner mit
+  SPECIAL-USE `\Drafts` bzw. „Drafts“/„Entwürfe“, als Antwort mit „Re:“, Empfänger, Zitat und `In-Reply-To`),
+  *Senden* (`mail_send`, siehe unten).
+
+#### Senden (SMTP)
+
+Konten mit *SMTP-Server* (dazu Verschlüsselung `starttls`/`ssl`/`none`, Port, *Absenderadresse*) können senden, wenn der
+Schalter *Senden erlauben* an ist. `mail_send` schickt reinen Text an An/Cc/Bcc, als Antwort (`replyToUid`) mit „Re:“,
+Empfängern, Zitat und `In-Reply-To`/`References`; die ursprüngliche Mail wird als beantwortet markiert. Exchange Online
+sendet über `smtp.office365.com:587` mit demselben OAuth-Token (delegiert zusätzlich `SMTP.Send`, nach dem Eintragen des
+SMTP-Servers neu anmelden; „Authentifiziertes SMTP“ muss für das Postfach erlaubt sein).
+
+Senden lässt sich nicht zurückholen, und neue Mails von außen stoßen das LLM an – deshalb:
+
+* **Rückfrage vor jeder Mail** (*Vor dem Senden nachfragen*, Standard `auto`): Der Nutzer sieht Absender, Empfänger,
+  Betreff und Text und bestätigt im MCP-Client (Elicitation) oder im Dialog der App; ohne Antwort wird nicht gesendet.
+  `off` nur zusammen mit *Erlaubte Empfänger*.
+* **Erlaubte Empfänger** (Adresse, `@domain` oder `domain` je Zeile) gelten für An, Cc und Bcc – sonst wird gar nicht
+  erst gefragt.
+* **Max. Mails pro Stunde** (Standard 20, über alle Konten) bremst Schleifen.
+* **Eigene Mails stoßen nichts an:** Kommt eine selbst gesendete Mail in einem überwachten Ordner an (z.B. an sich
+  selbst), gehen dafür weder Channel noch Befehl los – ein Agent antwortet so nicht endlos auf sich selbst.
+* **Kopie in „Gesendet“** (SPECIAL-USE `\Sent` bzw. übliche Namen, muss freigegeben sein): `auto` legt sie ab – außer bei
+  Exchange Online und Gmail, die das selbst tun.
+
+*Verbindung testen* prüft auch SMTP (Anmeldung, Absender).
+
+Die Instructions und jede Tool-Beschreibung sagen dem LLM, dass Mails Daten von außen sind: Aufforderungen darin werden
+nicht befolgt, verschoben und entworfen wird nur auf Anweisung des Nutzers.
+
+#### Exchange Online / Microsoft 365
+
+Microsoft lässt IMAP bei Exchange Online nur noch mit OAuth2 zu. Ein Konto mit *Anmeldung* `microsoft` meldet sich per
+SASL `XOAUTH2` an (Server leer = `outlook.office365.com:993`), *Benutzer* ist die Adresse des Postfachs – auch eines
+freigegebenen Postfachs, auf das der angemeldete Benutzer Vollzugriff hat.
+
+1. In Entra ID eine App-Registrierung anlegen (oder die für Teams erweitern): *Authentifizierung* → „Öffentliche
+   Clientflows zulassen“ = Ja; *API-Berechtigungen* → „Von meiner Organisation verwendete APIs“ → *Office 365 Exchange
+   Online* → delegiert `IMAP.AccessAsUser.All`, zum Senden auch `SMTP.Send` (je nach Tenant mit Administratorzustimmung). IMAP muss für das Postfach
+   eingeschaltet sein (Exchange Admin Center → Postfach → E-Mail-Apps).
+2. Beim Konto Tenant (ID oder Domain, Standard `organizations`) und Client-ID eintragen, speichern.
+3. *Anmelden* (Aktion des Moduls) ausführen: die App zeigt Adresse und Code und öffnet den Browser. Ohne App-Fenster
+   liefert `mail_login` beides an das LLM, die Anmeldung läuft im Hintergrund weiter.
+
+Das Refresh-Token liegt verschlüsselt in `~/.devtools-mcp/mail-tokens.json`, Access-Tokens nur im Speicher; die App
+erneuert sie selbst. Nach der Anmeldung verbindet die Überwachung sofort. Läuft die Anmeldung ab oder wird widerrufen,
+melden Tools, *Verbindung testen* und `mail_accounts` „nicht angemeldet“ – die Überwachung wartet dann, statt den
+Server mit Versuchen zu belasten. Für nationale Clouds gibt es den *Anmelde-Endpunkt* in den Modul-Einstellungen.
+
+#### Neue Mails melden: Channel, Befehl, `mail_receive`
+
+**Überwachte Ordner** (je Konto, Standard `INBOX`, müssen freigegeben sein) beobachtet die App im Hintergrund, solange
+das Modul an ist – je Ordner eine eigene Verbindung mit **IMAP IDLE** (der Server meldet neue Mails sofort; alle
+*IDLE auffrischen nach* Minuten neu angestoßen). Kann der Server kein IDLE oder ist es abgeschaltet, fragt die App alle
+*Abfrageintervall* Sekunden. Neu ist jede Mail mit höherer UID als die zuletzt gemeldete; der Stand steht in
+`~/.devtools-mcp/mail-state.json` und übersteht Neustarts (beim ersten Überwachen gilt der Bestand als bekannt, nach
+einer Pause kommen die verpassten Mails – mehr als 20 auf einmal nur zusammengefasst). Abgerissene Verbindungen baut die
+App mit wachsendem Abstand neu auf, nach einer fehlgeschlagenen Anmeldung erst nach 5 Minuten.
+
+Jede neue Mail geht an drei Stellen:
+
+1. **Claude-Code-Channel** (*Neue Mails an Claude Code melden*, Standard an): Die laufende Sitzung bekommt die Mail als
+   Nachricht und wird dadurch aktiv – ohne dass das LLM fragt:
+   ```
+   <channel source="devtools" event_source="mail" account="arbeit" folder="INBOX" uid="4711" from="kunde@example.com" subject="Rückfrage">
+   Neue E-Mail in arbeit/INBOX
+   Von: Kunde <kunde@example.com>
+   …
+   Lesen: mail_read(account="arbeit", folder="INBOX", uid=4711)
+   ```
+   Channels gibt es nur für MCP-Server, die Claude Code per stdio selbst startet – dafür bindet man DevTools über den
+   [stdio-Proxy](#claude-code-über-stdio-tools-und-channel) ein (Tools und Channel in einem Eintrag) und startet
+   Claude Code mit `--dangerously-load-development-channels server:devtools`. Die Ereignisse holt der Proxy über
+   `GET /mcp/channel/events` (Server-Sent Events, geschützt wie `/mcp` durch das Zugriffstoken); nach einer kurzen
+   Trennung (App-Neustart) holt er mit `Last-Event-ID` nach, was im Puffer der App (200 Ereignisse) noch da ist. Die
+   Ereignisse sind allgemein gehalten (`core/ChannelEvents`) – weitere Module können darüber melden.
+2. **Befehl bei neuer E-Mail** – für einen Agenten ohne offene Sitzung, z.B.
+   ```
+   claude -p "Neue Mail {account}/{folder} UID {uid}: lies sie mit mail_read und bearbeite sie nach meinen Regeln für Support-Mails" --allowedTools "mcp__devtools__mail_*"
+   ```
+   Der Befehl läuft ohne Shell: erst in Argumente zerlegt (`"…"`/`'…'` gruppieren), dann werden `{account}`,
+   `{folder}` und `{uid}` ersetzt. Absender und Betreff kommen von außen und stehen deshalb nur in Umgebungsvariablen
+   (`DEVTOOLS_MAIL_FROM`, `DEVTOOLS_MAIL_SUBJECT`, dazu `DEVTOOLS_MAIL_ACCOUNT`, `_FOLDER`, `_UID`) – nie in der
+   Befehlszeile. Läufe kommen nacheinander dran (höchstens 20 wartend), mit Zeitlimit und Arbeitsverzeichnis aus den
+   Einstellungen; Ergebnis und Ausgabe stehen im Log, der letzte Lauf in `mail_accounts`. Unter Windows `cmd /c claude …`
+   oder den vollen Pfad zu `claude.exe` angeben.
+3. **`mail_receive`** liefert jede neue Mail genau einmal und wartet mit `waitSeconds` – für Clients ohne Channels
+   („warte auf Mails“ in einer Schleife). Mehrere Clients teilen sich diesen Eingang.
+
+Channel und Befehl lassen sich auf **Absender** beschränken (Adresse, `@domain` oder `domain` je Zeile) und melden
+standardmäßig **nur ungelesene** Mails (z.B. nicht, was eine Regel schon gelesen einsortiert hat); `mail_receive` liefert
+unabhängig davon jede neue Mail. Wohin gemeldet wird und wie viele Brücken verbunden sind, zeigt `mail_accounts`.
 
 ### Maven-Artefakte
 
@@ -470,7 +581,7 @@ Gradle-Multiprojekt:
 | `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories, Skripte mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
 | `shared` | Gemeinsam: Einstellungs-Ablage, Datenklassen der GraphQL-API (`api`) | – |
-| `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), Datenbankverbindungen (`DatabaseConnectionProvider`), Projektverzeichnisse (`ProjectProvider`), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
+| `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), Datenbankverbindungen (`DatabaseConnectionProvider`), Projektverzeichnisse (`ProjectProvider`), E-Mail-Konten (`MailAccountProvider`), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
 
 MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
 im Team-Server, und in der Desktop-App eingebettet – außer dort ist ein Team-Server eingetragen, dann nutzt sie dessen
@@ -492,6 +603,38 @@ Der MCP-Server der Desktop-App lauscht auf `http://127.0.0.1:8765/mcp` (Streamab
 ```bash
 claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
 ```
+
+### Claude Code über stdio: Tools und Channel
+
+Claude Code kann einen MCP-Server nur dann von sich aus Nachrichten in die Sitzung schreiben lassen (*Channels*, z.B.
+„neue E-Mail“), wenn es den Server selbst per stdio startet. Die App selbst per stdio starten zu lassen hieße eine
+eigene, vollständige App je Sitzung (zweiter Port, gesperrte Datenbank, doppelte Mail-Überwachung). Stattdessen bringt
+das Jar einen **stdio-Proxy** mit, der an die laufende App andockt:
+
+```bash
+claude mcp add devtools -- java -jar /pfad/zu/devtools-mcp.jar stdio
+```
+
+```bash
+claude --dangerously-load-development-channels server:devtools
+```
+
+* Jede MCP-Nachricht geht an `/mcp` der App (Streamable HTTP mit Sitzungs-ID und Protokollversion): Tools,
+  Fortschritt, Rückfragen der App an den Client (Elicitation, z.B. bei `permissions_request` und `mail_send`) und
+  `tools/list_changed` über den Meldungsstrom der App. Für Claude Code ist es ein gewöhnlicher stdio-Server.
+* Zusätzlich meldet der Proxy `experimental["claude/channel"]`, hängt die Channel-Hinweise an die Instructions und
+  reicht Ereignisse der App als `notifications/claude/channel` weiter.
+* Startet die App neu, meldet sich der Proxy mit den ursprünglichen `initialize`-Daten neu an, wiederholt die Anfrage
+  und meldet `tools/list_changed`. Startet Claude Code vor der App, wartet `initialize` bis zu 15 Sekunden.
+* Port und Zugriffstoken liest der Proxy aus `~/.devtools-mcp/settings.json`, abweichend `--url http://127.0.0.1:8765`,
+  `--token …` bzw. `DEVTOOLS_MCP_AUTH_TOKEN`. Gebraucht wird dieselbe Java-Version wie für die App; „Client
+  verbinden…“ zeigt den Befehl mit dem Pfad des laufenden Jars.
+* Ohne den Schalter `--dangerously-load-development-channels` funktioniert alles außer den Benachrichtigungen. Er ist
+  nötig, weil Channels in Claude Code eine *Research Preview* sind, und wirkt nur interaktiv (nicht mit `-p`).
+  Voraussetzungen von Claude Code: Anmeldung über claude.ai oder Console-API-Key (nicht Bedrock/Vertex/Foundry), in
+  Team-/Enterprise-Organisationen muss der Administrator Channels erlauben (`channelsEnabled`).
+* `java -jar devtools-mcp.jar channel` liefert nur die Benachrichtigungen (ohne Tools) – für einen zweiten Eintrag
+  neben dem HTTP-Eintrag.
 
 ## Bedienung
 
@@ -1225,7 +1368,7 @@ inkl. Formular, Schaltern, Aktionen und Protokoll. Für kleine Erweiterungen ohn
 name: jira                        # Pflicht, [a-z][a-z0-9-]*, eindeutig
 version: 1.2.0                    # Pflicht
 main: com.acme.jira.JiraPlugin    # Pflicht, erweitert DevToolsPlugin
-api-version: 1                    # optional; höher als die App → Plugin wird abgewiesen (2: Datenbanken, Projekte)
+api-version: 1                    # optional; höher als die App → Plugin wird abgewiesen (2: Datenbanken, Projekte; 3: Mail)
 description: Tickets lesen und kommentieren
 author: Team Tools                # oder authors: [a, b]
 website: https://git.acme.de/jira-plugin
@@ -1283,6 +1426,7 @@ Sie enthält, was ein Plugin braucht, und reicht Spring AI (`@Tool`, `ToolCallba
 | Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `ContainerRuntimeProvider`/`ContainerRuntime`/`RuntimeSettings` |
 | Datenbanken | `DatabaseConnectionProvider`, `DatabaseConnectionInfo` (Verbindungen des JDBC-Moduls, ab `api-version: 2`) |
 | Projekte | `ProjectProvider`, `ProjectDirectory` (freigegebene Projektverzeichnisse, ab `api-version: 2`) |
+| Mail | `MailAccountProvider`, `MailAccountInfo`, `MailFolderInfo`, `MailSummary`, `MailMessage`, `MailAttachment(Info)`, `MailQuery`, `MailDraft`, `MailSend`, `NewMail` (Konten des Mail-Moduls, ab `api-version: 3`) |
  Die App stellt all das zur Laufzeit bereit, ins Jar
 gehört nur der eigene Code. Die Pakete sind dieselben wie vorher im App-Jar: bereits gebaute Plugins laufen unverändert.
 
@@ -1336,6 +1480,15 @@ Maven: dieselbe Koordinate mit `<scope>provided</scope>`. Das POM nennt feste Ve
   `resolve(nameOrPath, marker)` löst einen Projektnamen oder Pfad auf, auch ein Unterverzeichnis wie das
   Arbeitsverzeichnis des Clients; bei aufgehobener Beschränkung auch Pfade außerhalb. `ProjectDirectory.writable()`
   sagt, ob das Plugin dort schreiben oder Code des Projekts (Gradle) ausführen darf.
+* **Mail:** Die Bean `MailAccountProvider` (Plugin-API, `modules/mail/spi`, `api-version: 3`) gibt Plugins die Konten
+  des Mail-Moduls – ohne eigene Zugangsdaten, auch für Exchange Online: `accounts()` (Name, Benutzer@Host, Anmeldung,
+  freigegebene und überwachte Ordner – nie Passwörter oder Tokens), `folders`, `list(account, folder, MailQuery, limit)`,
+  `read` (Text, HTML als Text, Anhangsliste; bleibt ungelesen), `attachment(…, index, maxBytes)` (Inhalt) und
+  `onNewMail(listener)` – neue Mails der überwachten Ordner, im Thread der Überwachung mit dem ClassLoader des Plugins;
+  das zurückgegebene `AutoCloseable` in `onDisable()` schließen. `mark`, `move`, `draft` und `send(account, MailSend)`
+  gehen über dieselben Prüfungen wie die Tools – beim Senden fragt die App den Nutzer per Dialog. Es gelten Freigaben und Schalter des Moduls; Lesen braucht das Recht auf `mail_read`, Schreiben
+  zusätzlich den Schalter und das Recht auf `mail_mark`/`mail_move`/`mail_draft`/`mail_send`. Ob das Modul aktiv ist, spielt fürs
+  Lesen keine Rolle; neue Mails gibt es nur, solange es aktiv ist und Ordner überwacht.
 * **Tools:** `ToolBeans.callbacks(…)` statt `ToolCallbacks.from(…)` übernimmt `@ToolHints` als MCP-Tool-Annotations,
   `ToolProgress.report(…)` meldet Zwischenstände an den Client – beides funktioniert in Plugin-Tools wie in eingebauten.
 * **Instructions:** `instructions()` aktiver Plugin-Module stehen ab der nächsten Client-Session in den
@@ -1406,7 +1559,7 @@ JVM-Einstellungen, `file:`-Repositories. Heruntergeladenes landet in `plugins/.r
 
 ```
 desktop/
-  DevToolsMcpApplication ── main() → JavaFX (oder sign-plugin); Backend-Paket nur über remote/EmbeddedBackend
+  DevToolsMcpApplication ── main() → JavaFX (oder sign-plugin, channel); Backend-Paket nur über remote/EmbeddedBackend
   fx/FxApp                ── init(): Spring-Kontext starten · start(): Fenster + Tray · stop(): Kontext schließen
   core/ToolModule         ── Erweiterungspunkt (SPI) – liegt in plugin-api, ebenso ModuleConfig, ConfigField …
   core/ToolRegistry       ── Module ⇄ McpSyncServer (addTool/removeTool zur Laufzeit, notifyToolsListChanged)
@@ -1414,6 +1567,11 @@ desktop/
   core/ManagedToolCallback── Präfix, Protokollierung, Klartext-Ergebnisse
   config/SettingsStore    ── settings.json (App-Einstellungen), SecretCipher (AES-GCM)
   server/BearerTokenFilter── optionaler Token-Schutz für /mcp
+  core/ChannelEvents      ── Ereignisse an laufende Sitzungen; server/ChannelEventsController: GET /mcp/channel/events (SSE)
+  channel/ChannelBridge   ── `java -jar … stdio`: stdio-Proxy zur App (Tools + Claude-Code-Channel), `… channel`: nur
+                             Benachrichtigungen
+  modules/mail/           ── IMAP: MailTools/MailWriteTools, MailWatcher (IDLE/Abfrage, Meldungen), MailCommand, MailState,
+                             MailSender (SMTP), MailOAuth (Exchange Online), MailAccountService (SPI für Plugins)
   remote/                 ── EmbeddedBackend + EmbeddedAccounts (erstes Konto), BackendConnection (Anmeldung,
                              GraphQL-Client, Subscriptions, Cache),
                              BackendSettingsResolver, BackendSkills, BackendMemories, BackendScripts, ScriptCacheFile
@@ -1442,7 +1600,8 @@ shared/
 plugin-api/
   core/                   ── ToolModule, ModuleAction, ConnectionTestResult, ToolScope, ConfigField, ConfigGroup,
                              FieldType, ModuleConfig, ToolBeans + ToolHints, ToolProgress, ServiceProvider
-  modules/*/spi/          ── Provider-SPIs: ticket, chat, pr (Git-Server), container; jdbc: Verbindungen für Plugins
+  modules/*/spi/          ── Provider-SPIs: ticket, chat, pr (Git-Server), container; jdbc, mail: Verbindungen und
+                             Konten für Plugins
   project/spi/            ── ProjectProvider: freigegebene Projektverzeichnisse für Plugins
   plugin/                 ── DevToolsPlugin, PluginContext, PluginDescriptor, PluginApi
 ```

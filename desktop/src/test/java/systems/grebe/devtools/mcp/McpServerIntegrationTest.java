@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -20,12 +21,15 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import systems.grebe.devtools.mcp.channel.ChannelBridge;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.core.ChannelEvents;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.UserConfirmation;
+import systems.grebe.devtools.mcp.server.ChannelEventsController;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -63,6 +67,9 @@ class McpServerIntegrationTest {
 
     @Autowired
     UserConfirmation confirmation;
+
+    @Autowired
+    ChannelEvents channelEvents;
 
     @TempDir
     Path repoDir;
@@ -781,6 +788,103 @@ class McpServerIntegrationTest {
                 registry.setModuleEnabled("jdbc", false);
                 registry.updateConfig("jdbc", Map.of());
             }
+        }
+    }
+
+    @Test
+    void channelEventsStreamIsProtectedAndDeliversEvents() throws Exception {
+        store.saveServer(new ServerSettings(ServerSettings.DEFAULT_PORT, "kanal-token", true, false));
+        var http = java.net.http.HttpClient.newHttpClient();
+        URI uri = URI.create("http://127.0.0.1:" + port + ChannelEventsController.PATH);
+        var denied = http.send(java.net.http.HttpRequest.newBuilder(uri).build(),
+                java.net.http.HttpResponse.BodyHandlers.discarding());
+        assertThat(denied.statusCode()).isEqualTo(401);
+
+        var res = http.send(java.net.http.HttpRequest.newBuilder(uri).header("Authorization", "Bearer kanal-token")
+                .header("Accept", "text/event-stream").build(), java.net.http.HttpResponse.BodyHandlers.ofLines());
+        assertThat(res.statusCode()).isEqualTo(200);
+        try (var lines = res.body()) {
+            var it = lines.iterator();
+            assertThat(it.next()).startsWith(":"); // Herzschlag gleich beim Verbinden
+            channelEvents.publish("mail", "Neue E-Mail\nVon: a@b.de", Map.of("uid", "9"));
+            String id = null;
+            String data = null;
+            while (data == null && it.hasNext()) {
+                String line = it.next();
+                if (line.startsWith("id:")) {
+                    id = line.substring(3).strip();
+                } else if (line.startsWith("data:")) {
+                    data = line.substring(5).strip();
+                }
+            }
+            assertThat(id).isNotBlank();
+            assertThat(data).contains("\"content\":\"Neue E-Mail\\nVon: a@b.de\"", "\"uid\":\"9\"",
+                    "\"event_source\":\"mail\"");
+        }
+    }
+
+    @Test
+    void mailModuleOffersReadToolsOnly() {
+        registry.setModuleEnabled("mail", true);
+        try {
+            assertThat(toolNames()).contains("mail_accounts", "mail_folders", "mail_list", "mail_read", "mail_receive")
+                    .doesNotContain("mail_move", "mail_draft", "mail_mark");
+            assertThat(text(client.callTool(callRequest("mail_accounts", Map.of())))).contains("Kein Mail-Konto");
+        } finally {
+            registry.setModuleEnabled("mail", false);
+        }
+    }
+
+    /**
+     * Ende zu Ende: ein echter MCP-Client startet {@code ChannelBridge stdio} als Prozess und arbeitet über ihn mit der
+     * App – Tools, Rückfrage per Elicitation (Anfrage der App an den Client durch den Proxy) und
+     * {@code tools/list_changed} über den Meldungsstrom.
+     */
+    @Test
+    void stdioProxyServesToolsElicitationAndListChanged() throws Exception {
+        store.saveServer(new ServerSettings(ServerSettings.DEFAULT_PORT, "proxy-token", true, false));
+        var params = io.modelcontextprotocol.client.transport.ServerParameters
+                .builder(ProcessHandle.current().info().command().orElse("java"))
+                .args("-cp", System.getProperty("java.class.path"), ChannelBridge.class.getName(), ChannelBridge.STDIO_COMMAND,
+                        "--url", "http://127.0.0.1:" + port, "--token", "proxy-token")
+                .build();
+        var transport = new io.modelcontextprotocol.client.transport.StdioClientTransport(params,
+                io.modelcontextprotocol.json.McpJsonDefaults.getMapper());
+        List<McpSchema.ElicitFormRequest> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger changed = new java.util.concurrent.atomic.AtomicInteger();
+        McpSyncClient viaProxy = McpClient.sync(transport).requestTimeout(java.time.Duration.ofSeconds(60))
+                .clientInfo(new McpSchema.Implementation("proxy-client", "1.0"))
+                .capabilities(McpSchema.ClientCapabilities.builder().elicitation().build())
+                .elicitation(req -> {
+                    asked.add(req);
+                    return new McpSchema.ElicitResult(McpSchema.ElicitResult.Action.ACCEPT, Map.of("grant", false));
+                })
+                .toolsChangeConsumer(tools -> changed.incrementAndGet())
+                .build();
+        try {
+            McpSchema.InitializeResult init = viaProxy.initialize();
+            assertThat(init.capabilities().experimental()).containsKey("claude/channel");
+            assertThat(init.instructions()).contains("Tools `git_*`", "## Ereignisse (Channel)");
+            assertThat(viaProxy.listTools().tools()).extracting(McpSchema.Tool::name).contains("git_status");
+            assertThat(text(viaProxy.callTool(callRequest("git_status", Map.of())))).contains("main");
+
+            // Rückfrage: die App fragt den Client – durch den Proxy hin und die Antwort zurück
+            String answer = text(viaProxy.callTool(callRequest("permissions_request",
+                    Map.of("tool", "git_push", "reason", "Feature-Branch pushen"))));
+            assertThat(answer).contains("Vom Nutzer abgelehnt (proxy-client)");
+            assertThat(asked).singleElement().satisfies(r -> assertThat(r.message()).contains("Feature-Branch pushen"));
+
+            // Tool-Liste ändert sich in der App → Meldung kommt über den Meldungsstrom des Proxys
+            int before = changed.get();
+            registry.setModuleEnabled("sonar", true);
+            long deadline = System.currentTimeMillis() + 15_000;
+            while (changed.get() == before && System.currentTimeMillis() < deadline) {
+                Thread.sleep(50);
+            }
+            assertThat(changed.get()).as("tools/list_changed über den Proxy").isGreaterThan(before);
+        } finally {
+            registry.setModuleEnabled("sonar", false);
+            viaProxy.closeGracefully();
         }
     }
 }
