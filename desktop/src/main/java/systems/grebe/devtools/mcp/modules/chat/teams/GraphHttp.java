@@ -66,7 +66,7 @@ final class GraphHttp {
         JsonNode json = parse(res.body());
         if (res.statusCode() >= 400) {
             String code = json.path("error").asString("");
-            String desc = json.path("error_description").asString(abbreviate(res.body()));
+            String desc = json.path("error_description").asString(HttpJson.abbreviate(res.body()));
             // Entra-Beschreibungen tragen Zeitstempel und Trace-IDs in weiteren Zeilen
             throw new GraphException(res.statusCode(), code, desc.lines().findFirst().orElse(desc));
         }
@@ -99,7 +99,7 @@ final class GraphHttp {
             }
             JsonNode err = parse(res.body()).path("error");
             String errCode = err.path("code").asString("");
-            String message = err.path("message").asString(abbreviate(res.body()));
+            String message = err.path("message").asString(HttpJson.abbreviate(res.body()));
             if ((code == 429 || code == 503) && retries++ < MAX_RETRIES) {
                 long wait = res.headers().firstValueAsLong("Retry-After").orElse(2) * 1000;
                 sleep(Math.min(MAX_RETRY_WAIT_MILLIS, Math.max(500, wait)));
@@ -162,7 +162,4 @@ final class GraphHttp {
         return path == null ? url : path;
     }
 
-    private static String abbreviate(String s) {
-        return s == null ? "" : s.length() > 300 ? s.substring(0, 300) + "…" : s;
-    }
 }

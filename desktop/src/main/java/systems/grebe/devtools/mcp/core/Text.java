@@ -14,7 +14,31 @@ public final class Text {
     /** Oracle {@code jdbc:oracle:thin:benutzer/passwort@host} */
     private static final Pattern ORACLE_USER = Pattern.compile("(?i)(jdbc:oracle:\\w+:[^/@:\\s]+/)[^@\\s]+@");
 
+    /** Zeilenumbruch jeder Art; vorkompiliert, weil limitLines bei fast jedem Tool-Aufruf läuft. */
+    private static final Pattern LINE_BREAK = Pattern.compile("\\R");
+    private static final Pattern CONTROL_RUN = Pattern.compile("[\\p{Cntrl}\\p{Zl}\\p{Zp}]+");
+
     private Text() {
+    }
+
+    /**
+     * Einzeilig: Steuerzeichen und Zeilen-/Absatztrenner werden zu einem Leerzeichen, der Rest getrimmt und auf
+     * {@code max} Zeichen gekürzt (mit "…" als letztem Zeichen).
+     */
+    public static String oneLine(String s, int max) {
+        String t = CONTROL_RUN.matcher(s).replaceAll(" ").strip();
+        return t.length() > max ? t.substring(0, max - 1) + "…" : t;
+    }
+
+    /** Dateigröße für Menschen mit deutschem Dezimalkomma: {@code 512 B}, {@code 1,5 KB}, {@code 2,0 MB}. */
+    public static String fileSize(long bytes) {
+        if (bytes < 1024) {
+            return bytes + " B";
+        }
+        if (bytes < 1024 * 1024) {
+            return String.format(java.util.Locale.GERMAN, "%.1f KB", bytes / 1024.0);
+        }
+        return String.format(java.util.Locale.GERMAN, "%.1f MB", bytes / (1024.0 * 1024));
     }
 
     /**
@@ -35,7 +59,7 @@ public final class Text {
         if (text == null) {
             return "";
         }
-        String[] lines = text.split("\\R", -1);
+        String[] lines = LINE_BREAK.split(text, -1);
         if (lines.length <= maxLines) {
             return String.join("\n", lines); // Zeilenenden vereinheitlichen (jcmd liefert unter Windows CRLF)
         }

@@ -233,7 +233,7 @@ public class MatrixClient {
                 reloggedIn = true;
                 continue;
             }
-            throw error(code, errcode, err.path("error").asString(abbreviate(res.body())), path);
+            throw error(code, errcode, err.path("error").asString(HttpJson.abbreviate(res.body())), path);
         }
     }
 
@@ -299,7 +299,7 @@ public class MatrixClient {
             return JSON.readTree(body);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Unerwartete Antwort vom Matrix-Homeserver (" + path + "): "
-                    + abbreviate(body), e);
+                    + HttpJson.abbreviate(body), e);
         }
     }
 
@@ -333,7 +333,4 @@ public class MatrixClient {
         return u;
     }
 
-    private static String abbreviate(String s) {
-        return s == null ? "" : s.length() > 300 ? s.substring(0, 300) + "…" : s;
-    }
 }

@@ -13,6 +13,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolHints;
 import systems.grebe.devtools.mcp.core.ToolProgress;
+import systems.grebe.devtools.mcp.core.Text;
 
 /**
  * Dateien zwischen lokalem Rechner und Server übertragen (SFTP, nur wenn im Modul erlaubt). Der Inhalt geht nie durch
@@ -54,7 +55,7 @@ public class SshTransferTools {
                 throw new IllegalStateException(c.name() + ":" + target + " existiert bereits – mit overwrite=true ersetzen.");
             }
             sftp.put(local.toString(), target, new Progress("Upload " + local.getFileName()), ChannelSftp.OVERWRITE);
-            return size(Files.size(local)) + " hochgeladen: " + local + " → " + c.name() + ":" + sftp.realpath(target)
+            return Text.fileSize(Files.size(local)) + " hochgeladen: " + local + " → " + c.name() + ":" + sftp.realpath(target)
                     + " (" + (System.currentTimeMillis() - start) + " ms)";
         });
     }
@@ -86,7 +87,7 @@ public class SshTransferTools {
             }
             Files.createDirectories(local.getParent());
             sftp.get(remotePath.trim(), local.toString(), new Progress("Download " + name));
-            return size(Files.size(local)) + " heruntergeladen: " + c.name() + ":" + remotePath.trim() + " → " + local
+            return Text.fileSize(Files.size(local)) + " heruntergeladen: " + c.name() + ":" + remotePath.trim() + " → " + local
                     + " (" + (System.currentTimeMillis() - start) + " ms)";
         });
     }
@@ -100,16 +101,6 @@ public class SshTransferTools {
             }
             throw e;
         }
-    }
-
-    static String size(long bytes) {
-        if (bytes < 1024) {
-            return bytes + " B";
-        }
-        if (bytes < 1024 * 1024) {
-            return String.format(Locale.GERMAN, "%.1f KB", bytes / 1024.0);
-        }
-        return String.format(Locale.GERMAN, "%.1f MB", bytes / (1024.0 * 1024));
     }
 
     /** Meldet den Fortschritt der Übertragung an den Client (läuft im Thread des Tool-Aufrufs). */
@@ -131,7 +122,7 @@ public class SshTransferTools {
         public boolean count(long count) {
             done += count;
             if (ToolProgress.due()) {
-                ToolProgress.report(label + ": " + size(done) + (max > 0 ? " von " + size(max)
+                ToolProgress.report(label + ": " + Text.fileSize(done) + (max > 0 ? " von " + Text.fileSize(max)
                         + " (" + (100 * done / max) + " %)" : ""));
             }
             return !Thread.currentThread().isInterrupted();

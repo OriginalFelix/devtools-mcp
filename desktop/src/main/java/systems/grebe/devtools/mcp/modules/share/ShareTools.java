@@ -18,6 +18,7 @@ import systems.grebe.devtools.mcp.modules.share.ShareMessages.SkillItem;
 import systems.grebe.devtools.mcp.modules.share.ShareState.Received;
 import systems.grebe.devtools.mcp.modules.share.ShareState.Sent;
 import systems.grebe.devtools.mcp.modules.share.ShareState.Status;
+import systems.grebe.devtools.mcp.core.Text;
 
 /**
  * Tools der Kooperation. Übertragen wird nur mit Zustimmung beider Nutzer: {@code share_send} fragt Nutzer 1, bevor
@@ -193,7 +194,7 @@ public class ShareTools {
             }
             sb.append(m.content()).append('\n');
             m.files().forEach(f -> sb.append("Datei: ").append(f.path()).append(" (")
-                    .append(ShareTransfer.size(f.size())).append(")\n"));
+                    .append(Text.fileSize(f.size())).append(")\n"));
             sb.append('\n');
         }
         for (SkillItem k : o.skills()) {
@@ -203,7 +204,7 @@ public class ShareTools {
             sb.append('\n');
         }
         for (FileItem f : o.files()) {
-            sb.append("## Datei: ").append(f.name()).append(" (").append(ShareTransfer.size(f.size())).append(")\n");
+            sb.append("## Datei: ").append(f.name()).append(" (").append(Text.fileSize(f.size())).append(")\n");
         }
         return sb.toString().strip();
     }
@@ -248,7 +249,7 @@ public class ShareTools {
     /** Antwort an den Absender; scheitert sie (offline), bleibt die Entscheidung trotzdem bestehen. */
     private String notify(Offer o, boolean accepted, String comment) {
         try {
-            broker.reply(o, accepted, comment == null || comment.isBlank() ? null : ShareTransfer.oneLine(comment));
+            broker.reply(o, accepted, comment == null || comment.isBlank() ? null : Text.oneLine(comment, 200));
             return "\nDer Absender wurde benachrichtigt.";
         } catch (RuntimeException e) {
             return "\nAbsender nicht benachrichtigt: " + e.getMessage();

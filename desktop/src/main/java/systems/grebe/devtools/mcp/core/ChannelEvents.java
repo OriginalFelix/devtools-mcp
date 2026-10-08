@@ -81,7 +81,7 @@ public class ChannelEvents {
         if (meta != null) {
             meta.forEach((k, v) -> {
                 if (k != null && v != null && META_KEY.matcher(k).matches()) {
-                    clean.put(k, oneLine(v));
+                    clean.put(k, Text.oneLine(v, MAX_META_VALUE));
                 }
             });
         }
@@ -168,8 +168,4 @@ public class ChannelEvents {
         return listeners.size();
     }
 
-    private static String oneLine(String v) {
-        String s = v.replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}]+", " ").strip();
-        return s.length() > MAX_META_VALUE ? s.substring(0, MAX_META_VALUE - 1) + "…" : s;
-    }
 }

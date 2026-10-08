@@ -56,7 +56,7 @@ public class SonarClient {
         try {
             return JSON.readTree(body);
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Unerwartete Antwort von SonarQube (" + path + "): " + abbreviate(body), e);
+            throw new IllegalStateException("Unerwartete Antwort von SonarQube (" + path + "): " + HttpJson.abbreviate(body), e);
         }
     }
 
@@ -108,11 +108,7 @@ public class SonarClient {
         } catch (RuntimeException ignored) {
             // kein JSON
         }
-        return abbreviate(body);
-    }
-
-    private static String abbreviate(String s) {
-        return s == null ? "" : s.length() > 300 ? s.substring(0, 300) + "…" : s;
+        return HttpJson.abbreviate(body);
     }
 
     private static String enc(String s) {
