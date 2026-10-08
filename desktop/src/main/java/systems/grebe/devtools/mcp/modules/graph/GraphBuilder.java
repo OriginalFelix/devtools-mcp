@@ -13,14 +13,12 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
-import java.util.HexFormat;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,6 +46,7 @@ import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.FileDecl;
 import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.MemberDecl;
 import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.RawEdge;
 import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.TypeDecl;
+import systems.grebe.devtools.mcp.api.Sha256;
 
 /** Baut aus allen {@code .java}-Dateien eines Projekts den {@link CodeGraph}. */
 final class GraphBuilder {
@@ -178,7 +177,7 @@ final class GraphBuilder {
     Source read(Path rel) {
         try {
             byte[] bytes = Files.readAllBytes(root.resolve(rel));
-            return new Source(rel.toString().replace('\\', '/'), sha256(bytes));
+            return new Source(rel.toString().replace('\\', '/'), Sha256.hex(bytes));
         } catch (IOException e) {
             throw new UncheckedIOException("Datei nicht lesbar: " + rel, e);
         }
@@ -199,14 +198,6 @@ final class GraphBuilder {
                     .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString();
         } catch (CharacterCodingException e) {
             return new String(bytes, Charset.forName("ISO-8859-1"));
-        }
-    }
-
-    static String sha256(byte[] bytes) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
         }
     }
 
@@ -350,19 +341,14 @@ final class GraphBuilder {
 
     /** Fingerabdruck aller Deklarationen des Projekts (Pfad + {@link #api} je Datei). */
     private static String fingerprint(List<Source> sources, List<String> apis) {
-        MessageDigest md;
-        try {
-            md = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+        MessageDigest md = Sha256.newDigest();
         for (int i = 0; i < sources.size(); i++) {
             md.update(sources.get(i).path().getBytes(StandardCharsets.UTF_8));
             md.update((byte) 0);
             md.update(apis.get(i).getBytes(StandardCharsets.UTF_8));
             md.update((byte) 0);
         }
-        return HexFormat.of().formatHex(md.digest());
+        return Sha256.hex(md);
     }
 
     /**

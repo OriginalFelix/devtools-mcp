@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
@@ -17,7 +16,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.jar.JarEntry;
@@ -32,6 +30,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import systems.grebe.devtools.mcp.api.Sha256;
 
 /**
  * Ergebnis der Prüfung von {@code plugin.jwt} ({@link PluginDescriptor#SIGNATURE_FILE_NAME}): ein JWS mit den Claims
@@ -181,12 +180,7 @@ public record PluginSignature(Status status, String name, String version, String
     }
 
     private static String contentHash(JarFile file) throws IOException {
-        MessageDigest sha;
-        try {
-            sha = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+        MessageDigest sha = Sha256.newDigest();
         List<JarEntry> entries = file.stream()
                 .filter(e -> !e.isDirectory() && !e.getName().equals(PluginDescriptor.SIGNATURE_FILE_NAME))
                 .sorted(Comparator.comparing(ZipEntry::getName)).toList();
@@ -200,7 +194,7 @@ public record PluginSignature(Status status, String name, String version, String
             sha.update(ByteBuffer.allocate(Long.BYTES).putLong(data.length).array());
             sha.update(data);
         }
-        return HexFormat.of().formatHex(sha.digest());
+        return Sha256.hex(sha);
     }
 
     private static PluginSignature invalid(String detail) {

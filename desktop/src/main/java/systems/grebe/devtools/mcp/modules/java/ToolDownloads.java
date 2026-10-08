@@ -11,15 +11,14 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.util.HexFormat;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.api.Sha256;
 
 /** Lädt externe Werkzeuge (async-profiler, VisualVM) einmalig herunter und prüft ihre SHA-256-Prüfsumme. */
 public final class ToolDownloads {
@@ -131,11 +130,11 @@ public final class ToolDownloads {
     }
 
     public static String sha256(Path file) {
-        try (InputStream in = new DigestInputStream(Files.newInputStream(file), MessageDigest.getInstance("SHA-256"))) {
+        try (InputStream in = new DigestInputStream(Files.newInputStream(file), Sha256.newDigest())) {
             MessageDigest md = ((DigestInputStream) in).getMessageDigest();
             in.transferTo(java.io.OutputStream.nullOutputStream());
-            return HexFormat.of().formatHex(md.digest());
-        } catch (IOException | NoSuchAlgorithmException e) {
+            return Sha256.hex(md);
+        } catch (IOException e) {
             return "";
         }
     }

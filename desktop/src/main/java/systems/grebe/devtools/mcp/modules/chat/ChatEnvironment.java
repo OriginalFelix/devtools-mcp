@@ -1,11 +1,7 @@
 package systems.grebe.devtools.mcp.modules.chat;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -17,6 +13,7 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider;
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatSettings;
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatSystem;
+import systems.grebe.devtools.mcp.api.Sha256;
 
 /**
  * Ausgewertete Konfiguration des Chat-Moduls: aktive Systeme mit Standard-Unterhaltung, Auswahl von System und
@@ -117,12 +114,7 @@ final class ChatEnvironment {
         for (ConfigField f : p.configFields()) {
             sb.append('\n').append(f.key()).append('=').append(config.getString(ChatModule.key(p.id(), f.key()), ""));
         }
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(sb.toString().getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+        return Sha256.hex(sb.toString());
     }
 
     List<Entry> entries() {
