@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
+import systems.grebe.devtools.mcp.core.EntraDeviceLogin;
 
 /**
  * HTTP für Microsoft Graph (JSON mit Bearer-Token) und die Token-Endpunkte von Entra ID (Formular). Fehler werden als
@@ -27,22 +28,16 @@ final class GraphHttp {
     private static final long MAX_RETRY_WAIT_MILLIS = 10_000;
 
     /** Fehler mit HTTP-Status und Fehlercode ({@code error} bzw. {@code error.code}). */
-    static final class GraphException extends IllegalStateException {
+    static final class GraphException extends EntraDeviceLogin.Rejected {
         private final int status;
-        private final String code;
 
         GraphException(int status, String code, String message) {
-            super(message);
+            super(code, message);
             this.status = status;
-            this.code = code;
         }
 
         int status() {
             return status;
-        }
-
-        String code() {
-            return code;
         }
     }
 
