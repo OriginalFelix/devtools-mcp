@@ -257,18 +257,9 @@ public class ShareTools {
     }
 
     private void ask(McpSyncServerExchange exchange, String title, String question, String refused) {
-        if (confirmation == null) {
-            throw new IllegalStateException(refused + ": keine Rückfrage beim Nutzer möglich.");
-        }
-        UserConfirmation.Result r = confirmation.ask(exchange, confirm, title, question);
-        switch (r.answer()) {
-            case GRANTED -> { }
-            case DECLINED -> throw new IllegalStateException(refused + ": vom Nutzer abgelehnt (" + r.via() + "). "
-                    + "Nicht erneut versuchen, ohne dass der Nutzer es ausdrücklich will.");
-            default -> throw new IllegalStateException(refused + ": keine Rückfrage möglich (" + r.via() + "). Der "
-                    + "Nutzer kann in der App die Rückfrage umstellen bzw. das Angebot dort annehmen "
-                    + "(Module → Kooperation → Aktionen).");
-        }
+        UserConfirmation.require(confirmation, exchange, confirm, title, question, refused,
+                "Der Nutzer kann in der App die Rückfrage umstellen bzw. das Angebot dort annehmen "
+                        + "(Module → Kooperation → Aktionen).");
     }
 
     private Received find(String offer) {

@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.modules.permissions;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
@@ -106,10 +105,6 @@ public class PermissionsModule implements ToolModule {
     }
 
     static UserConfirmation.Channel channel(ModuleConfig config) {
-        try {
-            return UserConfirmation.Channel.valueOf(config.getString(PROMPT_VIA, "auto").toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            return UserConfirmation.Channel.AUTO;
-        }
+        return UserConfirmation.Channel.parse(config.getString(PROMPT_VIA, "auto"));
     }
 }

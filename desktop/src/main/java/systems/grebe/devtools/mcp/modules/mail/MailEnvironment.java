@@ -57,13 +57,8 @@ final class MailEnvironment {
         this.sessions = sessions;
         this.watcher = watcher;
         this.confirmation = confirmation;
-        String confirm = c.getString(MailModule.SEND_CONFIRM, "auto").toLowerCase(Locale.ROOT);
-        this.sendConfirm = switch (confirm) {
-            case "off" -> null;
-            case "client" -> UserConfirmation.Channel.CLIENT;
-            case "app" -> UserConfirmation.Channel.APP;
-            default -> UserConfirmation.Channel.AUTO;
-        };
+        String confirm = c.getString(MailModule.SEND_CONFIRM, "auto");
+        this.sendConfirm = "off".equalsIgnoreCase(confirm.strip()) ? null : UserConfirmation.Channel.parse(confirm);
         this.sendRecipients = c.getList(MailModule.SEND_RECIPIENTS);
         this.sendPerHour = Math.max(1, c.getInt(MailModule.SEND_PER_HOUR, 20));
         this.saveSent = c.getString(MailModule.SAVE_SENT, "auto").toLowerCase(Locale.ROOT);
@@ -138,17 +133,8 @@ final class MailEnvironment {
         if (sendConfirm == null) {
             return;
         }
-        if (confirmation == null) {
-            throw new IllegalStateException("Nicht gesendet: keine Rückfrage beim Nutzer möglich.");
-        }
-        UserConfirmation.Result r = confirmation.ask(exchange, sendConfirm, "E-Mail senden?", question);
-        switch (r.answer()) {
-            case GRANTED -> { }
-            case DECLINED -> throw new IllegalStateException("Nicht gesendet: vom Nutzer abgelehnt (" + r.via() + "). "
-                    + "Nicht erneut versuchen, ohne dass der Nutzer es ausdrücklich will.");
-            default -> throw new IllegalStateException("Nicht gesendet: keine Rückfrage möglich (" + r.via() + "). Der "
-                    + "Nutzer kann einen Entwurf (mail_draft) selbst senden oder die Rückfrage in der App umstellen.");
-        }
+        UserConfirmation.require(confirmation, exchange, sendConfirm, "E-Mail senden?", question, "Nicht gesendet",
+                "Der Nutzer kann einen Entwurf (mail_draft) selbst senden oder die Rückfrage in der App umstellen.");
     }
 
     /** Ob eine Kopie in „Gesendet“ abgelegt wird; {@code auto}: nicht bei Exchange Online und Gmail (legen selbst ab). */

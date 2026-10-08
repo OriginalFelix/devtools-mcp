@@ -191,11 +191,7 @@ public class ShareModule implements ToolModule {
     }
 
     static UserConfirmation.Channel confirmChannel(ModuleConfig config) {
-        return switch (config.getString(CONFIRM, "auto")) {
-            case "client" -> UserConfirmation.Channel.CLIENT;
-            case "app" -> UserConfirmation.Channel.APP;
-            default -> UserConfirmation.Channel.AUTO;
-        };
+        return UserConfirmation.Channel.parse(config.getString(CONFIRM, "auto"));
     }
 
     @Override
