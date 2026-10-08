@@ -21,6 +21,7 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
 import systems.grebe.devtools.mcp.modules.graph.GraphReader;
+import systems.grebe.devtools.mcp.api.Errors;
 
 /**
  * {@link GraphReader} auf der {@link GraphStorage}: jede Methode ist eine OpenCypher-Abfrage auf den Knoten mit
@@ -327,7 +328,7 @@ public final class ArcadeGraphReader implements GraphReader {
             throw new IllegalArgumentException("graph_cypher ist nur lesend – schreibende Klauseln sind nicht erlaubt. "
                     + "Den Graphen ändert nur graph_build.", e);
         } catch (RuntimeException e) {
-            String msg = GraphStorage.rootMessage(e);
+            String msg = Errors.rootMessage(e);
             if (msg.contains("not idempotent")) { // externe Datenbank: Fehler kommt als Text über HTTP
                 throw new IllegalArgumentException("graph_cypher ist nur lesend – schreibende Klauseln sind nicht "
                         + "erlaubt. Den Graphen ändert nur graph_build.", e);

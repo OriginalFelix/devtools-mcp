@@ -25,6 +25,7 @@ import com.sun.tools.attach.VirtualMachine;
 import jdk.management.jfr.FlightRecorderMXBean;
 import jdk.management.jfr.RecordingInfo;
 import systems.grebe.devtools.mcp.core.CommandRunner;
+import systems.grebe.devtools.mcp.api.Errors;
 
 /**
  * Ziel-JVM für Diagnosebefehle. Drei Varianten mit gleicher Schnittstelle:
@@ -372,7 +373,7 @@ public sealed interface JvmTarget permits JvmTarget.Local, JvmTarget.InContainer
             } catch (RuntimeException e) {
                 throw e;
             } catch (Exception e) {
-                throw new IllegalStateException("Diagnosebefehl über JMX fehlgeschlagen: " + rootMessage(e), e);
+                throw new IllegalStateException("Diagnosebefehl über JMX fehlgeschlagen: " + Errors.rootMessage(e), e);
             }
         }
 
@@ -384,7 +385,7 @@ public sealed interface JvmTarget permits JvmTarget.Local, JvmTarget.InContainer
             } catch (RuntimeException e) {
                 throw e;
             } catch (Exception e) {
-                throw new IllegalStateException("JFR-Übertragung über JMX fehlgeschlagen: " + rootMessage(e), e);
+                throw new IllegalStateException("JFR-Übertragung über JMX fehlgeschlagen: " + Errors.rootMessage(e), e);
             }
             return store.commit(dest);
         }
@@ -397,7 +398,7 @@ public sealed interface JvmTarget permits JvmTarget.Local, JvmTarget.InContainer
                         "com.sun.management:type=HotSpotDiagnostic", HotSpotDiagnosticMXBean.class);
                 hs.dumpHeap(remote, liveOnly);
             } catch (Exception e) {
-                throw new IllegalStateException("Heap-Dump über JMX fehlgeschlagen: " + rootMessage(e), e);
+                throw new IllegalStateException("Heap-Dump über JMX fehlgeschlagen: " + Errors.rootMessage(e), e);
             }
             throw new IllegalStateException("Heap-Dump wurde auf dem entfernten Host geschrieben: " + target.host() + ":" + remote
                     + " – er kann über JMX nicht übertragen werden. Datei dort abholen und mit visualvm_heap_analyze auswerten.");
@@ -422,11 +423,4 @@ public sealed interface JvmTarget permits JvmTarget.Local, JvmTarget.InContainer
         }
     }
 
-    static String rootMessage(Throwable e) {
-        Throwable r = e;
-        while (r.getCause() != null) {
-            r = r.getCause();
-        }
-        return r.getMessage() == null ? r.getClass().getSimpleName() : r.getMessage();
-    }
 }

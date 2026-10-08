@@ -11,6 +11,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.api.Errors;
 
 /**
  * Dekorator um jedes Modul-Tool: erzwingt das Modul-Präfix im Namen, protokolliert Aufrufe,
@@ -112,12 +113,7 @@ public final class ManagedToolCallback implements DelegatingToolCallback {
 
     /** Liefert die eigentliche Ursache (MethodToolCallback verpackt Exceptions). */
     public static String describe(Throwable e) {
-        Throwable root = e;
-        while (root.getCause() != null && root.getCause() != root) {
-            root = root.getCause();
-        }
-        String msg = root.getMessage();
-        return msg == null || msg.isBlank() ? root.getClass().getSimpleName() : msg;
+        return Errors.rootMessage(e);
     }
 
     static String unwrapJsonString(String raw) {

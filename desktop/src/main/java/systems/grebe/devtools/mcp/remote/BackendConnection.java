@@ -66,6 +66,7 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.api.Errors;
 
 /**
  * Verbindung der Desktop-App zu ihrem Backend über GraphQL – eingebettet ({@link EmbeddedBackend}) oder auf einem
@@ -548,7 +549,7 @@ public class BackendConnection {
         } catch (RuntimeException e) {
             if (session == s) {
                 status = state != null && state.settings() != null ? Status.OFFLINE : Status.ERROR;
-                message = describe(e);
+                message = Errors.rootMessage(e);
                 notifyListeners();
             }
             throw e;
@@ -665,7 +666,7 @@ public class BackendConnection {
         if (status != Status.ERROR) {
             status = Status.OFFLINE;
         }
-        message = describe(error);
+        message = Errors.rootMessage(error);
         notifyListeners();
     }
 
@@ -926,7 +927,7 @@ public class BackendConnection {
         try {
             return c.document(document).variables(variables).executeSync();
         } catch (RuntimeException e) {
-            throw new UnreachableException("Backend nicht erreichbar (" + url() + "): " + describe(e), e);
+            throw new UnreachableException("Backend nicht erreichbar (" + url() + "): " + Errors.rootMessage(e), e);
         }
     }
 
@@ -1145,12 +1146,4 @@ public class BackendConnection {
         return name == null || name.isBlank() ? "unbekannter Rechner" : name;
     }
 
-    private static String describe(Throwable e) {
-        Throwable root = e;
-        while (root.getCause() != null && root.getCause() != root) {
-            root = root.getCause();
-        }
-        String m = root.getMessage() != null ? root.getMessage() : e.getMessage();
-        return m == null ? e.getClass().getSimpleName() : m;
-    }
 }

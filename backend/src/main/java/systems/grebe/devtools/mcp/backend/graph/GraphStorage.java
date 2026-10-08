@@ -49,6 +49,7 @@ import systems.grebe.devtools.mcp.modules.graph.GraphReader;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.api.Errors;
 
 /**
  * Graph-Storage: die zentrale Ablage der Code-Graphen in <a href="https://arcadedb.com">ArcadeDB</a> – eingebettet
@@ -304,15 +305,7 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
                 + "„Backend“ der Desktop-App prüfen."
                 : " Läuft der ArcadeDB-Server? Sonst Host, Port, Datenbank, Benutzer und Passwort prüfen (Reiter „Backend“ "
                 + "der Desktop-App bzw. devtools.graph.* des Backends).";
-        return new IllegalStateException(settings + " ist nicht verfügbar: " + rootMessage(e) + "." + hint, e);
-    }
-
-    static String rootMessage(Throwable e) {
-        Throwable t = e;
-        while (t.getCause() != null && t.getCause() != t) {
-            t = t.getCause();
-        }
-        return t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
+        return new IllegalStateException(settings + " ist nicht verfügbar: " + Errors.rootMessage(e) + "." + hint, e);
     }
 
     /** Vertex-Typen der Knoten je Art, z.B. {@code Class} (erbt von {@code Type} und {@code CodeNode}). */
@@ -1101,7 +1094,7 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
                 cleanup();
             } catch (RuntimeException e) {
                 if (!closing) {
-                    LOG.warn("Alte Code-Graphen nicht entfernt: {}", rootMessage(e));
+                    LOG.warn("Alte Code-Graphen nicht entfernt: {}", Errors.rootMessage(e));
                 }
             }
         }
