@@ -26,6 +26,7 @@ import java.util.concurrent.TimeoutException;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.jdbc.SqlStatements.Kind;
+import systems.grebe.devtools.mcp.core.NamedEntries;
 
 /**
  * Ausgewertete Konfiguration des JDBC-Moduls: Verbindungen, freigegebene Arten von Anweisungen, Grenzen – und der
@@ -51,8 +52,15 @@ final class JdbcEnvironment {
     private static final ExecutorService CONNECTOR = Executors.newCachedThreadPool(
             Thread.ofPlatform().daemon().name("jdbc-connect-", 0).factory());
 
-    private final Map<String, JdbcConnection> connections = new LinkedHashMap<>();
-    private final List<String> duplicates = new ArrayList<>();
+    private final NamedEntries<JdbcConnection> connections = new NamedEntries<>(JdbcConnection::name,
+            new NamedEntries.Messages("Keine Datenbankverbindung konfiguriert – in der DevTools-App unter Module → "
+                    + "Datenbanken (JDBC) eine Verbindung anlegen (Name, JDBC-URL, Benutzer, Passwort).",
+                    names -> "Mehrere Datenbankverbindungen konfiguriert – 'connection' angeben: " + names
+                            + " (siehe jdbc_connections).",
+                    name -> "Der Verbindungsname '" + name + "' ist mehrfach vergeben – der Nutzer muss "
+                            + "ihn in der DevTools-App eindeutig machen.",
+                    (name, names) -> "Unbekannte Datenbankverbindung '" + name + "'. Konfiguriert: " + names
+                            + ". Neue Verbindungen legt der Nutzer in der DevTools-App an."));
     private final JdbcSessions sessions;
     private final JdbcDrivers drivers;
     private final Set<Kind> allowed = EnumSet.noneOf(Kind.class);
@@ -69,9 +77,7 @@ final class JdbcEnvironment {
             if (conn.name().isEmpty()) {
                 continue;
             }
-            if (connections.putIfAbsent(conn.name().toLowerCase(Locale.ROOT), conn) != null) {
-                duplicates.add(conn.name());
-            }
+            connections.add(conn);
         }
         for (Kind k : Kind.values()) {
             if (c.getBoolean(k.setting)) {
@@ -87,41 +93,16 @@ final class JdbcEnvironment {
     // ------------------------------------------------------------------ Verbindungen
 
     List<JdbcConnection> connections() {
-        return List.copyOf(connections.values());
+        return connections.all();
     }
 
     List<String> duplicates() {
-        return List.copyOf(duplicates);
+        return connections.duplicates();
     }
 
     /** Verbindung nach Name (ohne Groß-/Kleinschreibung); ohne Name die einzige konfigurierte. */
     JdbcConnection resolve(String name) {
-        if (connections.isEmpty()) {
-            throw new IllegalStateException("Keine Datenbankverbindung konfiguriert – in der DevTools-App unter Module → "
-                    + "Datenbanken (JDBC) eine Verbindung anlegen (Name, JDBC-URL, Benutzer, Passwort).");
-        }
-        if (name == null || name.isBlank()) {
-            if (connections.size() == 1) {
-                return connections.values().iterator().next();
-            }
-            throw new IllegalArgumentException("Mehrere Datenbankverbindungen konfiguriert – 'connection' angeben: "
-                    + names() + " (siehe jdbc_connections).");
-        }
-        String key = name.strip().toLowerCase(Locale.ROOT);
-        if (duplicates.stream().anyMatch(d -> d.equalsIgnoreCase(key))) {
-            throw new IllegalStateException("Der Verbindungsname '" + name + "' ist mehrfach vergeben – der Nutzer muss "
-                    + "ihn in der DevTools-App eindeutig machen.");
-        }
-        JdbcConnection c = connections.get(key);
-        if (c == null) {
-            throw new IllegalArgumentException("Unbekannte Datenbankverbindung '" + name + "'. Konfiguriert: " + names()
-                    + ". Neue Verbindungen legt der Nutzer in der DevTools-App an.");
-        }
-        return c;
-    }
-
-    private List<String> names() {
-        return connections.values().stream().map(JdbcConnection::name).toList();
+        return connections.resolve(name);
     }
 
     boolean isOpen(JdbcConnection c) {

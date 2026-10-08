@@ -25,6 +25,7 @@ import com.jcraft.jsch.UserInfo;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolProgress;
 import systems.grebe.devtools.mcp.core.LocalFiles;
+import systems.grebe.devtools.mcp.core.NamedEntries;
 
 /** Ausgewertete Konfiguration des SSH-Moduls: Verbindungen, Host-Key-Prüfung, Grenzen – und die Ausführung selbst. */
 final class SshEnvironment {
@@ -40,8 +41,15 @@ final class SshEnvironment {
         T run(ChannelSftp sftp) throws SftpException, IOException;
     }
 
-    private final Map<String, SshConnection> connections = new LinkedHashMap<>();
-    private final List<String> duplicates = new ArrayList<>();
+    private final NamedEntries<SshConnection> connections = new NamedEntries<>(SshConnection::name,
+            new NamedEntries.Messages("Keine SSH-Verbindung konfiguriert – in der DevTools-App unter Module → SSH "
+                    + "eine Verbindung anlegen (Name, Host, Port, Benutzer, Passwort).",
+                    names -> "Mehrere SSH-Verbindungen konfiguriert – 'connection' angeben: " + names
+                            + " (siehe ssh_connections).",
+                    name -> "Der Verbindungsname '" + name + "' ist mehrfach vergeben – der Nutzer muss "
+                            + "ihn in der DevTools-App eindeutig machen.",
+                    (name, names) -> "Unbekannte SSH-Verbindung '" + name + "'. Konfiguriert: " + names
+                            + ". Neue Verbindungen legt der Nutzer in der DevTools-App an."));
     private final SshSessions sessions;
     private final SshShells shells;
     private final Path knownHosts;
@@ -83,10 +91,7 @@ final class SshEnvironment {
             if (conn.name().isEmpty()) {
                 continue;
             }
-            String key = conn.name().toLowerCase(Locale.ROOT);
-            if (connections.putIfAbsent(key, conn) != null) {
-                duplicates.add(conn.name());
-            }
+            connections.add(conn);
         }
         String file = c.getString(SshModule.KNOWN_HOSTS, "");
         this.knownHosts = file.isBlank() ? defaultKnownHosts : Path.of(LocalFiles.expandHome(file));
@@ -100,7 +105,7 @@ final class SshEnvironment {
     // ------------------------------------------------------------------ Verbindungen
 
     List<SshConnection> connections() {
-        return List.copyOf(connections.values());
+        return connections.all();
     }
 
     boolean isOpen(SshConnection c) {
@@ -114,36 +119,11 @@ final class SshEnvironment {
 
     /** Verbindung nach Name (ohne Groß-/Kleinschreibung); ohne Name die einzige konfigurierte. */
     SshConnection resolve(String name) {
-        if (connections.isEmpty()) {
-            throw new IllegalStateException("Keine SSH-Verbindung konfiguriert – in der DevTools-App unter Module → SSH "
-                    + "eine Verbindung anlegen (Name, Host, Port, Benutzer, Passwort).");
-        }
-        if (name == null || name.isBlank()) {
-            if (connections.size() == 1) {
-                return connections.values().iterator().next();
-            }
-            throw new IllegalArgumentException("Mehrere SSH-Verbindungen konfiguriert – 'connection' angeben: "
-                    + names() + " (siehe ssh_connections).");
-        }
-        String key = name.trim().toLowerCase(Locale.ROOT);
-        if (duplicates.stream().anyMatch(d -> d.equalsIgnoreCase(key))) {
-            throw new IllegalStateException("Der Verbindungsname '" + name + "' ist mehrfach vergeben – der Nutzer muss "
-                    + "ihn in der DevTools-App eindeutig machen.");
-        }
-        SshConnection c = connections.get(key);
-        if (c == null) {
-            throw new IllegalArgumentException("Unbekannte SSH-Verbindung '" + name + "'. Konfiguriert: " + names()
-                    + ". Neue Verbindungen legt der Nutzer in der DevTools-App an.");
-        }
-        return c;
-    }
-
-    private List<String> names() {
-        return connections.values().stream().map(SshConnection::name).toList();
+        return connections.resolve(name);
     }
 
     List<String> duplicates() {
-        return List.copyOf(duplicates);
+        return connections.duplicates();
     }
 
     Path knownHosts() {
