@@ -6,15 +6,18 @@ import static org.assertj.core.api.Assumptions.assumeThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.icegreen.greenmail.junit5.GreenMailExtension;
 import com.icegreen.greenmail.user.GreenMailUser;
 import com.icegreen.greenmail.util.ServerSetupTest;
 import jakarta.mail.Folder;
+import jakarta.mail.FolderClosedException;
 import jakarta.mail.Message;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
@@ -332,6 +335,53 @@ class MailModuleTest {
             Thread.sleep(50);
         }
         assertThat(status).contains(idle ? "IDLE" : "Abfrage");
+    }
+
+    // ------------------------------------------------------------------ Verbindungsabriss
+
+    @Test
+    void changingActionIsNotRepeatedAfterTheConnectionDropped() throws Exception {
+        MailEnvironment env = env(account("INBOX", ""), Map.of());
+        MailAccount a = MailAccount.of(account("INBOX", ""));
+        AtomicInteger writes = new AtomicInteger();
+        assertThatThrownBy(() -> env.inFolder(a, "INBOX", true, f -> {
+            writes.incrementAndGet();
+            throw new FolderClosedException(f, "Verbindung weg");
+        })).hasMessageContaining("Verbindung während der Änderung abgerissen").hasMessageContaining("mail_list");
+        assertThat(writes).hasValue(1);
+
+        // Lesen ist wiederholbar und wird einmal neu aufgebaut
+        AtomicInteger reads = new AtomicInteger();
+        assertThat(env.<String>inFolder(a, "INBOX", false, f -> {
+            if (reads.incrementAndGet() == 1) {
+                throw new FolderClosedException(f, "Verbindung weg");
+            }
+            return "ok";
+        })).isEqualTo("ok");
+        assertThat(reads).hasValue(2);
+    }
+
+    @Test
+    void evictingAStaleConnectionKeepsTheFreshOneOfAnotherThread() throws Exception {
+        MailEnvironment.Sessions sessions = new MailEnvironment.Sessions();
+        MailAccount a = MailAccount.of(account("INBOX", ""));
+        Duration timeout = Duration.ofSeconds(10);
+        try {
+            Store stale = sessions.get(a, MailOAuth.inMemory(), timeout);
+            sessions.evict(a.name(), stale); // Thread A räumt ab und baut neu auf
+            Store fresh = sessions.get(a, MailOAuth.inMemory(), timeout);
+            assertThat(fresh).isNotSameAs(stale);
+
+            sessions.evict(a.name(), stale); // Thread B scheitert noch an der alten Verbindung
+            assertThat(sessions.isOpen(a.name())).isTrue();
+            assertThat(fresh.isConnected()).isTrue();
+            assertThat(sessions.get(a, MailOAuth.inMemory(), timeout)).isSameAs(fresh);
+
+            sessions.evict(a.name(), fresh);
+            assertThat(sessions.isOpen(a.name())).isFalse();
+        } finally {
+            sessions.close();
+        }
     }
 
     private Map<String, String> account(String folders, String watch) {
