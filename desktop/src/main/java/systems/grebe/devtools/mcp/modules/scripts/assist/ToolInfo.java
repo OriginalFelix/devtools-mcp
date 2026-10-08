@@ -19,7 +19,7 @@ public record ToolInfo(String name, String description, List<Param> params) {
     public record Param(String name, String type, String description, boolean required) {
     }
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     public static ToolInfo of(ToolDefinition definition) {
         List<Param> params = new ArrayList<>();

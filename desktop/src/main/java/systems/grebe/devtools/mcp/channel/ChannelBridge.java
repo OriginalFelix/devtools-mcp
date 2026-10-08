@@ -60,7 +60,7 @@ public final class ChannelBridge {
      * der {@code 2026-07-28} aushandelt, keine Nachrichten zu.
      */
     static final List<String> PROTOCOL_VERSIONS = List.of("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05");
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
     private static final Duration MAX_BACKOFF = Duration.ofSeconds(30);
     /** So lange wartet {@code initialize} auf die App (z.B. wenn Claude Code und App gleichzeitig starten). */
     static final Duration STARTUP_WAIT = Duration.ofSeconds(15);

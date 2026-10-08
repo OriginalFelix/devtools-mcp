@@ -56,7 +56,7 @@ public class RecallHints implements ToolCallListener {
     private static final Pattern SPLIT = Pattern.compile("[\\s,;()\\[\\]{}\"'<>|]+");
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("yyyy-MM-dd")
             .withZone(ZoneId.systemDefault());
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
     private static final Logger LOG = LoggerFactory.getLogger(RecallHints.class);
 
     /** Was in einer Client-Session schon genannt oder geladen wurde. */

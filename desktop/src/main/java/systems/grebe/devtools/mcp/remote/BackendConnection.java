@@ -167,7 +167,7 @@ public class BackendConnection {
     private final ObjectProvider<EmbeddedAccounts> embeddedAccounts;
     private final Environment env;
     private final Path cacheFile;
-    private final JsonMapper json = JsonMapper.builder().build();
+    private final JsonMapper json = JsonMapper.shared();
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private final List<Runnable> skillListeners = new CopyOnWriteArrayList<>();
     private final List<Runnable> memoryListeners = new CopyOnWriteArrayList<>();

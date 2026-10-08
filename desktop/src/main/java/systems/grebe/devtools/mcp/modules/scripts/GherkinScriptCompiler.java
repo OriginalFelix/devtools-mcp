@@ -32,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class GherkinScriptCompiler {
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private final ToolCaller tools;
 

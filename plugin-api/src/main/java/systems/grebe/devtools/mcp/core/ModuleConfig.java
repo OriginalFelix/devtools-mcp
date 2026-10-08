@@ -20,7 +20,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Unveränderliche Sicht auf die Konfigurationswerte eines Moduls, inkl. Defaults aus dem Schema. */
 public final class ModuleConfig {
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private final Map<String, ConfigField> schema = new LinkedHashMap<>();
     private final Map<String, String> values;

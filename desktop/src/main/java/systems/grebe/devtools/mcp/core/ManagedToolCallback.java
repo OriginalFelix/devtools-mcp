@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ManagedToolCallback implements DelegatingToolCallback {
 
     private static final Logger LOG = LoggerFactory.getLogger(ManagedToolCallback.class);
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private final String moduleId;
     private final ToolCallback delegate;

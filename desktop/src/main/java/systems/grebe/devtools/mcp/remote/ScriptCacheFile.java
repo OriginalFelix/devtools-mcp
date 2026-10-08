@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class ScriptCacheFile implements ScriptCache {
 
     private static final Logger LOG = LoggerFactory.getLogger(ScriptCacheFile.class);
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     /**
      * Inhalt der Datei.

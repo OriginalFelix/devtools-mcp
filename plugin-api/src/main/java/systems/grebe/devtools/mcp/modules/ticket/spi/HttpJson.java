@@ -24,7 +24,7 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class HttpJson {
 
-    public static final JsonMapper JSON = JsonMapper.builder().build();
+    public static final JsonMapper JSON = JsonMapper.shared();
 
     /** HTTP-Fehler mit Statuscode; die Meldung ist für das LLM formuliert. */
     public static final class StatusException extends IllegalStateException {

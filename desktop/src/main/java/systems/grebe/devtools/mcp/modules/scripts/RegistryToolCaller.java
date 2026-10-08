@@ -26,7 +26,7 @@ final class RegistryToolCaller implements ToolCaller {
 
     static final int MAX_DEPTH = 5;
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
     private static final ThreadLocal<Integer> DEPTH = new ThreadLocal<>();
 
     private final Supplier<ToolRegistry> registry;

@@ -19,7 +19,7 @@ import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
 /** Minimaler Client für die SonarQube/SonarCloud Web-API. */
 public class SonarClient {
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private final String baseUrl;
     private final String token;

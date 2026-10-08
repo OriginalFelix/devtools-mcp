@@ -22,7 +22,7 @@ import tools.jackson.databind.node.ObjectNode;
  */
 final class ScriptToolCallback implements ToolCallback {
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private final String scriptName;
     private final ScriptDefinition.Tool tool;

@@ -82,7 +82,7 @@ public final class TaskClassifier {
     private static final Duration TIMEOUT = Duration.ofMinutes(5);
     private static final int MAX_DESCRIPTION = 60_000;
     private static final int MAX_COMMENT = 4_000;
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     /** Komplexitätsstufe mit deutscher Bezeichnung für die Ausgabe. */
     public enum Complexity {

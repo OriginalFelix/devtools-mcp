@@ -27,7 +27,7 @@ import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
  */
 public class MatrixClient {
 
-    static final JsonMapper JSON = JsonMapper.builder().build();
+    static final JsonMapper JSON = JsonMapper.shared();
     static final String API = "/_matrix/client/v3";
     /** Feste Geräte-ID beim Anmelden mit Passwort – wiederholte Anmeldungen legen so kein neues Gerät an. */
     static final String DEVICE_ID = "DEVTOOLS_MCP";

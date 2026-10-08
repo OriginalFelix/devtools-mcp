@@ -22,7 +22,7 @@ import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
  */
 final class GraphHttp {
 
-    static final JsonMapper JSON = JsonMapper.builder().build();
+    static final JsonMapper JSON = JsonMapper.shared();
     private static final int MAX_RETRIES = 3;
     private static final long MAX_RETRY_WAIT_MILLIS = 10_000;
 

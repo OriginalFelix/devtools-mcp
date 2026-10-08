@@ -44,7 +44,7 @@ public class SkillReviewTracker implements ToolCallListener {
     static final Duration IDLE_RESTART = Duration.ofMinutes(30);
     static final int DEFAULT_INTERVAL = 5;
     private static final int MAX_SESSIONS = 256;
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     /** Zustand einer Client-Session. */
     public static final class SessionState {

@@ -45,7 +45,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class MailOAuth {
 
     private static final Logger LOG = LoggerFactory.getLogger(MailOAuth.class);
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     /** {@code offline_access} für das Refresh-Token; die Zielgruppe ist Exchange Online, nicht Graph. */
     static final String SCOPES = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All";

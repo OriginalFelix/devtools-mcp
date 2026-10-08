@@ -22,7 +22,7 @@ import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
  */
 class GitHubReleaseNotes {
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
     private static final int PAGES = 3;
     private static final Pattern BREAKING_LINE = Pattern.compile(
             "(?i)(breaking|incompatib|backwards?[- ]compat|no longer|removed|⚠|:warning:|migration)");

@@ -25,7 +25,7 @@ final class ScenarioRun {
     /** So viel eines Tool-Ergebnisses steht im Ablauf. */
     static final int MAX_RESULT_IN_LOG = 1500;
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private final String scenario;
     private final Map<String, String> params;
