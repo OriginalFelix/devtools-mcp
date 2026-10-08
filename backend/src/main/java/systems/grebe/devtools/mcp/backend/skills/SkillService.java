@@ -59,9 +59,7 @@ import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 @Transactional
 public class SkillService implements SkillBackend {
 
-    static final Pattern NAME = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
     static final Pattern CATEGORY = Pattern.compile("[a-z0-9][a-z0-9-]{0,63}");
-    static final List<String> FILE_DIRS = List.of("references/", "templates/", "scripts/", "assets/");
     static final int MAX_DESCRIPTION = 1024;
     static final int MAX_TAGS = 500;
     static final int MAX_NOTE = 500;
@@ -706,12 +704,7 @@ public class SkillService implements SkillBackend {
     }
 
     static String requireName(String name) {
-        String n = name == null ? "" : name.trim();
-        if (!NAME.matcher(n).matches()) {
-            throw new IllegalArgumentException("Ungültiger Skill-Name '" + n + "': Kleinbuchstaben, Ziffern, "
-                    + "'.', '_' und '-', beginnend mit Buchstabe/Ziffer, max. 64 Zeichen (z.B. 'wildfly-heap-leak').");
-        }
-        return n;
+        return SkillViews.requireName(name);
     }
 
     private static String requireDescription(String description) {
@@ -801,18 +794,7 @@ public class SkillService implements SkillBackend {
     }
 
     static String normalizePath(String path) {
-        String p = path == null ? "" : path.trim().replace('\\', '/');
-        List<String> segments = new ArrayList<>(Arrays.asList(p.split("/")));
-        boolean valid = FILE_DIRS.stream().anyMatch(p::startsWith)
-                && segments.size() >= 2
-                && segments.stream().noneMatch(x -> x.isEmpty() || x.equals(".") || x.equals(".."))
-                && p.length() <= 200
-                && p.matches("[A-Za-z0-9._/-]+");
-        if (!valid) {
-            throw new IllegalArgumentException("Ungültiger Dateipfad '" + path + "': relativ, beginnend mit "
-                    + String.join(", ", FILE_DIRS) + " ohne '..' (z.B. 'references/api.md').");
-        }
-        return p;
+        return SkillViews.normalizePath(path);
     }
 
     private static String normalizeNote(String note) {

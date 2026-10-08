@@ -1,7 +1,10 @@
 package systems.grebe.devtools.mcp.modules.memories;
 
+import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /** Lesemodell für die Oberfläche – unabhängig von JPA-Entities. */
 public final class MemoryViews {
@@ -83,5 +86,33 @@ public final class MemoryViews {
      * @param blob SHA-256 des Inhalts
      */
     public record File(String path, long size, String mediaType, String blob, Instant updatedAt) {
+    }
+
+    // ------------------------------------------------------------------ Prüfer (vom Backend und der App gemeinsam genutzt)
+
+    public static final Pattern FILE_PATH = Pattern.compile("[A-Za-z0-9._/-]+");
+    public static final int MAX_FILE_PATH = 200;
+
+    /** Relativer Pfad ohne {@code ..}, z.B. {@code screenshot.png} oder {@code logs/server.log}. */
+    public static String normalizeFilePath(String path) {
+        String p = path == null ? "" : path.strip().replace('\\', '/');
+        boolean valid = !p.isEmpty() && p.length() <= MAX_FILE_PATH && FILE_PATH.matcher(p).matches()
+                && Arrays.stream(p.split("/", -1)).noneMatch(x -> x.isEmpty() || x.equals(".")
+                || x.equals(".."));
+        if (!valid) {
+            throw new IllegalArgumentException("Ungültiger Dateipfad '" + path + "': relativ, nur Buchstaben, Ziffern, "
+                    + "'.', '_', '-' und '/', ohne '..', max. " + MAX_FILE_PATH + " Zeichen (z.B. 'screenshot.png').");
+        }
+        return p;
+    }
+
+    /** Dateiname der Quelle als Pfad in der Memory; unzulässige Zeichen werden zu {@code _}, lange Namen gekürzt. */
+    public static String fileName(Path source) {
+        String n = source.getFileName() == null ? "" : source.getFileName().toString();
+        n = n.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (n.isEmpty() || n.chars().allMatch(c -> c == '.')) {
+            n = "datei";
+        }
+        return n.length() > MAX_FILE_PATH ? n.substring(n.length() - MAX_FILE_PATH) : n;
     }
 }

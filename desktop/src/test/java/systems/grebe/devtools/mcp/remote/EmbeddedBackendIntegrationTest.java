@@ -224,6 +224,39 @@ class EmbeddedBackendIntegrationTest {
         assertThat(backend.status()).isEqualTo(BackendConnection.Status.ONLINE);
     }
 
+    private static long countFiles(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) {
+            return 0;
+        }
+        try (var walk = Files.walk(dir)) {
+            return walk.filter(Files::isRegularFile).count();
+        }
+    }
+
+    @Test
+    void invalidAttachmentNamesAreRejectedBeforeTheUpload(@TempDir Path dir) throws Exception {
+        Path blobs = store.dir().resolve("blobs/local@example.com");
+        long before = countFiles(blobs);
+        Path small = Files.writeString(dir.resolve("klein.txt"), "x");
+        skills.create("pfad-test", "Prüft Pfade.", "x", null, null, 5_000);
+
+        assertThatThrownBy(() -> skills.attachFile("pfad-test", "falsch/ordner.txt", small, null, null))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Ungültiger Dateipfad");
+        assertThatThrownBy(() -> skills.attachFile("Ungültiger Name", "assets/x.txt", small, null, null))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Ungültiger Skill-Name");
+        String saved = memories.save("Pfad-Test", "Dateinamen.", null, null, null, null, List.of(), 5_000);
+        long id = Long.parseLong(saved.replaceAll("^Memory #(\\d+).*$", "$1"));
+        assertThatThrownBy(() -> memories.attachFile(id, "../x", small, null, false))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Ungültiger Dateipfad");
+        assertThat(countFiles(blobs)).isEqualTo(before); // nichts hochgeladen
+
+        // sehr langer Dateiname: wie im Backend gekürzt statt vom Desktop abgelehnt
+        Path longName = Files.writeString(dir.resolve("a".repeat(205) + ".txt"), "y");
+        assertThat(memories.attachFile(id, null, longName, null, false)).contains("angehängt");
+        assertThat(memories.details(id).orElseThrow().files()).singleElement()
+                .satisfies(f -> assertThat(f.path()).hasSize(MemoryViews.MAX_FILE_PATH).endsWith(".txt"));
+    }
+
     @Test
     void lockedFieldsAreRejectedWhenSaving() throws InterruptedException {
         profiles.saveGlobal("sonar", new Overrides(null, Map.of(), Map.of("organization", "fest")));
