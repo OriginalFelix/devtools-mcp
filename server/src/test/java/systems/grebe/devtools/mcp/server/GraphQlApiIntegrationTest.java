@@ -548,6 +548,18 @@ class GraphQlApiIntegrationTest {
     }
 
     @Test
+    void contentLimitNeverExceedsTheDatabaseColumn() {
+        String ja = token(newUser());
+        String tooLong = "x".repeat(250_000); // Spalte: 200 000
+        ClientGraphQlResponse r = client(ja).document("""
+                mutation($c: String!) { createSkill(name: "gross", description: "d", content: $c,
+                  maxContentChars: 500000) }""").variable("c", tooLong).executeSync();
+        // früher: Fehler beim Speichern ohne Meldung (INTERNAL_ERROR), weil 500 000 über die Spalte hinaus galten
+        assertThat(errorType(r)).isEqualTo("BAD_REQUEST");
+        assertThat(r.getErrors().getFirst().getMessage()).contains("250000 Zeichen lang", "max. 200000");
+    }
+
+    @Test
     void memoriesBelongToTheTokenUser() {
         String ja = token(newUser());
         String jb = token(newUser());
