@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.core;
 
 import java.time.Instant;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,6 +57,13 @@ public class ChannelEvents {
     private final Deque<Event> recent = new ArrayDeque<>();
     private final List<Consumer<Event>> listeners = new CopyOnWriteArrayList<>();
     private final List<Runnable> subscribeListeners = new CopyOnWriteArrayList<>();
+    /**
+     * Ordnet Veröffentlichen und Anmelden: ID-Vergabe, Puffer und Zustellung an die Brücken laufen zusammen darunter,
+     * damit kein Ereignis ein älteres überholt (die Brücke verwirft Ereignisse mit kleinerer ID als das zuletzt
+     * gesendete) und ein neu angemeldeter Listener verpasste und neue Ereignisse lückenlos in Reihenfolge bekommt.
+     * Reihenfolge der Sperren: {@code order}, dann {@code this}.
+     */
+    private final Object order = new Object();
     private long lastId;
 
     /** Veröffentlicht ein Ereignis an alle verbundenen Brücken; liefert seine ID. */
@@ -79,26 +85,37 @@ public class ChannelEvents {
                 }
             });
         }
-        Event e;
-        synchronized (this) {
-            e = new Event(++lastId, source, content, Map.copyOf(clean), Instant.now());
-            recent.addLast(e);
-            while (recent.size() > BUFFER) {
-                recent.removeFirst();
+        synchronized (order) {
+            Event e;
+            synchronized (this) {
+                e = new Event(++lastId, source, content, Map.copyOf(clean), Instant.now());
+                recent.addLast(e);
+                while (recent.size() > BUFFER) {
+                    recent.removeFirst();
+                }
             }
-        }
-        int count = 0;
-        int delivered = 0;
-        for (Consumer<Event> l : listeners) {
-            count++;
-            try {
-                l.accept(e);
-                delivered++;
-            } catch (RuntimeException ex) {
-                LOG.debug("Ereignis {} nicht zustellbar: {}", e.id(), ex.toString());
+            int count = 0;
+            int delivered = 0;
+            for (Consumer<Event> l : listeners) {
+                count++;
+                try {
+                    l.accept(e);
+                    delivered++;
+                } catch (RuntimeException ex) {
+                    LOG.debug("Ereignis {} nicht zustellbar: {}", e.id(), ex.toString());
+                }
             }
+            return new Delivery(e.id(), count, delivered);
         }
-        return new Delivery(e.id(), count, delivered);
+    }
+
+    /**
+     * Nimmt ein Ereignis wieder aus dem Puffer – für eines, das niemanden erreicht hat und über anderen Weg (z.B. den
+     * {@link InvocationService}) erneut zugestellt wird: Sonst holte eine neu verbundene Brücke es per
+     * {@code Last-Event-ID} nach, und es käme ein zweites Mal an.
+     */
+    public synchronized void forget(long id) {
+        recent.removeIf(e -> e.id() == id);
     }
 
     /** Ereignisse nach {@code id} (für das Nachholen nach einer Unterbrechung). */
@@ -107,14 +124,23 @@ public class ChannelEvents {
     }
 
     /**
-     * Meldet {@code listener} für neue Ereignisse an und liefert dabei atomar, was nach {@code afterId} schon da war
-     * ({@code afterId < 0}: nichts nachholen). Abmelden über {@link #unsubscribe}.
+     * Meldet {@code listener} für neue Ereignisse an und gibt ihm dabei zuerst, was nach {@code afterId} schon da war
+     * ({@code afterId < 0}: nichts nachholen) – lückenlos und in Reihenfolge vor allem Neuen. Wirft der Listener dabei,
+     * wird er wieder abgemeldet und die Ausnahme weitergereicht. Abmelden sonst über {@link #unsubscribe}.
      */
-    public List<Event> subscribe(Consumer<Event> listener, long afterId) {
-        List<Event> missed;
-        synchronized (this) {
+    public void subscribe(Consumer<Event> listener, long afterId) {
+        synchronized (order) {
             listeners.add(listener);
-            missed = afterId < 0 ? List.of() : new ArrayList<>(since(afterId));
+            if (afterId >= 0) {
+                try {
+                    for (Event e : since(afterId)) {
+                        listener.accept(e);
+                    }
+                } catch (RuntimeException ex) {
+                    listeners.remove(listener);
+                    throw ex;
+                }
+            }
         }
         if (!subscribeListeners.isEmpty()) {
             // nicht im Thread des Aufrufers: der richtet die Verbindung erst noch fertig ein
@@ -126,7 +152,6 @@ public class ChannelEvents {
                 }
             }));
         }
-        return missed;
     }
 
     /** Wird nach jeder neu verbundenen Brücke aufgerufen (z.B. um Liegengebliebenes zuzustellen). */

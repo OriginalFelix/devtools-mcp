@@ -47,12 +47,9 @@ public class ChannelEventsController {
         Stream stream = new Stream(emitter);
         long after = parse(lastEventId);
         try {
-            for (ChannelEvents.Event e : events.subscribe(stream, after)) {
-                stream.accept(e);
-            }
+            events.subscribe(stream, after); // spielt Verpasstes zuerst und lückenlos nach
         } catch (RuntimeException e) {
-            events.unsubscribe(stream); // Verbindung schon wieder weg
-            return emitter;
+            return emitter; // Verbindung schon wieder weg (subscribe hat den Listener abgemeldet)
         }
         ScheduledFuture<?> beat = heartbeat.scheduleAtFixedRate(stream::ping, HEARTBEAT_SECONDS, HEARTBEAT_SECONDS,
                 TimeUnit.SECONDS);
