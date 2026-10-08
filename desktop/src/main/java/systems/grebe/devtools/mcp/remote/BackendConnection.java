@@ -584,13 +584,13 @@ public class BackendConnection {
                 .retryWhen(retry).subscribe(p -> execute(() -> onProjects(owner, p)), this::offline));
         subscriptions.add(ws.document("subscription { skillsChanged }")
                 .retrieveSubscription("skillsChanged").toEntity(Integer.class)
-                .retryWhen(retry).subscribe(n -> skillListeners.forEach(Runnable::run), this::offline));
+                .retryWhen(retry).subscribe(n -> skillListeners.forEach(BackendConnection::runQuietly), this::offline));
         subscriptions.add(ws.document("subscription { memoriesChanged }")
                 .retrieveSubscription("memoriesChanged").toEntity(Integer.class)
-                .retryWhen(retry).subscribe(n -> memoryListeners.forEach(Runnable::run), this::offline));
+                .retryWhen(retry).subscribe(n -> memoryListeners.forEach(BackendConnection::runQuietly), this::offline));
         subscriptions.add(ws.document("subscription { scriptsChanged }")
                 .retrieveSubscription("scriptsChanged").toEntity(Integer.class)
-                .retryWhen(retry).subscribe(n -> scriptListeners.forEach(Runnable::run), this::offline));
+                .retryWhen(retry).subscribe(n -> scriptListeners.forEach(BackendConnection::runQuietly), this::offline));
     }
 
     private void onSettings(Session owner, SettingsSnapshot settings) {

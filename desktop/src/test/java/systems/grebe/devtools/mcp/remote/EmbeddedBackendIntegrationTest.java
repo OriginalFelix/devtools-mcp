@@ -210,6 +210,21 @@ class EmbeddedBackendIntegrationTest {
     }
 
     @Test
+    void aFailingListenerDoesNotEndTheSkillSubscription() throws InterruptedException {
+        java.util.concurrent.atomic.AtomicInteger good = new java.util.concurrent.atomic.AtomicInteger();
+        backend.addSkillListener(() -> {
+            throw new IllegalStateException("Listener kaputt");
+        });
+        backend.addSkillListener(good::incrementAndGet);
+        skills.create("listener-a", "Erstes Ereignis.", "x", null, null, 5_000);
+        await(() -> good.get() >= 1, "erstes Ereignis trotz werfendem Listener");
+        int after = good.get();
+        skills.create("listener-b", "Zweites Ereignis.", "x", null, null, 5_000);
+        await(() -> good.get() > after, "zweites Ereignis: Subscription lebt noch");
+        assertThat(backend.status()).isEqualTo(BackendConnection.Status.ONLINE);
+    }
+
+    @Test
     void lockedFieldsAreRejectedWhenSaving() throws InterruptedException {
         profiles.saveGlobal("sonar", new Overrides(null, Map.of(), Map.of("organization", "fest")));
         profiles.setLocks("sonar", Set.of("organization"));
