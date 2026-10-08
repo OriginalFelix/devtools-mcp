@@ -318,6 +318,53 @@ class DatabaseGraphStorageTest {
         assertThat(disabled.poll()).isEmpty();
     }
 
+    @Test
+    void failedAutoIndexingIsRetriedWithoutANewCommit() throws Exception {
+        ModuleConfig cfg = config(project, GraphModule.STORAGE_DATABASE);
+        java.util.concurrent.atomic.AtomicBoolean down = new java.util.concurrent.atomic.AtomicBoolean();
+        GraphAutoIndexer indexer = new GraphAutoIndexer(() -> cfg, c -> new GraphService(c, () -> {
+            if (down.get()) {
+                throw new IllegalStateException("Backend kurz nicht erreichbar");
+            }
+            return storage;
+        }), java.time.Duration.ofSeconds(1));
+        indexer.retryBase = java.time.Duration.ZERO;
+        assertThat(indexer.poll()).isEmpty();
+
+        GraphToolsTestFixture.writeSource(project, "com/acme/shop/Extra.java",
+                "package com.acme.shop;\nclass Extra { void x() { new Money().add(2); } }\n");
+        commit("extra");
+        down.set(true);
+        assertThat(indexer.poll()).singleElement().asString().contains("Backend kurz nicht erreichbar");
+        assertThat(indexer.poll()).isEmpty(); // weiter gestört: erneut versucht, aber nicht noch einmal gemeldet
+
+        // Backend wieder da: derselbe Commit wird jetzt indiziert, obwohl nichts Neues dazukam
+        down.set(false);
+        assertThat(indexer.poll()).singleElement().asString().contains("(Branch main)", "komplett gebaut");
+        assertThat(indexer.poll()).isEmpty();
+    }
+
+    @Test
+    void failedAutoIndexingBacksOffBeforeTheNextAttempt() throws Exception {
+        ModuleConfig cfg = config(project, GraphModule.STORAGE_DATABASE);
+        java.util.concurrent.atomic.AtomicBoolean down = new java.util.concurrent.atomic.AtomicBoolean();
+        GraphAutoIndexer indexer = new GraphAutoIndexer(() -> cfg, c -> new GraphService(c, () -> {
+            if (down.get()) {
+                throw new IllegalStateException("Backend kurz nicht erreichbar");
+            }
+            return storage;
+        }), java.time.Duration.ofSeconds(1));
+        indexer.retryBase = java.time.Duration.ofHours(1);
+        assertThat(indexer.poll()).isEmpty();
+        commit("extra");
+        down.set(true);
+        assertThat(indexer.poll()).hasSize(1);
+
+        down.set(false);
+        assertThat(indexer.poll()).isEmpty(); // Wartezeit läuft noch
+        assertThat(tools(GraphModule.STORAGE_DATABASE).branches(null)).contains("Noch kein Graph");
+    }
+
     private void commit(String message) throws Exception {
         git.add().addFilepattern(".").call();
         git.commit().setMessage(message).setAllowEmpty(true).setSign(false).call();

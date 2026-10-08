@@ -2,6 +2,7 @@ package systems.grebe.devtools.mcp.modules.graph;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -47,6 +48,12 @@ public class GraphAutoIndexer {
     private final Function<ModuleConfig, GraphService> services;
     private final Duration interval;
     private final Map<Path, GitState.Heads> seen = new HashMap<>();
+    /** Fehlversuche in Folge je Projekt und der Zeitpunkt, vor dem nicht erneut versucht wird (Backoff). */
+    private final Map<Path, Integer> failures = new HashMap<>();
+    private final Map<Path, Instant> retryAt = new HashMap<>();
+    /** Wartezeit nach dem ersten Fehlschlag; verdoppelt sich bis {@link #MAX_BACKOFF}. Für Tests änderbar. */
+    Duration retryBase = Duration.ofMinutes(1);
+    private static final Duration MAX_BACKOFF = Duration.ofMinutes(30);
     private volatile Thread worker;
 
     @Autowired
@@ -102,21 +109,32 @@ public class GraphAutoIndexer {
         ModuleConfig cfg = config.get();
         if (cfg == null || !cfg.getBoolean(GraphModule.AUTO_INDEX)) {
             seen.clear(); // nach dem Wiedereinschalten neu beginnen statt alles Verpasste zu bauen
+            failures.clear();
+            retryAt.clear();
             return List.of();
         }
         GraphService service = services.apply(cfg);
         Set<Path> roots = new LinkedHashSet<>();
         service.projects().all().values().forEach(p -> roots.add(p.toAbsolutePath().normalize()));
         seen.keySet().retainAll(roots);
+        failures.keySet().retainAll(roots);
+        retryAt.keySet().retainAll(roots);
         List<String> out = new ArrayList<>();
         for (Path root : roots) {
             if (Thread.currentThread().isInterrupted()) {
                 break;
             }
             GitState.Heads now = GitState.Heads.of(root);
-            GitState.Heads before = now == null ? null : seen.put(root, now);
-            if (now == null || before == null) {
-                continue; // ohne Git nichts zu beobachten; beim ersten Mal nur merken
+            if (now == null) {
+                continue; // ohne Git nichts zu beobachten
+            }
+            Instant retry = retryAt.get(root);
+            if (retry != null && Instant.now().isBefore(retry)) {
+                continue; // nach einem Fehlschlag: erst nach der Wartezeit erneut versuchen
+            }
+            GitState.Heads before = seen.put(root, now);
+            if (before == null) {
+                continue; // beim ersten Mal nur merken
             }
             try {
                 if (!Objects.equals(now.head(), before.head()) || !Objects.equals(now.branch(), before.branch())) {
@@ -133,13 +151,26 @@ public class GraphAutoIndexer {
                         }
                     }
                 }
+                failures.remove(root);
+                retryAt.remove(root);
             } catch (RuntimeException e) {
+                // Der neue Stand gilt nicht als gesehen: Sonst bliebe der Graph bis zum nächsten Commit still veraltet.
+                seen.put(root, before);
                 if (e.getCause() instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                     break;
                 }
-                out.add(root + ": " + GraphModule.rootMessage(e));
-                LOG.warn("Code-Graph {} nicht automatisch indiziert: {}", root, GraphModule.rootMessage(e));
+                int n = failures.merge(root, 1, Integer::sum);
+                Duration wait = retryBase.multipliedBy(1L << Math.min(n - 1, 20));
+                retryAt.put(root, Instant.now().plus(wait.compareTo(MAX_BACKOFF) > 0 ? MAX_BACKOFF : wait));
+                if (n == 1) { // bei bleibenden Fehlern nicht bei jedem Versuch warnen
+                    out.add(root + ": " + GraphModule.rootMessage(e));
+                    LOG.warn("Code-Graph {} nicht automatisch indiziert (neuer Versuch später): {}", root,
+                            GraphModule.rootMessage(e));
+                } else {
+                    LOG.debug("Code-Graph {} weiterhin nicht automatisch indiziert (Versuch {}): {}", root, n,
+                            GraphModule.rootMessage(e));
+                }
             }
         }
         out.forEach(m -> LOG.info("Code-Graph automatisch: {}", m));
