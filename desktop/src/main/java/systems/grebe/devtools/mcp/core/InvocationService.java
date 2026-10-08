@@ -3,7 +3,6 @@ package systems.grebe.devtools.mcp.core;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -30,6 +29,7 @@ import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Rückrufe an das LLM, wenn eine lang laufende Aktion fertig ist (Global Invocation Service).
@@ -331,10 +331,7 @@ public class InvocationService implements AutoCloseable {
             return;
         }
         try {
-            Files.createDirectories(file.toAbsolutePath().getParent());
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, JSON.writeValueAsString(new Data(invocations)));
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicFiles.writeString(file, JSON.writeValueAsString(new Data(invocations)));
         } catch (IOException | RuntimeException e) {
             LOG.warn("Rückrufe nicht gespeichert ({}): {}", file, e.getMessage());
         }

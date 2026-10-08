@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,6 +42,7 @@ import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.plugin.store.MavenPluginResolver;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Lädt Plugins aus dem Plugin-Ordner ({@code ~/.devtools-mcp/plugins/*.jar}) – angelehnt an Bukkit: jedes Jar trägt
@@ -301,7 +301,7 @@ public class PluginManager implements AutoCloseable {
                 if (old != null && !old.jar.equals(target)) {
                     Files.deleteIfExists(old.jar);
                 }
-                move(tmp, target);
+                AtomicFiles.replace(tmp, target);
             } catch (IOException e) {
                 throw new UncheckedIOException("Plugin konnte nicht in " + directory + " abgelegt werden", e);
             }
@@ -725,14 +725,6 @@ public class PluginManager implements AutoCloseable {
             return p.toUri().toURL();
         } catch (MalformedURLException e) {
             throw new IllegalStateException(e);
-        }
-    }
-
-    private static void move(Path from, Path to) throws IOException {
-        try {
-            Files.move(from, to, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

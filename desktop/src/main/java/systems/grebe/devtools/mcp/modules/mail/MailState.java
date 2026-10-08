@@ -3,7 +3,6 @@ package systems.grebe.devtools.mcp.modules.mail;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -13,6 +12,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Stand der Überwachung in {@code mail-state.json}: je Konto und Ordner UIDVALIDITY und die höchste gemeldete UID. So
@@ -81,10 +81,7 @@ final class MailState {
             n.put("lastUid", p.lastUid());
         });
         try {
-            Files.createDirectories(file.toAbsolutePath().getParent());
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, JSON.writeValueAsString(root));
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicFiles.writeString(file, JSON.writeValueAsString(root));
         } catch (IOException | RuntimeException e) {
             LOG.warn("Mail-Zustand nicht gespeichert ({}): {}", file, e.getMessage());
         }

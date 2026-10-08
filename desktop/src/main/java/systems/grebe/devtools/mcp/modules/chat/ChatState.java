@@ -3,7 +3,6 @@ package systems.grebe.devtools.mcp.modules.chat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedHashMap;
@@ -21,6 +20,7 @@ import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Dauerhafter Zustand des Chat-Moduls in {@code chat-state.json} im DevTools-Ordner:
@@ -165,10 +165,7 @@ final class ChatState {
         ObjectNode v = root.putObject("vault");
         vault.forEach(v::put);
         try {
-            Files.createDirectories(file.toAbsolutePath().getParent());
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, JSON.writeValueAsString(root));
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicFiles.writeString(file, JSON.writeValueAsString(root));
         } catch (IOException | RuntimeException e) {
             LOG.warn("Chat-Zustand nicht gespeichert ({}): {}", file, e.getMessage());
         }

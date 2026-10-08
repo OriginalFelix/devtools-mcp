@@ -3,7 +3,6 @@ package systems.grebe.devtools.mcp.modules.share;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,6 +16,7 @@ import systems.grebe.devtools.mcp.modules.share.ShareMessages.Receipt;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Eingang und Ausgang in {@code share-state.json}: empfangene Angebote (bis zur Entscheidung mit Inhalt), gesendete
@@ -178,10 +178,7 @@ final class ShareState {
             return;
         }
         try {
-            Files.createDirectories(file.toAbsolutePath().getParent());
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, JSON.writeValueAsString(new Data(instanceId, received, sent)));
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicFiles.writeString(file, JSON.writeValueAsString(new Data(instanceId, received, sent)));
         } catch (IOException | RuntimeException e) {
             LOG.warn("Kooperation: Zustand nicht gespeichert ({}): {}", file, e.getMessage());
         }

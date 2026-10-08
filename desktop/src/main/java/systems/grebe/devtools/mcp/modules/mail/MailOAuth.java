@@ -9,7 +9,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
@@ -32,6 +31,7 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Anmeldung von Exchange-Online-Konten (Microsoft 365) für IMAP per OAuth2: Entra ID als öffentlicher Client mit der
@@ -369,10 +369,7 @@ public class MailOAuth {
         ObjectNode tokens = root.putObject("refreshTokens");
         refreshTokens.forEach(tokens::put);
         try {
-            Files.createDirectories(file.toAbsolutePath().getParent());
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, JSON.writeValueAsString(root));
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicFiles.writeString(file, JSON.writeValueAsString(root));
         } catch (IOException | RuntimeException e) {
             LOG.warn("Mail-Anmeldungen nicht gespeichert ({}): {}", file, e.getMessage());
         }

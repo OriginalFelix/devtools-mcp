@@ -5,11 +5,9 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,6 +31,7 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.GraphFile;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Liest und schreibt {@code devtools-fileinfo.graph} im Projektwurzelverzeichnis.
@@ -327,11 +326,7 @@ final class GraphStore {
                 w.write(first ? "]\n" : "\n  ]\n");
                 w.write("}\n");
             }
-            try {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
+            AtomicFiles.replace(tmp, file);
             CodeGraph graph = new CodeGraph(data);
             CACHE.put(file, new Cached(Files.getLastModifiedTime(file), Files.size(file), graph));
             return graph;
