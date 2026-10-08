@@ -151,10 +151,13 @@ public class MemoriesView extends BorderPane {
 
     // ------------------------------------------------------------------ Verhalten
 
+    /** Nur die zuletzt gestartete Suche zählt - bei schnellem Tippen überholt keine ältere Liste eine neuere. */
+    private final LatestOnly searches = new LatestOnly();
+
     /** Lädt die Liste neu (Hintergrund-Thread) und behält die Auswahl. */
     public void refresh() {
         String query = search.getText();
-        background(() -> service.overview(query, null, null, LIMIT), list -> {
+        searches.submit(() -> service.overview(query, null, null, LIMIT), list -> {
             Long keep = selected().map(MemoryViews.Entry::id).orElse(null);
             table.getItems().setAll(list);
             boolean filtered = query != null && !query.isBlank();
@@ -166,7 +169,7 @@ public class MemoriesView extends BorderPane {
                 table.getSelectionModel().select(m);
                 showDetails(m);
             }, () -> showDetails(null));
-        });
+        }, e -> error(e.getMessage()));
     }
 
     private void showDetails(MemoryViews.Entry m) {

@@ -323,12 +323,16 @@ public class SkillsView extends BorderPane {
                 || s.tags().stream().anyMatch(t -> t.contains(q));
     }
 
+    /** Nur das zuletzt angeforderte Detail wird angezeigt - eine späte Antwort überschreibt keine neuere Auswahl. */
+    private final LatestOnly detailsLoad = new LatestOnly();
+
     private void showDetails(SkillViews.Summary s) {
         if (s == null) {
+            detailsLoad.cancel();
             detailHolder.getChildren().setAll(placeholder);
             return;
         }
-        background(() -> service.details(s.name()), d -> {
+        detailsLoad.submit(() -> service.details(s.name()), d -> {
             if (d.isEmpty()) {
                 detailHolder.getChildren().setAll(placeholder);
                 return;
@@ -354,7 +358,7 @@ public class SkillsView extends BorderPane {
             revisionContent.clear();
             historyTab.setText("Historie (" + det.revisions().size() + ")");
             detailHolder.getChildren().setAll(detail);
-        });
+        }, e -> error(e.getMessage()));
     }
 
     static String metaLine(SkillViews.Details d) {

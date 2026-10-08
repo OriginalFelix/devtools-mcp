@@ -257,6 +257,7 @@ public class ScriptsView extends BorderPane {
     }
 
     private void newScript() {
+        loads.cancel(); // eine noch laufende Abfrage darf den leeren Editor nicht überschreiben
         loadedName = null;
         loadedRevision = null;
         language.setValue(ScriptViews.Language.GROOVY);
@@ -273,9 +274,12 @@ public class ScriptsView extends BorderPane {
         updateActions(null);
     }
 
+    /** Nur das zuletzt angeforderte Skript wird in den Editor geladen (sonst bearbeitet er A, während B markiert ist). */
+    private final LatestOnly loads = new LatestOnly();
+
     /** Lädt ein Skript in den Editor; {@code message} ersetzt danach die Zustandsanzeige (z.B. „gespeichert“). */
     private void load(String scriptName, String message) {
-        background(() -> scripts.details(scriptName), d -> d.ifPresentOrElse(details -> {
+        loads.submit(() -> scripts.details(scriptName), d -> d.ifPresentOrElse(details -> {
             ScriptViews.Summary s = details.summary();
             loadedName = s.name();
             loadedRevision = s.revision();
@@ -297,7 +301,10 @@ public class ScriptsView extends BorderPane {
                 scripts.status(s.name()).ifPresentOrElse(this::showState, () -> setStatus("", null));
             }
             updateActions(s);
-        }, this::newScript));
+        }, this::newScript), e -> {
+            newScript();
+            setStatus(e.getMessage(), "error");
+        });
     }
 
     private void saveScript() {
