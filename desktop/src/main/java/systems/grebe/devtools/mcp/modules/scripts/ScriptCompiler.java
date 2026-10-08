@@ -186,10 +186,10 @@ public final class ScriptCompiler {
             } catch (StackOverflowError e) {
                 throw new IllegalArgumentException("Skript '" + scriptName + "': endlose Rekursion in der Definition"
                         + describe(e, scriptName).replaceFirst("^StackOverflowError", "") + ".");
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | AssertionError | LinkageError e) {
                 throw new IllegalArgumentException("Skript '" + scriptName + "': " + describe(e, scriptName));
             }
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | Error e) {
             try {
                 loader.close();
             } catch (IOException ignored) {

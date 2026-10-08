@@ -385,9 +385,16 @@ public class ScriptManager {
         ScriptToolModule module;
         try {
             module = ScriptToolModule.of(s, compile(s.name(), s.language(), content), this::callTimeout);
-        } catch (IllegalArgumentException e) {
-            LOG.warn("Skript {} nicht übersetzbar: {}", s.name(), e.getMessage());
-            module = ScriptToolModule.broken(s, e.getMessage());
+        } catch (RuntimeException | LinkageError | AssertionError e) {
+            // Ein unerwarteter Fehler (Compiler-Umgebung, Klassenpfad …) darf den Abgleich der übrigen Skripte nicht
+            // abbrechen – das Skript gilt als fehlerhaft, die Meldung erscheint in der Liste.
+            String message = e instanceof IllegalArgumentException ? e.getMessage() : ManagedToolCallback.describe(e);
+            if (e instanceof IllegalArgumentException) {
+                LOG.warn("Skript {} nicht übersetzbar: {}", s.name(), message);
+            } else {
+                LOG.warn("Skript {} nicht übersetzbar: {}", s.name(), message, e);
+            }
+            module = ScriptToolModule.broken(s, message);
         }
         try {
             r.register(module);

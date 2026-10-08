@@ -234,6 +234,24 @@ class ScriptsIntegrationTest {
     }
 
     @Test
+    void scriptFailingWithAnErrorDoesNotStopTheReloadOfTheOthers() throws Exception {
+        // assert in der Definition wirft einen AssertionError (kein RuntimeException) – früher brach der Abgleich ab
+        backend.save("boom", "Boom", "module { description 'Boom' }\nassert false : 'kaputt'\n"
+                + "tool('a') { description 'x'; run { 1 } }", null, null);
+        backend.save("fine", "Fine", "module { description 'Fine' }\n"
+                + "tool('ping') { description 'Ping'; run { 'pong' } }", null, null);
+        try {
+            await(() -> registry.hasModule("fine"), "intaktes Skript trotz fehlerhaftem geladen");
+            assertThat(registry.moduleError("boom")).hasValueSatisfying(e -> assertThat(e).contains("kaputt"));
+            assertThat(text(call("fine_ping", Map.of()))).isEqualTo("pong");
+        } finally {
+            backend.delete("boom");
+            backend.delete("fine");
+            await(() -> !registry.hasModule("boom") && !registry.hasModule("fine"), "per Subscription entfernt");
+        }
+    }
+
+    @Test
     void gherkinScriptsCallOtherToolsAndCheckTheirResults() {
         registry.updateConfig("scripts", Map.of("allowWrite", "true", "allowDelete", "true"));
         assertThat(text(call("scripts_save", Map.of("name", "gruss", "content", DEMO)))).contains("gruss_hello");

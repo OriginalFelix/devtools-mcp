@@ -76,6 +76,17 @@ class JavaScriptCompilerTest {
     }
 
     @Test
+    void moduleIsClosedWhenTheDescriptionIsRejected() {
+        System.clearProperty("hello.closed");
+        String leaky = template(" ").replace("implements ToolModule", "implements ToolModule, AutoCloseable")
+                .replace("    @Override" + "\n" + "    public String id()", "    @Override" + "\n"
+                        + "    public void close() { System.setProperty(\"hello.closed\", \"yes\"); }" + "\n\n"
+                        + "    @Override" + "\n" + "    public String id()");
+        assertThatThrownBy(() -> compiler.compile("leaky", leaky)).hasMessageContaining("description()");
+        assertThat(System.getProperty("hello.closed")).isEqualTo("yes");
+    }
+
+    @Test
     void runtimeErrorsCarryTheLineAndLongRunsAreInterrupted() {
         String failing = template("x").replace("return greeting + \" \" + who + \"!\";",
                 "if (who.equals(\"loop\")) { while (!Thread.currentThread().isInterrupted()) { } return \"weg\"; }\n"
