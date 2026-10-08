@@ -1,7 +1,5 @@
 package systems.grebe.devtools.mcp.modules.pr.bitbucket;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -74,7 +72,7 @@ public class BitbucketServerProvider implements GitServerProvider {
         String user = s.get(USER).orElse(null);
         if (token != null) {
             headers.put("Authorization", user == null ? "Bearer " + token
-                    : "Basic " + Base64.getEncoder().encodeToString((user + ":" + token).getBytes(StandardCharsets.UTF_8)));
+                    : HttpJson.basicAuth(user, token));
         }
         if (cloud(s.getString(DEPLOYMENT, "auto"), base)) {
             String host = GitServer.hostOf(base);

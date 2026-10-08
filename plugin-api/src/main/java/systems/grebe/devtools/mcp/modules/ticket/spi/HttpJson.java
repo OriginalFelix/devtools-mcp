@@ -47,6 +47,48 @@ public final class HttpJson {
         }
     }
 
+    /** Hält den geteilten Client (Initialisierung beim ersten Zugriff, thread-sicher). */
+    private static final class Shared {
+        static final HttpClient CLIENT = build();
+
+        private static HttpClient build() {
+            // Die Threads des Clients erben den Context-ClassLoader des Erzeugers: Der geteilte Client darf nicht den
+            // ClassLoader eines Plugins festhalten, das ihn zufällig als Erstes benutzt.
+            Thread t = Thread.currentThread();
+            ClassLoader previous = t.getContextClassLoader();
+            t.setContextClassLoader(HttpJson.class.getClassLoader());
+            try {
+                return HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(10))
+                        .followRedirects(HttpClient.Redirect.NORMAL)
+                        .build();
+            } finally {
+                t.setContextClassLoader(previous);
+            }
+        }
+    }
+
+    /**
+     * Der gemeinsame JDK-{@link HttpClient} (10 s Verbindungs-Timeout, Weiterleitungen folgen): Verbindungen und
+     * TLS-Sitzungen werden wiederverwendet, statt je Provider, Tool-Aufruf oder Berechtigungsprüfung einen neuen mit
+     * eigenen Threads aufzubauen. Timeouts je Anfrage setzt der Aufrufer über {@code HttpRequest.Builder.timeout}.
+     *
+     * @since API 4
+     */
+    public static HttpClient sharedClient() {
+        return Shared.CLIENT;
+    }
+
+    /**
+     * Wert für den Kopf {@code Authorization} bei Basic-Anmeldung: {@code Basic base64(user:secret)}.
+     *
+     * @since API 4
+     */
+    public static String basicAuth(String user, String secret) {
+        return "Basic " + java.util.Base64.getEncoder().encodeToString(
+                ((user == null ? "" : user) + ":" + (secret == null ? "" : secret)).getBytes(StandardCharsets.UTF_8));
+    }
+
     private final String system;
     private final String baseUrl;
     private final Map<String, String> headers;
@@ -72,10 +114,7 @@ public final class HttpJson {
         this.baseUrl = stripSlash(baseUrl);
         this.headers = Map.copyOf(headers);
         this.timeout = timeout;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        this.http = sharedClient();
     }
 
     public String baseUrl() {
@@ -246,7 +285,7 @@ public final class HttpJson {
             } else if (errors.isArray()) {
                 errors.forEach(e -> msgs.add(e.isString() ? e.asString() : e.path("message").asString(e.toString())));
             }
-            for (String f : List.of("message", "error", "error_description")) {
+            for (String f : List.of("message", "error", "error_description", "msg")) {
                 JsonNode v = n.path(f);
                 if (v.isString() && !v.asString().isBlank()) {
                     msgs.add(v.asString());
@@ -263,7 +302,8 @@ public final class HttpJson {
         return abbreviate(body);
     }
 
-    private static String abbreviate(String s) {
+    /** Text auf höchstens 300 Zeichen gekürzt (für Meldungen); {@code null} ergibt einen leeren Text. */
+    public static String abbreviate(String s) {
         String t = s == null ? "" : s.strip();
         return t.length() > 300 ? t.substring(0, 300) + "…" : t;
     }

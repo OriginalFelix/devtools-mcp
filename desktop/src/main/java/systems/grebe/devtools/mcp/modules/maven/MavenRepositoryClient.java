@@ -7,13 +7,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,6 +23,7 @@ import javax.xml.parsers.ParserConfigurationException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.xml.sax.SAXException;
+import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
 
 /**
  * Lesender HTTP-Zugriff auf ein Maven-Repository im Standard-Layout ({@code g/r/o/u/p/artifact/version/…}):
@@ -45,10 +44,7 @@ class MavenRepositoryClient {
         this.password = password;
         this.timeout = timeout;
         this.maxBytes = maxBytes;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        this.http = HttpJson.sharedClient();
     }
 
     String baseUrl() {
@@ -116,8 +112,7 @@ class MavenRepositoryClient {
     private HttpRequest.Builder request(String path) {
         HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(baseUrl + path)).timeout(timeout);
         if (username != null && !username.isBlank()) {
-            req.header("Authorization", "Basic " + Base64.getEncoder()
-                    .encodeToString((username + ":" + (password == null ? "" : password)).getBytes(StandardCharsets.UTF_8)));
+            req.header("Authorization", HttpJson.basicAuth(username, password));
         }
         return req;
     }

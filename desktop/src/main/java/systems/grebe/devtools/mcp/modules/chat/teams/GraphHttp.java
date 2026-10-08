@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
 
 /**
  * HTTP für Microsoft Graph (JSON mit Bearer-Token) und die Token-Endpunkte von Entra ID (Formular). Fehler werden als
@@ -45,10 +46,7 @@ final class GraphHttp {
         }
     }
 
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
+    private final HttpClient http = HttpJson.sharedClient();
     private final Duration timeout;
 
     GraphHttp(Duration timeout) {

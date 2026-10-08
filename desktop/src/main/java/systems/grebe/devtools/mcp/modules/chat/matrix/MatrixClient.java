@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
+import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
 
 /**
  * Minimaler Client für die Matrix Client-Server-API ({@code /_matrix/client/v3}): Anmelden, {@code /sync},
@@ -52,10 +53,7 @@ public class MatrixClient {
         this.user = user;
         this.password = password == null || password.isBlank() ? null : password;
         this.timeout = timeout;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        this.http = HttpJson.sharedClient();
     }
 
     public String baseUrl() {

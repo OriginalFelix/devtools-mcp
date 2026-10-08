@@ -14,6 +14,7 @@ import java.util.regex.Pattern;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
 
 /**
  * Release Notes aus GitHub-Releases eines Projekts: Releases zwischen zwei Versionen und daraus die Abschnitte bzw.
@@ -32,8 +33,7 @@ class GitHubReleaseNotes {
     private final String apiUrl;
     private final String token;
     private final Duration timeout;
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NORMAL).build();
+    private final HttpClient http = HttpJson.sharedClient();
 
     GitHubReleaseNotes(String apiUrl, String token, Duration timeout) {
         this.apiUrl = apiUrl.endsWith("/") ? apiUrl.substring(0, apiUrl.length() - 1) : apiUrl;
