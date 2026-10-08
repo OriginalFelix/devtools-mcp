@@ -73,6 +73,14 @@ public class ToolRegistry {
 
     private static final java.util.regex.Pattern MODULE_ID = java.util.regex.Pattern.compile("[a-z][a-z0-9]{1,31}");
 
+    /** Prüft das Format einer Modul-ID; sie wird Präfix der Tool-Namen. */
+    public static void requireValidModuleId(String id) {
+        if (id == null || !MODULE_ID.matcher(id).matches()) {
+            throw new IllegalArgumentException("Modul-ID '" + id + "' ungültig: 2–32 Kleinbuchstaben/Ziffern, "
+                    + "beginnend mit einem Buchstaben (sie wird Tool-Präfix, z.B. " + "jira_issue).");
+        }
+    }
+
     private ModuleSettings initialSettings(ToolModule m) {
         return store.module(m.id())
                 .orElseGet(() -> new ModuleSettings(m.enabledByDefault(), Set.of(),
@@ -183,10 +191,7 @@ public class ToolRegistry {
      */
     public void register(ToolModule module) {
         String id = module.id();
-        if (id == null || !MODULE_ID.matcher(id).matches()) {
-            throw new IllegalArgumentException("Modul-ID '" + id + "' ungültig: 2–32 Kleinbuchstaben/Ziffern, "
-                    + "beginnend mit einem Buchstaben (sie wird Tool-Präfix, z.B. " + "jira_issue).");
-        }
+        requireValidModuleId(id);
         synchronized (states) {
             if (states.containsKey(id)) {
                 throw new IllegalArgumentException("Modul-ID '" + id + "' ist bereits vergeben.");

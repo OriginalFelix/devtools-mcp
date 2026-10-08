@@ -651,9 +651,8 @@ public class PluginManager implements AutoCloseable {
             PluginToolModule wrapped = new PluginToolModule(module, l.key, l.loader);
             if (registry != null) {
                 registry.register(wrapped); // prüft das ID-Format
-            } else if (!id.matches("[a-z][a-z0-9]{1,31}")) {
-                throw new IllegalArgumentException("Modul-ID '" + id + "' ungültig: 2–32 Kleinbuchstaben/Ziffern, "
-                        + "beginnend mit einem Buchstaben.");
+            } else {
+                ToolRegistry.requireValidModuleId(id);
             }
             l.modules.add(wrapped);
         }
