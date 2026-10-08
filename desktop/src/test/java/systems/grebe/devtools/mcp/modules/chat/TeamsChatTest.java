@@ -164,6 +164,27 @@ class TeamsChatTest {
     }
 
     @Test
+    void receiveFollowsNextLinksAndReportsWhatDidNotFit() {
+        AtomicInteger pages = new AtomicInteger();
+        String base = hs.url() + "/v1.0/chats/" + enc(CHAT) + "/messages";
+        hs.on(CHAT_PATH + "/messages", r -> {
+            int page = Integer.parseInt(r.query().getOrDefault("page", "1"));
+            pages.incrementAndGet();
+            String m = message("179000000010" + page, "2026-10-04T10:00:0" + (page + 1) + "Z", "anna-id", "Anna",
+                    "Nachricht " + page);
+            return HttpStub.Reply.json("{\"value\":[" + m + "],\"@odata.nextLink\":\"" + base + "?page=" + (page + 1)
+                    + "\"}");
+        });
+        preview.set("2026-10-04T10:00:09Z");
+
+        String out = tools(values()).receive(null, null, null, null);
+
+        assertThat(pages).hasValue(4); // MAX_MESSAGE_PAGES, dann Schluss
+        assertThat(out).contains("Nachricht 1", "Nachricht 4", "kamen mehr Nachrichten als ein Abruf fasst",
+                "chat_history").doesNotContain("Nachricht 5");
+    }
+
+    @Test
     void ownMessagesAreRecognizedByIdAndTypedOnesCountAsUser() {
         ChatTools t = tools(values());
         t.receive(null, null, null, null); // Startpunkt
