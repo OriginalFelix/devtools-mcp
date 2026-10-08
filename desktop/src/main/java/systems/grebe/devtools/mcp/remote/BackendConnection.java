@@ -970,10 +970,22 @@ public class BackendConnection {
         return c;
     }
 
+    /**
+     * Der JDK-Client für alle Anfragen an das Backend (GraphQL und {@code /blobs}): HTTP/1.1, 10 s Verbindungs-Timeout.
+     * Ein Client für die ganze App - nicht je (Wieder-)Verbindung und Anmeldung ein neuer mit eigenen Threads und TLS-Sitzung.
+     */
+    static HttpClient backendHttpClient() {
+        return BackendHttp.CLIENT;
+    }
+
+    private static final class BackendHttp {
+        static final HttpClient CLIENT = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10)).build();
+    }
+
     /** Client mit Token ({@code null} = ohne, für {@code login}); HTTP/1.1, Zeitlimits gegen hängende Server. */
     private static HttpSyncGraphQlClient httpClient(String url, String token) {
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(10)).build());
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(backendHttpClient());
         factory.setReadTimeout(Duration.ofMinutes(2));
         RestClient.Builder rest = RestClient.builder().baseUrl(url + "/graphql").requestFactory(factory);
         if (token != null) {

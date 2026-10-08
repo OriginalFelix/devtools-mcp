@@ -31,8 +31,7 @@ public class BackendFiles {
     private static final JsonMapper JSON = JsonMapper.shared();
 
     private final BackendConnection backend;
-    private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
-            .connectTimeout(Duration.ofSeconds(10)).build();
+    private final HttpClient http = BackendConnection.backendHttpClient();
 
     public BackendFiles(BackendConnection backend) {
         this.backend = backend;
