@@ -17,23 +17,21 @@ import systems.grebe.devtools.mcp.plugin.PluginManager;
 @Component
 public class ChatProviders extends ProviderRegistry<ChatProvider> {
 
+    private static final String KIND = "Chat-Provider";
+
     /** Nur die eingebauten Provider (Tests, Verbindungsprüfungen). */
     public ChatProviders() {
-        this(builtin());
+        super(KIND, ChatProvider.class, List::of);
     }
 
     /** Für Tests: eigene Provider-Quelle. */
     public ChatProviders(Iterable<ChatProvider> source) {
-        super("Chat-Provider", source, List::of);
+        super(KIND, source, List::of);
     }
 
     /** In der App: eingebaute Provider plus die aus aktiven Plugins. */
     @Autowired
     public ChatProviders(ObjectProvider<PluginManager> plugins) {
-        super("Chat-Provider", builtin(), PluginManager.providers(plugins, ChatProvider.class));
-    }
-
-    private static Iterable<ChatProvider> builtin() {
-        return ServiceLoader.load(ChatProvider.class, ChatProvider.class.getClassLoader());
+        super(KIND, ChatProvider.class, plugins);
     }
 }

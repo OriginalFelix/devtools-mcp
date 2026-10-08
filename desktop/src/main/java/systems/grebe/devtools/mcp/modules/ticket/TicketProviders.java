@@ -17,23 +17,21 @@ import systems.grebe.devtools.mcp.plugin.PluginManager;
 @Component
 public class TicketProviders extends ProviderRegistry<TicketProvider> {
 
+    private static final String KIND = "Ticket-Provider";
+
     /** Nur die eingebauten Provider (Tests, Verbindungsprüfungen). */
     public TicketProviders() {
-        this(builtin());
+        super(KIND, TicketProvider.class, List::of);
     }
 
     /** Für Tests: eigene Provider-Quelle. */
     public TicketProviders(Iterable<TicketProvider> source) {
-        super("Ticket-Provider", source, List::of);
+        super(KIND, source, List::of);
     }
 
     /** In der App: eingebaute Provider plus die aus aktiven Plugins. */
     @Autowired
     public TicketProviders(ObjectProvider<PluginManager> plugins) {
-        super("Ticket-Provider", builtin(), PluginManager.providers(plugins, TicketProvider.class));
-    }
-
-    private static Iterable<TicketProvider> builtin() {
-        return ServiceLoader.load(TicketProvider.class, TicketProvider.class.getClassLoader());
+        super(KIND, TicketProvider.class, plugins);
     }
 }
