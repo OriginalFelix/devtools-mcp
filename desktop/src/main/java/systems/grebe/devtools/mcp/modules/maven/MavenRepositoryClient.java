@@ -1,6 +1,5 @@
 package systems.grebe.devtools.mcp.modules.maven;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -15,14 +14,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
 
-import org.w3c.dom.Document;
 import org.w3c.dom.Element;
-import org.xml.sax.SAXException;
+import systems.grebe.devtools.mcp.core.Xml;
 import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
 
 /**
@@ -59,16 +53,16 @@ class MavenRepositoryClient {
         byte[] body = get(dir(c) + "/maven-metadata.xml")
                 .orElseThrow(() -> new IllegalArgumentException("Artefakt " + c.ga() + " nicht gefunden in " + baseUrl
                         + " (maven-metadata.xml fehlt – groupId/artifactId prüfen)."));
-        Element versioning = child(parseXml(body).getDocumentElement(), "versioning");
+        Element versioning = Xml.child(Xml.parse(body).getDocumentElement(), "versioning");
         List<String> versions = new ArrayList<>();
-        Element list = child(versioning, "versions");
+        Element list = Xml.child(versioning, "versions");
         if (list != null) {
-            for (Element v : children(list, "version")) {
+            for (Element v : Xml.children(list, "version")) {
                 versions.add(v.getTextContent().trim());
             }
         }
-        return new Metadata(versions, text(versioning, "latest"), text(versioning, "release"),
-                parseTimestamp(text(versioning, "lastUpdated")));
+        return new Metadata(versions, Xml.text(versioning, "latest"), Xml.text(versioning, "release"),
+                parseTimestamp(Xml.text(versioning, "lastUpdated")));
     }
 
     /** POM einer Version oder leer, wenn sie nicht existiert. */
@@ -147,57 +141,6 @@ class MavenRepositoryClient {
         } catch (IOException e) {
             throw new IllegalStateException("Lesefehler bei " + path + ": " + e.getMessage(), e);
         }
-    }
-
-    // ------------------------------------------------------------------ XML-Helfer (auch für POMs)
-
-    static Document parseXml(byte[] xml) {
-        try {
-            DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
-            f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            f.setExpandEntityReferences(false);
-            f.setNamespaceAware(false);
-            DocumentBuilder b = f.newDocumentBuilder();
-            b.setErrorHandler(null);
-            return b.parse(new ByteArrayInputStream(xml));
-        } catch (ParserConfigurationException | SAXException | IOException e) {
-            throw new IllegalStateException("Ungültiges XML: " + e.getMessage(), e);
-        }
-    }
-
-    static Element child(Element parent, String name) {
-        if (parent == null) {
-            return null;
-        }
-        for (var n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element e && e.getTagName().equals(name)) {
-                return e;
-            }
-        }
-        return null;
-    }
-
-    static List<Element> children(Element parent, String name) {
-        List<Element> out = new ArrayList<>();
-        if (parent != null) {
-            for (var n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
-                if (n instanceof Element e && e.getTagName().equals(name)) {
-                    out.add(e);
-                }
-            }
-        }
-        return out;
-    }
-
-    /** Getrimmter Text eines direkten Kind-Elements oder {@code null}. */
-    static String text(Element parent, String name) {
-        Element e = child(parent, name);
-        if (e == null) {
-            return null;
-        }
-        String t = e.getTextContent().trim();
-        return t.isEmpty() ? null : t;
     }
 
     private static Instant parseTimestamp(String ts) {
