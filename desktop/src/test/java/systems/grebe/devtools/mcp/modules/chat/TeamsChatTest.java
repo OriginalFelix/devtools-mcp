@@ -260,6 +260,32 @@ class TeamsChatTest {
     }
 
     @Test
+    void repeatedLoginJoinsTheRunningDeviceCodeFlow() throws Exception {
+        state.vault().put("teams|" + hs.url() + "|organizations|client-1", null);
+        hs.on("/organizations/oauth2/v2.0/devicecode", "{\"device_code\":\"dc\",\"user_code\":\"ABCD-EFGH\","
+                + "\"verification_uri\":\"https://microsoft.com/devicelogin\",\"expires_in\":900,\"interval\":1}");
+        AtomicInteger polls = new AtomicInteger();
+        hs.on(TOKEN, r -> polls.incrementAndGet() < 3
+                ? new HttpStub.Reply(400, "{\"error\":\"authorization_pending\",\"error_description\":\"warte\"}")
+                : HttpStub.Reply.json("{\"access_token\":\"at9\",\"refresh_token\":\"rt9\",\"expires_in\":3600}"));
+        ChatEnvironment env = env(values());
+
+        String first = new ChatModule.LoginTools(env).login(null);
+        // der LLM ruft chat_login erneut auf (oder der Nutzer klickt „Anmelden“): dieselbe Anmeldung, kein neuer Code
+        String second = new ChatModule.LoginTools(env).login(null);
+
+        assertThat(second).contains("ABCD-EFGH");
+        assertThat(first).contains("ABCD-EFGH");
+        assertThat(hs.all("/organizations/oauth2/v2.0/devicecode")).hasSize(1);
+        for (int i = 0; i < 80 && state.vault().get("teams|" + hs.url() + "|organizations|client-1").isEmpty(); i++) {
+            Thread.sleep(100);
+        }
+        assertThat(state.vault().get("teams|" + hs.url() + "|organizations|client-1")).contains("rt9");
+        Thread.sleep(1500); // ein zweiter Abfrage-Zyklus hätte inzwischen weitere Token-Anfragen gestellt
+        assertThat(polls.get()).isEqualTo(3);
+    }
+
+    @Test
     void connectionTest() {
         ConnectionTestResult ok = module.testConnection(ModuleConfig.of(module.configSchema(), values()));
         assertThat(ok.success()).isTrue();
