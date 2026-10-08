@@ -135,7 +135,7 @@ public final class ModuleConfig {
                     }
                 }
                 case DIRECTORY -> checkDirectory(f, v, errors);
-                case DIRECTORY_LIST -> splitLines(v).forEach(d -> checkDirectory(f, d, errors));
+                case DIRECTORY_LIST -> splitLines(v).forEach(d -> checkDirectory(f, DirectoryEntry.parse(d).path(), errors));
                 case RECORD_LIST -> checkRecords(f, v, errors);
                 default -> { }
             }

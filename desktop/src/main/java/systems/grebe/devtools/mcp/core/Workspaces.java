@@ -11,8 +11,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -31,28 +29,14 @@ public final class Workspaces {
     private final Predicate<Path> marker;
     private final String kind;
 
-    /**
-     * Benannter Eintrag {@code name=pfad} (so übergibt die Projektverwaltung freigegebene Projekte); der Name darf
-     * weder Pfadtrenner noch Doppelpunkt enthalten, damit Pfade wie {@code C:/x=y} oder {@code /srv/a=b} nicht als
-     * Name gelesen werden.
-     */
-    private static final Pattern NAMED = Pattern.compile("([A-Za-z0-9._@ -]+)=(.+)");
-
     public Workspaces(List<String> configured, Predicate<Path> marker, String kind) {
         this.marker = marker;
         this.kind = kind;
         for (String raw : configured) {
-            String entry = raw;
-            String name = null;
-            Matcher named = NAMED.matcher(raw.strip());
-            if (named.matches()) {
-                name = named.group(1).strip();
-                entry = named.group(2).strip();
-            }
-            Path dir;
-            try {
-                dir = Path.of(entry).toAbsolutePath().normalize();
-            } catch (InvalidPathException e) {
+            DirectoryEntry parsed = DirectoryEntry.parse(raw);
+            String name = parsed.name();
+            Path dir = parsed.directory().orElse(null);
+            if (dir == null) {
                 continue;
             }
             if (!Files.isDirectory(dir)) {

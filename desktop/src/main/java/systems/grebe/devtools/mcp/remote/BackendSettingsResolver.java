@@ -1,6 +1,5 @@
 package systems.grebe.devtools.mcp.remote;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,6 +14,7 @@ import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.SettingsResolver;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.DirectoryLists;
 
 /**
  * Wirksame Einstellungen aus dem Backend: Vorbelegung des Moduls, darüber die Vorgaben Global → Benutzer → aktives
@@ -94,23 +94,8 @@ public class BackendSettingsResolver implements SettingsResolver {
         if (projects.isEmpty()) {
             return s;
         }
-        List<String> lines = new ArrayList<>(ModuleConfig.splitLines(s.values().getOrDefault(field, "")));
-        for (String entry : projects) {
-            Path dir = Path.of(entry.substring(entry.indexOf('=') + 1));
-            lines.removeIf(l -> sameDir(l, dir)); // schon eingetragen: das Projekt gewinnt (Name)
-            lines.add(entry);
-        }
         Map<String, String> values = new LinkedHashMap<>(s.values());
-        values.put(field, String.join("\n", lines));
+        values.put(field, DirectoryLists.merge(s.values().getOrDefault(field, ""), projects, true));
         return s.withValues(values);
-    }
-
-    private static boolean sameDir(String line, Path dir) {
-        String raw = line.contains("=") ? line.substring(line.indexOf('=') + 1) : line;
-        try {
-            return Path.of(raw.strip()).toAbsolutePath().normalize().equals(dir);
-        } catch (RuntimeException e) {
-            return false;
-        }
     }
 }

@@ -1,6 +1,5 @@
 package systems.grebe.devtools.mcp.core;
 
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -428,29 +427,9 @@ public class ToolRegistry {
         }
         Map<String, String> out = new LinkedHashMap<>(values);
         for (String field : module.sharedDirectoryFields()) {
-            List<String> lines = new ArrayList<>(ModuleConfig.splitLines(out.getOrDefault(field, "")));
-            for (String dir : shared) {
-                if (lines.stream().noneMatch(l -> sameDir(l, dir))) {
-                    lines.add(dir);
-                }
-            }
-            out.put(field, String.join("\n", lines));
+            out.put(field, DirectoryLists.merge(out.getOrDefault(field, ""), shared, false));
         }
         return out;
-    }
-
-    /** Ob ein Listeneintrag ({@code pfad} oder {@code name=pfad}) dasselbe Verzeichnis meint. */
-    private static boolean sameDir(String line, String dir) {
-        int eq = line.indexOf('=');
-        return samePath(line, dir) || eq > 0 && samePath(line.substring(eq + 1), dir);
-    }
-
-    private static boolean samePath(String a, String b) {
-        try {
-            return Path.of(a.strip()).toAbsolutePath().normalize().equals(Path.of(b.strip()).toAbsolutePath().normalize());
-        } catch (InvalidPathException e) {
-            return false;
-        }
     }
 
     /** Einstellungen des Moduls „Freigaben“ (leer, falls es fehlt). */

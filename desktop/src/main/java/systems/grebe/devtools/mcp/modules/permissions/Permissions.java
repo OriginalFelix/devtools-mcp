@@ -21,6 +21,7 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.core.DirectoryEntry;
 
 /**
  * Was das LLM darf und was ihm fehlt: Module, Schalter, in der App abgeschaltete Tools und freigegebene Verzeichnisse –
@@ -448,20 +449,7 @@ final class Permissions {
 
     /** Pfad einer Listenzeile ({@code pfad} oder {@code name=pfad}). */
     private static Optional<Path> entryPath(String line) {
-        String raw = line.strip();
-        int eq = raw.indexOf('=');
-        if (eq > 0 && !looksLikePath(raw.substring(0, eq))) {
-            raw = raw.substring(eq + 1).strip();
-        }
-        try {
-            return raw.isEmpty() ? Optional.empty() : Optional.of(Path.of(raw).toAbsolutePath().normalize());
-        } catch (InvalidPathException e) {
-            return Optional.empty();
-        }
-    }
-
-    private static boolean looksLikePath(String s) {
-        return s.contains("/") || s.contains("\\") || s.contains(":");
+        return DirectoryEntry.parse(line).directory();
     }
 
     private static Path absolute(String raw) {
