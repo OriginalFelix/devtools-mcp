@@ -27,6 +27,7 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.jdbc.SqlStatements.Kind;
 import systems.grebe.devtools.mcp.core.NamedEntries;
+import systems.grebe.devtools.mcp.core.ContextClassLoader;
 
 /**
  * Ausgewertete Konfiguration des JDBC-Moduls: Verbindungen, freigegebene Arten von Anweisungen, Grenzen – und der
@@ -262,15 +263,12 @@ final class JdbcEnvironment {
             props.setProperty("password", c.password());
         }
         CompletableFuture<Connection> future = CompletableFuture.supplyAsync(() -> {
-            Thread t = Thread.currentThread();
-            ClassLoader before = t.getContextClassLoader();
-            t.setContextClassLoader(driver.getClass().getClassLoader()); // manche Treiber laden Ressourcen darüber
             try {
-                return driver.connect(c.url(), props);
+                // manche Treiber laden Ressourcen über den Context-ClassLoader
+                return ContextClassLoader.callChecked(driver.getClass().getClassLoader(),
+                        () -> driver.connect(c.url(), props));
             } catch (SQLException e) {
                 throw new CompletionException(e);
-            } finally {
-                t.setContextClassLoader(before);
             }
         }, CONNECTOR);
         Connection con;

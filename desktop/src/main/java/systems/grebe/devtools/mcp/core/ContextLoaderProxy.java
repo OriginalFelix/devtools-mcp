@@ -76,21 +76,18 @@ public final class ContextLoaderProxy implements InvocationHandler {
     }
 
     private Object call(Method method, Object[] args) throws Throwable {
-        Thread t = Thread.currentThread();
-        ClassLoader previous = t.getContextClassLoader();
-        t.setContextClassLoader(loader);
-        try {
-            Object result = method.invoke(target, args);
-            Class<?> declared = method.getReturnType();
-            if (result != null && declared.isInterface() && result.getClass().getClassLoader() == loader) {
-                return wrapResult(declared, result);
+        return ContextClassLoader.callChecked(loader, () -> {
+            try {
+                Object result = method.invoke(target, args);
+                Class<?> declared = method.getReturnType();
+                if (result != null && declared.isInterface() && result.getClass().getClassLoader() == loader) {
+                    return wrapResult(declared, result);
+                }
+                return result;
+            } catch (InvocationTargetException e) {
+                throw e.getCause();
             }
-            return result;
-        } catch (InvocationTargetException e) {
-            throw e.getCause();
-        } finally {
-            t.setContextClassLoader(previous);
-        }
+        });
     }
 
     @SuppressWarnings("unchecked")

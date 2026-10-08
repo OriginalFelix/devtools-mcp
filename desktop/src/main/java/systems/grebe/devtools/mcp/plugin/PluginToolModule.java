@@ -17,6 +17,7 @@ import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolScope;
+import systems.grebe.devtools.mcp.core.ContextClassLoader;
 
 /**
  * Hülle um ein Modul aus einem Plugin: merkt sich das Plugin (für die Anzeige) und setzt bei jedem Aufruf in
@@ -135,14 +136,7 @@ public final class PluginToolModule implements ToolModule {
     }
 
     static <T> T withLoader(ClassLoader loader, Supplier<T> call) {
-        Thread t = Thread.currentThread();
-        ClassLoader previous = t.getContextClassLoader();
-        t.setContextClassLoader(loader);
-        try {
-            return call.get();
-        } finally {
-            t.setContextClassLoader(previous);
-        }
+        return ContextClassLoader.call(loader, call);
     }
 
     private record LoaderToolCallback(ToolCallback delegate, ClassLoader loader) implements DelegatingToolCallback {

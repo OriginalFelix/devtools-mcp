@@ -33,6 +33,7 @@ import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.McpToolHints;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.ContextClassLoader;
 
 /**
  * Übersetzt ein Java-Skript mit dem {@code javac} des JDK im Speicher. Ein Java-Skript ist eine Quelldatei mit einer
@@ -269,17 +270,12 @@ public final class JavaScriptCompiler {
 
     /** Setzt für Aufrufe in Skript-Code den Context-ClassLoader auf den des Skripts (wie bei Plugins). */
     static <T> T withLoader(ClassLoader loader, ThrowingSupplier<T> call) {
-        Thread t = Thread.currentThread();
-        ClassLoader previous = t.getContextClassLoader();
-        t.setContextClassLoader(loader);
         try {
-            return call.get();
+            return ContextClassLoader.callChecked(loader, call::get);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
             throw new IllegalStateException(e.getMessage(), e);
-        } finally {
-            t.setContextClassLoader(previous);
         }
     }
 
