@@ -411,16 +411,9 @@ public class ScriptsView extends BorderPane {
     }
 
     private <T> void background(Supplier<T> work, Consumer<T> onFx, Runnable onError) {
-        Thread.ofVirtual().start(() -> {
-            try {
-                T result = work.get();
-                Platform.runLater(() -> onFx.accept(result));
-            } catch (RuntimeException e) {
-                Platform.runLater(() -> {
-                    onError.run();
-                    setStatus(e.getMessage(), "error");
-                });
-            }
+        FxTasks.background(work, onFx, e -> {
+            onError.run();
+            setStatus(e.getMessage(), "error");
         });
     }
 

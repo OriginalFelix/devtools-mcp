@@ -256,13 +256,16 @@ public class BackendView extends BorderPane {
                 graphDatabase.getText(), graphUser.getText(), graphPassword.getText());
         graphApply.setDisable(true);
         graphStatus.setText("wird gestartet …");
-        CompletableFuture.supplyAsync(() -> {
+        FxTasks.background(() -> {
             store.saveGraph(value);
             return graphs.configure(EmbeddedBackend.graphSettings(value));
-        }).whenComplete((r, e) -> Platform.runLater(() -> {
+        }, r -> {
             graphApply.setDisable(false);
-            graphStatus.setText(e != null ? "Fehler: " + (e.getCause() != null ? e.getCause() : e).getMessage() : r);
-        }));
+            graphStatus.setText(r);
+        }, e -> {
+            graphApply.setDisable(false);
+            graphStatus.setText("Fehler: " + e.getMessage());
+        });
     }
 
     private void table() {
@@ -392,15 +395,16 @@ public class BackendView extends BorderPane {
     private void background(Supplier<String> action, java.util.function.UnaryOperator<String> success) {
         useServer.setDisable(true);
         status.setText("…");
-        CompletableFuture.supplyAsync(action).whenComplete((r, e) -> Platform.runLater(() -> {
+        FxTasks.background(action, r -> {
             useServer.setDisable(false);
             refresh();
-            if (e != null) {
-                Throwable cause = e.getCause() != null ? e.getCause() : e;
-                status.setText("Fehler: " + cause.getMessage());
-            } else if (r != null && !r.isEmpty()) {
+            if (r != null && !r.isEmpty()) {
                 status.setText(success.apply(r));
             }
-        }));
+        }, e -> {
+            useServer.setDisable(false);
+            refresh();
+            status.setText("Fehler: " + e.getMessage());
+        });
     }
 }
