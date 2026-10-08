@@ -12,7 +12,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
-import systems.grebe.devtools.mcp.core.DelegatingToolCallback;
+import systems.grebe.devtools.mcp.core.ForwardingToolCallback;
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
@@ -139,17 +139,7 @@ public final class PluginToolModule implements ToolModule {
         return ContextClassLoader.call(loader, call);
     }
 
-    private record LoaderToolCallback(ToolCallback delegate, ClassLoader loader) implements DelegatingToolCallback {
-        @Override
-        public ToolDefinition getToolDefinition() {
-            return delegate.getToolDefinition();
-        }
-
-        @Override
-        public ToolMetadata getToolMetadata() {
-            return delegate.getToolMetadata();
-        }
-
+    private record LoaderToolCallback(ToolCallback delegate, ClassLoader loader) implements ForwardingToolCallback {
         @Override
         public String call(String toolInput) {
             return withLoader(loader, () -> delegate.call(toolInput));

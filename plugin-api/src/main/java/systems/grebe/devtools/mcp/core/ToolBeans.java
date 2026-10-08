@@ -141,26 +141,6 @@ public final class ToolBeans {
     }
 
     /** Callback mit Hinweisen; ansonsten unverändert. */
-    private record Hinted(ToolCallback delegate, Hints hints) implements ToolCallback {
-
-        @Override
-        public ToolDefinition getToolDefinition() {
-            return delegate.getToolDefinition();
-        }
-
-        @Override
-        public ToolMetadata getToolMetadata() {
-            return delegate.getToolMetadata();
-        }
-
-        @Override
-        public String call(String toolInput) {
-            return delegate.call(toolInput);
-        }
-
-        @Override
-        public String call(String toolInput, ToolContext toolContext) {
-            return delegate.call(toolInput, toolContext);
-        }
+    private record Hinted(ToolCallback delegate, Hints hints) implements ForwardingToolCallback {
     }
 }

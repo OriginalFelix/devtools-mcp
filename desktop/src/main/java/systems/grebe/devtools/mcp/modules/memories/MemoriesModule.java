@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.backend.memories.Memory;
 import systems.grebe.devtools.mcp.config.DataHome;
 import systems.grebe.devtools.mcp.core.ConfigField;
-import systems.grebe.devtools.mcp.core.DelegatingToolCallback;
+import systems.grebe.devtools.mcp.core.ForwardingToolCallback;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
@@ -147,27 +147,12 @@ public class MemoriesModule implements ToolModule {
     }
 
     /** Hängt an die Beschreibung an, dass das Tool nur temporäre Memories anfasst. */
-    private record TemporaryOnly(ToolCallback delegate, String note) implements DelegatingToolCallback {
+    private record TemporaryOnly(ToolCallback delegate, String note) implements ForwardingToolCallback {
         @Override
         public ToolDefinition getToolDefinition() {
             ToolDefinition d = delegate.getToolDefinition();
             return ToolDefinition.builder().name(d.name()).description(d.description() + note)
                     .inputSchema(d.inputSchema()).build();
-        }
-
-        @Override
-        public ToolMetadata getToolMetadata() {
-            return delegate.getToolMetadata();
-        }
-
-        @Override
-        public String call(String toolInput) {
-            return delegate.call(toolInput);
-        }
-
-        @Override
-        public String call(String toolInput, ToolContext toolContext) {
-            return delegate.call(toolInput, toolContext);
         }
     }
 

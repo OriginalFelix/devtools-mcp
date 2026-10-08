@@ -34,6 +34,7 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.McpToolHints;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ContextClassLoader;
+import systems.grebe.devtools.mcp.core.ForwardingToolCallback;
 
 /**
  * Übersetzt ein Java-Skript mit dem {@code javac} des JDK im Speicher. Ein Java-Skript ist eine Quelldatei mit einer
@@ -301,17 +302,7 @@ public final class JavaScriptCompiler {
 
     /** Tool-Aufruf unter Zeitlimit und mit dem ClassLoader des Skripts; Fehler mit Zeile im Skript. */
     private record TimedCallback(ToolCallback delegate, ClassLoader loader, Supplier<Duration> timeout,
-                                 String scriptName, String fileName) implements ToolCallback {
-        @Override
-        public ToolDefinition getToolDefinition() {
-            return delegate.getToolDefinition();
-        }
-
-        @Override
-        public ToolMetadata getToolMetadata() {
-            return delegate.getToolMetadata();
-        }
-
+                                 String scriptName, String fileName) implements ForwardingToolCallback {
         @Override
         public String call(String toolInput) {
             return call(toolInput, null);
