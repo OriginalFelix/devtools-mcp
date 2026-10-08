@@ -1,23 +1,18 @@
 package systems.grebe.devtools.mcp.modules.build;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 
+import systems.grebe.devtools.mcp.core.CommandRunner;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.modules.build.BuildModule.BuildTool;
@@ -27,7 +22,7 @@ final class BuildRunner {
 
     /** Erlaubte Zeichen in Argumenten – verhindert Shell-Metazeichen bei cmd.exe (gradlew.bat/mvnw.cmd). */
     private static final Pattern SAFE_ARG = Pattern.compile("[A-Za-z0-9_:.,=/@*+\\-#]+");
-    private static final boolean WINDOWS = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
+    private static final boolean WINDOWS = CommandRunner.WINDOWS;
     private static final Map<Path, ReentrantLock> LOCKS = new ConcurrentHashMap<>();
 
     private final Workspaces projects;
@@ -110,51 +105,26 @@ final class BuildRunner {
     }
 
     private Result execute(Path dir, BuildTool tool, List<String> cmd) {
-        ProcessBuilder pb = new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true);
+        Map<String, String> env = new LinkedHashMap<>();
         if (javaHome != null && !javaHome.isBlank()) {
-            pb.environment().put("JAVA_HOME", javaHome);
+            env.put("JAVA_HOME", javaHome);
         }
-        pb.environment().put("TERM", "dumb");
+        env.put("TERM", "dumb");
         long start = System.nanoTime();
-        List<String> output = Collections.synchronizedList(new ArrayList<>());
-        Process process;
+        CommandRunner.Result r;
         try {
-            process = pb.start();
-        } catch (IOException e) {
+            r = CommandRunner.run(cmd, timeout, CommandRunner.NATIVE, dir, env);
+        } catch (CommandRunner.NotStartable e) {
             throw new IllegalStateException("Build konnte nicht gestartet werden (" + String.join(" ", cmd) + "): "
-                    + e.getMessage(), e);
-        }
-        Charset cs = Charset.forName(System.getProperty("native.encoding", Charset.defaultCharset().name()));
-        Thread reader = Thread.ofVirtual().start(() -> {
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(process.getInputStream(), cs))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    output.add(line);
-                }
-            } catch (IOException ignored) {
-                // Prozess beendet
+                    + e.getCause().getMessage(), e);
+        } catch (IllegalStateException e) {
+            if (e.getCause() instanceof InterruptedException) {
+                throw new IllegalStateException("Build abgebrochen", e);
             }
-        });
-        boolean finished;
-        try {
-            finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            if (!finished) {
-                process.descendants().forEach(ProcessHandle::destroyForcibly);
-                process.destroyForcibly();
-                process.waitFor(10, TimeUnit.SECONDS);
-            }
-            reader.join(Duration.ofSeconds(5));
-        } catch (InterruptedException e) {
-            process.descendants().forEach(ProcessHandle::destroyForcibly);
-            process.destroyForcibly();
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Build abgebrochen", e);
+            throw e;
         }
         Duration duration = Duration.ofNanos(System.nanoTime() - start);
-        int exit = finished ? process.exitValue() : -1;
-        synchronized (output) {
-            return new Result(dir, tool, cmd, exit, !finished, duration, List.copyOf(output));
-        }
+        return new Result(dir, tool, cmd, r.exitCode(), r.timedOut(), duration, r.output().lines().toList());
     }
 
     private static List<String> launcher(Path dir, BuildTool tool) {
