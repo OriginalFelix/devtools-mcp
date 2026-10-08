@@ -15,7 +15,6 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.mcp.McpToolUtils;
 import org.springframework.stereotype.Component;
 
 /**
@@ -78,8 +77,7 @@ public class UserConfirmation {
 
     /** MCP-Exchange des laufenden Tool-Aufrufs ({@code null} außerhalb von MCP). */
     public static McpSyncServerExchange exchange(ToolContext toolContext) {
-        Object e = toolContext == null ? null : toolContext.getContext().get(McpToolUtils.TOOL_CONTEXT_MCP_EXCHANGE_KEY);
-        return e instanceof McpSyncServerExchange x ? x : null;
+        return McpExchanges.of(toolContext);
     }
 
     /** Ob der Client Formulare per Elicitation anbietet (ein leeres {@code elicitation} heißt nach der Spezifikation Formular). */

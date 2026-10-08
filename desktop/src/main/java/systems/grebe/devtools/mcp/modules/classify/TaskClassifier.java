@@ -26,9 +26,9 @@ import com.anthropic.models.messages.StopReason;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.mcp.McpToolUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.core.McpExchanges;
 
 /**
  * Pre-Classifier für Aufgaben: schätzt die Komplexität einer Aufgabe (Ticket, Feature, Bugfix, Analyse, Text, Recherche …)
@@ -203,8 +203,7 @@ public final class TaskClassifier {
 
     /** MCP-Exchange des laufenden Tool-Aufrufs ({@code null} außerhalb von MCP, z.B. in Tests ohne Client). */
     public static McpSyncServerExchange exchange(ToolContext toolContext) {
-        Object e = toolContext == null ? null : toolContext.getContext().get(McpToolUtils.TOOL_CONTEXT_MCP_EXCHANGE_KEY);
-        return e instanceof McpSyncServerExchange x ? x : null;
+        return McpExchanges.of(toolContext);
     }
 
     /**
