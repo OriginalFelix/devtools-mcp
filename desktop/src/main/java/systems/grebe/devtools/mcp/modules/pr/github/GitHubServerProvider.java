@@ -85,6 +85,8 @@ public class GitHubServerProvider implements GitServerProvider {
 
         private final HttpJson http;
         private final boolean authenticated;
+        /** Login des Token-Inhabers (für author=me), einmal geholt. */
+        private volatile String me;
         private final String webHost;
         private final String graphql;
 
@@ -216,6 +218,23 @@ public class GitHubServerProvider implements GitServerProvider {
             return null;
         }
 
+        /** Login des angemeldeten Benutzers; ohne Token gibt es ihn nicht - dann klare Meldung statt leerer Liste. */
+        private String me() {
+            String login = me;
+            if (login == null) {
+                if (!authenticated) {
+                    throw new IllegalStateException("GitHub: Der Filter author=me braucht ein Token - in der "
+                            + "DevTools-App unter Module → Pull Requests eintragen.");
+                }
+                login = text(http.getJson("/user").path("login"));
+                if (login == null) {
+                    throw new IllegalStateException("GitHub: angemeldeten Benutzer nicht ermittelbar - Token prüfen.");
+                }
+                me = login;
+            }
+            return login;
+        }
+
         @Override
         public List<PullRequest> list(PrQuery q) {
             String repo = repo(q.project());
@@ -225,8 +244,7 @@ public class GitHubServerProvider implements GitServerProvider {
                 case ALL -> "all";
             };
             String owner = repo.substring(0, repo.indexOf('/'));
-            String author = q.author() != null && GitServer.isMe(q.author()) && authenticated
-                    ? text(http.getJson("/user").path("login")) : q.author();
+            String author = q.author() != null && GitServer.isMe(q.author()) ? me() : q.author();
             int limit = Math.max(1, Math.min(q.limit(), 100));
             boolean filtered = author != null || q.state() == State.MERGED || q.state() == State.CLOSED;
             List<PullRequest> out = new ArrayList<>();

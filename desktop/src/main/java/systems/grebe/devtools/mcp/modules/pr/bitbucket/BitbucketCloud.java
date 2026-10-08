@@ -27,6 +27,8 @@ final class BitbucketCloud implements GitServer {
 
     private final HttpJson http;
     private final boolean authenticated;
+    /** UUID des Token-Inhabers (für author=me), einmal geholt. */
+    private volatile String me;
 
     BitbucketCloud(HttpJson http, boolean authenticated) {
         this.http = http;
@@ -156,8 +158,8 @@ final class BitbucketCloud implements GitServer {
             filter.add("destination.branch.name=\"" + q.target().replace("\"", "") + "\"");
         }
         if (q.author() != null) {
-            filter.add(GitServer.isMe(q.author()) && authenticated
-                    ? "author.uuid=\"" + text(http.getJson("/user").path("uuid")) + "\""
+            filter.add(GitServer.isMe(q.author())
+                    ? "author.uuid=\"" + me() + "\""
                     : "author.nickname=\"" + q.author().replace("\"", "") + "\"");
         }
         int limit = Math.max(1, Math.min(q.limit(), 50));
@@ -168,6 +170,23 @@ final class BitbucketCloud implements GitServer {
             out.add(pr(n, repo));
         }
         return out;
+    }
+
+    /** UUID des angemeldeten Benutzers; ohne Token klare Meldung statt eines Filters auf den Nickname "me". */
+    private String me() {
+        String uuid = me;
+        if (uuid == null) {
+            if (!authenticated) {
+                throw new IllegalStateException("Bitbucket: Der Filter author=me braucht ein Token - in der "
+                        + "DevTools-App unter Module → Pull Requests eintragen.");
+            }
+            uuid = text(http.getJson("/user").path("uuid"));
+            if (uuid == null) {
+                throw new IllegalStateException("Bitbucket: angemeldeten Benutzer nicht ermittelbar - Token prüfen.");
+            }
+            me = uuid;
+        }
+        return uuid;
     }
 
     private static PullRequest pr(JsonNode n, String repo) {
