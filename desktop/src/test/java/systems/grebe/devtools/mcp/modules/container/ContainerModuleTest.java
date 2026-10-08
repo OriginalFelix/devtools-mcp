@@ -16,6 +16,7 @@ import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** ServiceLoader-Erkennung, Konfiguration, Tool-Auswahl und Sicherheitsprüfungen – ohne echte Laufzeit. */
 class ContainerModuleTest {
@@ -154,6 +155,52 @@ class ContainerModuleTest {
         assertThatThrownBy(() -> t.copyFrom("app-web", "/etc/passwd", tmp.resolve("x").toString(), null))
                 .hasMessageContaining("nicht in einem freigegebenen");
         assertThatThrownBy(() -> t.copyFrom("app-web", "relativ", shared.toString(), null)).hasMessageContaining("absolut");
+    }
+
+    @Test
+    void symlinkInsideSharedDirectoryCannotLeaveIt() throws Exception {
+        Path shared = Files.createDirectories(tmp.resolve("shared"));
+        Path outside = Files.createDirectories(tmp.resolve("outside"));
+        Files.writeString(outside.resolve("geheim.txt"), "x");
+        assumeTrue(link(shared.resolve("link"), outside), "weder Symlink noch Junction anlegbar");
+        boolean dangling = link(shared.resolve("dangling"), tmp.resolve("gibt-es-nicht"));
+        ContainerEnvironment env = env(Map.of("hostDirectories", shared.toString()));
+        ContainerCopyTools copy = new ContainerCopyTools(env);
+        ContainerCreateTools create = new ContainerCreateTools(env);
+
+        assertThatThrownBy(() -> copy.copyTo("app-web", shared.resolve("link").resolve("geheim.txt").toString(), "/x", null))
+                .hasMessageContaining("nicht in einem freigegebenen");
+        assertThatThrownBy(() -> copy.copyFrom("app-web", "/etc/hosts", shared.resolve("link").resolve("neu.txt").toString(), null))
+                .hasMessageContaining("nicht in einem freigegebenen");
+        assertThatThrownBy(() -> create.run("nginx", "x", null, null, List.of(shared.resolve("link") + ":/srv"), null, null, null))
+                .hasMessageContaining("nicht in einem freigegebenen");
+        if (dangling) {
+            assertThatThrownBy(() -> env.checkHostPath(shared.resolve("dangling").resolve("neu").toString()))
+                    .hasMessageContaining("nicht in einem freigegebenen");
+        }
+        // Normale, auch noch nicht vorhandene Ziele in der Freigabe bleiben erlaubt.
+        assertThat(env.checkHostPath(shared.resolve("neu").resolve("datei.txt").toString())).isEqualTo(shared.resolve("neu").resolve("datei.txt"));
+        assertThat(copy.copyFrom("app-web", "/etc/hosts", shared.resolve("hosts").toString(), null)).contains("Kopiert");
+    }
+
+    /** Symlink; unter Windows ohne Berechtigung als Junction (verhält sich für die Pfadprüfung gleich). */
+    private static boolean link(Path link, Path target) {
+        try {
+            Files.createSymbolicLink(link, target);
+            return true;
+        } catch (UnsupportedOperationException | java.io.IOException | SecurityException e) {
+            if (!System.getProperty("os.name", "").startsWith("Windows")) {
+                return false;
+            }
+            try {
+                Process p = new ProcessBuilder("cmd", "/c", "mklink", "/J", link.toString(), target.toString())
+                        .redirectErrorStream(true).start();
+                p.getInputStream().readAllBytes();
+                return p.waitFor() == 0 && Files.exists(link);
+            } catch (java.io.IOException | InterruptedException ex) {
+                return false;
+            }
+        }
     }
 
     @Test
