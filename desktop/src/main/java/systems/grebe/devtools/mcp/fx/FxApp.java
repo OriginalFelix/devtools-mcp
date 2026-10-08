@@ -20,6 +20,7 @@ import systems.grebe.devtools.mcp.DevToolsMcpApplication;
 import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.backend.graph.GraphStorage;
+import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
@@ -83,8 +84,8 @@ public class FxApp extends Application {
         ToolInvocationLog log = context.getBean(ToolInvocationLog.class);
         int port = Integer.parseInt(context.getEnvironment().getProperty("local.server.port",
                 String.valueOf(store.server().port())));
-        String endpoint = "http://127.0.0.1:" + port
-                + context.getEnvironment().getProperty("spring.ai.mcp.server.streamable-http.mcp-endpoint", "/mcp");
+        String endpoint = ServerSettings.localUrl(port) + context.getEnvironment()
+                .getProperty("spring.ai.mcp.server.streamable-http.mcp-endpoint", ServerSettings.MCP_PATH);
 
         backend = context.getBean(BackendConnection.class);
         UsersAdminView usersView = new UsersAdminView(backend, registry);

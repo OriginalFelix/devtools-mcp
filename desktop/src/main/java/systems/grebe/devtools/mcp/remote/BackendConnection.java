@@ -57,6 +57,7 @@ import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.api.SettingsSnapshot;
 import systems.grebe.devtools.mcp.backend.account.PasswordHashing;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
+import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.config.TeamSettings;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -677,7 +678,8 @@ public class BackendConnection {
 
     /** Basisadresse des Backends, z.B. {@code http://127.0.0.1:8765}. */
     public String url() {
-        return embedded() ? "http://127.0.0.1:" + env.getProperty("local.server.port", "8765") : store.team().url();
+        return embedded() ? ServerSettings.localUrl(Integer.parseInt(env.getProperty("local.server.port",
+                String.valueOf(ServerSettings.DEFAULT_PORT)))) : store.team().url();
     }
 
     /** Token der laufenden Anmeldung (Sitzungs- oder Desktop-Token), z.B. als Passwort beim Broker des Backends. */

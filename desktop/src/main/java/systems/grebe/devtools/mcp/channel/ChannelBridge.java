@@ -113,7 +113,7 @@ public final class ChannelBridge {
         this.out = out;
         this.log = log;
         String b = base.toString().replaceAll("/+$", "");
-        this.mcp = URI.create(b + "/mcp");
+        this.mcp = URI.create(b + ServerSettings.MCP_PATH);
         this.events = URI.create(b + ChannelEventsController.PATH);
         this.token = token == null ? "" : token;
         this.mode = mode;
@@ -133,11 +133,11 @@ public final class ChannelBridge {
         if (url == null || token == null) {
             try {
                 ServerSettings s = new SettingsStore(SettingsStore.defaultHome()).server();
-                url = url == null ? "http://127.0.0.1:" + s.port() : url;
+                url = url == null ? ServerSettings.localUrl(s.port()) : url;
                 token = token == null ? s.authToken() : token;
             } catch (RuntimeException e) {
                 System.err.println("DevTools-Einstellungen nicht lesbar (" + e.getMessage() + ") – --url/--token angeben.");
-                url = url == null ? "http://127.0.0.1:" + ServerSettings.DEFAULT_PORT : url;
+                url = url == null ? ServerSettings.localUrl(ServerSettings.DEFAULT_PORT) : url;
             }
         }
         BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
