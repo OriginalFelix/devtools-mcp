@@ -72,9 +72,9 @@ public class SonarModule implements ToolModule {
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         SonarClient client = client(config);
         JsonNode status = client.get("/api/system/status", SonarClient.params());

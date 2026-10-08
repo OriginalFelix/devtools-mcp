@@ -232,9 +232,9 @@ public class SshModule implements ToolModule {
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         SshEnvironment env = environment(config);
         if (env.connections().isEmpty()) {

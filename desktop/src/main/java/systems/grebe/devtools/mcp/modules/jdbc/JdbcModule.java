@@ -269,9 +269,9 @@ public class JdbcModule implements ToolModule {
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         JdbcEnvironment env = new JdbcEnvironment(config, new JdbcSessions(), drivers);
         if (env.connections().isEmpty()) {

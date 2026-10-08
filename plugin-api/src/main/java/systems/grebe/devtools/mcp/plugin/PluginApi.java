@@ -15,7 +15,8 @@ public final class PluginApi {
      *   Verknüpfungen ({@code linkTypes}, {@code link}, {@code unlink}, {@code LinkType}, {@code pickLinkType},
      *   {@code pickLink}) und {@code create(project, ticket, fields)}</li>
      *   <li>4 – Hilfen für Plugins: {@code HttpJson.sharedClient()}, {@code HttpJson.basicAuth(user, secret)} und
-     *   {@code HttpJson.abbreviate(text)}; {@code DirectoryEntry} (Zeile einer Verzeichnisliste)</li>
+     *   {@code HttpJson.abbreviate(text)}; {@code DirectoryEntry} (Zeile einer Verzeichnisliste);
+     *   {@code ConnectionTestResult.invalid(config)} (Schemaprüfung am Anfang von {@code testConnection})</li>
      * </ul>
      */
     public static final int VERSION = 4;

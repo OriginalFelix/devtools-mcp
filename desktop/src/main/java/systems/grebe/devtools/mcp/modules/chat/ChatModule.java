@@ -206,9 +206,9 @@ public class ChatModule implements ToolModule {
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         // eigener Zustand: ein Test soll weder Sitzung noch Eingang der laufenden Tools ersetzen
         ChatEnvironment env = new ChatEnvironment(providers, config, new ChatEnvironment.State(), chatState);
