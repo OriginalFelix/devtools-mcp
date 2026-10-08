@@ -6,10 +6,10 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 
 | Modul | Tools |
 |---|---|
-| **Git** (JGit; Netzwerk über installiertes git) | `git_list_repositories` (inkl. Worktrees als `<repo>/<ordner>`), `git_status` (inkl. laufendem Merge/Rebase), `git_log` (auch `contentChange` wie `git log -S`), `git_diff`, `git_show_commit`, `git_branches`, `git_tags`, `git_remotes`, `git_stash_list`, `git_reflog`, `git_compare` (merge-base, voraus/zurück, Commits je Seite), `git_grep`, `git_blame`, `git_file_at_revision` · schreibend (Standard an): `git_create_branch`, `git_checkout`, `git_rename_branch`, `git_stage`, `git_unstage`, `git_commit`, `git_reset` (soft/mixed), `git_stash` (push/apply/pop), `git_tag` · je Schalter (Standard aus): Remote-Abgleich `git_fetch`, `git_pull` (ff-only/rebase/merge), `git_push` (nie Force, nie auf „Nie pushen auf“, Standard main/master) · Integrieren `git_merge`, `git_rebase`, `git_cherry_pick`, `git_revert`, `git_continue`, `git_abort` · Verwerfen `git_restore`, `git_reset mode=hard`, `git_delete_branch`, `git_delete_tag`, `git_stash_drop` |
+| **Git** (JGit; Netzwerk über installiertes git) | `git_list_repositories` (inkl. Worktrees als `<repo>/<ordner>`), `git_status` (inkl. laufendem Merge/Rebase), `git_log` (auch `contentChange` wie `git log -S`), `git_diff`, `git_show_commit`, `git_branches`, `git_tags`, `git_remotes`, `git_stash_list`, `git_reflog`, `git_compare` (merge-base, voraus/zurück, Commits je Seite), `git_grep`, `git_blame`, `git_file_at_revision` · schreibend (Standard an): `git_create_branch`, `git_checkout`, `git_rename_branch`, `git_stage`, `git_unstage`, `git_commit`, `git_reset` (soft/mixed), `git_stash` (push/apply/pop), `git_tag` · eigener Schalter (Standard an): `git_cherry_pick` (Commits oder Bereiche `a..b`, Herkunftsvermerk wie `-x`, nur stagen wie `-n`, Merge-Commits mit `mainline` wie `-m`; inkl. `git_continue`/`git_abort`) · je Schalter (Standard aus): Remote-Abgleich `git_fetch`, `git_pull` (ff-only/rebase/merge), `git_push` (nie Force, nie auf „Nie pushen auf“, Standard main/master) · Integrieren `git_merge`, `git_rebase`, `git_revert`, `git_continue`, `git_abort` · Verwerfen `git_restore`, `git_reset mode=hard`, `git_delete_branch`, `git_delete_tag`, `git_stash_drop` |
 | **SonarQube** / SonarCloud | `sonar_list_projects`, `sonar_quality_gate`, `sonar_issues`, `sonar_issue_detail`, `sonar_rule`, `sonar_measures`, `sonar_hotspots`, `sonar_source` |
 | **Build** (Gradle/Maven) | `build_list_projects`, `build_run`, `build_test`, `build_test_report` |
-| **Code-Graph** (Java, tree-sitter) | `graph_build`, `graph_branches`, `graph_report`, `graph_find`, `graph_explain`, `graph_neighbors`, `graph_path`, `graph_query`, `graph_cypher` – je Projekt und Git-Branch in Neo4j (Spring Data Neo4j) oder als Datei im Projekt (Standard: aus) |
+| **Code-Graph** (Java, tree-sitter) | `graph_build`, `graph_branches`, `graph_report`, `graph_find`, `graph_files`, `graph_read`, `graph_explain`, `graph_neighbors`, `graph_path`, `graph_query`, `graph_cypher` – je Projekt und Git-Branch in der Graph-Storage des Backends (ArcadeDB, eingebettet oder extern) oder als Datei im Projekt (Standard: aus) |
 | **JVM-Diagnose** (jcmd) | `jvm_processes`, `jvm_info`, `jvm_threads` (inkl. Deadlock-Erkennung), `jvm_heap`, `jvm_native_memory` · invasiv: `jvm_heap_dump`, `jvm_gc_run`, `jvm_jcmd` (Allowlist) |
 | **Flight Recorder** | `jfr_record`, `jfr_start`, `jfr_status`, `jfr_dump`, `jfr_stop`, `jfr_analyze` (cpu/allocation/gc/locks/io/exceptions/threads), `jfr_flamegraph` |
 | **async-profiler** 4.5 | `asprof_profile`, `asprof_start`, `asprof_stop`, `asprof_status` – Linux/macOS nativ, unter Windows für JVMs in Docker/Podman-Containern (Standard: aus) |
@@ -17,16 +17,23 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Decompiler** (Vineflower, Fernflower-Fork) | `decompile_class` (Quelltext einer Klasse inkl. verschachtelter Klassen, seitenweise), `decompile_find` (Fundstellen im JDK und in Maven-/Gradle-Cache mit Version), `decompile_list` (Klassen eines JARs, Klassenverzeichnisses oder JDK-Moduls) |
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
-| **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions` · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), `ticket_classify` (Pre-Classifier: Komplexität einschätzen, Modell für die Umsetzung empfehlen), einschränkbar auf Projekte (Modul Standard: aus) |
+| **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions`, `ticket_worklogs` (gebuchte Zeiten mit Summe) · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_link`/`ticket_unlink` (Tickets verknüpfen), `ticket_log_time` (Zeit buchen), `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), `ticket_classify` (Pre-Classifier: Komplexität einschätzen, Modell für die Umsetzung empfehlen), einschränkbar auf Projekte (Modul Standard: aus) |
 | **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
+| **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
+| **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
+| **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort), `mail_send` (SMTP, auch als Antwort; Rückfrage beim Nutzer, erlaubte Empfänger, Grenze pro Stunde) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über den stdio-Proxy (Channel) an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Fenstersteuerung** (Fenster per FFM: Windows user32, macOS CoreGraphics/AX, Linux X11; eigener KI-Zeiger per JNA) | `window_list` (Prozesse mit Fenstern, PID, UI-Thread nur Windows; UWP-Apps wie der Rechner unter ihrem eigenen Prozess), `window_bind` (Prozess inkl. Kindprozessen – bei Shell-Prozessen wie dem Explorer ohne –, nie der Elternprozess, Geschwister per Schalter und nur mit Fenster-ID, keine unter Shell- und Systemprozessen; Bindung je KI, d.h. je MCP-Session – ein Prozess gehört immer nur einer KI; ruft sie 2 min lang kein Fenster-Tool auf, darf eine andere ihn übernehmen), `window_windows`, `window_screenshot` (PNG als Bild-Content, verkleinert auf max. 1280 px), `window_unbind` · Schalter „Programme starten erlauben“ (Standard aus): `window_launch` – startet ein Programm, das zu „Nur diese Prozesse“ passt (geprüft wird nur das Programm, nicht die Argumente), im Hintergrund und bindet es; das Fenster bekommt keinen Fokus, Eingaben des Nutzers landen erst dort, wenn er es anklickt (Windows: `ShellExecuteEx` mit `SW_SHOWNOACTIVATE`, holt es sich trotzdem den Vordergrund, wird er sofort zurückgegeben; macOS: `open -g`) · Schalter „Eingaben erlauben“ (Standard aus): `window_click`, `window_scroll`, `window_drag` · Schalter „Tastatur erlauben“ (Standard aus, nur zusammen mit Eingaben): `window_type` (Sonderzeichen über die Zwischenablage, wird wiederhergestellt), `window_key` (ohne Windows-/Super-Taste), Klicks mit gehaltenen Tasten · „Maus der KI“: `eigener-zeiger` (Standard) – Klicks, Ziehen und Scrollen mit einem zweiten Zeiger, die Maus des Nutzers bewegt sich nie und das Fenster wird nicht nach vorn geholt (Windows: Nachrichten an das Fenster, bei UWP/WinUI UI Automation bzw. Touch zum Ziehen; macOS: Ereignisse an den Prozess; X11: zweiter Master-Zeiger per XInput2), kein Klick, wenn ein fremdes Fenster darüber liegt; `maus` – echte Maus (Robot), Fenster wird aktiviert, Not-Aus bei Mausbewegung und Abkühlzeit · „Tastatur der KI“ (getrennt einstellbar): `eigene-tastatur` (Standard) – Text und Tasten gehen an das Element, das der Zeiger der KI zuletzt angeklickt hat (eigener Fokus, Strg/Umschalt/Alt nur im Ziel), die Tastatur des Nutzers bleibt unberührt (Windows: Nachrichten an das Element; macOS: Text über die Bedienungshilfen ins fokussierte Element, sonst Ereignisse an den Prozess; X11: eigene Master-Tastatur); ungeprüfte Eingaben im Hintergrund meldet das Tool als solche; `tastatur` – echte Tastatur (Robot), Fenster wird aktiviert. „Nur diese Prozesse“ und „Prozesse ausschließen“ mit Button „Fenster wählen…“: Übersicht aller Fenster mit Vorschau (ohne Vorschau Platzhalter mit Prozessname und PID), Klick zeigt das Fenster groß, „Hinzufügen“ hängt den Prozessnamen an den Ausdruck an · Programme, deren ausführbare Datei in einem Ordner unter „Freigaben“ liegt (auch in Unterordnern), sind freigegeben – auch gegen „Nur diese Prozesse“ und „Prozesse ausschließen“; hebt das einen Ausschluss auf, warnt die App beim Speichern (Suche nach Programmen in den freigegebenen Ordnern). Während der Steuerung Rahmen und Hinweis („Claude Code steuert dieses Fenster“, durchklickbar) um das Fenster, auf seiner Ebene der Fensterreihenfolge (darüberliegende Fenster verdecken auch den Rahmen; Windows `SetWindowPos`, macOS `orderWindow:relativeTo:`, X11 `_NET_RESTACK_WINDOW`) – jede KI in ihrer eigenen Farbe (reine Farbtöne mit größtmöglichem Abstand: Rot, Cyan, Gelbgrün, Violett …; auch der eigene Zeiger, außer unter X11), nach 30 min ohne Fenster-Tool wird ihre Bindung aufgehoben und die Farbe frei; diese App, Anmelde-/Berechtigungsdialoge und Passwortmanager sind nie steuerbar; nicht im Headless-Betrieb (Modul Standard: aus) |
+| **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
-| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` |
+| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` · Typ dauerhaft, temporär oder **Rückruf** (`INVOCATION`) |
+| **Rückrufe** (Invocations) | lang laufende Aktion fertig → das LLM bekommt Ergebnis und hinterlegte Memory (Typ `INVOCATION`) per Channel, auch in einer später gestarteten Sitzung; danach wird die Memory gelöscht: `invocations_list`, `invocations_cancel` (siehe [Rückrufe](#rückrufe--ergebnis-lang-laufender-aktionen-an-das-llm)) |
+| **Kooperation** (MQTT 5, z.B. HiveMQ) | Austausch zwischen Claude-Instanzen auf verschiedenen Rechnern – anderer Nutzer oder eigenes weiteres Gerät: `share_peers`, `share_send` (Notiz, Memories, Skills, Dateien; Rückfrage bei Nutzer 1), `share_inbox`, `share_view`, `share_accept` (Rückfrage bei Nutzer 2), `share_decline` – über den Broker des Backends (HiveMQ CE im Team-Server bzw. eingebetteten Backend, Anmeldung mit dem Benutzerkonto, Absender geprüft) oder einen eigenen, optional Ende-zu-Ende verschlüsselt, neue Angebote und Antworten als Rückruf per Channel (siehe [Kooperation](#kooperation-zwischen-instanzen-und-geräten)) (Modul Standard: aus) |
+| **Skripte** (Groovy 5 oder Java per `javac`) | `scripts_list`, `scripts_view` (Quelltext, Historie, ohne Namen die Referenz) · je Schalter (Standard aus): `scripts_save`, `scripts_delete` – jedes Skript wird zur Laufzeit ein eigenes Modul mit Tools `<skript>_*`, gespeichert im Backend (siehe [Skripte](#skripte--eigene-tools-zur-laufzeit)) |
 
 Das Modul **Java-Grundeinstellungen** hat keine eigenen Tools, es liefert JDK, Ablageordner, Prozessfilter
 und JMX-Ziele für alle Performance-Module. Container-Laufzeit und freigegebene Container kommen aus dem
@@ -37,6 +44,21 @@ Sammelordner auf, die Git, Build, Code-Graph, Pull Requests und Compose zusätzl
 jedes Modul übernimmt, was zu ihm passt (Git-Repositories, Gradle-/Maven-Projekte …). Der Schalter *Beschränkung
 aufheben* lässt die Tools jeden absoluten Pfad verwenden (aufgelöst zum nächsten passenden Verzeichnis darüber, z.B.
 dem Repository); nur lesend freigegebene Projekte des Team-Servers und die Schalter der Module gelten weiter.
+
+### Berechtigungen an das LLM übermitteln
+
+Das Modul **Berechtigungen** zeigt dem LLM, was es darf, und lässt es fehlende Rechte beim Nutzer anfragen:
+
+* `permissions_overview` und `permissions_check` lesen nur: Module an/aus, in der App abgeschaltete Tools, Schalter
+  (welcher Schalter welche Tools freischaltet, ermittelt das Modul durch probeweises Bauen der Tools), Einstellungen
+  (Geheimnisse nur als gesetzt/leer; Werte per Schalter *Einstellungswerte zeigen* ausblendbar), freigegebene
+  Verzeichnisse und Sperren des Administrators.
+* `permissions_request` (Schalter *Berechtigungen anfragen erlauben*) bittet um ein Tool, einen Schalter, ein Modul oder
+  ein Verzeichnis (unter *Freigaben*). Gefragt wird der Nutzer – je nach *Rückfrage über*: im MCP-Client per
+  Elicitation (`elicitation/create`, z.B. Claude Code), sonst bzw. bei `app` als Dialog dieser App (5 Minuten, dann gilt
+  es als abgelehnt). Erst nach Zustimmung wird gespeichert, wie beim Speichern im Formular (aktives Profil);
+  Einstellungen, die der Administrator gesperrt hat, lehnt das Tool ohne Rückfrage ab. Anfrage und Antwort stehen im
+  Tab *Aufrufe*.
 
 ### Container-Laufzeiten erweitern (ServiceLoader)
 
@@ -81,10 +103,12 @@ Schreibende Tools erscheinen nur mit ihrem Schalter:
 | Schalter | Tool | Jira | GitHub | GitLab | YouTrack | OpenProject |
 |---|---|---|---|---|---|---|
 | `allowComment` | `ticket_comment` | Kommentar (Wiki-Markup) | Issue-Kommentar | Note | Kommentar (Markdown) | Aktivität mit Kommentar (Markdown) |
-| `allowTransition` | `ticket_transition` | Workflow-Übergang | Schließen mit Grund/Wiedereröffnen, Spalte in jedem Project des Issues | Schließen/Wiedereröffnen, Board-Liste (Listen-Label tauschen) | Wert des State-Felds, als Befehl (`/api/commands`), damit Workflows greifen | Status, die der Workflow erlaubt (Formular-Endpunkt), PATCH mit `lockVersion` |
+| `allowTransition` | `ticket_transition` | Workflow-Übergang, Kommentar im selben Aufruf (`update.comment`, für Validatoren mit Pflichtkommentar) | Schließen mit Grund/Wiedereröffnen, Spalte in jedem Project des Issues | Schließen/Wiedereröffnen, Board-Liste (Listen-Label tauschen) | Wert des State-Felds, als Befehl (`/api/commands`), damit Workflows greifen | Status, die der Workflow erlaubt (Formular-Endpunkt), PATCH mit `lockVersion` |
 | `allowAssign` | `ticket_assign` | ein Zuständiger (DC: `name`, Cloud: `accountId`, Suche über zuweisbare Benutzer) | Logins, ignorierte werden gemeldet | Benutzer-IDs, `[0]` = niemand | Assignee-Feld (einfach oder mehrfach), Login/E-Mail/Name | ein Zuständiger aus `available_assignees` |
-| `allowEdit` | `ticket_update` | Titel, Beschreibung, Labels | dito | dito | dito, Labels = Tags (`tag`/`untag`-Befehle) | Titel, Beschreibung (keine Labels) |
-| `allowCreate` | `ticket_create` | Issue-Typ (Standard Task, bei Fehler Liste der gültigen) | Issue-Typ der Organisation | `issue_type` | Feld `Type`, Tags und Zuständige danach | Typ des Projekts (bei Fehler Liste der gültigen), sonst Standardtyp |
+| `allowEdit` | `ticket_update` | Titel, Beschreibung, Labels; `fields`: weitere Felder per Name oder ID aus der Editmeta (Text, Zahl, Datum, Benutzer, Option, Version, Komponente, Listen als Kommaliste, sonst JSON), leer = leeren | dito, ohne `fields` | dito, ohne `fields` | dito, Labels = Tags (`tag`/`untag`-Befehle) | Titel, Beschreibung (keine Labels) |
+| `allowCreate` | `ticket_create` | Issue-Typ (Standard Task, bei Fehler Liste der gültigen); `fields`: weitere Felder per Name oder ID aus dem Create-Screen von Projekt und Typ (Createmeta), umgewandelt wie bei `ticket_update`, im selben Aufruf – für Pflichtfelder wie Komponenten; lehnt Jira ab, nennt die Meldung die fehlenden Pflichtfelder | Issue-Typ der Organisation | `issue_type` | Feld `Type`, Tags und Zuständige danach | Typ des Projekts (bei Fehler Liste der gültigen), sonst Standardtyp |
+| `allowLink` | `ticket_link`, `ticket_unlink` | Linktypen der Instanz je Richtung (`blocks`, `is blocked by`, `relates to` …), `POST /issueLink`; entfernen per Link-ID | Parent/Sub-Issue (`sub_issues`), `blocks`/`is blocked by` (Issue-Abhängigkeiten); `ticket_links` zeigt die Abhängigkeiten mit | `relates to`, `blocks`/`is blocked by` (Premium) über `issues/:iid/links` | Linktypen der Instanz (`relates to`, `depends on`, `subtask of` …) als Befehl; entfernen per REST | Beziehungen (`relates to`, `blocks`, `follows`, `part of` …) und Parent/Unteraufgabe (Feld `parent`, PATCH mit `lockVersion`) |
+| `allowLogTime` | `ticket_log_time` | Worklog (`timeSpentSeconds`, `started`), Restschätzung wird automatisch reduziert | – (keine Zeiterfassung) | GraphQL `timelogCreate` (nur dort mit Datum) | Arbeitselement mit Dauer in Minuten, optional Work Item Type | Zeiteintrag (`hours` als ISO-Dauer, `spentOn`), optional Aktivität (bei Fehler Liste der erlaubten) |
 | `allowDelete` | `ticket_delete_comment`, `ticket_delete` | DELETE, Tickets mit Unteraufgaben werden abgelehnt (`deleteSubtasks=false`) | GraphQL `deleteIssue` (nur Repo-Admins, keine PRs); Kommentar wird vorher dem Issue zugeordnet | DELETE (Owner/Planner, ab 18.10 auch Autor) | DELETE | DELETE, Arbeitspakete mit Unteraufgaben werden abgelehnt (OpenProject löschte sie mit); Kommentare löschen kann die API nicht |
 
 **Nur selbst angelegte löschen** (`deleteOnlyOwn`, Standard an – wie `removeOnlyOwn` beim Container-Modul): gelöscht werden
@@ -99,11 +123,21 @@ nicht der Parameter `project` – `DEF-9` mit `project=ABC` wird abgelehnt, bevo
 OpenProject: Nummern wie `#123` verraten das Projekt nicht, daher wird das Arbeitspaket dafür einmal (lesend) abgerufen
 (`openproject:mein-projekt`). Ein Kommentar beim
 Statuswechsel (`ticket_transition … comment=`) braucht zusätzlich `allowComment`; `commentSuffix` hängt eine Kennzeichnung
-an jeden Kommentar. `ticket_links` und `ticket_transitions` sind lesend und immer da.
+an jeden Kommentar. `ticket_links`, `ticket_transitions` und `ticket_worklogs` sind lesend und immer da.
+
+`ticket_link` verknüpft `key <relation> target` (z.B. `ABC-1 blocks ABC-2`, `#1 Parent #2` = #2 wird Parent von #1);
+ohne `relation` listet es die möglichen Arten mit ID, ohne etwas zu ändern. `relation` nimmt Name oder ID, `_`/`-`/Leerzeichen
+gelten gleich (`is_blocked_by`). `ticket_unlink` entfernt eine Verknüpfung, wie `ticket_links` sie zeigt – bei mehreren
+zwischen denselben Tickets mit `relation`. Die Schreibfreigabe (`writeProjects`) wird für **beide** Tickets geprüft.
+
+`ticket_log_time` nimmt die Dauer als `1h 30m`, `90m`, `1,5h` oder `1:30` (Tage/Wochen werden abgelehnt, weil jedes
+System sie anders rechnet; höchstens 24 Stunden je Buchung) und den Tag als `yyyy-MM-dd`, `dd.MM.yyyy`, `heute` oder
+`gestern` (Standard heute, Zukunft wird abgelehnt). Systeme, die einen Zeitpunkt verlangen, bekommen für heute „jetzt
+minus Dauer“, sonst 9 Uhr in der lokalen Zeitzone.
 
 Provider implementieren Schreiben über `default`-Methoden von `TicketSystem` (`comment`, `transition`, `assign`, `update`,
-`create`, `links`, `transitions`) – was ein Provider nicht kann, meldet das Tool als „nicht unterstützt“; bestehende
-Plugin-Provider kompilieren unverändert.
+`create`, `logTime`, `links`, `transitions`, `worklogs`) – was ein Provider nicht kann, meldet das Tool als „nicht unterstützt“; bestehende
+Plugin-Provider kompilieren unverändert. Provider können auch aus Plugins kommen (siehe [Plugins](#plugins)).
 
 In der UI wählt „Aktiv“ (Mehrfachauswahl) die Systeme; darunter stehen die Felder und das Standardprojekt des gerade
 gewählten aktiven Systems, ein Umschalter wechselt zwischen ihnen. Ohne `provider` wählt das Modul das System, das
@@ -197,7 +231,8 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
   Nonce ist zufällig (64 Bit), damit sich kein Exit-Code fälschen lässt – beides nach dem Vorbild von
   [ssh-mcp](https://github.com/tufantunc/ssh-mcp).
 * Während `ssh_exec`, `ssh_shell_exec` und `ssh_shell_read` warten, sendet der Server die jeweils letzte Ausgabezeile als
-  `notifications/progress`, sofern der Client ein `progressToken` mitschickt (`core/ToolProgress`, für alle Module nutzbar).
+  `notifications/progress`, sofern der Client ein `progressToken` mitschickt (`core/ToolProgress` aus der Plugin-API,
+  für alle Module und Plugins nutzbar; die MCP-Anbindung macht `core/McpProgress`).
   Das sieht nur der Nutzer im Client – das LLM bekommt Ausgabe ausschließlich über die Tool-Ergebnisse. Jede Shell hat eine eigene SSH-Sitzung; höchstens „Max. offene Shells“, geschlossen nach
   „Shells schließen nach“ Minuten ohne Nutzung, bei geänderter Konfiguration und beim Beenden.
 * Abbrechen ist ehrlich: bei Zeitüberschreitung von `ssh_exec` und bei `ssh_shell_close` (^C, `exit`) folgt die
@@ -214,6 +249,110 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
 * Host-Keys: `accept-new` (Standard) merkt sich den Schlüssel beim ersten Verbinden in `~/.devtools-mcp/ssh_known_hosts`
   und lehnt einen geänderten ab; `strict` akzeptiert nur Hosts, die schon in der Datei stehen. *Verbindung testen*
   verbindet sich mit jeder Verbindung und zeigt Server-Version und Fingerprint.
+
+### Datenbanken (JDBC)
+
+Verbindungen werden unter Module → Datenbanken (JDBC) als Tabelle gepflegt: Name, JDBC-URL, Benutzer, Passwort,
+*Zugriff höchstens*, optional Treiber, Treiberklasse und eine Beschreibung für das LLM. Die Liste liegt verschlüsselt in
+`settings.json`; das LLM sieht Name, URL (Passwort-Parameter und `benutzer:passwort@` darin maskiert – auch in
+`permissions_overview`), Benutzer und Beschreibung. Alle Tools nehmen `connection` (Name, ohne Groß-/Kleinschreibung;
+leer = die einzige Verbindung).
+
+**Berechtigungen.** Jede Art von Anweisung hat einen eigenen Schalter und ein eigenes Tool – damit kennt das Modul
+*Berechtigungen* sie (`permissions_overview module=jdbc` zeigt, welcher Schalter welches Tool freischaltet), und das LLM
+kann eine fehlende mit `permissions_request tool=jdbc_delete` beim Nutzer anfragen:
+
+| Schalter | Tool | Standard |
+|---|---|---|
+| — | `jdbc_connections`, `jdbc_databases`, `jdbc_tables`, `jdbc_describe`, `jdbc_disconnect` | an (mit dem Modul) |
+| *Datensätze lesen* (`allowQuery`) | `jdbc_query` – SELECT, WITH, VALUES, SHOW, EXPLAIN | an |
+| *Datensätze einfügen* (`allowInsert`) | `jdbc_insert` – Zeilen als JSON-Objekte oder INSERT-Anweisung | aus |
+| *Datensätze ändern* (`allowUpdate`) | `jdbc_update` – UPDATE, MERGE, REPLACE | aus |
+| *Datensätze löschen* (`allowDelete`) | `jdbc_delete` – DELETE | aus |
+| *Struktur ändern* (`allowDdl`) | `jdbc_ddl` – CREATE, ALTER, DROP, TRUNCATE, RENAME, COMMENT | aus |
+| *Beliebiges SQL ausführen* (`allowExecute`) | `jdbc_execute` – Prozeduren, PL/SQL- und T-SQL-Blöcke, GRANT, SET … | aus |
+
+Zusätzlich deckelt *Zugriff höchstens* jede Verbindung: `read` (nur lesen – die Verbindung wird außerdem
+schreibgeschützt geöffnet, z.B. für Produktion), `write` (lesen und Datensätze ändern) oder `all` (was die Schalter
+erlauben). Den Deckel kann das LLM nicht anfragen.
+
+**Einordnung der Anweisungen.** Jedes Tool führt genau eine Anweisung aus und nur die Arten, für die es freigegeben ist
+(`SqlStatements`): ein Tokenizer überspringt Zeichenketten, Kommentare und quotierte Bezeichner und ordnet nach dem
+ersten Schlüsselwort ein. Eingebettete Änderungen brauchen ihre eigene Berechtigung – ein Upsert
+(`INSERT … ON CONFLICT DO UPDATE`) auch *ändern*, ein datenverändernder CTE (`WITH d AS (DELETE …) SELECT …`) auch
+*löschen*, `SELECT … INTO` gilt als freies SQL. Weil Datenbanken Text unterschiedlich lesen (`\'` in MySQL, `#`- und
+`/*! */`-Kommentare, `//` in H2, `$tag$` in PostgreSQL, `q'[…]'` in Oracle), wird jede Anweisung in drei Lesarten
+untersucht und die mit den meisten Rechten genommen – eine zweite Anweisung lässt sich so nicht in einer Zeichenkette
+verstecken. Die Kehrseite: ein `;` in PostgreSQL-`$tag$`- oder `E'…'`-Zeichenketten zählt als Trenner (dafür `$$`
+oder `jdbc_execute` verwenden).
+
+* `jdbc_query` läuft in einer schreibgeschützten Transaktion (`Connection.setReadOnly`, bei PostgreSQL
+  `BEGIN READ ONLY`), die immer zurückgerollt wird. Funktionen mit Nebenwirkungen kann das nicht bei jeder Datenbank
+  verhindern – für strikten Schutz einen Datenbankbenutzer mit Leserechten hinterlegen. Ergebnisse als Tabelle, CSV
+  oder JSON, begrenzt auf *Max. Zeilen je Ergebnis* und *Max. Zeichen je Wert*.
+* Werte gehen als Platzhalter `?` mit `params` an die Datenbank, gebunden mit dem Typ des Platzhalters bzw. der Spalte
+  (`ParameterMetaData`, Spalten-Metadaten): `"2024-05-01"` wird ein DATE, `"42"` ein INTEGER – auch bei streng
+  typisierten Datenbanken wie PostgreSQL.
+* `jdbc_insert` nimmt Zeilen als `[{"spalte": wert}]` (bis 1000 je Aufruf); Tabellen- und Spaltennamen werden über die
+  Metadaten aufgelöst (Groß-/Kleinschreibung egal) und quotiert, erzeugte Schlüssel kommen zurück.
+* `jdbc_insert`/`jdbc_update`/`jdbc_delete` laufen in einer Transaktion: ein Fehler ändert nichts, `dryRun=true` führt
+  aus, meldet die Zeilenzahl und rollt zurück. UPDATE und DELETE ohne WHERE nur mit `allRows=true`.
+* `jdbc_ddl` und `jdbc_execute` laufen im Autocommit (manches geht nicht in einer Transaktion, etwa `VACUUM` oder
+  `CREATE INDEX CONCURRENTLY`); `jdbc_execute` gibt den Text unverändert an den Treiber und liefert alle
+  Ergebnismengen und Update-Zählungen.
+* Fehler kommen mit Meldung, SQLState und Hinweis (Anmeldung, Netzwerk, fehlende Rechte, Zeitlimit) zurück; Passwörter
+  werden aus jeder Meldung entfernt.
+
+**Treiber.** Ohne Angabe nimmt das Modul einen Treiber aus dem Klassenpfad, der die URL annimmt (H2 ist eingebaut),
+sonst den bekannten Treiber zum Subprotokoll der URL – PostgreSQL, MySQL, MariaDB, SQL Server (auch jTDS), Oracle, DB2,
+AS/400, Informix, SAP HANA, SQLite, HSQLDB, Firebird, DuckDB, ClickHouse, Redshift, Snowflake, Trino, Exasol – in der
+neuesten stabilen Version aus den Maven-Repositories des Plugin-Stores (Maven Central oder ein eigener Mirror, mit
+Prüfsummen, Download nur beim ersten Zugriff). Im Feld *Treiber* lassen sich stattdessen Maven-Koordinaten
+`groupId:artifactId[:version]` angeben (z.B. eine ältere Version für einen alten Server; mit Version auch ohne
+Netzwerk aus dem Cache) oder Pfade zu JAR-Dateien bzw. Verzeichnissen, getrennt durch `;`. Jeder Treiber bekommt einen
+eigenen Class-Loader, sodass verschiedene Versionen nebeneinander laufen. Verbindungen werden je Datenbank
+wiederverwendet (höchstens zwei freie, geschlossen nach 10 Minuten Leerlauf, bei geänderter Konfiguration oder mit
+`jdbc_disconnect`). *Verbindung testen* verbindet sich mit jeder Verbindung und zeigt Produkt, Version, Treiber und was
+erlaubt ist.
+
+### Datenbank-Branches (Dolt)
+
+[Dolt](https://github.com/dolthub/dolt), [Doltgres](https://www.doltgres.com/) und
+[Doltlite](https://github.com/dolthub/doltlite) versionieren Daten wie Git. Unter Module → Datenbank-Branches (Dolt)
+wird je Datenbank eingetragen: Name, *Art* (`dolt`, `doltgres`, `doltlite`), das *Git-Arbeitsverzeichnis* (Repository
+oder Worktree), dessen Branch sie folgt, der *Ort* (`host[:port]/datenbank` bzw. der Pfad der Doltlite-Datei),
+Benutzer, Passwort (verschlüsselt, nie an das LLM) und optional ein fester *Startpunkt neuer Branches*.
+
+**Wechselt der Git-Branch, wechselt die Datenbank mit** – egal ob über `git_checkout`, die IDE oder die Shell: Gibt es
+in der Datenbank noch keinen gleichnamigen Branch, wird er angelegt – vom Branch, auf dem die Datenbank gerade steht
+(wie `git checkout -b`), oder vom eingetragenen Startpunkt. Danach landen neue Verbindungen ohne Branch-Angabe auf ihm:
+
+| Art | Branch anlegen | Ausgecheckt für neue Verbindungen |
+|---|---|---|
+| Dolt (MySQL-Protokoll) | `CALL DOLT_BRANCH(name, start)` | `SET PERSIST <db>_default_branch` – sofort und über Neustarts |
+| Doltgres (PostgreSQL-Protokoll) | `SELECT dolt_branch(name, start)` | geht in Doltgres 1.4 noch nicht (der Server nimmt `<db>_default_branch` im `SET` nicht an) – die Anwendung verbindet sich über `…/db/branch`; die Meldung nennt die URL |
+| Doltlite (Datei) | `dolt_branch(name, start)` | `dolt_default_branch(name)` – steht in der Datei |
+
+* Den Wechsel meldet ein `WatchService` auf dem Git-Verzeichnis (dort liegt `HEAD`, bei Worktrees das Ziel der Datei
+  `.git`) binnen Millisekunden; im Test lagen Checkout bis umgestellter Branch unter 0,2 s, Anlegen und Umstellen
+  dauerten bei Dolt 65 ms, bei Doltlite 120 ms. Zusätzlich wird alle 10 s nachgesehen und ein gescheiterter Abgleich
+  (Server lief nicht) nach 15 s wiederholt. Losgelöster HEAD (Rebase, Bisect, Tag) ändert nichts.
+* Nach jedem `git_*`-Tool wird sofort abgeglichen; was sich an den Datenbanken geändert hat (oder fehlschlug), steht
+  einmal im Ergebnis des Tools. `dolt_status` zeigt Git-Branch, Standard-Branch, Branches und letzten Abgleich jeder
+  Datenbank, `dolt_sync` gleicht sofort ab. Im Modul gibt es dafür *Jetzt abgleichen*.
+* Ein fehlender Branch wird immer zuerst angelegt: zeigt `<db>_default_branch` bei Dolt auf einen Branch, den es nicht
+  gibt, lehnt der Server jede neue Verbindung auf die Datenbank ab.
+* Offene Verbindungen bleiben auf ihrem Branch – eine laufende Anwendung sieht den neuen erst nach dem Neuverbinden.
+  Freie Verbindungen der jdbc_*-Tools auf dieselbe Dolt-Datenbank (ohne Branch in der URL) werden geschlossen, damit
+  `jdbc_query` gleich den neuen Branch liest.
+* Treiber für Dolt (MySQL Connector/J) und Doltgres (pgJDBC) lädt das JDBC-Modul beim ersten Zugriff per Maven.
+  Doltlite hat keine Java-Bindings; das Modul ruft das Programm `doltlite` auf (Pfad im Modul oder im `PATH`, Download
+  unter [Releases](https://github.com/dolthub/doltlite/releases)) und gibt das SQL über die Standardeingabe.
+* Commits, Diffs und Merges der Daten: bei Dolt/Doltgres über `jdbc_execute` (`CALL DOLT_COMMIT('-Am', '…')`,
+  `SELECT * FROM dolt_diff(…)`) mit einer Verbindung im JDBC-Modul.
+
+Tests: `DoltServerContainerTest` startet `dolthub/dolt-sql-server` und `dolthub/doltgresql` mit podman oder docker
+(übersprungen ohne Image), `DoltliteBackendTest` braucht `doltlite` im `PATH` oder `-Pdoltlite=<pfad>`.
 
 ### Chat-Systeme (ServiceLoader)
 
@@ -254,8 +393,10 @@ Modul an den gespeicherten IDs der zuletzt gesendeten (Matrix zusätzlich an der
 Konto **ohne** das Modul geschrieben wurde, gilt als Nachricht des Nutzers. So funktioniert Teams, wo das Modul unter dem
 Konto des Nutzers schreibt, und Matrix auch ohne eigenes Bot-Konto.
 
-Von sich aus in eine laufende Sitzung schreiben (Push) kann der Server nicht: Die *Channels* von Claude Code
+Von sich aus in eine laufende Sitzung schreiben (Push) kann der MCP-Server selbst nicht: Die *Channels* von Claude Code
 (`notifications/claude/channel`) gibt es nur für per stdio gestartete MCP-Server, DevTools MCP spricht Streamable HTTP.
+Dafür gibt es den [stdio-Proxy](#claude-code-über-stdio-tools-und-channel) (bisher meldet darüber nur das Mail-Modul);
+Chat-Nachrichten holt das LLM weiter mit `chat_receive`.
 
 In der UI wählt „Aktiv“ (Mehrfachauswahl) die Systeme; darunter stehen die Felder und die Standard-Unterhaltung des
 gerade gewählten aktiven Systems, ein Umschalter wechselt zwischen ihnen.
@@ -293,6 +434,114 @@ aktiv); das Modul selbst ist danach in der App einzuschalten.
 Ein weiteres System (z.B. Slack, Mattermost) braucht eine `ChatProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider`; Anmeldedaten, die zur
 Laufzeit entstehen, legt es über `ChatSettings.vault()` verschlüsselt ab.
+
+### E-Mail (IMAP)
+
+Das Modul **Mail (IMAP)** gibt dem LLM Zugriff auf E-Mail-Konten – auf das ganze Konto oder nur auf einzelne Ordner
+(Postfächer) – und meldet neue Mails von sich aus. Konten werden in der App gepflegt (Name, Anmeldung, IMAP-Server,
+Verschlüsselung `ssl`/`starttls`/`none`, Port, Benutzer, Passwort verschlüsselt, Beschreibung); das LLM sieht nur Name,
+Benutzer@Host, Beschreibung und die Ordner. Plugins nutzen dieselben Konten über den
+[`MailAccountProvider`](#plugin-schreiben).
+
+* **Freigegebene Ordner** je Konto, einer je Zeile: `INBOX`, `Projekte/Kunde-A`, `Projekte/*` (alle Unterordner).
+  Leer = das ganze Konto. Alle Tools – auch Ziel von `mail_move` und der Entwurfsordner von `mail_draft` – arbeiten nur
+  in freigegebenen Ordnern; *Verbindung testen* zeigt, welche es gibt und ob der Server IDLE kann.
+* **Lesen:** `mail_list` listet neueste zuerst (UID, Datum, `*` ungelesen, `!` markiert, `@` Anhang) und filtert per
+  IMAP-`SEARCH`; `mail_read` liest über Konto, Ordner und UID – mit `BODY.PEEK`, die Mail bleibt ungelesen. Text kommt
+  bevorzugt aus `text/plain`, sonst aus HTML (Links als „Text (URL)“), Anhänge stehen mit Name, Typ und Größe da.
+* **Schalter (Standard aus):** *Markieren* (`mail_mark`), *Verschieben* (`mail_move`, per `MOVE`, sonst Kopieren + `UID
+  EXPUNGE` nur genau dieser Mails; endgültig gelöscht wird nie), *Entwürfe* (`mail_draft`: Entwurf im Ordner mit
+  SPECIAL-USE `\Drafts` bzw. „Drafts“/„Entwürfe“, als Antwort mit „Re:“, Empfänger, Zitat und `In-Reply-To`),
+  *Senden* (`mail_send`, siehe unten).
+
+#### Senden (SMTP)
+
+Konten mit *SMTP-Server* (dazu Verschlüsselung `starttls`/`ssl`/`none`, Port, *Absenderadresse*) können senden, wenn der
+Schalter *Senden erlauben* an ist. `mail_send` schickt reinen Text an An/Cc/Bcc, als Antwort (`replyToUid`) mit „Re:“,
+Empfängern, Zitat und `In-Reply-To`/`References`; die ursprüngliche Mail wird als beantwortet markiert. Exchange Online
+sendet über `smtp.office365.com:587` mit demselben OAuth-Token (delegiert zusätzlich `SMTP.Send`, nach dem Eintragen des
+SMTP-Servers neu anmelden; „Authentifiziertes SMTP“ muss für das Postfach erlaubt sein).
+
+Senden lässt sich nicht zurückholen, und neue Mails von außen stoßen das LLM an – deshalb:
+
+* **Rückfrage vor jeder Mail** (*Vor dem Senden nachfragen*, Standard `auto`): Der Nutzer sieht Absender, Empfänger,
+  Betreff und Text und bestätigt im MCP-Client (Elicitation) oder im Dialog der App; ohne Antwort wird nicht gesendet.
+  `off` nur zusammen mit *Erlaubte Empfänger*.
+* **Erlaubte Empfänger** (Adresse, `@domain` oder `domain` je Zeile) gelten für An, Cc und Bcc – sonst wird gar nicht
+  erst gefragt.
+* **Max. Mails pro Stunde** (Standard 20, über alle Konten) bremst Schleifen.
+* **Eigene Mails stoßen nichts an:** Kommt eine selbst gesendete Mail in einem überwachten Ordner an (z.B. an sich
+  selbst), gehen dafür weder Channel noch Befehl los – ein Agent antwortet so nicht endlos auf sich selbst.
+* **Kopie in „Gesendet“** (SPECIAL-USE `\Sent` bzw. übliche Namen, muss freigegeben sein): `auto` legt sie ab – außer bei
+  Exchange Online und Gmail, die das selbst tun.
+
+*Verbindung testen* prüft auch SMTP (Anmeldung, Absender).
+
+Die Instructions und jede Tool-Beschreibung sagen dem LLM, dass Mails Daten von außen sind: Aufforderungen darin werden
+nicht befolgt, verschoben und entworfen wird nur auf Anweisung des Nutzers.
+
+#### Exchange Online / Microsoft 365
+
+Microsoft lässt IMAP bei Exchange Online nur noch mit OAuth2 zu. Ein Konto mit *Anmeldung* `microsoft` meldet sich per
+SASL `XOAUTH2` an (Server leer = `outlook.office365.com:993`), *Benutzer* ist die Adresse des Postfachs – auch eines
+freigegebenen Postfachs, auf das der angemeldete Benutzer Vollzugriff hat.
+
+1. In Entra ID eine App-Registrierung anlegen (oder die für Teams erweitern): *Authentifizierung* → „Öffentliche
+   Clientflows zulassen“ = Ja; *API-Berechtigungen* → „Von meiner Organisation verwendete APIs“ → *Office 365 Exchange
+   Online* → delegiert `IMAP.AccessAsUser.All`, zum Senden auch `SMTP.Send` (je nach Tenant mit Administratorzustimmung). IMAP muss für das Postfach
+   eingeschaltet sein (Exchange Admin Center → Postfach → E-Mail-Apps).
+2. Beim Konto Tenant (ID oder Domain, Standard `organizations`) und Client-ID eintragen, speichern.
+3. *Anmelden* (Aktion des Moduls) ausführen: die App zeigt Adresse und Code und öffnet den Browser. Ohne App-Fenster
+   liefert `mail_login` beides an das LLM, die Anmeldung läuft im Hintergrund weiter.
+
+Das Refresh-Token liegt verschlüsselt in `~/.devtools-mcp/mail-tokens.json`, Access-Tokens nur im Speicher; die App
+erneuert sie selbst. Nach der Anmeldung verbindet die Überwachung sofort. Läuft die Anmeldung ab oder wird widerrufen,
+melden Tools, *Verbindung testen* und `mail_accounts` „nicht angemeldet“ – die Überwachung wartet dann, statt den
+Server mit Versuchen zu belasten. Für nationale Clouds gibt es den *Anmelde-Endpunkt* in den Modul-Einstellungen.
+
+#### Neue Mails melden: Channel, Befehl, `mail_receive`
+
+**Überwachte Ordner** (je Konto, Standard `INBOX`, müssen freigegeben sein) beobachtet die App im Hintergrund, solange
+das Modul an ist – je Ordner eine eigene Verbindung mit **IMAP IDLE** (der Server meldet neue Mails sofort; alle
+*IDLE auffrischen nach* Minuten neu angestoßen). Kann der Server kein IDLE oder ist es abgeschaltet, fragt die App alle
+*Abfrageintervall* Sekunden. Neu ist jede Mail mit höherer UID als die zuletzt gemeldete; der Stand steht in
+`~/.devtools-mcp/mail-state.json` und übersteht Neustarts (beim ersten Überwachen gilt der Bestand als bekannt, nach
+einer Pause kommen die verpassten Mails – mehr als 20 auf einmal nur zusammengefasst). Abgerissene Verbindungen baut die
+App mit wachsendem Abstand neu auf, nach einer fehlgeschlagenen Anmeldung erst nach 5 Minuten.
+
+Jede neue Mail geht an drei Stellen:
+
+1. **Claude-Code-Channel** (*Neue Mails an Claude Code melden*, Standard an): Die laufende Sitzung bekommt die Mail als
+   Nachricht und wird dadurch aktiv – ohne dass das LLM fragt:
+   ```
+   <channel source="devtools" event_source="mail" account="arbeit" folder="INBOX" uid="4711" from="kunde@example.com" subject="Rückfrage">
+   Neue E-Mail in arbeit/INBOX
+   Von: Kunde <kunde@example.com>
+   …
+   Lesen: mail_read(account="arbeit", folder="INBOX", uid=4711)
+   ```
+   Channels gibt es nur für MCP-Server, die Claude Code per stdio selbst startet – dafür bindet man DevTools über den
+   [stdio-Proxy](#claude-code-über-stdio-tools-und-channel) ein (Tools und Channel in einem Eintrag) und startet
+   Claude Code mit `--dangerously-load-development-channels server:devtools`. Die Ereignisse holt der Proxy über
+   `GET /mcp/channel/events` (Server-Sent Events, geschützt wie `/mcp` durch das Zugriffstoken); nach einer kurzen
+   Trennung (App-Neustart) holt er mit `Last-Event-ID` nach, was im Puffer der App (200 Ereignisse) noch da ist. Die
+   Ereignisse sind allgemein gehalten (`core/ChannelEvents`) – weitere Module können darüber melden.
+2. **Befehl bei neuer E-Mail** – für einen Agenten ohne offene Sitzung, z.B.
+   ```
+   claude -p "Neue Mail {account}/{folder} UID {uid}: lies sie mit mail_read und bearbeite sie nach meinen Regeln für Support-Mails" --allowedTools "mcp__devtools__mail_*"
+   ```
+   Der Befehl läuft ohne Shell: erst in Argumente zerlegt (`"…"`/`'…'` gruppieren), dann werden `{account}`,
+   `{folder}` und `{uid}` ersetzt. Absender und Betreff kommen von außen und stehen deshalb nur in Umgebungsvariablen
+   (`DEVTOOLS_MAIL_FROM`, `DEVTOOLS_MAIL_SUBJECT`, dazu `DEVTOOLS_MAIL_ACCOUNT`, `_FOLDER`, `_UID`) – nie in der
+   Befehlszeile. Läufe kommen nacheinander dran (höchstens 20 wartend), mit Zeitlimit und Arbeitsverzeichnis aus den
+   Einstellungen; Ergebnis und Ausgabe stehen im Log, der letzte Lauf in `mail_accounts`. Unter Windows `cmd /c claude …`
+   oder den vollen Pfad zu `claude.exe` angeben.
+3. **`mail_receive`** liefert jede neue Mail genau einmal und wartet mit `waitSeconds` – für Clients ohne Channels
+   („warte auf Mails“ in einer Schleife). Mehrere Clients teilen sich diesen Eingang.
+
+Channel und Befehl lassen sich auf **Absender** beschränken (Adresse, `@domain` oder `domain` je Zeile) und melden
+standardmäßig **nur ungelesene** Mails (z.B. nicht, was eine Regel schon gelesen einsortiert hat); `mail_receive` liefert
+unabhängig davon jede neue Mail. Wohin gemeldet wird und wie viele Brücken verbunden sind, zeigt `mail_accounts`.
 
 ### Maven-Artefakte
 
@@ -332,9 +581,10 @@ Gradle-Multiprojekt:
 | Projekt | Inhalt | Artefakt |
 |---|---|---|
 | `desktop` | Desktop-App: MCP-Server, alle Module, Plugins, JavaFX-Oberfläche; Backend eingebettet oder Anbindung an einen Team-Server | `desktop/build/libs/devtools-mcp-<version>.jar` |
-| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
+| `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories, Skripte und die Graph-Storage der Code-Graphen (ArcadeDB, eingebettet oder extern) mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
-| `shared` | Gemeinsam: Einstellungs-Modell, Datenklassen der GraphQL-API (`api`) | – |
+| `shared` | Gemeinsam: Einstellungs-Ablage, Datenklassen der GraphQL-API (`api`), Zugriff auf die Code-Graphen (`GraphProvider`, `GraphReader`, `CodeGraph`) | – |
+| `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), Datenbankverbindungen (`DatabaseConnectionProvider`), Projektverzeichnisse (`ProjectProvider`), E-Mail-Konten (`MailAccountProvider`), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
 | `natives` | Zugriffe auf das Betriebssystem für die Fenstersteuerung: Fenstersysteme (FFM), zweiter KI-Zeiger mit eigener Maus und Tastatur (JNA), Programmstart im Hintergrund | – (Bibliothek) |
 
 MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
@@ -343,24 +593,176 @@ Backend. Die Desktop-App spricht in beiden Fällen dieselbe GraphQL-API.
 
 ## Starten
 
+Kurz: Jar bauen, die App einmal mit Fenster starten (erstes Konto anlegen, Module einschalten), dann den Client
+verbinden. Die App läuft danach im Tray weiter und ist für alle Clients auf diesem Rechner zuständig.
+
+### Voraussetzungen
+
+* **JDK 25** (`java -version` muss 25 oder neuer zeigen). Ältere Versionen brechen mit
+  `UnsupportedClassVersionError` ab.
+* Das Jar enthält JavaFX für **die Plattform, auf der es gebaut wurde** (macOS Intel/Apple Silicon, Windows, Linux) –
+  für einen anderen Rechner dort bauen.
+
+### Bauen
+
 ```bash
-./gradlew :desktop:bootRun          # Desktop-App (Entwicklung, Backend eingebettet)
-./gradlew :desktop:bootJar          # desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar → java -jar …
+./gradlew :desktop:bootJar          # desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar
+./gradlew :desktop:bootRun          # Desktop-App direkt aus den Quellen (Entwicklung, Backend eingebettet)
 ./gradlew :server:bootRun           # Team-Server auf Port 8080
 ./gradlew :server:bootJar :server:war   # Server als Jar (Jetty) bzw. WAR für WildFly
 ./gradlew build                     # alles inkl. Tests
 ```
 
-Der MCP-Server der Desktop-App lauscht auf `http://127.0.0.1:8765/mcp` (Streamable HTTP, nur localhost).
-Über **„Client verbinden…“** zeigt die App fertige Konfigurationen, z.B.:
+### App starten
+
+**Mit Fenster** (der Normalfall):
 
 ```bash
-claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
+java -jar desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar
 ```
+
+1. Beim allerersten Start legt man im Anmeldefenster das Administrator-Konto des eingebetteten Backends an, danach
+   meldet man sich bei jedem Start an (oder trägt unter *Backend ändern…* einen Team-Server ein).
+2. Links die gewünschten **Module** einschalten und rechts konfigurieren (*Speichern*, *Verbindung testen*).
+3. Fenster schließen – die App läuft im System-Tray weiter, *Beenden* über das Tray-Menü. Unter *Einstellungen* lässt
+   sich „Minimiert im Tray starten“ einschalten, z.B. für den Autostart.
+
+**Ohne Fenster** (Server, Autostart ohne Anmeldedialog) mit `--headless`; angemeldet wird über ein persönliches
+Desktop-Token (siehe [Backend und Team-Server](#backend-und-team-server)) oder `DEVTOOLS_MCP_USER` +
+`DEVTOOLS_MCP_PASSWORD`:
+
+```bash
+DEVTOOLS_MCP_TOKEN=<desktop-token> java -jar devtools-mcp-0.1.0-SNAPSHOT.jar --headless
+```
+
+Ohne Anmeldung läuft der MCP-Server ohne Tools (siehe [Benutzer, Rollen und Rechte](#benutzer-rollen-und-rechte)).
+
+**Autostart** – die App sollte laufen, bevor ein Client verbindet; für die Mail-Überwachung am besten immer:
+
+* macOS: *Systemeinstellungen → Allgemein → Anmeldeobjekte* mit einem kleinen Skript, das `java -jar …` startet,
+  oder ein LaunchAgent (`~/Library/LaunchAgents/…plist` mit `ProgramArguments` = `java`, `-jar`, Pfad zum Jar und
+  `RunAtLoad` = `true`).
+* Windows: Verknüpfung auf `javaw -jar C:\pfad\devtools-mcp-0.1.0-SNAPSHOT.jar` im Autostart-Ordner
+  (`shell:startup`).
+* Linux: Desktop-Autostart (`~/.config/autostart/*.desktop`) mit Fenster, ohne Fenster eine systemd-User-Unit mit
+  `--headless` und `Environment=DEVTOOLS_MCP_TOKEN=…`.
+
+**Port und Daten:** Der MCP-Server lauscht nur auf `http://127.0.0.1:8765/mcp` (Port unter *Einstellungen*, wirksam
+nach Neustart). Einstellungen, Schlüssel und das eingebettete Backend liegen in `~/.devtools-mcp/` (änderbar über
+`DEVTOOLS_MCP_HOME`). Es darf nur eine App je Datenordner laufen.
+
+### Clients verbinden
+
+**„Client verbinden…“** in der App zeigt fertige Befehle und Konfigurationen für die gängigen Clients, mit Port, Token
+und dem Pfad des Jars für den stdio-Proxy. Zwei Wege:
+
+* **Streamable HTTP** – jeder MCP-Client (Claude Code, Claude Desktop, Cursor, VS Code, Hermes …):
+  ```bash
+  claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
+  ```
+  Mit Zugriffstoken (*Einstellungen*) zusätzlich `--header "Authorization: Bearer <token>"`.
+* **stdio-Proxy** – für Claude Code, wenn neue E-Mails die Sitzung von sich aus anstoßen sollen (Channels, siehe
+  unten). Der Proxy liest Port und Token selbst aus den Einstellungen:
+  ```bash
+  claude mcp add devtools -- java -jar ~/.devtools-mcp/devtools-mcp.jar stdio
+  ```
+  Die App legt beim Start eine Kopie ihres Jars unter diesem festen Pfad ab und hält sie aktuell (siehe
+  [unten](#fester-pfad-des-jars)). Unter Windows den absoluten Pfad angeben, z.B.
+  `C:\Users\<name>\.devtools-mcp\devtools-mcp.jar` – `~` setzt dort keine Shell ein.
+
+Nur einen der beiden Einträge unter demselben Namen anlegen – sonst gibt es jedes Tool doppelt. `claude mcp list`
+zeigt, ob die Verbindung steht.
+
+### Claude Code über stdio: Tools und Channel
+
+Claude Code kann einen MCP-Server nur dann von sich aus Nachrichten in die Sitzung schreiben lassen (*Channels*, z.B.
+„neue E-Mail“), wenn es den Server selbst per stdio startet. Die App selbst per stdio starten zu lassen hieße eine
+eigene, vollständige App je Sitzung (zweiter Port, gesperrte Datenbank, doppelte Mail-Überwachung). Stattdessen bringt
+das Jar einen **stdio-Proxy** mit, der an die laufende App andockt:
+
+```bash
+claude mcp add devtools -- java -jar ~/.devtools-mcp/devtools-mcp.jar stdio
+```
+
+```bash
+claude --dangerously-load-development-channels server:devtools
+```
+
+* Jede MCP-Nachricht geht an `/mcp` der App (Streamable HTTP mit Sitzungs-ID und Protokollversion): Tools,
+  Fortschritt, Rückfragen der App an den Client (Elicitation, z.B. bei `permissions_request` und `mail_send`) und
+  `tools/list_changed` über den Meldungsstrom der App. Für Claude Code ist es ein gewöhnlicher stdio-Server.
+* Zusätzlich meldet der Proxy `experimental["claude/channel"]`, hängt die Channel-Hinweise an die Instructions und
+  reicht Ereignisse der App als `notifications/claude/channel` weiter.
+* Startet die App neu, meldet sich der Proxy mit den ursprünglichen `initialize`-Daten neu an, wiederholt die Anfrage
+  und meldet `tools/list_changed`. Startet Claude Code vor der App, wartet `initialize` bis zu 15 Sekunden.
+* Port und Zugriffstoken liest der Proxy aus `~/.devtools-mcp/settings.json`, abweichend `--url http://127.0.0.1:8765`,
+  `--token …` bzw. `DEVTOOLS_MCP_AUTH_TOKEN`. Gebraucht wird dieselbe Java-Version wie für die App; „Client
+  verbinden…“ zeigt den fertigen Befehl.
+* Ohne den Schalter `--dangerously-load-development-channels` funktioniert alles außer den Benachrichtigungen. Er ist
+  nötig, weil Channels in Claude Code eine *Research Preview* sind, und wirkt nur interaktiv (nicht mit `-p`).
+  Voraussetzungen von Claude Code: Anmeldung über claude.ai oder Console-API-Key (nicht Bedrock/Vertex/Foundry), in
+  Team-/Enterprise-Organisationen muss der Administrator Channels erlauben (`channelsEnabled`).
+* `java -jar devtools-mcp.jar channel` liefert nur die Benachrichtigungen (ohne Tools) – für einen zweiten Eintrag
+  neben dem HTTP-Eintrag.
+* Ereignisse holt der Proxy erst, wenn Claude Code die Sitzung initialisiert hat. Neben neuen Mails kommen so
+  Angebote und Antworten der [Kooperation](#kooperation-zwischen-instanzen-und-geräten) und
+  [Rückrufe](#rückrufe--ergebnis-lang-laufender-aktionen-an-das-llm) – liegengebliebene Rückrufe gehen an die nächste
+  Sitzung, die sich verbindet.
+
+#### Fester Pfad des Jars
+
+Damit der Eintrag in Claude Code nicht vom Ablageort oder der Version des Jars abhängt, kopiert die App beim Start ihr
+eigenes Jar nach `~/.devtools-mcp/devtools-mcp.jar` (bzw. in den Ordner aus `DEVTOOLS_MCP_HOME`) – nur, wenn Größe
+oder Änderungszeit abweichen. Nach einem Update der App genügt also ein Neustart; der Eintrag bleibt gleich.
+
+* Ersetzt wird über eine temporäre Datei und ein Umbenennen – ein Proxy liest nie ein halb geschriebenes Jar.
+* Unter Windows sperrt ein laufender Proxy die Datei. Dann bleibt die alte Kopie, bis alle Proxys beendet sind (die
+  App versucht es jede Minute erneut, Hinweis im Log). Ein alter Proxy arbeitet mit der neuen App weiter.
+* Beim Start aus der IDE (`bootRun`) gibt es kein Jar und damit keine Kopie.
+
+### Schnellstart: neue E-Mails in Claude Code
+
+1. App starten, Modul **Mail (IMAP)** einschalten und ein Konto anlegen: Server, Benutzer, Passwort – bzw. für
+   Exchange Online *Anmeldung* `microsoft`, Tenant und Client-ID (siehe
+   [Exchange Online / Microsoft 365](#exchange-online--microsoft-365)), speichern und die Aktion *Anmelden* ausführen.
+   *Überwachte Ordner* steht auf `INBOX`; *Verbindung testen* muss „verbunden, IDLE ja“ zeigen.
+2. In Claude Code den stdio-Proxy eintragen (einmalig) und Claude Code mit dem Channel starten:
+   ```bash
+   claude mcp add devtools -- java -jar ~/.devtools-mcp/devtools-mcp.jar stdio
+   ```
+   ```bash
+   claude --dangerously-load-development-channels server:devtools
+   ```
+3. Claude sagen, was mit neuen Mails passieren soll – im Gespräch oder dauerhaft in der `CLAUDE.md`, z.B. „Bei neuen
+   Mails von Kunden: zusammenfassen und einen Antwortentwurf mit `mail_draft` anlegen, nichts senden“. Ohne Vorgabe
+   informiert Claude nur.
+4. Testen: eine Mail an das Konto schicken – nach wenigen Sekunden erscheint sie in der Sitzung. `mail_accounts` zeigt,
+   ob die Überwachung läuft und wie viele stdio-Proxys verbunden sind.
+
+Soll ohne offene Sitzung reagiert werden, statt (oder zusätzlich zu) Schritt 2 den *Befehl bei neuer E-Mail* setzen,
+z.B. `claude -p "…" --allowedTools "mcp__devtools__mail_*"` (siehe
+[Neue Mails melden](#neue-mails-melden-channel-befehl-mail_receive)).
+
+### Fehlersuche
+
+| Symptom | Ursache / Abhilfe |
+|---|---|
+| `UnsupportedClassVersionError` | Java älter als 25 – `java -version` prüfen; im Proxy-Eintrag ggf. den vollen Pfad zum JDK-25-`java` angeben. |
+| Tools fehlen, `claude mcp list` zeigt „failed“ | App läuft nicht oder ist nicht angemeldet. Der Proxy meldet dann „DevTools-App nicht erreichbar … läuft die App?“ – App starten, ggf. `--url http://127.0.0.1:<port>` angeben. |
+| HTTP 401 | Zugriffstoken stimmt nicht: Header des HTTP-Eintrags anpassen bzw. beim Proxy `--token`/`DEVTOOLS_MCP_AUTH_TOKEN` (sonst liest er es aus den Einstellungen). |
+| Port belegt beim Start | Läuft die App schon (Tray)? Sonst unter *Einstellungen* einen anderen Port wählen – „Client verbinden…“ zeigt danach die neuen Befehle. |
+| Neue Mails kommen nicht in der Sitzung an | Claude Code ohne `--dangerously-load-development-channels server:devtools` gestartet, mit `-p` (Channels nur interaktiv) oder die Organisation erlaubt Channels nicht (`channelsEnabled`). In der App: Modul an, *Neue Mails an Claude Code melden* an, Ordner unter *Überwachte Ordner* und freigegeben, Absenderfilter und „nur ungelesene“ prüfen. `mail_receive` zeigt, ob die Mail überhaupt erkannt wurde. |
+| Exchange: „nicht angemeldet“ | Aktion *Anmelden* bzw. `mail_login` ausführen; nach dem Eintragen eines SMTP-Servers neu anmelden (Berechtigung `SMTP.Send`). |
+
+Meldungen des Proxys stehen in Claude Codes MCP-Log (`claude --debug`), die der App im Tab **Aufrufe** und auf der
+Konsole bzw. im Log der App.
 
 ## Bedienung
 
-* **Module** (links): an/aus, Status (grün aktiv · grau aus · rot Fehler).
+* **Anmeldung:** Beim Start fragt die App nach Benutzername und Passwort – ohne Anmeldung gibt es keine Tools. Beim
+  ersten Start mit eingebettetem Backend richtet man dort das erste Konto ein (siehe
+  [Benutzer, Rollen und Rechte](#benutzer-rollen-und-rechte)). *Backend ändern…* trägt einen Team-Server ein.
+* **Module** (links): an/aus, Status (grün aktiv · grau aus · rot Fehler · „keine Berechtigung“).
 * **Konfiguration** (rechts): Formular wird aus dem Modul-Schema erzeugt; *Speichern* registriert die Tools
   sofort neu, verbundene Clients erhalten `notifications/tools/list_changed`. *Verbindung testen* prüft
   die ungespeicherten Eingaben. Gespeichert wird im Backend als Überschreibung im aktiven Profil; gesperrte
@@ -369,19 +771,25 @@ claude mcp add --transport http devtools http://127.0.0.1:8765/mcp
 * **Aufrufe**: Live-Protokoll aller Tool-Aufrufe mit Argumenten, Ergebnis, Dauer und Fehlern.
 * **Skills**: Übersicht der gespeicherten Skills mit Inhalt, Zusatzdateien und Historie.
 * **Memories**: die vom LLM festgehaltenen früheren Aktionen mit Suche (wie `memories_search`) und Löschen.
-* **Backend**: eingebettet oder Team-Server, Status, aktives Profil, Projekte mit lokalem Verzeichnis (siehe unten).
+* **Backend**: eingebettet oder Team-Server, Status, angemeldeter Benutzer mit Rollen (*Abmelden*, *Passwort
+  ändern…*), aktives Profil, Projekte mit lokalem Verzeichnis (siehe unten).
+* **Benutzer** (nur mit dem Recht „Benutzer und Rollen verwalten“): Benutzer und Rollen samt Rechten verwalten – wie
+  in der Web-UI des Team-Servers, auch für das eingebettete Backend.
 * **Einstellungen**: Port (nach Neustart), optionales Bearer-Token (sofort wirksam), Tray-Verhalten.
 * Fenster schließen → läuft im System-Tray weiter; *Beenden* über das Tray-Menü.
 
 Die Modul-Einstellungen liegen im Backend (eingebettet: `core.mv.db` im Datenordner). `~/.devtools-mcp/settings.json`
 (Pfad per `DEVTOOLS_MCP_HOME` bzw. `-Ddevtools.mcp.home` änderbar) hält nur noch App-Einstellungen: Port,
-Zugriffstoken, Tray, Team-Server (Adresse + Desktop-Token), Plugins und die lokalen Projektverzeichnisse. Beim ersten
-eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen aus `settings.json` als globale Vorgaben
-(Marker `backend-import.done`). Geheimnisse werden mit AES-GCM verschlüsselt, der Schlüssel liegt in `secret.key`.
+Zugriffstoken, Tray, Team-Server (Adresse, zuletzt angemeldeter Benutzer), Plugins und die lokalen
+Projektverzeichnisse. Beim ersten eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen aus
+`settings.json` als globale Vorgaben (Marker `backend-import.done`, sobald sich jemand mit dem Recht „Globale
+Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der Schlüssel liegt in `secret.key`.
 
 ### Sicherheit
 
 * Nur `127.0.0.1`; Clients auf demselben Rechner ohne Token oder mit dem Zugriffstoken aus den Einstellungen.
+* Tools gibt es nur mit angemeldetem Benutzer, und nur die, auf die seine Rollen ein Recht geben (siehe
+  [Benutzer, Rollen und Rechte](#benutzer-rollen-und-rechte)).
 * Git/Build arbeiten ausschließlich in den freigegebenen Verzeichnissen (im Modul oder global unter **Freigaben**);
   Pfade außerhalb werden abgewiesen – außer die Beschränkung ist unter **Freigaben** bewusst aufgehoben.
 * Build: nur freigegebene Tasks/Goals, Argumente werden gegen eine Zeichen-Whitelist geprüft (kein Shell-Injection
@@ -399,6 +807,12 @@ eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen au
 * SSH: Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; Host-Key-Prüfung gegen eine eigene
   known_hosts-Datei (geänderte Schlüssel werden immer abgelehnt). `ssh_exec` läuft mit den vollen Rechten des
   hinterlegten Benutzers – dafür einen eingeschränkten Benutzer anlegen oder den Schalter abschalten.
+* Datenbanken (JDBC): Zugangsdaten verschlüsselt und nie in Tool-Ausgaben oder Fehlermeldungen; nur Lesen ist
+  standardmäßig an, jede ändernde Art von Anweisung hat einen eigenen Schalter, und je Verbindung lässt sich der Zugriff
+  auf „nur lesen“ deckeln. Die Einordnung der Anweisungen ist vorsichtig, aber kein vollständiger SQL-Parser – die
+  wirksamste Grenze bleibt ein Datenbankbenutzer, der nur die nötigen Rechte hat.
+* Datenbank-Branches (Dolt): Zugangsdaten verschlüsselt und nie in Ausgaben; das Modul legt nur Branches an und stellt
+  den Standard-Branch um – es löscht, mergt und setzt nichts zurück, auch nicht, wenn ein Git-Branch gelöscht wird.
 * Chat: Token, Passwörter und das Teams-Refresh-Token verschlüsselt und nie in Tool-Ausgaben. Chat-Nachrichten sind
   Eingaben, die das LLM wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Mitglied
   einer freigegebenen Unterhaltung Anweisungen geben), für Matrix ein eigenes Bot-Konto verwenden und Unterhaltungen
@@ -406,46 +820,132 @@ eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen au
 
 ### Backend und Team-Server
 
-Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills und Memories und bietet dafür eine
-**GraphQL-API** unter `/graphql` (Schema: `backend/src/main/resources/backend-graphql/schema.graphqls`; Queries/Mutations über
+Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills, Memories und die Code-Graphen und
+bietet dafür eine **GraphQL-API** unter `/graphql` (Schema: `backend/src/main/resources/backend-graphql/schema.graphqls`
+und `graph.graphqls`; Queries/Mutations über
 HTTP, Subscriptions über WebSocket).
 
 * **Eingebettet** (Standard, kein Team-Server eingetragen): Das Backend läuft in der Desktop-App auf
-  `http://127.0.0.1:<port>/graphql`, mit Core- und Skill-Datenbank im Datenordner. Angemeldet ist ohne Login der
-  lokale Benutzer `local` (Administrator; E-Mail = frühere Einstellung „Benutzer-E-Mail“ des Skill-Moduls, sonst
-  Git-E-Mail), die App erzeugt dafür bei jedem Start ein Token.
-* **Team-Server** (`server`): dasselbe Backend plus Web-UI, für mehrere Entwickler. Tab *Backend* → Server-Adresse und
-  Desktop-Token → *Server eintragen*; gilt nach einem Neustart der App (dann läuft kein eingebettetes Backend, keine
-  lokalen Datenbanken). *Eingebettet verwenden* stellt zurück.
+  `http://127.0.0.1:<port>/graphql`, mit Core- und Skill-Datenbank im Datenordner. Beim ersten Start richtet man im
+  Anmeldefenster das erste Konto ein (Administrator; E-Mail vorbelegt mit der früheren Einstellung „Benutzer-E-Mail“
+  des Skill-Moduls, sonst der Git-E-Mail).
+* **Team-Server** (`server`): dasselbe Backend plus Web-UI, für mehrere Entwickler. Im Anmeldefenster *Backend
+  ändern…* bzw. im Tab *Backend* die Server-Adresse eintragen; gilt nach einem Neustart der App (dann läuft kein
+  eingebettetes Backend, keine lokalen Datenbanken), angemeldet wird mit dem Konto des Servers. *Eingebettet
+  verwenden* stellt zurück.
 
 ```bash
 java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL unter /graphql
 ```
 
-* **Abgleich:** Die App meldet dem Backend ihre Module samt Feldern und Tools (`reportCatalog`; daraus baut die Web-UI
-  die Formulare), lädt Benutzer, Vorgaben und Projekte und abonniert `settingsChanged`, `projectsChanged`,
-  `skillsChanged` und `memoriesChanged`. Änderungen – auch aus der Web-UI oder von einer anderen Desktop-App – kommen sofort an; die Tools
+* **Abgleich:** Nach der Anmeldung meldet die App dem Backend ihre Module samt Feldern und Tools (`reportCatalog`;
+  daraus baut die Web-UI die Formulare), lädt Benutzer (mit Rollen und Rechten), Vorgaben und Projekte und abonniert
+  `settingsChanged`, `projectsChanged`, `skillsChanged` und `memoriesChanged`. Änderungen – auch aus der Web-UI oder von einer anderen Desktop-App – kommen sofort an; die Tools
   werden neu gebaut, MCP-Clients bekommen `tools/list_changed`. Bricht die Verbindung ab, verbinden sich die
-  Subscriptions mit wachsendem Abstand neu; dazwischen gilt der letzte Stand (beim Team-Server auch über einen
-  Neustart: verschlüsselte Cache-Datei `team-cache.json`). Überholte Stände erkennt die App am Änderungszähler
-  (`revision`).
-* **Benutzer** (Rolle Administrator/Benutzer) liegen in der Core-Datenbank `core.mv.db` (Server: `devtools.server.home`
+  Subscriptions mit wachsendem Abstand neu; dazwischen gilt der letzte Stand. Beim Team-Server übersteht er auch einen
+  Neustart (verschlüsselte Cache-Datei `team-cache.json` mit Stand und Passwort-Hash der letzten Anmeldung): Ist der
+  Server beim Start nicht erreichbar, prüft die App das Passwort dagegen, arbeitet mit dem letzten Stand und meldet
+  sich an, sobald er wieder antwortet (nur so lange bleibt das Passwort im Speicher). Überholte Stände erkennt die App
+  am Änderungszähler (`revision`).
+* **Benutzer** mit ihren Rollen liegen in der Core-Datenbank `core.mv.db` (Server: `devtools.server.home`
   bzw. `DEVTOOLS_SERVER_HOME`, sonst `~/.devtools-server` – getrennt vom Ordner der Desktop-App, damit beide auf einem
   Rechner laufen; H2, Schema per Flyway aus `db/core`; andere Datenbank über
-  `devtools.core.datasource.url/username/password`). Beim ersten Start des Servers wird `admin` angelegt – Passwort aus
-  `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log. Der letzte aktive Administrator lässt sich weder
-  sperren, herabstufen noch löschen.
+  `devtools.core.datasource.url/username/password`). Beim ersten Start des Servers wird `admin` (Rolle Administrator)
+  angelegt – Passwort aus `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log; ein zufälliges muss bei
+  der ersten Anmeldung geändert werden.
 * **Passwörter:** PBKDF2 mit HMAC-SHA3-512, 16 Byte Zufalls-Salt, 210.000 Iterationen
   (`pbkdf2-sha3-512$<iterationen>$<salt>$<hash>`); wird die Iterationszahl angehoben, rechnet die nächste Anmeldung
   den Hash neu.
-* **Desktop-Tokens:** Jeder Benutzer erzeugt unter *Mein Konto* persönliche Tokens (JWT, HS512, Schlüssel
-  `jwt.key`; Gültigkeit 30/90/365 Tage oder unbegrenzt). Das Token wird nur einmal angezeigt, gespeichert wird nur
-  seine ID; Widerruf, Sperren oder Löschen des Benutzers wirken sofort. Die GraphQL-API erwartet es als
-  `Authorization: Bearer …` (HTTP) bzw. im Payload von `connection_init` (WebSocket); ohne gültiges Token antwortet
-  jede Operation mit `UNAUTHORIZED`, fachliche Fehler kommen als `BAD_REQUEST` mit lesbarer Meldung.
+* **Anmeldung an der API:** Die Desktop-App meldet sich mit Benutzername und Passwort an (Mutation `login`, ohne
+  Token aufrufbar) und bekommt ein Sitzungs-Token (JWT, HS512, Schlüssel `jwt.key`, 30 Tage); beim Beenden oder
+  *Abmelden* endet die Sitzung (`logout`). Die GraphQL-API erwartet das Token als `Authorization: Bearer …` (HTTP)
+  bzw. im Payload von `connection_init` (WebSocket); ohne gültiges Token antwortet jede Operation außer `login` mit
+  `UNAUTHORIZED`, ohne nötiges Recht mit `FORBIDDEN`, fachliche Fehler kommen als `BAD_REQUEST` mit lesbarer Meldung.
+  Gespeichert wird nur die ID eines Tokens; Abmelden, Sperren oder Löschen des Benutzers wirken sofort.
+* **Desktop-Tokens:** Für den Start ohne Fenster erzeugt ein Benutzer mit dem Recht „Desktop-Tokens erzeugen“ unter
+  *Mein Konto* persönliche Tokens (Gültigkeit 30/90/365 Tage oder unbegrenzt; nur einmal angezeigt). Dort stehen auch
+  die Anmeldungen der Desktop-Apps, einzeln abmeldbar.
 * Die Vorgaben enthalten entschlüsselte Geheimnisse – den Team-Server deshalb nur über HTTPS erreichbar machen. TLS
   übernimmt ein Reverse-Proxy (`server.forward-headers-strategy=native`; WebSocket-Upgrade für `/graphql` durchreichen).
 * Entwicklung der Web-UI mit Hot-Reload: `./gradlew :server:bootRun -Pvaadin.productionMode=false`.
+
+#### MQTT-Broker für die Kooperation
+
+Das Backend bringt einen MQTT-5-Broker mit: **HiveMQ CE**, über dessen Embedded-API in derselben JVM gestartet (kein
+eigener Prozess). Er verbindet die Desktop-Apps für die [Kooperation](#kooperation-zwischen-instanzen-und-geräten) –
+im Team-Server zentral für alle, im eingebetteten Backend für diesen Rechner. Standard: aus.
+
+| Property | Standard | |
+|---|---|---|
+| `devtools.broker.enabled` | `false` | Broker starten |
+| `devtools.broker.bind-address` | `0.0.0.0` | Adresse der Listener |
+| `devtools.broker.port` | `1883` | MQTT über TCP, `0` = aus |
+| `devtools.broker.tls-port` | `0` | MQTT über TLS, dazu `devtools.broker.tls.keystore`, `.keystore-password`, `.key-password` (JKS/PKCS12) |
+| `devtools.broker.websocket-port` | `0` | MQTT über WebSocket (`/mqtt`) |
+| `devtools.broker.topic-prefix` | `devtools-mcp` | Präfix aller Topics |
+| `devtools.broker.host` | – | Host, den die Apps verwenden sollen; leer = Host der Backend-Adresse |
+
+* **Anmeldung:** Passwort = Token des Benutzers (Sitzungs- oder Desktop-Token, wie für GraphQL), der Benutzername ist
+  beliebig. Ohne gültiges Token oder ohne E-Mail im Konto lehnt der Broker ab. Die App holt beim Wiederverbinden das
+  aktuelle Token.
+* **Rechte** je Benutzer, Adresse = E-Mail des Kontos: nur den eigenen Eingang (`<präfix>/inbox/<e-mail>`) abonnieren,
+  die Anwesenheit aller lesen, nur die eigene melden, an jeden Eingang senden – alles andere lehnt der Broker ab.
+* **Absender:** Der Broker stempelt jede Nachricht mit der geprüften Adresse (User Property `devtools-sender`, ein
+  mitgeschickter Wert wird ersetzt); die App verwirft Angebote und Antworten, deren Absender nicht dazu passt.
+* **Ablage:** Sitzungen, für getrennte Apps aufgehobene Nachrichten und Anwesenheit in `broker/` im Datenverzeichnis
+  des Backends – sie überstehen Neustarts. Die Listener stehen in `broker/conf/config.xml`, die der Dienst beim Start
+  aus den Properties schreibt.
+* Die Apps erfahren über die GraphQL-Query `broker` (Host, Ports, Präfix), wie sie ihn erreichen. Für den Broker den
+  TLS-Port (oder einen TCP-Proxy mit TLS) verwenden, wenn der Team-Server nicht nur im internen Netz steht.
+
+#### Graph-Storage für die Code-Graphen
+
+Die Code-Graphen des Moduls [Code-Graph](#code-graph-java) liegen zentral im Backend, in der **Graph-Storage**
+(`backend/graph/GraphStorage`) auf Basis von [ArcadeDB](https://github.com/ArcadeData/arcadedb) – wahlweise
+**eingebettet** (Standard: Datenbank `graphdb/` im Datenverzeichnis des Backends, im selben Prozess) oder **extern**
+(ein ArcadeDB-Server über HTTP). Abfragen laufen als OpenCypher in der Datenbank (native Engine von ArcadeDB).
+
+Das Backend startet die Datenbank **immer beim Hochfahren** (im Hintergrund, der Start wartet nicht darauf); Fehler
+stehen im Status und im Log. In der Desktop-App stellt man sie im Reiter **Backend** unter *Graph-Datenbank* ein
+(eingebettet oder externer Server mit Host, Port, Datenbank, Benutzer, Passwort – verschlüsselt in `settings.json`);
+*Übernehmen* stellt sofort um. Diese Einstellung hat Vorrang vor den Properties; ohne sie gelten die Properties. Mit
+Team-Server stellt der Server die Graph-Datenbank ein.
+
+| Property | Standard | |
+|---|---|---|
+| `devtools.graph.mode` | `embedded` | `embedded` oder `remote` (externer ArcadeDB-Server) |
+| `devtools.graph.path` | `<datenverzeichnis>/graphdb` | Verzeichnis der eingebetteten Datenbank |
+| `devtools.graph.host` | `localhost` | ArcadeDB-Server (`remote`) |
+| `devtools.graph.port` | `2480` | HTTP-Port des Servers |
+| `devtools.graph.database` | `devtools` | Datenbank auf dem Server; fehlt sie, wird sie angelegt |
+| `devtools.graph.user` | `root` | Benutzer auf dem Server |
+| `devtools.graph.password` | – | Passwort |
+
+Externer Server z.B.: `podman run -d --name arcadedb -p 2480:2480 -e JAVA_OPTS="-Darcadedb.server.rootPassword=<passwort>"
+arcadedata/arcadedb` und im Backend `devtools.graph.mode=remote`, `devtools.graph.password=<passwort>` (in der
+Desktop-App z.B. als `-Ddevtools.graph.mode=remote …` bzw. Umgebungsvariablen `DEVTOOLS_GRAPH_MODE` …).
+
+* **Zugriff der Desktop-App:** über das Interface `GraphProvider` (`shared`). Im **Local-Mode** (eingebettetes
+  Backend) verwendet die App die Graph-Storage direkt im selben Prozess. Mit **Team-Server** gehen alle Lese- und
+  Schreibzugriffe über die GraphQL-API des Backends (`backend-graphql/graph.graphqls`, `GraphQlGraphProvider` in der
+  App): `graph(key)` liefert Kopfdaten und die ID der aktuellen Generation, `graphNodes`, `graphEdges`, `graphSearch`,
+  `graphShortestPath`, `graphQuery` (lesendes OpenCypher) … lesen damit; gespeichert wird in Portionen
+  (`beginGraph` → `writeGraphFiles`/`-Nodes`/`-Edges` → `publishGraph`). `BackendGraphs` entscheidet bei jedem Zugriff.
+* **Projekt + Branch statt Pfad:** Ein Graph gehört zum Projekt und zum Git-Branch – Pfad und Rechner spielen keine
+  Rolle. Ist das Verzeichnis einem **Backend-Projekt** zugeordnet (Name aus dem `ProjectProvider`, eindeutig als
+  `name@eigentümer`), teilen sich alle mit Zugriff auf das Projekt denselben Graphen je Branch (`project:<id>`):
+  lesen darf, wer das Projekt sieht, bauen der Eigentümer und Freigaben mit Schreibrecht. Andere Verzeichnisse gelten
+  nach Namen im Bereich des Benutzers (`user:<id>|name:<name>`, im Local-Mode `name:<name>`) – auf zwei Rechnern
+  derselbe Graph, gleich benannte Ordner verschiedener Benutzer bleiben getrennt. Graphen älterer Versionen (nach Pfad)
+  entfernt der erste Start.
+* **Gebaut von:** Jeder Graph merkt sich, wer ihn gebaut hat (`builtBy` = Betriebssystem-Benutzer@Rechner). Graphen
+  gelöschter Branches entfernt die App nur, wenn sie sie selbst gebaut hat – einen Branch, den jemand anders nur lokal
+  hat, kennt das eigene Git nicht. Bauen zwei mit unterschiedlichem Stand desselben Branches, gilt der zuletzt gebaute.
+* **Generationen:** Jeder Aufbau schreibt eine neue Generation (`g`) und schaltet `GraphBranch.graphId` am Ende mit
+  einem einzigen Kommando um – Leser sehen nie einen halben Graphen. Ersetzte, abgebrochene und gelöschte Generationen
+  entfernt ein Aufräumer im Hintergrund (auch Reste nach einem Absturz beim nächsten Start). Jede Schreiboperation ist
+  ein einzelnes Kommando (`UNWIND`-Batches à 10.000), eingebettet und extern gleich.
+* Aus dem Paket der ArcadeDB-Engine bleiben GraalVM-JavaScript/Truffle weg (Polyglot-Abfragen werden nicht gebraucht).
 
 #### Deployment in WildFly
 
@@ -461,21 +961,67 @@ Alternativ zum Jar läuft der Team-Server als WAR in einem externen WildFly (Jak
 * **Datenverzeichnis:** `~/.devtools-server` des WildFly-Benutzers, oder `-Ddevtools.server.home=…`.
   Admin-Passwort wie oben über `DEVTOOLS_MCP_ADMIN_PASSWORD`.
 
+### Benutzer, Rollen und Rechte
+
+Benutzer, Rollen und Rechte liegen im Backend (Core-Datenbank, Tabellen `app_user`, `app_role`, `role_permission`,
+`user_role`) – eingebettet wie auf dem Team-Server. Verwaltet werden sie in der Web-UI (*Benutzer*, *Rollen*) bzw. im
+Tab **Benutzer** der Desktop-App, beides mit dem Recht „Benutzer und Rollen verwalten“.
+
+* **Anmeldung beim Start:** Die Desktop-App zeigt vor dem Hauptfenster das Anmeldefenster; ohne Anmeldung sind alle
+  Module aus (MCP-Clients sehen keine Tools). *Abmelden* (Tab *Backend*) oder eine abgelaufene bzw. widerrufene
+  Anmeldung führen zurück ins Anmeldefenster; beim Benutzerwechsel bekommt der neue Benutzer seine Einstellungen,
+  Skripte, Skills und Memories. Ein vom Administrator gesetztes Passwort muss zuerst geändert werden (Desktop-App:
+  Anmeldefenster, Web-UI: nur *Mein Konto* erreichbar, API: alles außer `me`, `changePassword`, `logout` → `FORBIDDEN`).
+* **Erstes Konto (eingebettet):** Beim ersten Start legt man im Anmeldefenster das Konto des Administrators an. Lief
+  die App vorher ohne Anmeldung als `local`, übernimmt die Einrichtung dieses Konto (neuer Name, Passwort, Rolle
+  Administrator) – Profile, Einstellungen, Projekte, Skills und Memories bleiben (Marker `account-setup.done`).
+* **Ohne Fenster** (`--headless`): Anmeldung über `DEVTOOLS_MCP_TOKEN` (persönliches Desktop-Token) oder
+  `DEVTOOLS_MCP_USER` + `DEVTOOLS_MCP_PASSWORD`; ein früher in `settings.json` eingetragenes Desktop-Token gilt
+  weiter. Ohne Konto im eingebetteten Backend legt die erste Anmeldung über Benutzer + Passwort den Administrator an.
+  Fehlt die Anmeldung, läuft der MCP-Server ohne Tools.
+* **Rollen:** Ein Benutzer hat beliebig viele Rollen, ihre Rechte addieren sich. Eingebaut ist **Administrator** (alle
+  Rechte, nicht änderbar, nicht löschbar); vorbelegt **Benutzer** (alle Module, eigene Einstellungen, Projekte anlegen,
+  Desktop-Tokens), frei änderbar. Weitere Rollen lassen sich anlegen, kopieren und löschen.
+* **Systemrechte:**
+
+  | Recht | Schlüssel | erlaubt |
+  |---|---|---|
+  | Benutzer und Rollen verwalten | `users.manage` | Benutzer anlegen, sperren, löschen, Passwörter setzen; Rollen festlegen |
+  | Globale Einstellungen | `settings.global` | Vorgaben für alle setzen, Felder sperren |
+  | Eigene Einstellungen | `settings.own` | Überschreibungen für sich und in Profilen, Profile anlegen/ändern/löschen |
+  | Projekte anlegen | `projects.create` | eigene Projekte anlegen, ändern, freigeben |
+  | Alle Projekte verwalten | `projects.manage-all` | Projekte anderer ändern, freigeben, löschen |
+  | Vorlagen veröffentlichen | `templates.publish` | Skills und Skripte als globale Vorlage veröffentlichen/zurückziehen |
+  | Desktop-Tokens erzeugen | `tokens.create` | persönliche Tokens für den Start ohne Anmeldedialog |
+
+* **Module und Tools:** `module:*` (alle Module und Tools, auch künftige aus Plugins und Skripten), `module:<id>` (ein
+  Modul mit allen Tools, z.B. `module:git`) oder `tool:<name>` (ein einzelnes Tool, z.B. `tool:git_status`). Module
+  ohne Tools (Grundeinstellungen, Freigaben) brauchen kein Recht; die Module der Skripte deckt auch `module:scripts`
+  ab. Nicht erlaubte Tools registriert die Desktop-App gar nicht, ihr Modul steht als „keine Berechtigung“ in der
+  Liste. Die Tools laufen auf dem Rechner des Entwicklers – durchgesetzt werden diese Rechte deshalb in der App;
+  schreibende Skill-, Memory- und Skript-Operationen (`skills_create`, `memories_save`, `scripts_save` …) prüft
+  zusätzlich das Backend.
+* **Sofort wirksam:** Geänderte Rollen und Rechte kommen per Subscription in den Desktop-Apps an (Tools werden neu
+  aufgebaut), die Web-UI liest Rechte und Status bei jeder Anfrage neu. Es bleibt immer mindestens ein aktiver Benutzer
+  mit „Benutzer und Rollen verwalten“ – Sperren, Löschen oder Rechteentzug des letzten wird abgelehnt.
+* **Passwörter raten:** Nach 5 Fehlversuchen für einen Benutzernamen ist er 30 s gesperrt, danach jeweils doppelt so
+  lange (höchstens 15 min) – für Desktop-Apps und Web-UI gemeinsam.
+
 ### Profile und Einstellungs-Ebenen
 
 Die wirksamen Modul-Einstellungen sind die Vorbelegung des Moduls, darüber die Ebenen **Global → Benutzer → Profil**;
 jede Ebene speichert nur, was sie vorgibt bzw. überschreibt. Speichern in der Desktop-App schreibt ins aktive Profil
 (nur geänderte Werte).
 
-* **Global:** Vorgaben des Administrators für alle (Web → *Globale Einstellungen*; je Feld „vorgeben“).
+* **Global:** Vorgaben für alle (Recht „Globale Einstellungen“; Web → *Globale Einstellungen*; je Feld „vorgeben“).
 * **Benutzer** („Alle meine Profile“) und **Profil** (z.B. Work, Home) überschreiben einzelne Felder, Modul an/aus
   und einzelne Tools (*Einstellungen*: je Feld „überschreiben“, sonst geerbt mit Herkunft). Geheimnisse liegen
   verschlüsselt (`secret.key`) in der Core-Datenbank (`module_override`).
 * **Aktives Profil** wird oben in der Web-UI oder im Tab *Backend* der Desktop-App umgeschaltet (Verwaltung in der
   Web-UI unter *Profile*: anlegen, kopieren samt Überschreibungen, umbenennen, löschen – das letzte bleibt). Jeder
   Benutzer startet mit „Standard“. Die Desktop-Apps übernehmen den Wechsel sofort (gleiche MCP-Session, neue Tools).
-* **Sperren:** Administratoren sperren unter *Globale Einstellungen* einzelne Felder, „Modul an/aus“ oder alle
-  Tool-Schalter eines Moduls. Gesperrtes gilt nur global; Überschreibungen werden beim Speichern abgelehnt und beim
+* **Sperren:** Mit dem Recht „Globale Einstellungen“ sperrt man unter *Globale Einstellungen* einzelne Felder,
+  „Modul an/aus“ oder alle Tool-Schalter eines Moduls. Gesperrtes gilt nur global; Überschreibungen werden beim Speichern abgelehnt und beim
   Auflösen ignoriert (auch bestehende).
 * Die Formulare der Web-UI entstehen aus den Modulen, die die Desktop-Apps melden (Tabelle `module_catalog`) – auch
   aus Plugins. Solange sich keine App verbunden hat, zeigt die Web-UI keine Module.
@@ -487,33 +1033,60 @@ jede Ebene speichert nur, was sie vorgibt bzw. überschreibt. Speichern in der D
 * Das **Verzeichnis** ordnet jeder in seiner Desktop-App zu (Tab *Backend* → *Verzeichnis wählen…*). Projekte mit
   Verzeichnis ergänzen die Verzeichnis-Felder von **Git** (`repositories`), **Build** und **Code-Graph**
   (`projects`); eigene heißen in den Tools wie angelegt, freigegebene `name@eigentümer`.
-* **Freigaben** vergibt der Eigentümer (oder ein Administrator) je Benutzer: *nur lesen* oder *lesen + schreiben*.
-  Nur lesend lehnen `git_create_branch`/`checkout`/`stage`/`unstage`/`commit`, `build_run`/`build_test` (führen Code
+* **Freigaben** vergibt der Eigentümer (oder wer „Alle Projekte verwalten“ darf) je Benutzer: *nur lesen* oder
+  *lesen + schreiben*. Nur lesend lehnen `git_create_branch`/`checkout`/`stage`/`unstage`/`commit`, `build_run`/`build_test` (führen Code
   des Projekts aus) und ein nötiger Neuaufbau des Code-Graphen ab (`Workspaces.requireWritable`, Prüfung bei jedem
   Aufruf).
 * `projects_list` zeigt dem LLM die Projekte mit Zugriff, lokalem Verzeichnis, erkanntem Git/Gradle/Maven,
   Sonar-Schlüssel und Ticket-Projekt.
 
+### Syntaxbäume für viele Sprachen (reines Java)
+
+`SyntaxEngine` liefert für eine Datei den Syntaxbaum (AST) – für Java, Kotlin, Scala, Python, JavaScript, TypeScript,
+TSX, Go, Rust, C, C++, C#, PHP, Ruby und Bash. Knotentypen und Feldnamen sind die der jeweiligen tree-sitter-Grammatik
+(`node-types.json` im Grammatik-Repository); der Baum ist eine reine Java-Struktur, beliebig lange haltbar und von
+mehreren Threads lesbar.
+
+```java
+SyntaxTree tree = SyntaxEngine.parse(Language.forFile(path).orElseThrow(), Files.readString(path));
+for (SyntaxNode fn : tree.root().findByType("function_definition", "method_declaration")) {
+    System.out.println(fn.child("name").text() + " Zeile " + fn.line());
+}
+tree.walk(n -> !n.type().equals("class_body"));   // Vorordnung, false = Kinder überspringen
+tree.root().toSExpression(3);                     // (program (class_declaration name: (identifier) …))
+```
+
+* **Enthalten:** benannte Knoten und Schlüsselwörter (`public`, `static`, `async`, `def` …) als unbenannte Kinder;
+  fehlende Tokens der Fehlerkorrektur immer, sonstige Satzzeichen und Operatoren nur mit
+  `parse(language, source, true)`. Offsets in UTF-8-Bytes, Zeilen/Spalten 0-basiert
+  (`line()`/`endLine()` 1-basiert). Syntaxfehler: `hasError()`, `isError()`, `isMissing()` – der Baum ist trotzdem
+  vollständig.
+* **Wie:** tree-sitter (Kern 0.26.6) samt Grammatik ist je Sprache ein eigenständiges WebAssembly-Modul unter
+  `src/main/resources/tree-sitter/`. [Chicory](https://github.com/dylibso/chicory) übersetzt es beim ersten Gebrauch
+  der Sprache in JVM-Bytecode (~0,3 s für Java) und führt es aus – zur Laufzeit wird nichts Natives geladen. Je Datei
+  ein Aufruf ins Modul: die Brücke `natives/tree-sitter-wasm/ast.c` legt den Baum flach in einen Puffer, Java liest ihn
+  am Stück. Wasm-Instanzen sind nicht threadsicher; jeder Aufruf leiht sich eine aus einem Pool je Sprache.
+* **Neu bauen:** `WASI_SDK=/opt/wasi-sdk sh natives/build-tree-sitter-wasm.sh [sprache …]` (wasi-sdk, Java, curl;
+  Versionen der Grammatiken im Skript). Unter Windows blockiert Smart App Control das `wasm-ld.exe` von wasi-sdk –
+  dann übernimmt YoWASP (Clang/LLD selbst als WebAssembly in Node), siehe Kopf des Skripts.
+* **Geschwindigkeit:** HotSpot übersetzt Methoden über 8000 Bytes Bytecode nie per JIT. Der generierte Lexer jeder
+  Grammatik ist ein einziger riesiger `switch` – `natives/tree-sitter-wasm/SplitLexer.java` zerlegt ihn beim Bauen in
+  kleine Funktionen, der Kern wird ohne großflächiges Inlining übersetzt (`-fno-inline-functions`). Gemessen an den
+  337 Java-Dateien dieses Projekts (3,3 MB, ein Thread): ~0,7 MB/s, die frühere native Anbindung schaffte ~3,9 MB/s;
+  ohne die Zerlegung waren es 0,16 MB/s.
+
 ### Code-Graph (Java)
 
 Angelehnt an den AST-Durchlauf von [graphify](https://github.com/safishamsi/graphify), aber in Java und ohne LLM:
 tree-sitter liest alle `.java`-Dateien eines freigegebenen Projekts in zwei Durchläufen – erst Deklarationen, dann
-Referenzen, aufgelöst über die Deklarationen aller Dateien. Gemessen an eGECKO (~10.800 Dateien): Aufbau ~20 s,
-Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s.
+Referenzen, aufgelöst über die Deklarationen aller Dateien. Gemessen an eGECKO (~10.800 Dateien, noch mit der
+früheren nativen Anbindung): Aufbau ~20 s, Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im
+Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Umstellung auf reines Java (siehe
+[Syntaxbäume](#syntaxbäume-für-viele-sprachen-reines-java)) etwa 5× langsamer, der Aufbau entsprechend länger.
 
-* **Native Bibliotheken:** Aufruf über die offiziellen FFM-Bindings `io.github.tree-sitter:jtreesitter`
-  (`jtreesitter.internal.TreeSitter`, Version fest). Die vorkompilierten Bibliotheken für macOS/Linux (x86_64,
-  aarch64) und Windows (x86_64) kommen als reine Ressourcen aus `io.github.bonede:tree-sitter(-java)`;
-  `TreeSitterNatives` entpackt sie beim ersten Aufruf. Ausnahme Windows-Kernbibliothek: die DLL von bonede exportiert
-  nur ihre JNI-Funktionen, nicht die C-API (`ts_*`) – jtreesitter scheitert daran mit `NoClassDefFoundError: Could not
-  initialize class …TreeSitter`. Deshalb liegt unter `src/main/resources/natives/` eine eigene, aus den Original-Quellen
-  (gleiche Version) mit MinGW gebaute `x86_64-windows-tree-sitter.dll`; `malloc`/`free` kommen dort aus `msvcrt.dll`.
-  Neu bauen: `podman run --rm -v "$PWD:/src" docker.io/library/eclipse-temurin:25-jdk sh
-  /src/natives/build-windows-tree-sitter.sh`. Bewusst **nicht** verwendet: die JNI-Klassen von bonede –
-  sie prüfen Allokationen nicht und beenden bei vollem Heap die ganze JVM mit SIGSEGV (reproduziert). Ebenfalls
-  nicht: `jtreesitter.Node` beim Durchlaufen – jedes Knotenobjekt hat eine eigene Arena mit Cleaner, bei großen
-  Projekten läuft der Heap voll. Stattdessen kopiert `SyntaxNode` jede Datei einmal per Tree-Cursor in eine schlanke
-  Java-Struktur und gibt den nativen Baum sofort frei.
+* **Syntaxbäume:** über `SyntaxEngine` (Paket `systems.grebe.devtools.mcp.syntax`) – tree-sitter als WebAssembly in
+  Chicory, keine nativen Bibliotheken. Früher FFM/jtreesitter mit aus dem Temp-Verzeichnis entpackten
+  DLL/.so-Dateien; Windows blockiert solche unsignierten Bibliotheken (Smart App Control, WDAC, AppLocker).
 
 * **Knoten:** `package`, `file`, `class`/`interface`/`enum`/`record`/`annotation`, `method`, `constructor`, `field`
   (mit Datei, Zeilen, Modifiern, Signatur, erstem Javadoc-Satz) sowie `external` für referenzierte Bibliothekstypen.
@@ -523,31 +1096,34 @@ Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekunde
   `EXTRACTED` (steht so im Code, z.B. Aufruf über ein Feld mit deklariertem Typ), `INFERRED` mit Score (abgeleitet,
   z.B. über den Rückgabetyp einer Aufrufkette 0.8, über den Methodennamen bei unbekanntem Empfänger 0.6,
   `overrides` ohne `@Override` 0.9), `AMBIGUOUS` (Überladungen gleicher Stelligkeit – Kante zu jedem Kandidaten).
-  Mehrfache Fundstellen werden zu einer Kante mit `count` zusammengefasst.
+  Mehrfache Fundstellen werden zu einer Kante mit `count` zusammengefasst. **Aufrufe über Interfaces und
+  Oberklassen:** Ruft Code eine Methode auf, die überschrieben wird, kommt je Implementierung (auch über mehrere
+  Stufen) eine Kante `calls` dazu – `INFERRED`, Score 0.7 –, damit Aufrufketten und `graph_path` bis in die
+  Implementierungen führen; bei mehr als 12 Implementierungen unterbleibt das (Rauschen). Gemessen an diesem
+  Repository: rund 1.700 solcher Kanten bei gut 50.000.
 * **Grenzen:** keine vollständige Typinferenz (Lambdas, Generics-Rückgaben, `var` aus externen Aufrufen) und kein
   Classpath – Aufrufe auf Bibliothekstypen erzeugen keine Kante, Obertypen außerhalb des Projekts werden nur über
   Imports erkannt.
 * **Communities:** Louvain über die auf Typen hochgezogenen Kanten, deterministisch (graphify verwendet Leiden).
   Member erben die Community ihres Typs.
 * **Je Projekt und Branch:** Gebaut wird immer der im Arbeitsverzeichnis ausgecheckte Git-Branch (JGit); gespeichert
-  wird unter Projektwurzel + Branch, ohne Git genau ein Graph. Alle Abfrage-Tools nehmen optional `branch` und lesen
+  wird unter Projekt + Branch (Datenbank: siehe Graph-Storage, Datei: im Projektverzeichnis), ohne Git genau ein Graph. Alle Abfrage-Tools nehmen optional `branch` und lesen
   dann einen anderen gespeicherten Branch (`graph_branches` listet sie); ohne Angabe gilt der ausgecheckte. Nach
-  jedem Aufbau werden Graphen von Branches gelöscht, die es weder lokal noch auf einem Remote mehr gibt.
-* **Ablage Neo4j (Standard)** über **Spring Data Neo4j** – Hibernate OGM für Neo4j ist seit Jahren eingestellt
-  (javax, Neo4j 3.x). Verwaltungsdaten sind Entities (`GraphProjectEntity` `(:GraphProject {root, name})`
-  `-[:HAS_BRANCH]->` `GraphBranchEntity` `(:GraphBranch {key, branch, commitId, graphId, stats, communities, …})`,
-  gespeichert per `Neo4jTemplate`); die Code-Knoten und Kanten schreibt `Neo4jClient` als Bulk-Cypher
-  (`UNWIND`-Batches à 10.000) – Entity-Mapping wäre für eine Million Kanten viel zu langsam:
-  `(:CodeNode:<Class|Method|…>[:Type|:Member] {g, id, kind, name, file, line, …, community, t})`,
-  echte Relationship-Typen `CALLS`, `EXTENDS`, … mit `{conf, score, count, line}`, dazu `(:SourceFile {g, path,
-  sha256, …})` für die Änderungserkennung. `g` ist die `graphId` des Branches: jeder Aufbau schreibt eine neue
-  Generation und schaltet `GraphBranch.graphId` erst am Ende in einer Transaktion um, danach wird die alte entfernt –
-  Leser sehen nie einen halben Graphen; Reste eines abgebrochenen Aufbaus (`pendingGraphId`) räumt der nächste auf.
-  Constraints/Indizes legt der Server selbst an (u.a. eindeutiges `uid = g|id` für den Knoten-Lookup beim
-  Kantenimport). Gemessen an Vaadin Flow (3.600 Dateien, 46.000 Knoten, 186.000 Kanten, Neo4j 2026.06 Community im
-  Container): Aufbau 10,5 s (Datei 3,6 s), davon Schreiben 6,2 s; Prüfung „aktuell?“ 0,15 s; Abfragen 50–500 ms. Alle Abfragen laufen als Cypher in der Datenbank (`Neo4jGraphReader`),
-  der Graph wird nie komplett geladen. Die Verbindung wird aus den Moduleinstellungen gebaut (kein Spring-Bean,
-  Änderungen gelten sofort); die Community Edition genügt.
+  jedem Aufbau werden Graphen von Branches gelöscht, die es weder lokal noch auf einem Remote mehr gibt (in der
+  Datenbank nur die auf diesem Rechner gebauten).
+* **Ablage Datenbank (Standard, `storage=database`):** die [Graph-Storage des Backends](#graph-storage-für-die-code-graphen)
+  (ArcadeDB, eingebettet oder extern) – im Local-Mode direkt, mit Team-Server über GraphQL. Datenmodell mit
+  Typ-Vererbung statt mehrerer Labels: `Class`, `Interface`, `Enum`, `Record`, `Annotation` erben von `Type`,
+  `Constructor`, `Method`, `Field` von `Member`, alle (auch `Package`, `File`, `External`) von `CodeNode {g, uid, id,
+  kind, name, file, line, …, community, t}` – `MATCH (n:Type)` findet alle Typen; echte Kantentypen `CALLS`,
+  `EXTENDS`, … mit `{conf, score, count, line}`, dazu `SourceFile {g, path, sha256, …}` für die Änderungserkennung
+  und `GraphBranch {branchKey, root, branch, commitId, graphId, pendingGraphId, stats, communities, …}` als Anker.
+  `g` ist die `graphId` des Branches (siehe Generationen in der Graph-Storage); eindeutiger Index auf `uid = g|id`
+  für den Knoten-Lookup beim Kantenimport. Alle Abfragen laufen als OpenCypher in der Datenbank
+  (`ArcadeGraphReader`), der Graph wird nie komplett geladen. Gemessen an diesem Repository (590 Dateien, 15.800
+  Knoten, 48.500 Kanten, eingebettet): Aufbau 4,4 s, Prüfung „aktuell?“ 0,6 s, Abfragen 0,1–1 s; das Entfernen der
+  alten Generation (≈ 4,5 s) läuft danach im Hintergrund. Ältere Einstellungen `storage=neo4j` gelten als
+  `database`.
 * **Ablage Datei** (`storage=file`): `devtools-fileinfo@<branch>.graph` (ohne Git `devtools-fileinfo.graph`) im
   Projektwurzelverzeichnis: JSON mit `stats`, `communities`, `files` (Pfad, SHA-256, Zeilen, Syntaxfehler), `nodes`,
   `edges` – ein Eintrag je Zeile, damit Diffs lesbar bleiben. Kompakt: Kanten sind Arrays
@@ -556,18 +1132,46 @@ Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im Millisekunde
   zum Neubau. Abfragen laufen auf dem geladenen Graphen (höchstens zwei im Speicher). Soll die Datei nicht ins
   Repository, `devtools-fileinfo*.graph` in `.gitignore` aufnehmen.
 * **Aktualität:** `graph_build` baut nur neu, wenn sich eine Quelldatei geändert hat (SHA-256) oder Dateien
-  hinzugekommen/entfallen sind; die Abfrage-Tools bauen, falls der Graph des ausgecheckten Branches fehlt.
+  hinzugekommen/entfallen sind; die Abfrage-Tools bauen, falls der Graph des ausgecheckten Branches fehlt, und
+  suchen dann – ein Hinweis vor der Antwort meldet den Aufbau.
+* **Automatisch und inkrementell:** Bei jedem Commit (egal ob aus DevTools, IDE oder Shell), Branch-Wechsel und
+  neuen Branch aktualisiert die App den Graphen des Projekts im Hintergrund (`GraphAutoIndexer`, prüft alle 5 s
+  HEAD und lokale Branches; `devtools.graph.watch-interval`; Einstellung *Automatisch indizieren*, nur bei
+  eingeschaltetem Modul). Inkrementell heißt:
+  * **Lesen:** Deklarationen und Kanten je Datei bleiben je Projekt im Speicher (nach SHA-256); neu gelesen werden
+    nur geänderte Dateien. Bleiben die Deklarationen aller Dateien gleich (nur Rümpfe, Javadoc, Zeilen), gelten die
+    Kanten der übrigen Dateien weiter, sonst werden sie neu aufgelöst – das Ergebnis ist in jedem Fall dasselbe wie
+    beim kompletten Aufbau.
+  * **Speichern:** nur der Unterschied zum gespeicherten Stand (`GraphDelta`: Dateien, Knoten, Kanten hinzu/geändert/
+    entfernt) in einer Transaktion, in place – über GraphQL als eine Mutation `updateGraph`. Komplett geschrieben wird
+    nach einem Neustart der App, mit *Komplett neu*, wenn inzwischen ein anderer Stand gespeichert ist oder sich mehr
+    als ein Viertel des Graphen ändert.
+  * **Neuer Branch:** Hat ein anderer Branch genau diesen Stand gespeichert, zeigt der neue auf dieselbe Generation
+    (`link`) – nichts wird gebaut. Ein neuer, nicht ausgecheckter Branch auf dem ausgecheckten Commit übernimmt so den
+    Graphen, wenn das Arbeitsverzeichnis keine Java-Änderungen hat. Geteilte Generationen werden nie in place
+    geändert; der erste eigene Aufbau schreibt eine eigene.
+  * Gemessen an diesem Repository (602 Dateien, eingebettet): erster Aufbau 12 s, Commit mit geändertem Rumpf 0,5 s,
+    mit neuer Methode 1,3 s, ohne Änderung 0,07 s.
 * **Abfragen:** `graph_report` (God Nodes, meistaufgerufene Methoden, Communities, überraschende Verbindungen zwischen
-  Paketen), `graph_find` (Name, `*`-Platzhalter), `graph_explain` (alles zu einem Knoten), `graph_neighbors`
+  Paketen), `graph_find` (Name, `*`-Platzhalter), `graph_files` (Dateien nach Name, Stichworten, `*`-Muster oder
+  Pfad – oder mit `related` über Kanten, z.B. alle Dateien, die einen Typ verwenden – je Datei Länge und passende
+  Typen/Member mit Zeilenbereich bzw. Begründung), `graph_read` (Quelltext gezielt: Methode inkl. aller Überladungen,
+  Typ, Datei oder `lines='von-bis'`; Typen/Dateien über 150 Zeilen als Gliederung mit Signaturen und Zeilenbereichen;
+  liest das Arbeitsverzeichnis und warnt, wenn die Datei seit `graph_build` geändert wurde), `graph_explain` (alles zu einem Knoten), `graph_neighbors`
   (Aufrufbaum, `direction=in` = wer ruft mich), `graph_path` (kürzester Weg, ohne Abkürzung über externe Typen;
-  Neo4j: `shortestPath`), `graph_query` (Frage → Stichworte inkl. CamelCase und einfacher Wortstämme wie *gebucht* ~
+  Datenbank: `allShortestPaths`), `graph_query` (Frage → Stichworte inkl. CamelCase und einfacher Wortstämme wie *gebucht* ~
   `buchen` → beste Treffer, Testcode nachrangig → verbindender Teilgraph), `graph_branches` (gespeicherte Branches),
-  `graph_cypher` (freies, nur lesendes Cypher – Lesetransaktion, `$g` ist auf Projekt+Branch gesetzt und Pflicht).
-  Beide Ablagen liefern dieselben Antworten (`Neo4jGraphStorageTest` vergleicht die Ausgaben).
-* **Einstellungen:** Projekte/Sammelordner, Standardprojekt, Ablage (`neo4j`/`file`), Neo4j-URI, -Benutzer,
-  -Passwort (verschlüsselt), -Datenbank, Ausschlüsse (Ordnername außerhalb von `src/`, relativer Pfad oder
-  `*.endung`), Tests einbeziehen, max. Dateien. *Verbindung testen* prüft Neo4j und listet die gespeicherten Branches.
-  Lokaler Server z.B.: `podman run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/<passwort> neo4j`.
+  `graph_cypher` (freies, nur lesendes OpenCypher – schreibende Klauseln lehnt die Datenbank in Abfragen ab, `$g` ist
+  auf Projekt+Branch gesetzt und Pflicht). Beide Ablagen liefern dieselben Antworten (`DatabaseGraphStorageTest`
+  vergleicht die Ausgaben direkt, `GraphQlGraphProviderTest` über die GraphQL-API).
+* **Graph zuerst:** Die Server-Instructions des Moduls weisen das LLM an, in freigegebenen Java-Projekten Dateien
+  **immer zuerst** über `graph_files`, `graph_query` oder `graph_find` zu suchen und mit `graph_read` nur die nötigen
+  Stellen zu lesen – `grep`, `find`, Glob oder ganze Dateien erst, wenn der Graph nichts liefert (Nicht-Java-Dateien,
+  Konfiguration, Texte in Strings/Kommentaren). Suchbegriffe behalten Umlaute (*veröffentlicht* bleibt ein Wort).
+* **Einstellungen:** Projekte/Sammelordner, Standardprojekt, Ablage (`database`/`file`), Ausschlüsse (Ordnername
+  außerhalb von `src/`, relativer Pfad oder `*.endung`), Tests einbeziehen, max. Dateien, automatisch indizieren.
+  Eingebettete oder externe ArcadeDB stellt das Backend ein (`devtools.graph.*`). *Verbindung testen* prüft die
+  Graph-Storage (mit Version) und listet die gespeicherten Branches.
 * **Indizieren in der App:** Im Modul unter **Aktionen** ein Projekt wählen und *Indizieren* klicken (optional
   *Komplett neu*) – mit Fortschrittsbalken, Abbrechen und dem Stand der vorhandenen Graph-Datei. Läuft mit der
   gespeicherten Konfiguration und auch bei inaktivem Modul, d.h. ohne dass `graph_*`-Tools beim LLM erscheinen.
@@ -595,7 +1199,7 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
 * **Historie:** jede Änderung erzeugt eine Revision mit Aktion und Notiz (`skills_history`). Mit
   `expected_revision` lehnt ein Patch ab, wenn der Skill inzwischen woanders geändert wurde.
 * **Ablage im Backend:** Skills liegen im Backend (eingebettet oder Team-Server) und gehören der E-Mail des
-  Benutzerkontos; globale Vorlagen verwalten Administratoren (eingebettet: der lokale Benutzer). Die App erreicht sie
+  Benutzerkontos; globale Vorlagen verwaltet, wer das Recht „Vorlagen veröffentlichen“ hat. Die App erreicht sie
   über GraphQL, Änderungen meldet `skillsChanged` (die Skills-Ansicht aktualisiert sich live).
 * **Persistenz:** Spring Data JPA (`SkillRepository`, `SkillRevisionRepository`; Zusatzdateien hängen per Cascade am
   Skill) auf Hibernate ORM 7 und HikariCP, Transaktionen per `@Transactional` im `SkillService`. Standard ist die
@@ -678,6 +1282,80 @@ Entscheidungen, Datum.
   im Tab **Memories** der App geht Löschen immer), „Max. Zeichen je Memory“ (Standard 20 000).
 * **Sparsam ausgeliefert:** Standard 5 Treffer mit einer Zeile plus kurzem Ausschnitt; bei genau einem Treffer kommt
   die Memory direkt vollständig.
+* **Typ:** `PERMANENT` (Standard), `TEMPORARY` (nur ausdrücklich, für Zwischenstände) oder `INVOCATION` (Rückruf, siehe
+  unten). Temporäre und Rückruf-Memories darf das LLM ohne die Schalter anlegen, ändern und löschen.
+
+### Rückrufe – Ergebnis lang laufender Aktionen an das LLM
+
+Wartet eine Aufgabe auf etwas, das dauert (die Antwort eines anderen Nutzers, später weitere Aktionen), soll die
+Sitzung nicht blockieren – und der Zusammenhang darf nicht verloren gehen, wenn Claude Code inzwischen geschlossen
+wurde. Dafür gibt es den **Invocation-Service** (`core/InvocationService`):
+
+1. Das LLM legt vor der Aktion eine Memory vom Typ **`INVOCATION`** an: Titel = worauf gewartet wird, Inhalt = kurz,
+   was dann zu tun ist (`memories_save(type=INVOCATION, …)`).
+2. Es gibt die Memory-ID dem Tool der Aktion (Parameter `invocation`, z.B. `share_send`). Das Modul meldet damit einen
+   Rückruf an – optional mit Ablauf (danach kommt der Rückruf als „keine Rückmeldung“).
+3. Ist die Aktion fertig, löst das Modul den Rückruf aus. Die App stellt ihn als `<channel>`-Nachricht mit den
+   Attributen `invocation` und `memory` zu – Ergebnis plus hinterlegte Memory – und zwar an **alle** gerade
+   verbundenen Sitzungen (stdio-Proxy). Ist keine verbunden, bleibt er liegen (`~/.devtools-mcp/invocations.json`,
+   übersteht Neustarts) und geht an die nächste Sitzung, die sich verbindet.
+4. Nach der Zustellung entfernt die App den Rückruf und löscht die Memory, sobald kein anderer Rückruf mehr an ihr
+   hängt.
+
+Module können Rückrufe auch selbst anlegen und sofort auslösen (`InvocationService.notify`) – so meldet die Kooperation
+eingehende Angebote auch einer später gestarteten Sitzung. `invocations_list` zeigt wartende und noch nicht
+zugestellte Rückrufe, `invocations_cancel` bricht einen ab. Der stdio-Proxy holt Ereignisse erst, nachdem Claude Code
+die Sitzung initialisiert hat – vorher gingen sie verloren, ein Rückruf gilt mit der Zustellung aber als erledigt.
+
+### Kooperation zwischen Instanzen und Geräten
+
+Zwei Claude-Instanzen auf verschiedenen Rechnern tauschen Kontext aus – zwei Nutzer, oder ein Nutzer mit mehreren
+Geräten. Übertragen wird über einen **MQTT-5-Broker** – standardmäßig den des Backends ([HiveMQ CE im Team-Server bzw.
+im eingebetteten Backend](#mqtt-broker-für-die-kooperation)), alternativ einen eigenen (z.B. HiveMQ Cloud, Mosquitto) –
+und nur mit **Zustimmung beider Nutzer**:
+
+1. **Nutzer 1 sendet.** `share_send(to, title, note, memories, skills, files, invocation)` packt eine Notiz (Stand,
+   Ergebnisse, offene Punkte), Memories (Nummern), Skills (mit Zusatzdateien) und Dateien zu einem Angebot. Bevor
+   etwas den Rechner verlässt, bestätigt Nutzer 1 es selbst – im MCP-Client (Elicitation) oder per Dialog der App
+   (*Rückfrage beim Senden und Annehmen*, `auto`/`client`/`app`). Mit `invocation` kommt die Antwort als Rückruf.
+2. **Die App von Nutzer 2 meldet es.** Das Angebot landet im Eingang (`share_inbox`, `share_view`) und geht als Rückruf
+   an seine Sitzungen – auch an eine, die er erst später startet.
+3. **Nutzer 2 nimmt an.** `share_accept` fragt ihn ebenfalls selbst; alternativ in der App unter *Module → Kooperation
+   → Aktionen → Annehmen/Ablehnen* (der Klick ist die Zustimmung). Übernommen wird so:
+   * Notiz und Memories → **temporäre Memories** (Tag `geteilt`, mit Herkunftsvermerk) – dauerhaft macht sie der
+     Empfänger bei Bedarf selbst,
+   * Skills → eigene Skills; gibt es den Namen schon, als `<name>-<absender>` – nie überschrieben,
+   * Dateien → je Angebot ein eigener Ordner unter *Empfangene Dateien ablegen in* (Standard
+     `~/.devtools-mcp/share-received`), nichts wird überschrieben.
+
+   `share_decline` lehnt ab. In beiden Fällen erfährt Nutzer 1 die Antwort (`kind=accepted`/`declined`, mit Kommentar),
+   der Inhalt wird beim Empfänger danach nicht mehr aufbewahrt.
+
+**Broker.** Ist im Modul kein Broker eingetragen, fragt die App das Backend (GraphQL `broker`) und meldet sich dort mit
+dem Token ihres Benutzerkontos an; Adresse ist die E-Mail des Kontos, das Präfix gibt der Server vor, und der Broker
+prüft jeden Absender. Ist dort keiner eingeschaltet, sagt `share_peers` bzw. „Verbindung testen“, was fehlt. Ein eigener
+Broker wird als `mqtts://host:8883`, `mqtt://host:1883`, `wss://host/mqtt` oder `ws://host:8000/mqtt` eingetragen,
+optional mit Benutzer, Passwort, Präfix und eigener Adresse.
+
+**Topics und Sitzung.** Je Instanz eine Verbindung mit stabiler Client-ID und persistenter Sitzung (`cleanStart=false`,
+*Aufbewahrung beim Broker*, Standard 7 Tage): Angebote an eine gerade getrennte Instanz stellt der Broker zu, sobald sie
+sich wieder verbindet. Topics unter dem Präfix (Standard `devtools-mcp`): `…/inbox/<adresse>` (QoS 1) und
+`…/presence/<adresse>/<instanz>` (retained, Testament „offline“) – `share_peers` zeigt daraus, wer online ist. Weitere
+eigene Geräte haben dieselbe Adresse; jedes bekommt das Angebot, die sendende Instanz ignoriert ihr eigenes.
+
+**Sicherheit.**
+* *Broker des Backends*: Anmeldung mit dem Benutzerkonto, jeder liest nur seinen eigenen Eingang, und der Broker
+  stempelt den geprüften Absender – Angebote unter fremdem Namen verwirft die App.
+* *Team-Schlüssel (Ende-zu-Ende)*: gemeinsames Passwort aller Beteiligten; Nachrichten werden mit AES-256-GCM
+  verschlüsselt (Schlüssel per PBKDF2 aus Passwort und Präfix), der Broker sieht nur Adressen. Nachrichten ohne oder mit
+  anderem Schlüssel werden verworfen. Für einen eigenen Broker ohne Absenderprüfung empfohlen, zusammen mit TLS und
+  Zugriffsregeln am Broker.
+* *Austausch nur mit*: Adresse, `@domain` oder `domain` je Zeile – gilt für Senden und Empfangen.
+* Dateien nur aus *Dateien senden aus* (inkl. Unterverzeichnissen, auch über Symlinks nicht hinaus), *Max. Größe je
+  Angebot* (Standard 1024 KB) beim Senden und Empfangen – größere lehnt der Empfänger automatisch ab.
+* Angebote sind Inhalte anderer Menschen: Das LLM soll sie als Information behandeln, nie selbst annehmen oder
+  weitersenden; angenommen wird nur nach Bestätigung durch den Nutzer.
+* Eingang und Ausgang stehen in `~/.devtools-mcp/share-state.json` (Inhalt nur bis zur Entscheidung).
 
 ### Hinweise des Servers: Skills und Memories finden das LLM
 
@@ -698,6 +1376,224 @@ Zahlen in Argumenten zählen nur unter ID-artigen Namen (`id`, `number`, `pr`, `
 Hinweise beschreiben nur den Zustand („per skills_view ladbar“), weil Clients Aufforderungen in Tool-Ergebnissen
 misstrauen. Abgeschaltete Module bzw. Lese-Tools liefern keine Hinweise.
 
+### Skripte – eigene Tools zur Laufzeit
+
+Eigene Tools lassen sich ohne Build und ohne Neustart als **Skript in Groovy, Java oder Gherkin** ergänzen: Jedes
+Skript wird ein Modul mit Tools, Einstellungsformular und optionalen Instructions. Gherkin beschreibt Abläufe aus
+vorhandenen Tools ganz ohne Programmcode. Speichern lädt es sofort, Löschen entfernt seine
+Tools – verbundene Clients bekommen `tools/list_changed`. In der Modulliste erscheint es wie ein eingebautes Modul
+(„· Skript“), mit Schalter, Tool-Schaltern, Formular und Aufrufprotokoll.
+
+#### Groovy (DSL)
+
+```groovy
+// devtools: compileStatic                  // optional: Typprüfung wie in Java (siehe unten)
+module {
+    name 'Jira-Helfer'                       // Anzeigename (optional, Standard: Skriptname)
+    description 'Eigene Jira-Abfragen'       // Pflicht
+    instructions 'Für Jira-Fragen im Team X diese Tools verwenden.'
+    setting 'baseUrl', 'Basis-URL', URL, required: true
+    setting 'token', 'API-Token', SECRET     // verschlüsselt gespeichert, wie bei eingebauten Modulen
+}
+
+tool('open_issues') {                        // → jira_open_issues (Skriptname = Modul-ID = Präfix)
+    description 'Offene Issues eines Projekts'
+    param 'project', String, 'Projektschlüssel'
+    param 'limit', Integer, 'Höchstens so viele', required: false
+    readOnly true                            // MCP-Hinweise: readOnly, destructive, idempotent, openWorld
+    execute { args, cfg ->
+        progress "Frage ${cfg.baseUrl} ab …"
+        def url = "${cfg.baseUrl}/rest/api/2/search?jql=project=${args.project}".toURL()
+        def json = new groovy.json.JsonSlurper().parse(url) as Map
+        (json.issues as List<Map>).collect { [key: it.key, summary: (it.fields as Map).summary] }  // sonst JSON
+    }
+}
+```
+
+* **DSL:** `module { … }` (Name, Beschreibung, Instructions, `setting key, label, TYP` mit `required`,
+  `defaultValue`, `help`, `options`), `tool('name') { … }` mit `description`, `param name, Typ, Beschreibung`
+  (`String`, `Integer`, `Long`, `Double`, `Boolean`, `List`, `Map`; `required: false`, `options: [...]`), MCP-Hinweisen
+  und `execute { args -> … }` bzw. `execute { args, cfg -> … }` (`args`/`cfg`: `Map<String, Object>`). In `execute`
+  stehen `progress "…"` (MCP-Progress) und `log` zur Verfügung. Die vollständige Referenz liefert `scripts_view` ohne
+  Namen bzw. der Reiter *Referenz* in der App. Ältere Skripte mit `run { … }` statt `execute` laufen weiter (nur ohne
+  Typprüfung – statisch bindet Groovy `run` an `Closure.run()`).
+* **Typprüfung:** Groovy ist standardmäßig dynamisch – Tippfehler und unbekannte Methoden fallen erst beim Aufruf auf.
+  Eine Zeile `// devtools: compileStatic` prüft das ganze Skript (eigene Klassen, DSL, `execute`-Blöcke) beim
+  Übersetzen wie Java und übersetzt es statisch; `// devtools: typeChecked` prüft nur. Die DSL trägt dafür
+  `@DelegatesTo`/`@ClosureParams`. Werte aus `args`/`cfg` sind `Object` und brauchen für Methodenaufrufe einen Cast
+  (`(args.project as String).toUpperCase()`); ohne Parameter `execute { … }` statt `{ -> … }`. Auch mit Prüfung bleibt
+  Groovy-Semantik: `7 / 2` ist `3.5` (ganzzahlig `7.intdiv(2)`), `==` vergleicht Inhalte, `"…$x"` ist ein Platzhalter.
+  Die Vorlage für neue Skripte hat die Anweisung schon drin.
+
+#### Java
+
+Echtes Java, übersetzt mit `javac` aus dem JDK: eine Quelldatei mit einer `public class`, die `ToolModule` implementiert
+– dieselbe API wie eingebaute Module und Plugins (siehe [Eigenes Modul schreiben](#eigenes-modul-schreiben)). Tools sind
+`@Tool`-Methoden, erzeugt mit `ToolBeans.callbacks(…)`, `@ToolHints` setzt die MCP-Hinweise; weitere (auch
+verschachtelte) Klassen in derselben Datei sind erlaubt.
+
+```java
+import java.util.List;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import systems.grebe.devtools.mcp.core.*;
+
+public class Jira implements ToolModule {
+    public String id() { return "jira"; }                      // wird durch den Skriptnamen ersetzt
+    public String displayName() { return "Jira-Helfer"; }
+    public String description() { return "Eigene Jira-Abfragen"; }
+    public List<ConfigField> configSchema() {
+        return List.of(ConfigField.of("baseUrl", "Basis-URL", FieldType.URL).asRequired());
+    }
+    public List<ToolCallback> createTools(ModuleConfig config) {
+        return ToolBeans.callbacks(new Tools(config.getString("baseUrl", "")));
+    }
+
+    public static class Tools {
+        private final String baseUrl;
+        Tools(String baseUrl) { this.baseUrl = baseUrl; }
+
+        @Tool(name = "open_issues", description = "Offene Issues eines Projekts")
+        @ToolHints(readOnly = true)
+        public String openIssues(@ToolParam(description = "Projektschlüssel") String project) {
+            return "Issues für " + project + " auf " + baseUrl;
+        }
+    }
+}
+```
+
+* **Übersetzen:** im Speicher mit `-proc:none` (kein Annotation-Processing) und `-parameters` (Spring AI braucht die
+  Parameternamen), gegen alle Bibliotheken der App. Läuft die App als Fat-Jar (`java -jar`), entpackt sie dafür
+  einmal je Jar-Version `BOOT-INF/classes` und `BOOT-INF/lib` nach `<java.io.tmpdir>/devtools-mcp-javac/` (rund
+  150 MB, dauert beim ersten Java-Skript ein, zwei Sekunden). Jedes Skript bekommt einen eigenen ClassLoader.
+* **Voraussetzung:** Die Desktop-App muss mit einem **JDK** laufen (eine reine JRE hat keinen `javac`) – sonst meldet
+  das Speichern das. Das Backend parst Java-Skripte nur (`JavacTask#parse`, ohne Klassenpfad) und liest die
+  Beschreibung aus `description()` mit `return "…";`; läuft es ohne JDK, entfällt die Prüfung dort.
+* **Zeitlimit:** Java-Code wird nicht instrumentiert – lange Schleifen sollten `Thread.interrupted()` prüfen; ein
+  Ergebnis nach Ablauf des Zeitlimits wird verworfen.
+
+#### Gherkin
+
+Feste Abläufe aus vorhandenen Tools – aufrufen, Ergebnis prüfen, Werte weitergeben – ohne Programmcode, in der
+Sprache von Cucumber. Die `Funktionalität` ist das Modul, jedes `Szenario` ein Tool:
+
+```gherkin
+# language: de
+Funktionalität: Schnellcheck
+  Prüft ein Repository lokal.
+
+  @readOnly
+  Szenario: Branch prüfen
+    Prüft Arbeitsverzeichnis und Unit-Tests.
+    <repo>: Repository-Name, z.B. web-core
+
+    Wenn ich das Tool "git_status" aufrufe:
+      | repository | <repo> |
+    Dann enthält das Ergebnis "Arbeitsverzeichnis sauber"
+    Wenn ich das Tool "build_test" aufrufe:
+      | project | <repo> |
+    Dann enthält das Ergebnis "BUILD ERFOLGREICH"
+    Und ich merke mir "Tests: (\d+) gesamt" aus dem Ergebnis als tests
+    Und ich gebe "<repo>: ${tests} Tests, alle grün." aus
+```
+
+→ Tool `schnellcheck_branch_pruefen(repo)` (Skriptname `schnellcheck`).
+
+* **Abbildung:** Name der Funktionalität = Anzeigename, Freitext darunter = Beschreibung des Moduls. Aus dem
+  Szenario-Namen wird der Tool-Name („Branch prüfen“ → `branch_pruefen`), der Freitext darunter ist die
+  Tool-Beschreibung. **Platzhalter** `<name>` in Schritten, Tabellen und DocStrings werden Tool-Parameter (Text,
+  Pflicht); eine Zeile `<name>: Beschreibung` unter dem Szenario beschreibt sie, `<name>: optional – …` macht sie
+  optional. Tags `@readOnly`, `@destructive`, `@idempotent` (an Funktionalität, Regel oder Szenario) werden
+  MCP-Hinweise. `Grundlage` (Background) läuft vor jedem Szenario, auch in einer `Regel`; Szenariogrundrisse mit
+  `Beispiele` gibt es nicht – die Werte kommen als Parameter. Ohne `# language: …` gilt Deutsch.
+* **Eingebaute Schritte** (nach `Angenommen`/`Wenn`/`Dann`/`Und`/`Aber`, als Cucumber Expressions): Tool aufrufen
+  (`ich rufe das Tool "…" auf` / `ich das Tool "…" aufrufe`, auch wiederholt `… alle 30 Sekunden …, bis das Ergebnis
+  "…" enthält`), das Ergebnis prüfen (`enthält das Ergebnis "…"`, `… nicht`, `passt das Ergebnis zu "regex"`,
+  `ist das Ergebnis "…"` – jeweils auch als `das Ergebnis enthält …`), Variablen (`ich merke mir das Ergebnis als x`,
+  `ich merke mir "regex" aus dem Ergebnis als x` – Gruppe 1, `ich setze x auf "…"`, verwendet als `${x}`), Ausgaben
+  (`ich gebe "…" aus`, `ich gebe das Ergebnis aus`) und `ich warte 10 Sekunden`. Die vollständige Liste mit
+  Beispielen steht in der Referenz (`scripts_view` ohne Namen).
+* **Tool-Argumente** als Tabelle `| parameter | wert |` ohne Kopfzeile oder als DocString mit einem JSON-Objekt.
+  Text-Werte werden nach dem Eingabeschema des Ziel-Tools umgewandelt (`"5"` → 5, `"ja"` → true, `"a, b"` → Liste),
+  ein leerer Wert lässt den Parameter weg, unbekannte Parameter werden abgelehnt. Platzhalter und Variablen stehen in
+  Anführungszeichen, Tabellen oder DocStrings; in regulären Ausdrücken zählen ihre Werte als Text.
+* **Beim Speichern** (`GherkinScriptCompiler`) wird jeder Schritt einem eingebauten Schritt zugeordnet – unbekannte
+  oder mehrdeutige Schritte, ungesetzte Variablen, Ergebnis-Prüfungen ohne vorherigen Tool-Aufruf, ungültige reguläre
+  Ausdrücke, Tabellen ohne zwei Spalten und DocStrings ohne JSON-Objekt fallen mit Zeile auf. Tools, die gerade nicht
+  aktiv sind, ergeben nur einen **Hinweis** in der Meldung (sie können später kommen, etwa aus einem anderen Skript).
+* **Beim Aufruf** laufen die Schritte nacheinander im Thread des Aufrufers: Aufgerufen werden nur **aktive** Tools
+  (Modul- und Tool-Schalter), mit denselben Freigaben wie direkt und mit Eintrag im Aufrufprotokoll – aber ohne die
+  Skill-/Memory-Hinweise, die gelten dem äußeren Aufruf (`ToolRegistry#activeTool`). Das Ergebnis enthält die
+  Ausgaben und den Ablauf mit den (gekürzten) Ergebnissen der aufgerufenen Tools; schlägt ein Schritt fehl, kommt
+  derselbe Ablauf bis dahin als Fehler mit Zeile. Skripte, die sich gegenseitig aufrufen, brechen nach fünf Ebenen ab.
+
+#### Für alle Sprachen
+
+* **Ablauf:** Vor dem Speichern übersetzt die Desktop-App das Skript und wertet die Definition aus (Groovy: Code auf
+  oberster Ebene, Java: Konstruktor; Zeitlimit 10 s; Gherkin: Schritte zuordnen) – Fehler kommen mit Zeile zurück,
+  gespeichert wird dann nichts. Das Backend prüft zusätzlich die **Syntax**, ohne etwas auszuführen (Groovy: nur
+  Parsen bis zum AST, `@Grab` abgeschaltet; Gherkin: Parsen samt der Regeln oben, nicht die Schritte) – so landet
+  auch aus der Web-UI kein unübersetzbares Skript in der Ablage. Ein Skript mit Fehler in der Definition steht mit
+  seinem Fehler in der Modulliste. Die Sprache gehört zum Skript (`scripts_save` mit `language: java` bzw.
+  `gherkin`; ohne Angabe bleibt sie, neue Skripte sind Groovy).
+* **Ablage im Backend** (eingebettet oder Team-Server, Tabellen `script`/`script_revision` in der Skill-Datenbank):
+  Quelltext, Beschreibung und **Historie** je Änderung. Eigentümer wie bei den Skills: eigene Skripte je
+  Konto-E-Mail, dazu **globale Vorlagen**, die Benutzer mit dem Recht „Vorlagen veröffentlichen“ im Tab **Skripte**
+  veröffentlichen und zurückziehen – sie laufen danach in den Desktop-Apps *aller* Benutzer. Ein eigenes Skript verdeckt die Vorlage gleichen Namens. Das
+  Backend übersetzt nichts; ausgeführt wird nur in der Desktop-App. Änderungen (auch aus anderen Desktop-Apps) meldet die
+  Subscription `scriptsChanged`, die App lädt dann nur geänderte Skripte neu.
+* **Namen:** 2–32 Kleinbuchstaben/Ziffern (`jira`, `deploy2`) – der Name ist Modul-ID und Tool-Präfix und darf
+  keinem eingebauten Modul oder Plugin gehören.
+* **Bearbeiten in der App:** Tab **Skripte** – links die Skripte mit Sprache, Herkunft, Revision und Zustand, rechts
+  Name und Sprache, Editor (*Prüfen*, *Speichern*), Historie (früheren Stand in den Editor übernehmen) und Referenz.
+  Ungespeicherte Änderungen bleiben erhalten, wenn ein Skript woanders geändert wird.
+* **Editor wie in IntelliJ** (RichTextFX, `ui.code.CodeEditor`, Logik ohne Oberfläche in `modules.scripts.assist`):
+  Syntaxhervorhebung in den Farben von „IntelliJ Light“ (Groovy mit DSL, `args.x`/`cfg.x` und GString-Code; Java;
+  Gherkin je `# language:`), Zeilennummern, aktuelle Zeile, passende Klammer; Fehler aus *Prüfen*/*Speichern* mit
+  „Zeile N“ werden in der Zeile rot unterwellt, bis sich der Text ändert. **Autovervollständigung** öffnet sich beim
+  ersten Buchstaben eines Wortes, nach `.` und in Gherkin nach dem Schritt-Schlüsselwort (sonst Strg+Leertaste; bei
+  genau einem Treffer fügt Strg+Leertaste ihn direkt ein). Gefiltert wird wie in IntelliJ mit CamelHumps (`gSN` →
+  `getScriptName`), Enter fügt ein, Tab ersetzt das Wort bis zum Ende, Klassen werden dabei importiert.
+  * *Groovy:* je Block die passende DSL (`module`/`tool` oben, `description`/`setting` …, `param`/`execute` …),
+    Feldtypen und Optionen an Argumentstellen, in `execute` Variablen, `progress`, `log`, Klassen; nach `args.` die
+    Parameter des Tools, nach `cfg.` die Einstellungen. Nach einem Punkt die Member des Typs davor samt GDK-Methoden
+    (`each`, `collect` …) und Groovy-Eigenschaften – Typen aus Deklarationen, `new`, Literalen, Casts und ganzen
+    Aufrufketten.
+  * *Java:* semantisch über javac (Analyse mit Platzhalter an der Schreibmarke, auch bei halbfertigem Code): Member mit
+    Generics und Sichtbarkeit, Variablen und Felder im Gültigkeitsbereich, Pakete in Imports, Annotationen.
+  * *Gherkin:* Schlüsselwörter, die eingebauten Schritte in der passenden Satzstellung (`Wenn ich das Tool … aufrufe`,
+    `Dann enthält das Ergebnis …`), Tool-Namen der aktiven Tools in `Tool "…"`, ihre Parameter in der Tabelle darunter,
+    Platzhalter `<name>`, Variablen `${name}`, Tags und Sprachen.
+
+  Typen kommen aus dem Symbolmodell von javac über die Klassendateien – es werden keine Klassen geladen und keine
+  Reflection verwendet; ohne JDK fallen nur die Typinformationen weg. Beim Öffnen des Tabs wärmt die App Klassenindex
+  (~39 000 Klassen, ~0,5 s), javac (~1 s) und die Liste im Hintergrund vor; danach braucht eine Groovy-Liste wenige
+  Millisekunden, eine Java-Liste (volle Analyse) etwa 70–300 ms. Weitere Kürzel: Enter rückt passend ein (`{|}` wird
+  aufgeklappt), Klammern und Anführungszeichen paarweise, Tab/Umschalt+Tab, Strg+/ (auch Strg+#) kommentiert,
+  Strg+D verdoppelt.
+* **Web-UI des Team-Servers:** Seite **Skripte** – eigene Skripte und globale Vorlagen ansehen, anlegen (Groovy, Java
+  oder Gherkin), bearbeiten (mit Syntaxprüfung), Historie, löschen; mit dem Recht „Vorlagen veröffentlichen“ auch
+  Vorlagen veröffentlichen und zurückziehen.
+  Ohne Ausführung ermittelt der Server die Beschreibung aus dem Quelltext (fester Text, sonst bleibt die bisherige).
+  Ob ein Skript lädt und welche Tools entstehen, zeigt die Desktop-App, die Änderungen sofort übernimmt.
+* **Ohne erreichbaren Team-Server:** Nach jedem Abgleich speichert die App den Stand verschlüsselt in
+  `scripts-cache.json` (nur für den Server und Benutzer, von dem er stammt). Ist der Server beim Start nicht
+  erreichbar, lädt sie die Skripte von dort („offline“ in Liste und `scripts_list`) und gleicht ab, sobald er wieder antwortet.
+* **Sicherheit:** Skripte laufen ohne Sandbox mit allen Rechten der App (Dateisystem, Netz, Prozesse, alle
+  Bibliotheken der App). Deshalb darf das LLM Skripte nur mit den Schaltern *LLM darf Skripte anlegen und ändern* bzw.
+  *… löschen* (Standard aus) schreiben; Lesen (`scripts_list`, `scripts_view`) ist immer dabei. Auf einem Team-Server
+  bedeutet eine globale Vorlage Code auf allen angebundenen Rechnern – das Recht „Vorlagen veröffentlichen“ daher
+  sparsam vergeben.
+  Gherkin-Skripte führen keinen eigenen Code aus, können aber jedes aktive Tool aufrufen – also auch schreibende wie
+  `container_rm` oder `git_reset`, soweit sie eingeschaltet sind.
+* **Zeitlimit** je Tool-Aufruf (Modul *Skripte*, Standard 300 s): danach wird der Aufruf unterbrochen. Groovy-Skripte
+  werden mit `@ThreadInterrupt` übersetzt, damit auch Endlosschleifen abbrechen; blockierendes I/O ohne
+  Interrupt-Unterstützung bricht das nicht ab.
+* Jedes Groovy- und Java-Skript hat einen eigenen ClassLoader (Elternteil: die App), der beim Entfernen freigegeben
+  wird. Aufrufe können parallel laufen – Zustand zwischen Aufrufen nicht in Skript-Variablen oder Feldern halten
+  (Gherkin-Variablen gelten ohnehin nur für einen Aufruf).
+
 ### Instructions für das LLM
 
 Beim `initialize` schickt der Server MCP-`instructions`, die Clients wie Claude Code in den System-Prompt übernehmen.
@@ -710,10 +1606,11 @@ Text aus einem allgemeinen Vorrang-Hinweis, dem optionalen `spring.ai.mcp.server
 Die Instructions werden bei **jedem `initialize`** neu gebaut: Das MCP-SDK friert den Text beim Serveraufbau ein,
 deshalb liegt um den WebFlux-Transport eine Hülle (`core/LiveInstructionsTransport`), die im Session-Aufbau das
 `InitializeResult` mit dem aktuellen Text ersetzt. Installierte, aktivierte oder entfernte Plugins sind so für jede
-**neue** Client-Session sofort berücksichtigt. Eine bestehende Session behält den Text ihres `initialize` – MCP kennt
-keine Änderungsbenachrichtigung für Instructions; der Client muss neu verbinden. Abgeschaltete eingebaute Module sind
-enthalten, die Texte sind bedingt formuliert („wenn angeboten“), die aktuell verfügbaren Tools liefert weiterhin
-`tools/list`. Codeänderungen an eingebauten Texten brauchen natürlich einen Neustart der App.
+**neue** Client-Session sofort berücksichtigt; dasselbe gilt für die `instructions` von Skripten. Eine
+bestehende Session behält den Text ihres `initialize` – MCP kennt keine Änderungsbenachrichtigung für Instructions;
+der Client muss neu verbinden. Abgeschaltete eingebaute Module sind enthalten, die Texte sind bedingt formuliert
+(„wenn angeboten“), die aktuell verfügbaren Tools liefert weiterhin `tools/list`. Codeänderungen an eingebauten Texten
+brauchen natürlich einen Neustart der App.
 
 Nicht jeder Client übernimmt die Instructions (Hermes z.B. wertet nur die Tool-Beschreibungen aus). Deshalb endet
 zusätzlich **jede** Tool-Beschreibung mit der Grundregel ihres Moduls (`core/ShellHints`) und nennt, wo es einen
@@ -778,7 +1675,7 @@ MCP-Tool-Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `open
 Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die Callbacks mit
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
-zerstörerisch. Bisher annotiert: SSH, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
+zerstörerisch. Bisher annotiert: SSH, Datenbanken (JDBC), Datenbank-Branches, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
 Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`.
 
 ## Plugins
@@ -787,7 +1684,8 @@ Neue Module lassen sich auch **ohne Änderung an der App** ergänzen – als Plu
 in `~/.devtools-mcp/plugins/` (Tab **Plugins** → *Ordner öffnen*), werden beim Start geladen und lassen sich zur
 Laufzeit installieren, aktualisieren, an-/abschalten und entfernen; verbundene Clients erhalten sofort
 `tools/list_changed`. Die Module eines Plugins erscheinen in der Modulliste wie eingebaute (mit „· Plugin *name*“),
-inkl. Formular, Schaltern, Aktionen und Protokoll.
+inkl. Formular, Schaltern, Aktionen und Protokoll. Für kleine Erweiterungen ohne Build und Jar gibt es
+[Skripte](#skripte--eigene-tools-zur-laufzeit).
 
 ### Plugin schreiben
 
@@ -797,7 +1695,7 @@ inkl. Formular, Schaltern, Aktionen und Protokoll.
 name: jira                        # Pflicht, [a-z][a-z0-9-]*, eindeutig
 version: 1.2.0                    # Pflicht
 main: com.acme.jira.JiraPlugin    # Pflicht, erweitert DevToolsPlugin
-api-version: 1                    # optional; höher als die App → Plugin wird abgewiesen
+api-version: 1                    # optional; höher als die App → Plugin wird abgewiesen (2: Datenbanken, Projekte; 3: Mail)
 description: Tickets lesen und kommentieren
 author: Team Tools                # oder authors: [a, b]
 website: https://git.acme.de/jira-plugin
@@ -826,7 +1724,7 @@ class JiraModule implements ToolModule {
     @PreDestroy void close() { … }
 
     public String id() { return "jira"; }                   // → Tools jira_*
-    public List<ToolCallback> createTools(ModuleConfig c) { return List.of(ToolCallbacks.from(new JiraTools(client))); }
+    public List<ToolCallback> createTools(ModuleConfig c) { return ToolBeans.callbacks(new JiraTools(client)); }
     …
 }
 ```
@@ -834,7 +1732,8 @@ class JiraModule implements ToolModule {
 * **Scan:** Paket der Hauptklasse samt Unterpaketen, nur im Plugin-Jar (nicht in `libraries` oder der App). Ein
   `@ComponentScan` auf der Hauptklasse ersetzt das; `@Import`, `@Configuration`, `@Bean` wirken wie gewohnt.
 * **Injizierbar:** alle eigenen Beans, `PluginContext`, `PluginDescriptor` und die Beans der App (`SettingsStore`,
-  `ToolRegistry`, `JavaEnvironmentProvider`, `SkillService` …). `@Value` sieht die Properties der App. Eltern ist die
+  `ToolRegistry`, `JavaEnvironmentProvider`, `SkillService` …). Die App-Beans sind Implementierung, nicht Teil der
+  Plugin-API – wer sie nutzt, kompiliert gegen das App-Jar und muss bei App-Updates mit Änderungen rechnen. `@Value` sieht die Properties der App. Eltern ist die
   BeanFactory der App, nicht ihr Kontext: Plugin-Beans sind für die App unsichtbar, Ereignisse des Plugin-Kontexts
   erreichen sie nicht.
 * **Ohne Spring:** geht weiter wie bei Bukkit – `registerModule(new JiraModule(dataFolder()))` in `onEnable()`.
@@ -842,13 +1741,35 @@ class JiraModule implements ToolModule {
 * **Fehler** beim Aufbau (fehlende Bean, Exception in `@PostConstruct`) lassen nur dieses Plugin scheitern; die
   Meldung von Spring steht im Tab **Plugins**.
 
-Build (Gradle) – die App stellt die API bereit, ins Jar gehört nur der eigene Code:
+Build – Plugins kompilieren nur gegen die **Plugin-API** (`plugin-api`, Maven `systems.grebe:devtools-mcp-plugin-api`).
+Sie enthält, was ein Plugin braucht, und reicht Spring AI (`@Tool`, `ToolCallback`), Spring-Context und
+`jakarta.annotation` zum Kompilieren durch:
+
+| Bereich | Typen |
+|---|---|
+| Plugin | `DevToolsPlugin`, `PluginContext`, `PluginDescriptor`, `PluginApi` |
+| Module | `ToolModule`, `ModuleAction`, `ConnectionTestResult`, `ToolScope`, `ConfigField`, `ConfigGroup`, `FieldType`, `ModuleConfig` |
+| Tools | `ToolBeans` (Callbacks mit Hinweisen), `@ToolHints`, `ToolProgress` (Fortschritt an den Client), `DelegatingToolCallback` |
+| Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `ContainerRuntimeProvider`/`ContainerRuntime`/`RuntimeSettings` |
+| Datenbanken | `DatabaseConnectionProvider`, `DatabaseConnectionInfo` (Verbindungen des JDBC-Moduls, ab `api-version: 2`) |
+| Projekte | `ProjectProvider`, `ProjectDirectory` (freigegebene Projektverzeichnisse, ab `api-version: 2`) |
+| Mail | `MailAccountProvider`, `MailAccountInfo`, `MailFolderInfo`, `MailSummary`, `MailMessage`, `MailAttachment(Info)`, `MailQuery`, `MailDraft`, `MailSend`, `NewMail` (Konten des Mail-Moduls, ab `api-version: 3`) |
+ Die App stellt all das zur Laufzeit bereit, ins Jar
+gehört nur der eigene Code. Die Pakete sind dieselben wie vorher im App-Jar: bereits gebaute Plugins laufen unverändert.
+
+```bash
+./gradlew :plugin-api:publishToMavenLocal          # oder in ein eigenes Repository:
+./gradlew :plugin-api:publish -PpluginApiRepository=https://nexus.acme.de/repository/maven-releases \
+    -PpluginApiRepositoryUser=… -PpluginApiRepositoryPassword=…
+```
 
 ```kotlin
 dependencies {
-    compileOnly("systems.grebe:devtools-mcp:0.1.0-SNAPSHOT") // ./gradlew publishToMavenLocal in diesem Repo
+    compileOnly("systems.grebe:devtools-mcp-plugin-api:0.1.0-SNAPSHOT")
 }
 ```
+
+Maven: dieselbe Koordinate mit `<scope>provided</scope>`. Das POM nennt feste Versionen (keine BOM nötig).
 
 * **Lebenszyklus:** Kontext aufbauen (`@PostConstruct`) → `onLoad()` → `ToolModule`-Beans aufnehmen → `onEnable()`;
   beim Abschalten, Entfernen, Aktualisieren und Beenden `onDisable()` → Module entfernen → Kontext schließen
@@ -859,14 +1780,79 @@ dependencies {
   erhalten), `logger()` (`plugin.<name>`), `plugin(name)` (andere aktive Plugins), `apiVersion()`.
 * **ClassLoader:** je Plugin ein eigener; Reihenfolge *App → Plugin → depend/softdepend*. App-Bibliotheken (Spring AI,
   Jackson, SLF4J …) gibt es damit genau einmal in der Version der App, eigene `libraries` nur für Klassen, die die App
-  nicht mitbringt. Bei jedem Aufruf in Plugin-Code (Tools, Formular, Aktionen, Verbindungstest) ist der
-  Thread-Context-ClassLoader der des Plugins – `ServiceLoader` und Jackson finden die Plugin-Klassen.
+  nicht mitbringt. Bei jedem Aufruf in Plugin-Code (Tools, Formular, Aktionen, Verbindungstest, Provider und die von
+  ihnen erzeugten Systeme) ist der Thread-Context-ClassLoader der des Plugins – `ServiceLoader` und Jackson finden die
+  Plugin-Klassen.
 * **Modul-IDs** sind app-weit eindeutig (2–32 Kleinbuchstaben/Ziffern); eingebaute IDs sind gesperrt. Einstellungen
   und Schalter eines Plugin-Moduls liegen wie bei eingebauten in `settings.json` und überleben Updates.
+* **Provider:** Ein Plugin kann Ticket-Systeme, Chat-Systeme, Git-Server und Container-Laufzeiten beisteuern – wie
+  eingebaute über eine Zeile in `META-INF/services/<SPI>` (z.B.
+  `META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`). Sie erscheinen im jeweiligen
+  Modul (Formular, `provider`-Parameter), sobald das Plugin aktiv ist, und verschwinden mit ihm; der Tab **Plugins**
+  zeigt sie unter „Provider“. Eine ID, die ein eingebauter Provider belegt, wird ignoriert. Provider und die Objekte,
+  die sie liefern (`TicketSystem`, `ChatSystem`, `GitServer`, `ContainerRuntime`), sind in eine Hülle
+  (`core/ContextLoaderProxy`) gesetzt, die den ClassLoader des Plugins setzt; `instanceof AutoCloseable` und
+  Exceptions bleiben erhalten.
+* **Datenbanken:** Statt eigener Zugangsdaten nutzen Plugins die Verbindungen des Moduls „Datenbanken (JDBC)“ über
+  die Bean `DatabaseConnectionProvider` (Plugin-API, `modules/jdbc/spi`, `api-version: 2`):
+  `connections()` listet Name, maskierte URL, Benutzer, Beschreibung, Produkt und ob Lesen erlaubt ist – nie
+  Passwörter; `read(name, con -> …)` leiht eine Verbindung aus dem Pool des Moduls, schreibgeschützt in einer
+  Transaktion, die immer zurückgerollt wird. Es gelten Treiber, Timeouts und Freigaben des Moduls: Lesen braucht den
+  Schalter „Datensätze lesen“, das Recht auf `jdbc_query` und eine Verbindung, deren Deckel Lesen erlaubt; ob das
+  Modul selbst aktiv ist, spielt keine Rolle. Injiziert als `ObjectProvider<DatabaseConnectionProvider>` bleibt das
+  Plugin auch ohne die Bean (Tests) lauffähig.
+* **Projekte:** Die Bean `ProjectProvider` (Plugin-API, `project/spi`, `api-version: 2`) liefert die freigegebenen
+  Projektverzeichnisse – die Verzeichnislisten von Git, Build, Code-Graph und Pull Requests in ihrer wirksamen Form,
+  also inklusive Backend-Projekten und „Freigaben“ – gefiltert über einen `marker` (z.B. „ist ein Gradle-Build“).
+  `resolve(nameOrPath, marker)` löst einen Projektnamen oder Pfad auf, auch ein Unterverzeichnis wie das
+  Arbeitsverzeichnis des Clients; bei aufgehobener Beschränkung auch Pfade außerhalb. `ProjectDirectory.writable()`
+  sagt, ob das Plugin dort schreiben oder Code des Projekts (Gradle) ausführen darf.
+* **Mail:** Die Bean `MailAccountProvider` (Plugin-API, `modules/mail/spi`, `api-version: 3`) gibt Plugins die Konten
+  des Mail-Moduls – ohne eigene Zugangsdaten, auch für Exchange Online: `accounts()` (Name, Benutzer@Host, Anmeldung,
+  freigegebene und überwachte Ordner – nie Passwörter oder Tokens), `folders`, `list(account, folder, MailQuery, limit)`,
+  `read` (Text, HTML als Text, Anhangsliste; bleibt ungelesen), `attachment(…, index, maxBytes)` (Inhalt) und
+  `onNewMail(listener)` – neue Mails der überwachten Ordner, im Thread der Überwachung mit dem ClassLoader des Plugins;
+  das zurückgegebene `AutoCloseable` in `onDisable()` schließen. `mark`, `move`, `draft` und `send(account, MailSend)`
+  gehen über dieselben Prüfungen wie die Tools – beim Senden fragt die App den Nutzer per Dialog. Es gelten Freigaben und Schalter des Moduls; Lesen braucht das Recht auf `mail_read`, Schreiben
+  zusätzlich den Schalter und das Recht auf `mail_mark`/`mail_move`/`mail_draft`/`mail_send`. Ob das Modul aktiv ist, spielt fürs
+  Lesen keine Rolle; neue Mails gibt es nur, solange es aktiv ist und Ordner überwacht.
+* **Tools:** `ToolBeans.callbacks(…)` statt `ToolCallbacks.from(…)` übernimmt `@ToolHints` als MCP-Tool-Annotations,
+  `ToolProgress.report(…)` meldet Zwischenstände an den Client – beides funktioniert in Plugin-Tools wie in eingebauten.
 * **Instructions:** `instructions()` aktiver Plugin-Module stehen ab der nächsten Client-Session in den
   MCP-Instructions – ohne Neustart (siehe „Instructions für das LLM“). Die Tools sind sofort in `tools/list`.
 * **Sicherheit:** Plugins laufen im Prozess der App mit denselben Rechten – kein Sandboxing. Nur Plugins aus
-  vertrauenswürdigen Quellen installieren; der Store prüft Prüfsummen, keine Signaturen.
+  vertrauenswürdigen Quellen installieren; der Store prüft Prüfsummen, die App zusätzlich die Signatur (unten).
+
+### Signatur (`plugin.jwt`)
+
+Plugins können signiert werden: `plugin.jwt` neben der `plugin.yml` ist ein JWS mit den Claims `name`, `version`,
+`author`, `iat` (Signierdatum) und `sha256` (Prüfsumme des Jar-Inhalts). Signiert wird mit einem EC- (ES256/384/512)
+oder RSA-Schlüssel (RS256):
+
+```bash
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out plugin-signing.pem    # privat, PKCS#8
+openssl pkey -in plugin-signing.pem -pubout -out plugin-signing.pub.pem                   # öffentlich
+java -jar devtools-mcp.jar sign-plugin --key plugin-signing.pem [--author "Team Tools"] build/libs/jira-plugin.jar
+```
+
+Name und Version kommen aus der `plugin.yml` im Jar, der Autor ohne `--author` ebenfalls; erneutes Signieren ersetzt
+das Token. Die öffentlichen Schlüssel trägt man im Tab **Plugins → Signaturen** ein (`settings.json`,
+`plugins.trustedKeys`). Beim Laden prüft die App:
+
+| Ergebnis | Anzeige | Warnung im Log und unter „Installiert“ |
+|---|---|---|
+| keine `plugin.jwt` | „nicht signiert“ | – (noch nicht Pflicht) |
+| Signatur eines eingetragenen Schlüssels | „gültig · Autor · Datum“ | – |
+| kein Schlüssel eingetragen | „signiert, nicht geprüft“ | – |
+| von keinem eingetragenen Schlüssel | „Schlüssel nicht vertrauenswürdig“ | ja |
+| kein lesbares JWS (auch `alg: none`) oder `name`/`version` fehlt | „ungültig“ | ja |
+| Jar-Inhalt ≠ `sha256` im Token | „Inhalt nach dem Signieren verändert“ | ja |
+| Token ohne `sha256` | wie oben | ja: „Signatur ohne Prüfsumme …“ |
+| `name` oder `version` im Token ≠ `plugin.yml` | wie oben | ja: „Signatur passt nicht zum Plugin …“ |
+
+`sha256` ist die SHA-256-Prüfsumme über alle Dateien des Jars außer `plugin.jwt`, sortiert nach Name (je Eintrag Name,
+Null-Byte, Länge, Inhalt) – Zeitstempel, Kompression und Reihenfolge im Zip zählen nicht. Ein Token lässt sich damit
+nicht in ein anderes Jar übertragen. Geladen wird das Plugin in allen Fällen; Warnungen blockieren nichts.
 
 ### Plugin-Store (Maven)
 
@@ -900,25 +1886,39 @@ JVM-Einstellungen, `file:`-Repositories. Heruntergeladenes landet in `plugins/.r
 
 ```
 desktop/
-  DevToolsMcpApplication ── main() → JavaFX; Backend-Paket nur über remote/EmbeddedBackend
+  DevToolsMcpApplication ── main() → JavaFX (oder sign-plugin, channel); Backend-Paket nur über remote/EmbeddedBackend
   fx/FxApp                ── init(): Spring-Kontext starten · start(): Fenster + Tray · stop(): Kontext schließen
-  core/ToolModule         ── Erweiterungspunkt (SPI)
+  core/ToolModule         ── Erweiterungspunkt (SPI) – liegt in plugin-api, ebenso ModuleConfig, ConfigField …
   core/ToolRegistry       ── Module ⇄ McpSyncServer (addTool/removeTool zur Laufzeit, notifyToolsListChanged)
   core/SettingsResolver   ── wirksame Einstellungen lesen/speichern (Backend, vorher settings.json)
   core/ManagedToolCallback── Präfix, Protokollierung, Klartext-Ergebnisse
   config/SettingsStore    ── settings.json (App-Einstellungen), SecretCipher (AES-GCM)
   server/BearerTokenFilter── optionaler Token-Schutz für /mcp
-  remote/                 ── EmbeddedBackend + LocalUser, BackendConnection (GraphQL-Client, Subscriptions, Cache),
-                             BackendSettingsResolver, BackendSkills, BackendMemories
+  core/ChannelEvents      ── Ereignisse an laufende Sitzungen; server/ChannelEventsController: GET /mcp/channel/events (SSE)
+  channel/ChannelBridge   ── `java -jar … stdio`: stdio-Proxy zur App (Tools + Claude-Code-Channel), `… channel`: nur
+                             Benachrichtigungen
+  channel/BridgeJar       ── Kopie des laufenden Jars unter ~/.devtools-mcp/devtools-mcp.jar (fester Pfad für den Proxy)
+  modules/mail/           ── IMAP: MailTools/MailWriteTools, MailWatcher (IDLE/Abfrage, Meldungen), MailCommand, MailState,
+                             MailSender (SMTP), MailOAuth (Exchange Online), MailAccountService (SPI für Plugins)
+  remote/                 ── EmbeddedBackend + EmbeddedAccounts (erstes Konto), BackendConnection (Anmeldung,
+                             GraphQL-Client, Subscriptions, Cache),
+                             BackendSettingsResolver, BackendSkills, BackendMemories, BackendScripts, ScriptCacheFile
   modules/{git,sonar,build,graph,skills,memories,…} ── skills/RecallHints: Hinweise auf Skills und Memories
-  plugin/PluginManager    ── Plugin-Ordner, plugin.yml, ClassLoader je Plugin, Lebenszyklus, depend-Reihenfolge
+  modules/scripts/        ── Skripte: ScriptManager (Abgleich mit dem Backend, Registrierung zur Laufzeit),
+                             ScriptCompiler + DevToolsScript (Groovy-DSL), JavaScriptCompiler + JavaClasspath (javac),
+                             GherkinScriptCompiler + GherkinSteps + ScenarioRun (Gherkin, Tools über
+                             RegistryToolCaller), ScriptToolModule/ScriptToolCallback, ScriptsModule
+  plugin/PluginManager    ── Plugin-Ordner, plugin.yml (PluginDescriptorReader), ClassLoader je Plugin, Lebenszyklus,
+                             depend-Reihenfolge
+  plugin/PluginSignature  ── plugin.jwt prüfen (PluginKeys: PEM), PluginSigner: signieren (sign-plugin)
   plugin/store/           ── Plugin-Store: Maven Resolver, Repositories, Katalog, Updates
   ui/                     ── MainView, ModuleDetailPane, ConfigForm, InvocationLogView, PluginsView, BackendView, Dialoge
 backend/
   backend/BackendConfig   ── Einstieg (Component-Scan des Backends)
   backend/BackendGraphQlController, GraphQlAuth, GraphQlErrors, ChangeBus ── GraphQL-API, Token, Fehler, Subscriptions
-  backend/{account,profile,project,catalog,skills,memories} ── Benutzer + Tokens, Profile + Ebenen, Projekte,
-                             Katalog, Skills, Memories
+  backend/{account,profile,project,catalog,skills,memories,scripts} ── Benutzer + Tokens, Profile + Ebenen, Projekte,
+                             Katalog, Skills, Memories, Skripte (Ablage + Syntaxprüfung ohne Ausführung,
+                             GherkinScripts liest Gherkin auch für die Desktop-App)
 server/
   DevToolsServerApplication ── Spring Boot (Jetty) · WildFlyInitializer (WAR)
   server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI
@@ -927,7 +1927,14 @@ natives/
   modules/window/cursor/   ── CursorProvider/CursorController (SPI): zweiter KI-Zeiger je Betriebssystem (JNA)
 shared/
   api/                    ── Datenklassen der GraphQL-API
-  core/ConfigField, config/ModuleSettings, profile/Overrides, modules/{skills,memories}/{…Backend,…Views}
+  config/ModuleSettings, profile/Overrides, modules/{skills,memories,scripts}/{…Backend,…Views}
+plugin-api/
+  core/                   ── ToolModule, ModuleAction, ConnectionTestResult, ToolScope, ConfigField, ConfigGroup,
+                             FieldType, ModuleConfig, ToolBeans + ToolHints, ToolProgress, ServiceProvider
+  modules/*/spi/          ── Provider-SPIs: ticket, chat, pr (Git-Server), container; jdbc, mail: Verbindungen und
+                             Konten für Plugins
+  project/spi/            ── ProjectProvider: freigegebene Projektverzeichnisse für Plugins
+  plugin/                 ── DevToolsPlugin, PluginContext, PluginDescriptor, PluginApi
 ```
 
 MCP-Server: Spring AI `spring-ai-starter-mcp-server-webflux` 2.0.1 (MCP Java SDK 2.0.0), Protokoll `STREAMABLE`.

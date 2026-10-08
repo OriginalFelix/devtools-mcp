@@ -1,7 +1,10 @@
 package systems.grebe.devtools.mcp.modules.ticket.youtrack;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -377,10 +380,7 @@ public class YouTrackTicketProvider implements TicketProvider {
             List<Link> out = new ArrayList<>();
             for (JsonNode l : http().getJson(issuePath(id) + "/links" + query("fields", "direction,"
                     + "linkType(name,sourceToTarget,targetToSource),issues(idReadable,summary,customFields(name,$type,value(name)))"))) {
-                JsonNode type = l.path("linkType");
-                String relation = "INWARD".equals(text(l.path("direction")))
-                        ? HttpJson.first(text(type.path("targetToSource")), text(type.path("name")))
-                        : HttpJson.first(text(type.path("sourceToTarget")), text(type.path("name")));
+                String relation = relation(l);
                 for (JsonNode i : l.path("issues")) {
                     String other = text(i.path("idReadable"));
                     JsonNode state = field(i, YouTrack::isState);
@@ -389,6 +389,59 @@ public class YouTrackTicketProvider implements TicketProvider {
                 }
             }
             return out;
+        }
+
+        private static String relation(JsonNode link) {
+            JsonNode type = link.path("linkType");
+            return "INWARD".equals(text(link.path("direction")))
+                    ? HttpJson.first(text(type.path("targetToSource")), text(type.path("name")))
+                    : HttpJson.first(text(type.path("sourceToTarget")), text(type.path("name")));
+        }
+
+        /** Linktypen der Instanz; gerichtete je Richtung ({@code <Typ>:out}/{@code <Typ>:in}), Name = Befehl wie „subtask of“. */
+        @Override
+        public List<LinkType> linkTypes(String project) {
+            List<LinkType> out = new ArrayList<>();
+            for (JsonNode t : http().getJson("/issueLinkTypes" + query("fields", "name,sourceToTarget,targetToSource,directed"))) {
+                String name = text(t.path("name"));
+                String outward = HttpJson.first(text(t.path("sourceToTarget")), name);
+                String inward = HttpJson.first(text(t.path("targetToSource")), outward);
+                if (t.path("directed").asBoolean(false) && !inward.equalsIgnoreCase(outward)) {
+                    out.add(new LinkType(name + ":out", outward, inward));
+                    out.add(new LinkType(name + ":in", inward, outward));
+                } else {
+                    out.add(new LinkType(name, outward, outward));
+                }
+            }
+            return out;
+        }
+
+        /** Als Befehl („subtask of ABC-1“) wie in der Oberfläche, damit Workflows greifen. */
+        @Override
+        public WriteResult link(String key, String project, LinkType type, String target) {
+            String id = issueId(key);
+            String other = issueId(target);
+            command(id, type.name() + " " + other);
+            return new WriteResult(id, "verknüpft: " + id + " " + type.name() + " " + other, webUrl(id));
+        }
+
+        @Override
+        public WriteResult unlink(String key, String project, String target, String relation) {
+            String id = issueId(key);
+            String other = issueId(target);
+            record Found(String relation, String link, String issue) { }
+            List<Found> found = new ArrayList<>();
+            for (JsonNode l : http().getJson(issuePath(id) + "/links" + query("fields", "id,direction,"
+                    + "linkType(name,sourceToTarget,targetToSource),issues(id,idReadable)"))) {
+                for (JsonNode i : l.path("issues")) {
+                    if (other.equalsIgnoreCase(text(i.path("idReadable")))) {
+                        found.add(new Found(relation(l), text(l.path("id")), text(i.path("id"))));
+                    }
+                }
+            }
+            Found hit = TicketSystem.pickLink(found, Found::relation, relation, "YouTrack", id, other);
+            http.delete(issuePath(id) + "/links/" + enc(hit.link()) + "/issues/" + enc(hit.issue()));
+            return new WriteResult(id, "Verknüpfung entfernt: " + id + " " + hit.relation() + " " + other, webUrl(id));
         }
 
         /** Werte des Status-Felds (State) außer dem aktuellen; ID {@code <Feld>:<Wert>}. */
@@ -576,6 +629,65 @@ public class YouTrackTicketProvider implements TicketProvider {
                     .map(p -> text(p.path("id"))).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("YouTrack: Projekt '" + project + "' nicht gefunden. "
                             + "Verfügbar: " + String.join(", ", all.stream().map(p -> text(p.path("shortName"))).limit(30).toList())));
+        }
+
+        // ------------------------------------------------------------------ Zeiterfassung
+
+        @Override
+        public List<WorkLogEntry> worklogs(String key, String project) {
+            String id = issueId(key);
+            List<WorkLogEntry> out = new ArrayList<>();
+            for (JsonNode w : http().getJson(issuePath(id) + "/timeTracking/workItems" + query("fields",
+                    "id,author(login,fullName),date,duration(minutes),text,type(name)", "$top", 1000))) {
+                JsonNode date = w.path("date");
+                out.add(new WorkLogEntry(text(w.path("id")), name(w.path("author")), date.isNumber()
+                        ? Instant.ofEpochMilli(date.asLong()).atZone(ZoneId.systemDefault()).toLocalDate().toString() : null,
+                        Duration.ofMinutes(w.path("duration").path("minutes").asLong()), text(w.path("text")),
+                        text(w.path("type").path("name"))));
+            }
+            out.sort(Comparator.comparing(WorkLogEntry::date, Comparator.nullsLast(Comparator.naturalOrder())));
+            return out;
+        }
+
+        @Override
+        public WriteResult logTime(String key, String project, WorkLog work) {
+            String id = issueId(key);
+            var body = HttpJson.object();
+            body.putObject("duration").put("minutes", work.duration().toMinutes());
+            body.put("date", work.start().toInstant().toEpochMilli());
+            if (work.comment() != null) {
+                body.put("text", work.comment());
+            }
+            if (work.activity() != null) {
+                body.putObject("type").put("id", workItemType(work.activity()));
+            }
+            String wid;
+            try {
+                wid = text(http().post(issuePath(id) + "/timeTracking/workItems" + query("fields", "id"), body).body().path("id"));
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 400) {
+                    throw new IllegalArgumentException(e.getMessage() + " – ist die Zeiterfassung im Projekt aktiviert?", e);
+                }
+                throw e;
+            }
+            return new WriteResult(id, TicketSystem.formatDuration(work.duration()) + " gebucht am " + work.date()
+                    + (work.activity() == null ? "" : " (" + work.activity() + ")"), webUrl(id), wid);
+        }
+
+        /** ID eines Work Item Types per Name – exakt vor eindeutigem Teilstring. */
+        private String workItemType(String name) {
+            List<JsonNode> all = new ArrayList<>();
+            http().getJson("/admin/timeTrackingSettings/workItemTypes" + query("fields", "id,name")).forEach(all::add);
+            List<JsonNode> exact = all.stream().filter(t -> name.equalsIgnoreCase(text(t.path("name")))).toList();
+            String lower = name.toLowerCase(Locale.ROOT);
+            List<JsonNode> hits = exact.isEmpty() ? all.stream().filter(t -> HttpJson.first(text(t.path("name")), "")
+                    .toLowerCase(Locale.ROOT).contains(lower)).toList() : exact;
+            if (hits.size() == 1) {
+                return text(hits.getFirst().path("id"));
+            }
+            throw new IllegalArgumentException("YouTrack: Tätigkeitsart '" + name + "' " + (hits.isEmpty() ? "gibt es nicht"
+                    : "ist mehrdeutig") + ". Verfügbar: " + String.join(", ", all.stream()
+                    .map(t -> text(t.path("name"))).toList()));
         }
 
         @Override

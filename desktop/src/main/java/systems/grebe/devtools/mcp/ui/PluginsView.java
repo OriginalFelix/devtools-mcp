@@ -39,6 +39,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
+import systems.grebe.devtools.mcp.plugin.PluginKeys;
 import systems.grebe.devtools.mcp.plugin.PluginManager;
 import systems.grebe.devtools.mcp.plugin.PluginManager.PluginInfo;
 import systems.grebe.devtools.mcp.plugin.store.PluginCatalog;
@@ -100,7 +101,7 @@ public class PluginsView extends BorderPane {
         bar.setPadding(new Insets(10, 12, 10, 12));
 
         TabPane tabs = new TabPane(new Tab("Installiert", installedPane()), new Tab("Store", storePane()),
-                new Tab("Repositories", repositoriesPane()));
+                new Tab("Repositories", repositoriesPane()), new Tab("Signaturen", signaturesPane()));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
         status.getStyleClass().add("status-text");
@@ -220,6 +221,9 @@ public class PluginsView extends BorderPane {
         if (p.error() != null) {
             sb.append("Fehler: ").append(p.error()).append('\n');
         }
+        if (p.signature() != null) {
+            p.signature().warnings().forEach(w -> sb.append("Warnung: ").append(w).append('\n'));
+        }
         if (update != null) {
             sb.append("Update verfügbar: ").append(update.installedVersion()).append(" → ")
                     .append(update.latestVersion()).append('\n');
@@ -233,12 +237,18 @@ public class PluginsView extends BorderPane {
         if (p.website() != null) {
             sb.append("Website: ").append(p.website()).append('\n');
         }
+        if (p.signature() != null) {
+            sb.append("Signatur: ").append(p.signature().summary()).append('\n');
+        }
         sb.append("Datei: ").append(p.file()).append('\n');
         if (p.source() != null) {
             sb.append("Maven: ").append(p.source()).append('\n');
         }
         if (!p.modules().isEmpty()) {
             sb.append("Module: ").append(String.join(", ", p.modules())).append('\n');
+        }
+        if (!p.providers().isEmpty()) {
+            sb.append("Provider: ").append(String.join(", ", p.providers())).append('\n');
         }
         if (!p.depend().isEmpty()) {
             sb.append("Benötigt: ").append(String.join(", ", p.depend())).append('\n');
@@ -258,6 +268,9 @@ public class PluginsView extends BorderPane {
             case DISABLED -> "deaktiviert";
             case FAILED -> "Fehler";
         };
+        if (p.signature() != null && !p.signature().warnings().isEmpty()) {
+            s += " · Warnung";
+        }
         return updateAvailable ? s + " · Update" : s;
     }
 
@@ -375,6 +388,43 @@ public class PluginsView extends BorderPane {
                     : p.name() + " " + p.version() + " installiert und aktiviert"
                     + (p.modules().isEmpty() ? "." : " – Module: " + String.join(", ", p.modules()) + ".");
         });
+    }
+
+    // ------------------------------------------------------------------ Signaturen
+
+    private BorderPane signaturesPane() {
+        TextArea keys = new TextArea(String.join("\n\n", manager.trustedKeys()));
+        keys.getStyleClass().add("mono");
+        keys.setPromptText("-----BEGIN PUBLIC KEY-----\n…\n-----END PUBLIC KEY-----");
+        Button save = new Button("Speichern");
+        save.getStyleClass().add("accent");
+        save.setOnAction(e -> {
+            try {
+                List<String> blocks = PluginKeys.blocks(keys.getText());
+                if (blocks.isEmpty() && !keys.getText().isBlank()) {
+                    PluginKeys.publicKeys(keys.getText()); // wirft mit verständlicher Meldung
+                }
+                manager.setTrustedKeys(blocks);
+                keys.setText(String.join("\n\n", manager.trustedKeys()));
+                status.setText("Vertrauenswürdige Schlüssel gespeichert, Signaturen neu geprüft.");
+            } catch (IllegalArgumentException ex) {
+                status.setText("Nicht gespeichert: " + ex.getMessage());
+            }
+        });
+        Label hint = new Label("Öffentliche Schlüssel (PEM, RSA oder EC), gegen die die Signatur der Plugins "
+                + "(plugin.jwt) geprüft wird – mehrere untereinander. Signieren: java -jar devtools-mcp.jar "
+                + "sign-plugin --key <privat.pem> <plugin.jar>. Plugins laden auch ohne oder mit abweichender "
+                + "Signatur; Abweichungen stehen als Warnung im Log und unter „Installiert“.");
+        hint.getStyleClass().add("form-help");
+        hint.setWrapText(true);
+        HBox buttons = new HBox(8, save);
+        buttons.setAlignment(Pos.CENTER_LEFT);
+        VBox top = new VBox(8, buttons, hint);
+        top.setPadding(new Insets(10, 12, 8, 12));
+        BorderPane pane = new BorderPane(keys);
+        pane.setTop(top);
+        BorderPane.setMargin(keys, new Insets(0, 12, 12, 12));
+        return pane;
     }
 
     // ------------------------------------------------------------------ Repositories

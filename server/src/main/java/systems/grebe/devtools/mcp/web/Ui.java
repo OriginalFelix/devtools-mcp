@@ -57,6 +57,11 @@ final class Ui {
         }
     }
 
+    static void ok(String message) {
+        Notification.show(message, 5000, Notification.Position.BOTTOM_START)
+                .addThemeVariants(NotificationVariant.SUCCESS);
+    }
+
     static void error(String message) {
         Notification.show(message, 6000, Notification.Position.MIDDLE).addThemeVariants(NotificationVariant.ERROR);
     }

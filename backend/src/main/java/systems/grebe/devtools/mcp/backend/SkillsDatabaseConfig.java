@@ -18,22 +18,24 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import systems.grebe.devtools.mcp.backend.memories.Memory;
 import systems.grebe.devtools.mcp.backend.memories.MemoryRepository;
+import systems.grebe.devtools.mcp.backend.scripts.Script;
+import systems.grebe.devtools.mcp.backend.scripts.ScriptRepository;
 import systems.grebe.devtools.mcp.backend.skills.Skill;
 import systems.grebe.devtools.mcp.backend.skills.SkillRepository;
 import systems.grebe.devtools.mcp.backend.skills.SkillSchemaMigration;
 
 /**
- * Skill-Datenbank des Servers (Spring Data JPA) – Skills und Memories: Standard ist die H2-Datei {@code skills.mv.db} im
- * {@link BackendHome Server-Verzeichnis}; für PostgreSQL o.ä. {@code devtools.skills.datasource.url/username/password}
- * setzen. Eine bisher von den Desktop-Apps gemeinsam genutzte Skill-Datenbank lässt sich so direkt übernehmen – das
+ * Skill-Datenbank des Servers (Spring Data JPA) – Skills, Memories und Skripte: Standard ist die H2-Datei
+ * {@code skills.mv.db} im {@link BackendHome Server-Verzeichnis}; für PostgreSQL o.ä.
+ * {@code devtools.skills.datasource.url/username/password} setzen. Eine bisher von den Desktop-Apps gemeinsam genutzte Skill-Datenbank lässt sich so direkt übernehmen – das
  * Schema ist dasselbe.
  *
  * <p>{@code @Primary}: Spring Boots JPA-Autokonfiguration nimmt die primäre DataSource; die Core-Datenbank
  * ({@code CoreDatabaseConfig}) läuft daneben über {@code JdbcClient}.
  */
 @Configuration(proxyBeanMethods = false)
-@EntityScan(basePackageClasses = {Skill.class, Memory.class})
-@EnableJpaRepositories(basePackageClasses = {SkillRepository.class, MemoryRepository.class})
+@EntityScan(basePackageClasses = {Skill.class, Memory.class, Script.class})
+@EnableJpaRepositories(basePackageClasses = {SkillRepository.class, MemoryRepository.class, ScriptRepository.class})
 public class SkillsDatabaseConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(SkillsDatabaseConfig.class);

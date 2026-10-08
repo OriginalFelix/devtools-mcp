@@ -24,6 +24,7 @@ public class GitModule implements ToolModule {
     static final String DEFAULT_REPOSITORY = "defaultRepository";
     static final String ALLOW_WRITE = "allowWrite";
     static final String ALLOW_SYNC = "allowSync";
+    static final String ALLOW_CHERRY_PICK = "allowCherryPick";
     static final String ALLOW_INTEGRATE = "allowIntegrate";
     static final String ALLOW_DISCARD = "allowDiscard";
     static final String PROTECTED_BRANCHES = "protectedBranches";
@@ -72,7 +73,8 @@ public class GitModule implements ToolModule {
                 | Zurücksetzen | `git_reset` (statt `git reset --soft/--mixed/--hard`) |
                 | Stash, Tag | `git_stash`, `git_tag` (statt `git stash push/apply/pop`, `git tag`) |
                 | Remote abgleichen | `git_fetch`, `git_pull`, `git_push` (statt `git fetch`, `git pull`, `git push`) |
-                | Integrieren | `git_merge`, `git_rebase`, `git_cherry_pick`, `git_revert` (statt `git merge`, `git rebase`, `git cherry-pick`, `git revert`) |
+                | Commits übernehmen | `git_cherry_pick` (statt `git cherry-pick`, auch `a..b`, `-x`, `-n`, `-m`) |
+                | Integrieren | `git_merge`, `git_rebase`, `git_revert` (statt `git merge`, `git rebase`, `git revert`) |
                 | Konflikte fortsetzen/abbrechen | `git_continue`, `git_abort` (statt `git … --continue`, `git … --abort`) |
                 | Verwerfen/Löschen | `git_restore`, `git_delete_branch`, `git_delete_tag`, `git_stash_drop` (statt `git restore`, `git clean`, `git branch -d`, `git tag -d`, `git stash drop`) |
 
@@ -82,8 +84,12 @@ public class GitModule implements ToolModule {
                 ebenfalls erkannt. Nur dort aufgeführte Repositories sind freigegeben.
                 - Liegt ein Repository nicht in dieser Liste („nicht freigegeben“), dem Nutzer das sagen und ihm \
                 anbieten, es in der DevTools-App freizugeben; erst auf seinen Wunsch die Shell verwenden.
-                - Fehlt ein schreibendes Tool, ist sein Schalter in der App aus (Schreiben, Remote-Abgleich, Integrieren, \
-                Verwerfen) – dann nachfragen statt per Shell auszuweichen.
+                - Fehlt eines der Tools aus der Tabelle (z.B. `git_push`), ist sein Schalter in der App aus: \
+                `allowWrite` (Branches, Stage, Commit, Stash, Tag), `allowCherryPick` (`git_cherry_pick`), `allowSync` \
+                (`git_fetch`, `git_pull`, `git_push`), `allowIntegrate` (Merge, Rebase, Revert), `allowDiscard` (Restore, \
+                Löschen); `git_continue`/`git_abort` kommen mit Cherry-Pick oder Integrieren. Dann NICHT per Shell \
+                ausweichen, sondern mit `permissions_request` (z.B. `tool=git_push`, kurze Begründung) beim Nutzer \
+                anfragen; lehnt er ab, ihm sagen, was fehlt.
                 - Konflikte nach Merge/Rebase/Cherry-Pick: `git_status` zeigt Dateien und Zustand; Dateien bereinigen, \
                 `git_stage`, dann `git_continue` – oder `git_abort` für den Ausgangszustand.
                 - `git_push` und Verwerfendes (`git_restore`, `git_reset mode=hard`, Löschen) nur auf ausdrücklichen \
@@ -114,13 +120,16 @@ public class GitModule implements ToolModule {
                 ConfigField.of(ALLOW_WRITE, "Schreibende Operationen erlauben", FieldType.BOOLEAN).withDefault("true")
                         .withHelp("Branch anlegen/umbenennen, Checkout, Stage/Unstage, Commit, Reset (soft/mixed), "
                                 + "Stash (push/apply/pop) und Tags anlegen."),
+                ConfigField.of(ALLOW_CHERRY_PICK, "Cherry-Pick erlauben", FieldType.BOOLEAN).withDefault("true")
+                        .withHelp("git_cherry_pick: Commits oder Bereiche auf den aktuellen Branch übernehmen, inklusive "
+                                + "git_continue/git_abort bei Konflikten. Setzt „Schreibende Operationen“ voraus."),
                 ConfigField.of(ALLOW_SYNC, "Remote-Abgleich erlauben (fetch, pull, push)", FieldType.BOOLEAN)
                         .withDefault("false").withHelp("Über das installierte git mit den Zugangsdaten des Rechners. "
                                 + "Nie Force-Push."),
                 ConfigField.of(PROTECTED_BRANCHES, "Nie pushen auf", FieldType.STRING_LIST).withDefault("main\nmaster")
                         .withHelp("Branches, die git_push ablehnt (ein Name je Zeile)."),
                 ConfigField.of(NETWORK_TIMEOUT, "Timeout Remote-Abgleich (Sekunden)", FieldType.INT).withDefault("120"),
-                ConfigField.of(ALLOW_INTEGRATE, "Integrieren erlauben (merge, rebase, cherry-pick, revert)", FieldType.BOOLEAN)
+                ConfigField.of(ALLOW_INTEGRATE, "Integrieren erlauben (merge, rebase, revert)", FieldType.BOOLEAN)
                         .withDefault("false").withHelp("Inklusive git_continue/git_abort bei Konflikten."),
                 ConfigField.of(ALLOW_DISCARD, "Verwerfen und Löschen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("git_restore (lokale Änderungen verwerfen), git_reset mode=hard, Branches/Tags/Stashes "
@@ -139,8 +148,15 @@ public class GitModule implements ToolModule {
         if (config.getBoolean(ALLOW_SYNC)) {
             tools.addAll(List.of(ToolCallbacks.from(new GitSyncTools(git))));
         }
+        boolean cherryPick = config.getBoolean(ALLOW_WRITE) && config.getBoolean(ALLOW_CHERRY_PICK);
+        if (cherryPick) {
+            tools.addAll(List.of(ToolCallbacks.from(new GitCherryPickTools(git))));
+        }
         if (config.getBoolean(ALLOW_INTEGRATE)) {
             tools.addAll(List.of(ToolCallbacks.from(new GitIntegrateTools(git))));
+        }
+        if (cherryPick || config.getBoolean(ALLOW_INTEGRATE)) {
+            tools.addAll(List.of(ToolCallbacks.from(new GitResolveTools(git))));
         }
         if (config.getBoolean(ALLOW_DISCARD)) {
             tools.addAll(List.of(ToolCallbacks.from(new GitDiscardTools(git))));

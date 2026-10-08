@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -20,18 +21,26 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.annotation.DirtiesContext;
+import systems.grebe.devtools.mcp.channel.ChannelBridge;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.core.ChannelEvents;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.core.UserConfirmation;
+import systems.grebe.devtools.mcp.server.ChannelEventsController;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** End-to-End: echter MCP-Client über Streamable HTTP gegen den eingebetteten Server. */
+// Kontext nach der Klasse schließen: die Graph-Datenbank des Backends hält sonst Dateien im temporären Ordner offen
+@DirtiesContext
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "devtools.local-user.email=mcp@example.com")
+        properties = {"devtools.local-user.email=mcp@example.com", "devtools.login.username=tester",
+                "devtools.login.password=tester-passwort"})
 class McpServerIntegrationTest {
 
     @TempDir
@@ -58,6 +67,12 @@ class McpServerIntegrationTest {
 
     @Autowired
     ToolInvocationLog log;
+
+    @Autowired
+    UserConfirmation confirmation;
+
+    @Autowired
+    ChannelEvents channelEvents;
 
     @TempDir
     Path repoDir;
@@ -157,7 +172,8 @@ class McpServerIntegrationTest {
                         "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`", "Tools `graph_*`",
                         "`graph_report`", "`graph_neighbors`", "Tools `ticket_*`", "`ticket_get`", "`ticket_board`",
                         "## Skills – Tools `skills_*`", "`skills_list`", "Tools `maven_*`", "`maven_breaking_changes`", "`skills_create`", "`skills_patch`",
-                        "## Memories – Tools `memories_*`", "`memories_search`", "`memories_save`")
+                        "## Memories – Tools `memories_*`", "`memories_search`", "`memories_save`",
+                        "## Berechtigungen – Tools `permissions_*`", "`permissions_request`")
                 .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
         // Reihenfolge wie in der Modulliste: order, dann Anzeigename – Skills zuerst, damit sie vor jeder Aufgabe greifen
         assertThat(instructions.indexOf("Tools `skills_*`")).isLessThan(instructions.indexOf("Tools `memories_*`"));
@@ -174,7 +190,8 @@ class McpServerIntegrationTest {
         // ungeprüft bleibt.
         Path composeDir = Files.createDirectories(repoDir.resolve("compose-app"));
         Files.writeString(composeDir.resolve("compose.yaml"), "services: {}\n");
-        List.of("sonar", "debug", "asprof", "build", "graph", "ticket", "pr").forEach(id -> registry.setModuleEnabled(id, true));
+        List.of("sonar", "debug", "asprof", "build", "graph", "ticket", "pr", "share")
+                .forEach(id -> registry.setModuleEnabled(id, true));
         registry.updateConfig("git", Map.of("repositories", repoDir.toString(), "allowSync", "true",
                 "allowIntegrate", "true", "allowDiscard", "true"));
         registry.updateConfig("pr", Map.of("allowCreate", "true", "allowComment", "true", "allowResolve", "true",
@@ -184,6 +201,7 @@ class McpServerIntegrationTest {
                 "composeProjects", composeDir.toString()));
         registry.updateConfig("skills", Map.of("allowDelete", "true"));
         registry.updateConfig("memories", Map.of("allowDelete", "true"));
+        registry.updateConfig("scripts", Map.of("allowWrite", "true", "allowDelete", "true"));
         registry.updateConfig("ticket", Map.of("allowComment", "true", "allowTransition", "true", "allowAssign", "true",
                 "allowEdit", "true", "allowCreate", "true", "allowDelete", "true"));
         try {
@@ -196,9 +214,11 @@ class McpServerIntegrationTest {
                     Map.entry("memories_", ShellHints.MEMORIES),
                     Map.entry("graph_", ShellHints.GRAPH), Map.entry("ticket_", ShellHints.TICKET),
                     Map.entry("projects_", ShellHints.PROJECTS), Map.entry("maven_", ShellHints.MAVEN),
-                    Map.entry("decompile_", ShellHints.DECOMPILE), Map.entry("pr_", ShellHints.PR));
+                    Map.entry("decompile_", ShellHints.DECOMPILE), Map.entry("pr_", ShellHints.PR),
+                    Map.entry("scripts_", ShellHints.SCRIPTS), Map.entry("permissions_", ShellHints.PERMISSIONS),
+                    Map.entry("invocations_", ShellHints.INVOCATIONS), Map.entry("share_", ShellHints.SHARE));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(167); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(185); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -210,12 +230,14 @@ class McpServerIntegrationTest {
             assertThat(tools).filteredOn(t -> t.name().equals("container_list")).singleElement()
                     .extracting(McpSchema.Tool::description).asString().contains("Statt `podman ps -a` verwenden.");
         } finally {
-            List.of("sonar", "debug", "asprof", "build", "graph", "ticket", "pr").forEach(id -> registry.setModuleEnabled(id, false));
+            List.of("sonar", "debug", "asprof", "build", "graph", "ticket", "pr", "share")
+                    .forEach(id -> registry.setModuleEnabled(id, false));
             registry.updateConfig("git", Map.of("repositories", repoDir.toString()));
             registry.updateConfig("pr", Map.of());
             registry.updateConfig("container", Map.of());
             registry.updateConfig("skills", Map.of());
             registry.updateConfig("memories", Map.of());
+            registry.updateConfig("scripts", Map.of());
             registry.updateConfig("ticket", Map.of());
         }
     }
@@ -258,8 +280,9 @@ class McpServerIntegrationTest {
 
     @Test
     void memoriesRoundTripOverMcp() {
-        assertThat(toolNames()).contains("memories_search", "memories_view", "memories_save", "memories_update")
-                .doesNotContain("memories_delete");
+        // delete ist ohne Schalter registriert – dann nur für temporäre Memories
+        assertThat(toolNames()).contains("memories_search", "memories_view", "memories_save", "memories_update",
+                "memories_delete");
 
         McpSchema.CallToolResult saved = client.callTool(callRequest("memories_save", Map.of(
                 "title", "Ticket MCP-7 reviewt: Akzeptanzkriterien fehlen",
@@ -283,10 +306,26 @@ class McpServerIntegrationTest {
         assertThat(missing.isError()).isTrue();
         assertThat(text(missing)).contains("#999999 gibt es nicht", "memories_search");
 
+        McpSchema.CallToolResult permanent = client.callTool(callRequest("memories_delete",
+                Map.of("id", Long.parseLong(id))));
+        assertThat(permanent.isError()).isTrue();
+        assertThat(text(permanent)).contains("ist dauerhaft");
+
         registry.updateConfig("memories", Map.of("allowWrite", "false", "allowDelete", "true"));
         try {
-            assertThat(toolNames()).contains("memories_search", "memories_delete")
-                    .doesNotContain("memories_save", "memories_update");
+            McpSchema.CallToolResult denied = client.callTool(callRequest("memories_save", Map.of(
+                    "title", "Zwischenstand", "content", "Halb fertig.")));
+            assertThat(denied.isError()).isTrue();
+            assertThat(text(denied)).contains("type=TEMPORARY");
+            String temp = text(client.callTool(callRequest("memories_save", Map.of(
+                    "title", "Zwischenstand", "content", "Halb fertig.", "type", "TEMPORARY"))))
+                    .replaceAll("(?s)^Memory #(\\d+) \\(temporär\\) gespeichert\\..*$", "$1");
+            assertThat(temp).matches("\\d+");
+            assertThat(text(client.callTool(callRequest("memories_update", Map.of("id", Long.parseLong(temp),
+                    "append", "Fertig.")))))
+                    .contains("aktualisiert (Nachtrag)");
+            assertThat(text(client.callTool(callRequest("memories_delete", Map.of("id", Long.parseLong(temp))))))
+                    .contains("gelöscht");
             assertThat(text(client.callTool(callRequest("memories_delete", Map.of("id", Long.parseLong(id))))))
                     .contains("gelöscht");
         } finally {
@@ -450,7 +489,8 @@ class McpServerIntegrationTest {
         registry.setModuleEnabled("graph", true);
         try {
             assertThat(toolNames()).contains("graph_build", "graph_report", "graph_find", "graph_explain",
-                    "graph_neighbors", "graph_path", "graph_query", "graph_branches", "graph_cypher");
+                    "graph_neighbors", "graph_path", "graph_query", "graph_branches", "graph_cypher", "graph_files",
+                    "graph_read");
             McpSchema.CallToolResult built = client.callTool(callRequest("graph_build", Map.of()));
             assertThat(built.isError()).isNotEqualTo(Boolean.TRUE);
             // Graph je Branch: das Test-Repository steht auf "main"
@@ -462,6 +502,11 @@ class McpServerIntegrationTest {
             assertThat(text(client.callTool(callRequest("graph_neighbors",
                     Map.of("node", "Greeter#helper", "direction", "in", "relations", List.of("calls"))))))
                     .contains("<-- calls demo.Greeter#greet(String)");
+
+            assertThat(text(client.callTool(callRequest("graph_files", Map.of("query", "Greeter")))))
+                    .contains("src/main/java/demo/Greeter.java  (6 Z.)", "Greeter [class] Z2-5");
+            assertThat(text(client.callTool(callRequest("graph_read", Map.of("node", List.of("Greeter#helper"))))))
+                    .contains("src/main/java/demo/Greeter.java:4-4", "4\t    private String helper(String n) { return n; }");
 
             McpSchema.CallToolResult unknown = client.callTool(callRequest("graph_explain", Map.of("node", "Nix")));
             assertThat(unknown.isError()).isTrue();
@@ -625,6 +670,247 @@ class McpServerIntegrationTest {
                     .contains("bietet kein Sampling an", "<system-prompt>", "<anfrage>");
         } finally {
             registry.setModuleEnabled("classify", false);
+        }
+    }
+    @Test
+    void permissionsShowWhatIsMissingAndOnlyTheUserGrantsIt() throws Exception {
+        McpSchema.CallToolRequest pushRequest = callRequest("permissions_request",
+                Map.of("tool", "git_push", "reason", "Feature-Branch pushen"));
+        // nur lesend: zeigt, was fehlt, ohne etwas zu ändern
+        assertThat(toolNames()).contains("permissions_overview", "permissions_check", "permissions_request")
+                .doesNotContain("git_push");
+        assertThat(text(client.callTool(callRequest("permissions_overview", Map.of()))))
+                .contains("git – Git [an]", "Remote-Abgleich erlauben (fetch, pull, push) = aus");
+        assertThat(text(client.callTool(callRequest("permissions_overview", Map.of("module", "git")))))
+                .contains("(allowSync): aus – würde freischalten: git_fetch, git_pull, git_push",
+                        "(allowWrite): an – bietet: ", "Repositories (repositories): ");
+        assertThat(text(client.callTool(callRequest("permissions_check",
+                Map.of("tool", "git_push", "path", repoDir.toString())))))
+                .contains("git_push: nicht verfügbar", "den Schalter „Remote-Abgleich erlauben (fetch, pull, push)“ "
+                        + "(allowSync) einschalten", "Freigegeben in:", "Git – Repositories");
+
+        // Client ohne Rückfrage und keine Oberfläche: nichts wird geändert
+        assertThat(text(client.callTool(pushRequest))).contains("Keine Rückfrage möglich");
+        assertThat(toolNames()).doesNotContain("git_push");
+
+        // Client mit Elicitation: der Nutzer entscheidet
+        List<McpSchema.ElicitFormRequest> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.atomic.AtomicBoolean grant = new java.util.concurrent.atomic.AtomicBoolean();
+        var transport = HttpClientStreamableHttpTransport.builder("http://127.0.0.1:" + port).endpoint("/mcp").build();
+        McpSyncClient eliciting = McpClient.sync(transport).requestTimeout(java.time.Duration.ofSeconds(30))
+                .clientInfo(new McpSchema.Implementation("test-client", "1.0"))
+                .capabilities(McpSchema.ClientCapabilities.builder().elicitation().build())
+                .elicitation(req -> {
+                    asked.add(req);
+                    return new McpSchema.ElicitResult(McpSchema.ElicitResult.Action.ACCEPT, Map.of("grant", grant.get()));
+                })
+                .build();
+        Path shared = Files.createTempDirectory("freigabe");
+        try {
+            eliciting.initialize();
+            assertThat(text(eliciting.callTool(pushRequest))).contains("Vom Nutzer abgelehnt (test-client)");
+            assertThat(asked.getFirst().message()).contains("„Remote-Abgleich erlauben (fetch, pull, push)“",
+                    "Begründung: Feature-Branch pushen");
+            assertThat(toolNames()).doesNotContain("git_push");
+
+            grant.set(true);
+            assertThat(text(eliciting.callTool(pushRequest)))
+                    .contains("Vom Nutzer erteilt (test-client)", "Neu verfügbar: git_fetch, git_pull, git_push");
+            assertThat(toolNames()).contains("git_push");
+            assertThat(text(eliciting.callTool(pushRequest))).contains("Bereits erlaubt");
+
+            // Rückfrage über die App (Einstellung „Rückfrage über“ = app): Verzeichnis unter „Freigaben“
+            registry.updateValues("permissions", v -> {
+                v.put("promptVia", "app");
+                return v;
+            });
+            List<String> dialogs = new java.util.concurrent.CopyOnWriteArrayList<>();
+            confirmation.setDesktopHandler((title, message) -> {
+                dialogs.add(message);
+                return java.util.concurrent.CompletableFuture.completedFuture(true);
+            });
+            assertThat(text(eliciting.callTool(callRequest("permissions_request",
+                    Map.of("path", shared.toString(), "reason", "Projekt bauen")))))
+                    .contains("Vom Nutzer erteilt (DevTools-App)", "unter „Freigaben“ für alle Tools freigeben");
+            assertThat(dialogs).singleElement().asString().contains(shared.toString(), "Projekt bauen");
+            assertThat(asked).hasSize(2); // nicht im Client gefragt
+            assertThat(registry.config("access").getList("directories")).contains(shared.toString());
+            assertThat(text(client.callTool(callRequest("permissions_check", Map.of("path", shared.toString())))))
+                    .contains("Freigaben – Für alle Tools freigegeben");
+        } finally {
+            eliciting.closeGracefully();
+            confirmation.setDesktopHandler(null);
+            registry.updateValues("permissions", v -> {
+                v.remove("promptVia");
+                return v;
+            });
+            registry.updateValues("access", v -> {
+                v.remove("directories");
+                return v;
+            });
+            registry.updateValues("git", v -> {
+                v.remove("allowSync");
+                return v;
+            });
+        }
+    }
+
+    @Test
+    void jdbcSwitchesArePermissionsTheUserGrants() throws Exception {
+        String url = "jdbc:h2:mem:mcp" + java.util.UUID.randomUUID().toString().replace("-", "") + ";DB_CLOSE_DELAY=-1";
+        try (java.sql.Connection keep = java.sql.DriverManager.getConnection(url, "sa", "pw-4711");
+             java.sql.Statement st = keep.createStatement()) {
+            st.execute("CREATE TABLE notiz (id INT PRIMARY KEY, text VARCHAR(100))");
+            st.execute("INSERT INTO notiz VALUES (1, 'eins'), (2, 'zwei')");
+
+            assertThat(toolNames()).noneMatch(n -> n.startsWith("jdbc_")); // Standard: aus
+            assertThat(text(client.callTool(callRequest("permissions_check", Map.of("tool", "jdbc_delete")))))
+                    .contains("jdbc_delete: nicht verfügbar",
+                            "den Schalter „Datensätze löschen (DELETE)“ (allowDelete) einschalten",
+                            "Modul „Datenbanken (JDBC)“ (jdbc) einschalten");
+
+            registry.updateConfig("jdbc", Map.of("connections", systems.grebe.devtools.mcp.core.ModuleConfig.formatRecords(
+                    List.of(Map.of("name", "notizen", "url", url, "username", "sa", "password", "pw-4711")))));
+            registry.setModuleEnabled("jdbc", true);
+            var transport = HttpClientStreamableHttpTransport.builder("http://127.0.0.1:" + port).endpoint("/mcp").build();
+            McpSyncClient eliciting = McpClient.sync(transport).requestTimeout(java.time.Duration.ofSeconds(30))
+                    .clientInfo(new McpSchema.Implementation("test-client", "1.0"))
+                    .capabilities(McpSchema.ClientCapabilities.builder().elicitation().build())
+                    .elicitation(req -> new McpSchema.ElicitResult(McpSchema.ElicitResult.Action.ACCEPT,
+                            Map.of("grant", true)))
+                    .build();
+            try {
+                assertThat(toolNames()).contains("jdbc_connections", "jdbc_databases", "jdbc_tables", "jdbc_describe",
+                        "jdbc_query").doesNotContain("jdbc_insert", "jdbc_update", "jdbc_delete", "jdbc_ddl", "jdbc_execute");
+                assertThat(client.listTools().tools()).filteredOn(t -> t.name().startsWith("jdbc_"))
+                        .allSatisfy(t -> assertThat(t.description()).endsWith(ShellHints.JDBC));
+                assertThat(text(client.callTool(callRequest("permissions_overview", Map.of("module", "jdbc")))))
+                        .contains("(allowQuery): an – bietet: jdbc_query",
+                                "(allowDelete): aus – würde freischalten: jdbc_delete",
+                                "(allowExecute): aus – würde freischalten: jdbc_execute")
+                        .doesNotContain("pw-4711");
+                assertThat(text(client.callTool(callRequest("jdbc_query",
+                        Map.of("sql", "SELECT text FROM notiz WHERE id = ?", "params", List.of(2))))))
+                        .contains("1 Zeile (notizen,", "zwei");
+
+                eliciting.initialize();
+                assertThat(text(eliciting.callTool(callRequest("permissions_request",
+                        Map.of("tool", "jdbc_delete", "reason", "Veraltete Notiz löschen")))))
+                        .contains("Vom Nutzer erteilt (test-client)", "Neu verfügbar: jdbc_delete");
+                assertThat(text(eliciting.callTool(callRequest("jdbc_delete",
+                        Map.of("connection", "notizen", "sql", "DELETE FROM notiz WHERE id = ?", "params", List.of(1))))))
+                        .startsWith("1 Zeile betroffen (notizen,");
+                McpSchema.CallToolResult all = eliciting.callTool(callRequest("jdbc_delete",
+                        Map.of("sql", "DELETE FROM notiz")));
+                assertThat(all.isError()).isTrue();
+                assertThat(text(all)).contains("ohne WHERE", "allRows=true");
+            } finally {
+                eliciting.closeGracefully();
+                registry.setModuleEnabled("jdbc", false);
+                registry.updateConfig("jdbc", Map.of());
+            }
+        }
+    }
+
+    @Test
+    void channelEventsStreamIsProtectedAndDeliversEvents() throws Exception {
+        store.saveServer(new ServerSettings(ServerSettings.DEFAULT_PORT, "kanal-token", true, false));
+        var http = java.net.http.HttpClient.newHttpClient();
+        URI uri = URI.create("http://127.0.0.1:" + port + ChannelEventsController.PATH);
+        var denied = http.send(java.net.http.HttpRequest.newBuilder(uri).build(),
+                java.net.http.HttpResponse.BodyHandlers.discarding());
+        assertThat(denied.statusCode()).isEqualTo(401);
+
+        var res = http.send(java.net.http.HttpRequest.newBuilder(uri).header("Authorization", "Bearer kanal-token")
+                .header("Accept", "text/event-stream").build(), java.net.http.HttpResponse.BodyHandlers.ofLines());
+        assertThat(res.statusCode()).isEqualTo(200);
+        try (var lines = res.body()) {
+            var it = lines.iterator();
+            assertThat(it.next()).startsWith(":"); // Herzschlag gleich beim Verbinden
+            channelEvents.publish("mail", "Neue E-Mail\nVon: a@b.de", Map.of("uid", "9"));
+            String id = null;
+            String data = null;
+            while (data == null && it.hasNext()) {
+                String line = it.next();
+                if (line.startsWith("id:")) {
+                    id = line.substring(3).strip();
+                } else if (line.startsWith("data:")) {
+                    data = line.substring(5).strip();
+                }
+            }
+            assertThat(id).isNotBlank();
+            assertThat(data).contains("\"content\":\"Neue E-Mail\\nVon: a@b.de\"", "\"uid\":\"9\"",
+                    "\"event_source\":\"mail\"");
+        }
+    }
+
+    @Test
+    void mailModuleOffersReadToolsOnly() {
+        registry.setModuleEnabled("mail", true);
+        try {
+            assertThat(toolNames()).contains("mail_accounts", "mail_folders", "mail_list", "mail_read", "mail_receive")
+                    .doesNotContain("mail_move", "mail_draft", "mail_mark");
+            assertThat(text(client.callTool(callRequest("mail_accounts", Map.of())))).contains("Kein Mail-Konto");
+        } finally {
+            registry.setModuleEnabled("mail", false);
+        }
+    }
+
+    /**
+     * Ende zu Ende: ein echter MCP-Client startet {@code ChannelBridge stdio} als Prozess und arbeitet über ihn mit der
+     * App – Tools, Rückfrage per Elicitation (Anfrage der App an den Client durch den Proxy) und
+     * {@code tools/list_changed} über den Meldungsstrom.
+     */
+    @Test
+    void stdioProxyServesToolsElicitationAndListChanged() throws Exception {
+        store.saveServer(new ServerSettings(ServerSettings.DEFAULT_PORT, "proxy-token", true, false));
+        // Classpath als @argfile: auf der Kommandozeile wäre er unter Windows zu lang (max. 32.767 Zeichen)
+        java.nio.file.Path argfile = java.nio.file.Files.createTempFile("mcp-proxy-cp", ".args");
+        argfile.toFile().deleteOnExit();
+        java.nio.file.Files.writeString(argfile, "-cp \"" + System.getProperty("java.class.path").replace("\\", "\\\\")
+                + "\"");
+        var params = io.modelcontextprotocol.client.transport.ServerParameters
+                .builder(ProcessHandle.current().info().command().orElse("java"))
+                .args("@" + argfile, ChannelBridge.class.getName(), ChannelBridge.STDIO_COMMAND,
+                        "--url", "http://127.0.0.1:" + port, "--token", "proxy-token")
+                .build();
+        var transport = new io.modelcontextprotocol.client.transport.StdioClientTransport(params,
+                io.modelcontextprotocol.json.McpJsonDefaults.getMapper());
+        List<McpSchema.ElicitFormRequest> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger changed = new java.util.concurrent.atomic.AtomicInteger();
+        McpSyncClient viaProxy = McpClient.sync(transport).requestTimeout(java.time.Duration.ofSeconds(60))
+                .clientInfo(new McpSchema.Implementation("proxy-client", "1.0"))
+                .capabilities(McpSchema.ClientCapabilities.builder().elicitation().build())
+                .elicitation(req -> {
+                    asked.add(req);
+                    return new McpSchema.ElicitResult(McpSchema.ElicitResult.Action.ACCEPT, Map.of("grant", false));
+                })
+                .toolsChangeConsumer(tools -> changed.incrementAndGet())
+                .build();
+        try {
+            McpSchema.InitializeResult init = viaProxy.initialize();
+            assertThat(init.capabilities().experimental()).containsKey("claude/channel");
+            assertThat(init.instructions()).contains("Tools `git_*`", "## Ereignisse (Channel)");
+            assertThat(viaProxy.listTools().tools()).extracting(McpSchema.Tool::name).contains("git_status");
+            assertThat(text(viaProxy.callTool(callRequest("git_status", Map.of())))).contains("main");
+
+            // Rückfrage: die App fragt den Client – durch den Proxy hin und die Antwort zurück
+            String answer = text(viaProxy.callTool(callRequest("permissions_request",
+                    Map.of("tool", "git_push", "reason", "Feature-Branch pushen"))));
+            assertThat(answer).contains("Vom Nutzer abgelehnt (proxy-client)");
+            assertThat(asked).singleElement().satisfies(r -> assertThat(r.message()).contains("Feature-Branch pushen"));
+
+            // Tool-Liste ändert sich in der App → Meldung kommt über den Meldungsstrom des Proxys
+            int before = changed.get();
+            registry.setModuleEnabled("sonar", true);
+            long deadline = System.currentTimeMillis() + 15_000;
+            while (changed.get() == before && System.currentTimeMillis() < deadline) {
+                Thread.sleep(50);
+            }
+            assertThat(changed.get()).as("tools/list_changed über den Proxy").isGreaterThan(before);
+        } finally {
+            registry.setModuleEnabled("sonar", false);
+            viaProxy.closeGracefully();
         }
     }
 }

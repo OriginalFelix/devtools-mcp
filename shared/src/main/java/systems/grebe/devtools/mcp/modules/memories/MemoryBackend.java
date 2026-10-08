@@ -8,6 +8,9 @@ import java.util.Set;
  * Memory-Speicher aus Sicht von Tools und Oberfläche: im Backend (eingebettet oder auf dem Team-Server). Texte sind
  * für das LLM formuliert; fachliche Fehler kommen als {@link IllegalArgumentException} mit einem Hinweis auf den
  * nächsten sinnvollen Schritt.
+ *
+ * <p>{@code temporaryOnly}: Der Aufrufer hat keine Freigabe für dauerhafte Memories – geändert bzw. gelöscht
+ * werden dürfen dann nur temporäre ({@link MemoryViews.Type#TEMPORARY}), und keine wird dauerhaft gemacht.
  */
 public interface MemoryBackend {
 
@@ -30,15 +33,19 @@ public interface MemoryBackend {
      */
     List<MemoryViews.Entry> related(List<String> references, String skill, int limit);
 
-    String search(String query, String project, String skill, String tag, Integer days, Integer limit);
+    /** @param type nur Memories dieses Typs, {@code null} = alle */
+    String search(String query, String project, String skill, String tag, MemoryViews.Type type, Integer days,
+                  Integer limit);
 
     String view(long id);
 
-    String save(String title, String content, String project, String skill, String reference, List<String> tags,
-                int maxContentChars);
+    /** @param type {@code null} = {@link MemoryViews.Type#PERMANENT} */
+    String save(String title, String content, MemoryViews.Type type, String project, String skill, String reference,
+                List<String> tags, int maxContentChars);
 
-    String update(long id, String title, String content, String append, String project, String skill,
-                  String reference, List<String> tags, int maxContentChars);
+    /** @param type neuer Typ, {@code null} = unverändert */
+    String update(long id, String title, String content, String append, MemoryViews.Type type, String project,
+                  String skill, String reference, List<String> tags, boolean temporaryOnly, int maxContentChars);
 
-    String delete(long id);
+    String delete(long id, boolean temporaryOnly);
 }

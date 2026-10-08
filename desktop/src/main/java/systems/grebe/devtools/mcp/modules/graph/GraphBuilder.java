@@ -16,15 +16,20 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HexFormat;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,7 +54,7 @@ final class GraphBuilder {
 
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(GraphBuilder.class);
 
-    static final String GENERATOR = "devtools-mcp graph (tree-sitter-java) 2";
+    static final String GENERATOR = "devtools-mcp graph (tree-sitter-java) 3";
 
     /** Relationen, die für die Community-Erkennung zählen – mit Gewicht. */
     private static final Map<Relation, Double> COMMUNITY_WEIGHT = Map.of(
@@ -211,41 +216,153 @@ final class GraphBuilder {
         return build(sources, projectName, ModuleAction.Progress.NONE);
     }
 
+    GraphFile build(List<Source> sources, String projectName, ModuleAction.Progress progress) {
+        return build(sources, projectName, progress, null);
+    }
+
+    /**
+     * Zwischenstand je Projekt für den inkrementellen Aufbau: Deklarationen und Kanten je Datei (nach SHA-256) und der
+     * Fingerabdruck aller Deklarationen, gegen den die Kanten aufgelöst wurden. Nicht threadsicher – je Projekt baut
+     * immer nur einer ({@code GraphService} sperrt).
+     */
+    static final class ParseCache {
+
+        /** Datei mit Prüfsumme, Deklarationen, ihrem Fingerabdruck (ohne Zeilen und Javadoc) und den Kanten. */
+        record CachedFile(String sha256, FileDecl decl, String api, List<RawEdge> refs) {
+        }
+
+        private Map<String, CachedFile> files = Map.of();
+        private String fingerprint;
+        /** Beim letzten Aufbau neu gelesene Dateien: Deklarationen bzw. Kanten. */
+        int parsedDeclarations;
+        int parsedReferences;
+
+        /** Vergessen – der nächste Aufbau liest alles (und füllt den Cache neu). */
+        void clear() {
+            files = Map.of();
+            fingerprint = null;
+        }
+    }
+
     /**
      * Baut den Graphen; meldet den Fortschritt je Phase (Anteil 0,05–0,95). Ein Interrupt des aufrufenden Threads
      * bricht ab ({@link IllegalStateException} mit {@link InterruptedException} als Ursache).
+     *
+     * <p>Mit {@code cache} inkrementell: Dateien mit unveränderter Prüfsumme werden nicht neu geparst. Sind auch die
+     * Deklarationen aller Dateien unverändert (nur Rümpfe, Javadoc oder Zeilen geändert – der häufige Fall bei einem
+     * Commit), gelten ihre Kanten weiter; sonst werden die Kanten aller Dateien neu aufgelöst. Das Ergebnis ist in
+     * beiden Fällen dasselbe wie ohne Cache.
      */
-    GraphFile build(List<Source> sources, String projectName, ModuleAction.Progress progress) {
+    GraphFile build(List<Source> sources, String projectName, ModuleAction.Progress progress, ParseCache cache) {
         int threads = this.threads > 0 ? this.threads
                 : Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), 8));
         int n = sources.size();
+        Map<String, ParseCache.CachedFile> previous = cache == null ? Map.of() : cache.files;
         try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
-            List<Future<FileDecl>> declFutures = sources.stream()
-                    .map(s -> pool.submit(() -> declarationsOrEmpty(s))).toList();
+            List<Future<FileDecl>> declFutures = new ArrayList<>(n);
+            int parsedDecls = 0;
+            for (Source s : sources) {
+                ParseCache.CachedFile c = previous.get(s.path());
+                if (c != null && c.sha256().equals(s.sha256())) {
+                    declFutures.add(CompletableFuture.completedFuture(c.decl()));
+                } else {
+                    declFutures.add(pool.submit(() -> declarationsOrEmpty(s)));
+                    parsedDecls++;
+                }
+            }
             List<FileDecl> decls = new ArrayList<>(n);
             for (int i = 0; i < n; i++) {
                 decls.add(get(pool, declFutures.get(i)));
                 report(progress, "Deklarationen", i + 1, n, 0.05, 0.45);
             }
+            List<String> apis = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) {
+                ParseCache.CachedFile c = previous.get(sources.get(i).path());
+                apis.add(c != null && c.decl() == decls.get(i) ? c.api() : api(decls.get(i)));
+            }
+            String fingerprint = fingerprint(sources, apis);
+            boolean sameDeclarations = cache != null && fingerprint.equals(cache.fingerprint);
+
             Map<String, Node> nodes = new LinkedHashMap<>();
             Map<String, EdgeAcc> edges = new LinkedHashMap<>();
             List<FileEntry> files = declarationNodes(sources, decls, nodes, edges);
 
             JavaResolver resolver = new JavaResolver(decls);
             List<Future<List<RawEdge>>> futures = new ArrayList<>();
+            int parsedRefs = 0;
             for (int i = 0; i < sources.size(); i++) {
                 FileDecl d = decls.get(i);
                 Source s = sources.get(i);
-                futures.add(pool.submit(() -> referencesOrEmpty(d, s, resolver)));
+                ParseCache.CachedFile c = previous.get(s.path());
+                if (sameDeclarations && c != null && c.decl() == d && c.refs() != null) {
+                    futures.add(CompletableFuture.completedFuture(c.refs()));
+                } else {
+                    futures.add(pool.submit(() -> referencesOrEmpty(d, s, resolver)));
+                    parsedRefs++;
+                }
             }
+            Map<String, ParseCache.CachedFile> next = new HashMap<>();
             for (int i = 0; i < futures.size(); i++) {
-                referenceEdges(get(pool, futures.get(i)), nodes, edges);
+                List<RawEdge> refs = get(pool, futures.get(i));
+                referenceEdges(refs, nodes, edges);
                 futures.set(i, null); // Ergebnis freigeben
+                if (cache != null) {
+                    Source s = sources.get(i);
+                    next.put(s.path(), new ParseCache.CachedFile(s.sha256(), decls.get(i), apis.get(i), refs));
+                }
                 report(progress, "Aufrufe und Referenzen", i + 1, n, 0.45, 0.85);
             }
+            if (cache != null) {
+                cache.files = next;
+                cache.fingerprint = fingerprint;
+                cache.parsedDeclarations = parsedDecls;
+                cache.parsedReferences = parsedRefs;
+            }
+            dispatchEdges(edges);
             progress.update("Communities …", 0.9);
             return finish(files, nodes, edges, projectName);
         }
+    }
+
+    /**
+     * Fingerabdruck der Deklarationen einer Datei, wie sie die Auflösung der Kanten sieht: ohne Zeilen und Javadoc
+     * (die Zeilen eigener Deklarationen gehen nur in die Kanten dieser Datei ein, und die wird bei Änderung neu gelesen).
+     */
+    static String api(FileDecl d) {
+        StringBuilder sb = new StringBuilder(d.pkg()).append('\n');
+        for (JavaExtractor.Import i : d.imports()) {
+            sb.append("i ").append(i.name()).append(i.isStatic() ? " s" : "").append(i.wildcard() ? " *" : "")
+                    .append('\n');
+        }
+        for (TypeDecl t : d.types()) {
+            sb.append("t ").append(t.fqn()).append('|').append(t.simpleName()).append('|').append(t.kind()).append('|')
+                    .append(t.outer()).append('|').append(t.modifiers()).append('|').append(t.annotations()).append('|')
+                    .append(t.typeParams()).append('|').append(t.superclass()).append('|').append(t.interfaces())
+                    .append('\n');
+            for (MemberDecl m : t.members()) {
+                sb.append("m ").append(m.id()).append('|').append(m.kind()).append('|').append(m.paramTypes())
+                        .append('|').append(m.varargs()).append('|').append(m.type()).append('|').append(m.modifiers())
+                        .append('|').append(m.annotations()).append('|').append(m.typeParams()).append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Fingerabdruck aller Deklarationen des Projekts (Pfad + {@link #api} je Datei). */
+    private static String fingerprint(List<Source> sources, List<String> apis) {
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        for (int i = 0; i < sources.size(); i++) {
+            md.update(sources.get(i).path().getBytes(StandardCharsets.UTF_8));
+            md.update((byte) 0);
+            md.update(apis.get(i).getBytes(StandardCharsets.UTF_8));
+            md.update((byte) 0);
+        }
+        return HexFormat.of().formatHex(md.digest());
     }
 
     /**
@@ -349,6 +466,62 @@ final class GraphBuilder {
         }
     }
 
+    /** Höchstens so viele Implementierungen je aufgerufener Methode bekommen abgeleitete Aufrufkanten. */
+    static final int MAX_DISPATCH = 12;
+    /** Score der abgeleiteten Aufrufe einer Implementierung über Interface/Oberklasse. */
+    static final double DISPATCH_SCORE = 0.7;
+
+    /**
+     * Aufrufe über Interfaces und Oberklassen: Ein Aufruf einer Methode, die überschrieben wird, bekommt je
+     * überschreibender Methode (auch über mehrere Stufen) eine abgeleitete Kante {@code calls} (INFERRED, Score
+     * {@value #DISPATCH_SCORE}, Anzahl wie beim Aufruf). So führen Aufrufketten, {@code graph_path} und „wer ruft das
+     * auf“ bis in die Implementierungen. Bei mehr als {@value #MAX_DISPATCH} Implementierungen (z.B. {@code run()})
+     * unterbleibt das – die Kanten wären Rauschen. Vorhandene Kanten bleiben unverändert.
+     */
+    static void dispatchEdges(Map<String, EdgeAcc> edges) {
+        Map<String, List<String>> overriders = new HashMap<>();
+        for (EdgeAcc e : edges.values()) {
+            if (e.rel == Relation.OVERRIDES) {
+                overriders.computeIfAbsent(e.to, k -> new ArrayList<>()).add(e.from);
+            }
+        }
+        if (overriders.isEmpty()) {
+            return;
+        }
+        Map<String, List<String>> implementations = new HashMap<>();
+        List<EdgeAcc> calls = edges.values().stream()
+                .filter(e -> e.rel == Relation.CALLS && overriders.containsKey(e.to)).toList();
+        for (EdgeAcc call : calls) {
+            List<String> impls = implementations.computeIfAbsent(call.to, m -> transitiveOverriders(m, overriders));
+            if (impls.size() > MAX_DISPATCH) {
+                continue;
+            }
+            double score = Math.min(DISPATCH_SCORE, call.conf == Confidence.EXTRACTED ? 1.0 : call.score);
+            for (String impl : impls) {
+                String key = edgeKey(call.from, impl, Relation.CALLS);
+                if (impl.equals(call.from) || edges.containsKey(key)) {
+                    continue; // super-Aufruf der Implementierung selbst bzw. schon direkt verbunden
+                }
+                EdgeAcc acc = new EdgeAcc(call.from, impl, Relation.CALLS, Confidence.INFERRED, score, call.line);
+                acc.count = call.count;
+                edges.put(key, acc);
+            }
+        }
+    }
+
+    /** Alle Methoden, die {@code method} direkt oder über Zwischenstufen überschreiben, sortiert. */
+    private static List<String> transitiveOverriders(String method, Map<String, List<String>> overriders) {
+        Set<String> seen = new TreeSet<>();
+        Deque<String> todo = new ArrayDeque<>(overriders.getOrDefault(method, List.of()));
+        while (!todo.isEmpty() && seen.size() <= MAX_DISPATCH) {
+            String m = todo.pop();
+            if (seen.add(m)) {
+                todo.addAll(overriders.getOrDefault(m, List.of()));
+            }
+        }
+        return new ArrayList<>(seen);
+    }
+
     private GraphFile finish(List<FileEntry> files, Map<String, Node> nodes, Map<String, EdgeAcc> edges, String project) {
         List<Edge> edgeList = new ArrayList<>(edges.size());
         edges.values().forEach(a -> edgeList.add(a.toEdge()));
@@ -408,9 +581,13 @@ final class GraphBuilder {
         }
     }
 
+    private static String edgeKey(String from, String to, Relation rel) {
+        return from + '\u0000' + to + '\u0000' + rel.ordinal();
+    }
+
     private static void edge(Map<String, EdgeAcc> edges, String from, String to, Relation rel, Confidence conf,
                              double score, Integer line) {
-        String key = from + '\u0000' + to + '\u0000' + rel.ordinal();
+        String key = edgeKey(from, to, rel);
         EdgeAcc acc = edges.get(key);
         if (acc == null) {
             acc = new EdgeAcc(from, to, rel, conf, score, line);

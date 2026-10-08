@@ -436,6 +436,8 @@ public class GitHubTicketProvider implements TicketProvider {
                 out.add(link("Parent", n.path("parent")));
             }
             n.path("subIssues").path("nodes").forEach(s -> out.add(link("Sub-Issue", s)));
+            dependencies(ref, "blocked_by").forEach(i -> out.add(restLink("is blocked by", i)));
+            dependencies(ref, "blocking").forEach(i -> out.add(restLink("blocks", i)));
             n.path("closedByPullRequestsReferences").path("nodes").forEach(s -> out.add(link("Pull Request (schließt)", s)));
             n.path("closingIssuesReferences").path("nodes").forEach(s -> out.add(link("schließt Issue", s)));
             return out;
@@ -445,6 +447,107 @@ public class GitHubTicketProvider implements TicketProvider {
             return new Link(relation, text(n.path("repository").path("nameWithOwner")) + "#" + text(n.path("number")),
                     text(n.path("title")), text(n.path("state")) == null ? null : text(n.path("state")).toLowerCase(Locale.ROOT),
                     text(n.path("url")));
+        }
+
+        private static Link restLink(String relation, JsonNode i) {
+            return new Link(relation, repoFromUrl(text(i.path("repository_url"))) + "#" + text(i.path("number")),
+                    text(i.path("title")), text(i.path("state")), text(i.path("html_url")));
+        }
+
+        private static String issuePath(Ref ref) {
+            return "/repos/" + ref.repo() + "/issues/" + ref.number();
+        }
+
+        /**
+         * Abhängigkeiten {@code blocked_by}/{@code blocking} (REST, seit 2025). Ältere Enterprise-Server und Tokens ohne
+         * Zugriff liefern Fehler – dann ohne, die übrigen Verknüpfungen sollen trotzdem kommen.
+         */
+        private List<JsonNode> dependencies(Ref ref, String kind) {
+            List<JsonNode> out = new ArrayList<>();
+            try {
+                http.getJson(issuePath(ref) + "/dependencies/" + kind + query("per_page", 100)).forEach(out::add);
+            } catch (HttpJson.StatusException e) {
+                return List.of();
+            }
+            return out;
+        }
+
+        /** Sub-Issues und Abhängigkeiten; IDs wie die REST-Pfade, Namen wie in {@link #links}. */
+        private static final List<LinkType> LINK_TYPES = List.of(
+                new LinkType("parent", "Parent", "Sub-Issue"),
+                new LinkType("sub_issue", "Sub-Issue", "Parent"),
+                new LinkType("blocked_by", "is blocked by", "blocks"),
+                new LinkType("blocking", "blocks", "is blocked by"));
+
+        @Override
+        public List<LinkType> linkTypes(String project) {
+            return LINK_TYPES;
+        }
+
+        @Override
+        public WriteResult link(String key, String project, LinkType type, String target) {
+            requireToken("Verknüpfen");
+            Ref a = ref(key, project);
+            Ref b = ref(target, project);
+            JsonNode issue = http.getJson(issuePath(a));
+            long aId = issue.path("id").asLong();
+            ObjectNode body = HttpJson.object();
+            switch (type.id()) {
+                case "sub_issue" -> {
+                    body.put("sub_issue_id", databaseId(b));
+                    http.post(issuePath(a) + "/sub_issues", body);
+                }
+                case "parent" -> {
+                    body.put("sub_issue_id", aId);
+                    http.post(issuePath(b) + "/sub_issues", body);
+                }
+                case "blocked_by" -> {
+                    body.put("issue_id", databaseId(b));
+                    http.post(issuePath(a) + "/dependencies/blocked_by", body);
+                }
+                case "blocking" -> {
+                    body.put("issue_id", aId);
+                    http.post(issuePath(b) + "/dependencies/blocked_by", body);
+                }
+                default -> throw new IllegalArgumentException("GitHub: unbekannte Verknüpfungsart '" + type.id() + "'.");
+            }
+            return new WriteResult(canonicalKey(key, project), "verknüpft: " + a.key() + " " + type.name() + " " + b.key(),
+                    text(issue.path("html_url")));
+        }
+
+        @Override
+        public WriteResult unlink(String key, String project, String target, String relation) {
+            requireToken("Verknüpfung entfernen");
+            Ref a = ref(key, project);
+            Ref b = ref(target, project);
+            String other = canonicalKey(target, project);
+            List<Link> found = links(key, project).stream()
+                    .filter(l -> LINK_TYPES.stream().anyMatch(t -> t.name().equals(l.relation())))
+                    .filter(l -> other.equals(l.key().toLowerCase(Locale.ROOT))).toList();
+            Link hit = TicketSystem.pickLink(found, Link::relation, relation, "GitHub", a.key(), b.key());
+            switch (hit.relation()) {
+                case "Sub-Issue" -> removeSubIssue(a, databaseId(b));
+                case "Parent" -> removeSubIssue(b, databaseId(a));
+                case "is blocked by" -> http.delete(issuePath(a) + "/dependencies/blocked_by/" + databaseId(b));
+                default -> http.delete(issuePath(b) + "/dependencies/blocked_by/" + databaseId(a)); // blocks
+            }
+            return new WriteResult(canonicalKey(key, project), "Verknüpfung entfernt: " + a.key() + " " + hit.relation()
+                    + " " + b.key(), null);
+        }
+
+        private void removeSubIssue(Ref parent, long child) {
+            ObjectNode body = HttpJson.object();
+            body.put("sub_issue_id", child);
+            http.request("DELETE", issuePath(parent) + "/sub_issue", body);
+        }
+
+        /** Sub-Issues und Abhängigkeiten erwarten die numerische Issue-ID, nicht die Nummer. */
+        private long databaseId(Ref ref) {
+            long id = http.getJson(issuePath(ref)).path("id").asLong();
+            if (id <= 0) {
+                throw new IllegalArgumentException("GitHub: " + ref.key() + " nicht gefunden.");
+            }
+            return id;
         }
 
         private static final String PROJECT_ITEMS_QUERY = """

@@ -1,16 +1,20 @@
 package systems.grebe.devtools.mcp.web;
 
+import java.util.List;
+import java.util.Set;
+
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.checkbox.CheckboxGroup;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
-import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.component.textfield.EmailField;
 import com.vaadin.flow.component.textfield.PasswordField;
 import com.vaadin.flow.component.textfield.TextField;
@@ -19,29 +23,37 @@ import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.RolesAllowed;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
-import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
 import systems.grebe.devtools.mcp.backend.account.Role;
+import systems.grebe.devtools.mcp.backend.account.RoleService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
+import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
 
-/** Benutzerverwaltung für Administratoren: anlegen, ändern, sperren, Passwort setzen, löschen. */
+/**
+ * Benutzerverwaltung (Recht „Benutzer und Rollen verwalten“): anlegen, Rollen zuordnen, sperren, Passwort setzen,
+ * löschen. Ein hier gesetztes Passwort muss der Benutzer standardmäßig bei der nächsten Anmeldung ändern.
+ */
 @Route("benutzer")
 @PageTitle("Benutzer – DevTools MCP")
-@RolesAllowed("ADMIN")
+@RolesAllowed("USERS_MANAGE")
 public class UsersView extends VerticalLayout {
 
     private final AccountService accounts;
+    private final RoleService roles;
     private final long selfId;
     private final Grid<UserAccount> grid = new Grid<>();
 
-    public UsersView(AccountService accounts, AuthenticationContext auth) {
+    public UsersView(AccountService accounts, RoleService roles, AuthenticationContext auth) {
         this.accounts = accounts;
+        this.roles = roles;
         this.selfId = auth.getAuthenticatedUser(AccountPrincipal.class).orElseThrow().id();
 
         grid.addColumn(UserAccount::username).setHeader("Benutzer").setAutoWidth(true);
         grid.addColumn(u -> u.displayName() == null ? "" : u.displayName()).setHeader("Name");
         grid.addColumn(u -> u.email() == null ? "" : u.email()).setHeader("E-Mail");
-        grid.addColumn(u -> u.role() == Role.ADMIN ? "Administrator" : "Benutzer").setHeader("Rolle");
-        grid.addColumn(u -> u.enabled() ? "aktiv" : "gesperrt").setHeader("Status");
+        grid.addColumn(u -> String.join(", ", u.roles())).setHeader("Rollen");
+        grid.addColumn(u -> !u.enabled() ? "gesperrt"
+                : u.passwordChangeRequired() ? "aktiv, muss Passwort ändern" : "aktiv").setHeader("Status");
+        grid.addColumn(u -> u.lastLoginAt() == null ? "nie" : Ui.time(u.lastLoginAt())).setHeader("Letzte Anmeldung");
         grid.addColumn(u -> Ui.time(u.createdAt())).setHeader("Angelegt");
         grid.addComponentColumn(u -> {
             Button edit = new Button("Bearbeiten", e -> edit(u));
@@ -55,7 +67,9 @@ public class UsersView extends VerticalLayout {
 
         Button create = new Button("Neuer Benutzer", e -> create());
         create.addThemeVariants(ButtonVariant.PRIMARY);
-        add(new H2("Benutzer"), create, grid);
+        add(new H2("Benutzer"), new Paragraph("Rechte vergeben die Rollen (Seite „Rollen“); hat ein Benutzer mehrere, "
+                + "gelten alle ihre Rechte zusammen. Gesperrte Benutzer verlieren sofort ihre Anmeldungen."), create,
+                grid);
         refresh();
     }
 
@@ -65,13 +79,16 @@ public class UsersView extends VerticalLayout {
         TextField username = new TextField("Benutzername");
         TextField name = new TextField("Anzeigename");
         EmailField email = new EmailField("E-Mail");
-        Select<Role> role = roleSelect(Role.USER);
-        PasswordField password = new PasswordField("Passwort");
-        password.setHelperText("Mindestens 8 Zeichen; der Benutzer ändert es unter „Mein Konto“.");
-        d.add(new FormLayout(username, name, email, role, password));
+        email.setHelperText("Eigentümer der Skills, Memories und Skripte");
+        CheckboxGroup<String> roleBox = roleBox(roles.roles().stream().map(Role::name)
+                .filter(Role.USER::equals).toList());
+        PasswordField password = new PasswordField("Startpasswort");
+        password.setHelperText("Mindestens 8 Zeichen.");
+        Checkbox mustChange = new Checkbox("Muss das Passwort bei der ersten Anmeldung ändern", true);
+        d.add(new FormLayout(username, name, email, password, mustChange, roleBox));
         Button save = new Button("Anlegen", e -> {
-            if (Ui.run(() -> accounts.create(username.getValue(), name.getValue(), email.getValue(), role.getValue(),
-                    password.getValue()), "Benutzer angelegt")) {
+            if (Ui.run(() -> accounts.create(username.getValue(), name.getValue(), email.getValue(),
+                    roleBox.getValue(), password.getValue(), mustChange.getValue()), "Benutzer angelegt")) {
                 d.close();
                 refresh();
             }
@@ -88,16 +105,19 @@ public class UsersView extends VerticalLayout {
         name.setValue(u.displayName() == null ? "" : u.displayName());
         EmailField email = new EmailField("E-Mail");
         email.setValue(u.email() == null ? "" : u.email());
-        Select<Role> role = roleSelect(u.role());
+        CheckboxGroup<String> roleBox = roleBox(u.roles());
         Checkbox enabled = new Checkbox("Aktiv", u.enabled());
         PasswordField password = new PasswordField("Neues Passwort");
         password.setHelperText("Leer lassen, um es nicht zu ändern.");
-        d.add(new FormLayout(name, email, role, enabled, password));
+        Checkbox mustChange = new Checkbox("Muss das neue Passwort bei der nächsten Anmeldung ändern", true);
+        mustChange.setEnabled(false);
+        password.addValueChangeListener(e -> mustChange.setEnabled(!password.isEmpty()));
+        d.add(new FormLayout(name, email, enabled, password, mustChange, roleBox));
         Button save = new Button("Speichern", e -> {
             boolean ok = Ui.run(() -> {
-                accounts.update(u.id(), name.getValue(), email.getValue(), role.getValue(), enabled.getValue());
+                accounts.update(u.id(), name.getValue(), email.getValue(), roleBox.getValue(), enabled.getValue());
                 if (!password.isEmpty()) {
-                    accounts.resetPassword(u.id(), password.getValue());
+                    accounts.resetPassword(u.id(), password.getValue(), mustChange.getValue());
                 }
             }, "Gespeichert");
             if (ok) {
@@ -112,7 +132,8 @@ public class UsersView extends VerticalLayout {
 
     private void confirmDelete(UserAccount u) {
         ConfirmDialog c = new ConfirmDialog("Benutzer löschen?",
-                "„" + u.username() + "“ und alle Tokens werden gelöscht. Verbundene Clients verlieren den Zugriff.",
+                "„" + u.username() + "“ samt Profilen, Projekten und Tokens wird gelöscht. Verbundene Desktop-Apps "
+                        + "verlieren sofort den Zugriff.",
                 "Löschen", e -> {
                     Ui.run(() -> accounts.delete(u.id()), "Benutzer gelöscht");
                     refresh();
@@ -123,13 +144,14 @@ public class UsersView extends VerticalLayout {
         c.open();
     }
 
-    private static Select<Role> roleSelect(Role value) {
-        Select<Role> role = new Select<>();
-        role.setLabel("Rolle");
-        role.setItems(Role.values());
-        role.setItemLabelGenerator(r -> r == Role.ADMIN ? "Administrator" : "Benutzer");
-        role.setValue(value);
-        return role;
+    private CheckboxGroup<String> roleBox(List<String> selected) {
+        CheckboxGroup<String> box = new CheckboxGroup<>("Rollen");
+        List<Role> all = roles.roles();
+        box.setItems(all.stream().map(Role::name).toList());
+        box.setItemHelperGenerator(name -> all.stream().filter(r -> r.name().equals(name)).findFirst()
+                .map(r -> r.description() == null ? "" : r.description()).orElse(""));
+        box.setValue(Set.copyOf(selected));
+        return box;
     }
 
     private void refresh() {

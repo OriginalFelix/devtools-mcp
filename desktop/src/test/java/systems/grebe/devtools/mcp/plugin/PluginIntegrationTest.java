@@ -38,7 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * verweigerte das Löschen von {@code plugins/startup.jar}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "devtools.local-user.email=plugin@example.com")
+        properties = {"devtools.local-user.email=plugin@example.com", "devtools.login.username=tester",
+                "devtools.login.password=tester-passwort"})
 @DirtiesContext
 class PluginIntegrationTest {
 
@@ -190,6 +191,20 @@ class PluginIntegrationTest {
         assertThat(appContext.getBeanNamesForType(ToolModule.class)).noneMatch(n -> n.toLowerCase().contains("info"));
         plugins.uninstall("wired");
         assertThat(toolNames()).doesNotContain("wired_info");
+    }
+
+    @Test
+    void apiOnlyPluginGetsMailAccounts() throws Exception {
+        // Plugin-API 3: das Mail-SPI kommt auch bei einem Plugin an, das nur gegen die API gebaut ist
+        Path jar = TestPlugins.springPlugin("mailer", "1.0", "mailer",
+                        "systems.grebe.devtools.mcp.modules.mail.spi.MailAccountProvider").apiOnly()
+                .build(work.resolve("mailer.jar"));
+        PluginManager.PluginInfo info = plugins.install(jar, null);
+        assertThat(info.state()).as(String.valueOf(info.error())).isEqualTo(PluginManager.State.ENABLED);
+        McpSchema.CallToolResult r = client.callTool(McpSchema.CallToolRequest.builder("mailer_info")
+                .arguments(Map.of()).build());
+        assertThat(((McpSchema.TextContent) r.content().getFirst()).text()).contains("bean=MailAccountService");
+        plugins.uninstall("mailer");
     }
 
     @Test

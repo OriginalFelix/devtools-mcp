@@ -1,12 +1,16 @@
 package systems.grebe.devtools.mcp.modules.ticket.jira;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -100,6 +104,8 @@ public class JiraTicketProvider implements TicketProvider {
         private static final int BOARD_PAGE = 50;
         private static final int BOARD_MAX = 300;
         private static final Pattern STORY_POINTS = Pattern.compile("(?i)story[ _-]?points?|story point estimate");
+        /** Format von {@code started} – Jira lehnt ISO-Offsets mit Doppelpunkt ab. */
+        private static final DateTimeFormatter STARTED = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
 
         private final HttpJson http;
         private final boolean cloud;
@@ -416,6 +422,59 @@ public class JiraTicketProvider implements TicketProvider {
                     text(issue.path("fields").path("status").path("name")), http.baseUrl() + "/browse/" + key);
         }
 
+        /** Linktypen der Instanz, je Richtung ein Eintrag ({@code <Typ>:outward}/{@code <Typ>:inward}); ungerichtete einmal. */
+        @Override
+        public List<LinkType> linkTypes(String project) {
+            List<LinkType> out = new ArrayList<>();
+            for (JsonNode t : http().getJson("/rest/api/2/issueLinkType").path("issueLinkTypes")) {
+                String name = text(t.path("name"));
+                String outward = HttpJson.first(text(t.path("outward")), name);
+                String inward = HttpJson.first(text(t.path("inward")), name);
+                out.add(new LinkType(name + ":outward", outward, inward));
+                if (!inward.equalsIgnoreCase(outward)) {
+                    out.add(new LinkType(name + ":inward", inward, outward));
+                }
+            }
+            return out;
+        }
+
+        @Override
+        public WriteResult link(String key, String project, LinkType type, String target) {
+            String k = issueKey(key);
+            String t = issueKey(target);
+            int colon = type.id().lastIndexOf(':');
+            if (colon <= 0) {
+                throw new IllegalArgumentException("Jira: unbekannte Verknüpfungsart '" + type.id() + "'.");
+            }
+            boolean outward = type.id().endsWith(":outward");
+            var body = HttpJson.object();
+            body.putObject("type").put("name", type.id().substring(0, colon));
+            // Jira: das inwardIssue trägt die outward-Beschreibung („inwardIssue blocks outwardIssue“)
+            body.putObject("inwardIssue").put("key", outward ? k : t);
+            body.putObject("outwardIssue").put("key", outward ? t : k);
+            http().post("/rest/api/2/issueLink", body);
+            return new WriteResult(k, "verknüpft: " + k + " " + type.name() + " " + t, http.baseUrl() + "/browse/" + k);
+        }
+
+        @Override
+        public WriteResult unlink(String key, String project, String target, String relation) {
+            String k = issueKey(key);
+            String t = issueKey(target);
+            record Found(String relation, String id) { }
+            List<Found> found = new ArrayList<>();
+            for (JsonNode l : http().getJson("/rest/api/2/issue/" + HttpJson.enc(k) + query("fields", "issuelinks"))
+                    .path("fields").path("issuelinks")) {
+                boolean out = l.path("outwardIssue").isObject();
+                if (t.equals(text(l.path(out ? "outwardIssue" : "inwardIssue").path("key")))) {
+                    found.add(new Found(text(l.path("type").path(out ? "outward" : "inward")), text(l.path("id"))));
+                }
+            }
+            Found hit = TicketSystem.pickLink(found, Found::relation, relation, "Jira", k, t);
+            http.delete("/rest/api/2/issueLink/" + HttpJson.enc(hit.id()));
+            return new WriteResult(k, "Verknüpfung entfernt: " + k + " " + hit.relation() + " " + t,
+                    http.baseUrl() + "/browse/" + k);
+        }
+
         @Override
         public List<Transition> transitions(String key, String project) {
             String k = issueKey(key);
@@ -435,6 +494,45 @@ public class JiraTicketProvider implements TicketProvider {
             http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/transitions", body);
             return new WriteResult(k, "Status → " + transition.to() + " ('" + transition.name() + "')",
                     http.baseUrl() + "/browse/" + k);
+        }
+
+        /**
+         * Wechsel und Kommentar in einem Aufruf ({@code update.comment}) – Validatoren, die beim Übergang einen Kommentar
+         * verlangen, sehen ihn nur so. Nimmt die Instanz am Übergang keinen Kommentar an, nacheinander wie im Default.
+         */
+        @Override
+        public WriteResult transition(String key, String project, Transition transition, String comment) {
+            if (comment == null || comment.isBlank()) {
+                return transition(key, project, transition);
+            }
+            String k = issueKey(key);
+            var body = HttpJson.object();
+            body.putObject("transition").put("id", transition.id());
+            body.putObject("update").putArray("comment").addObject().putObject("add").put("body", comment);
+            try {
+                http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/transitions", body);
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 400 && e.getMessage().toLowerCase(Locale.ROOT).contains("comment")) {
+                    return TicketSystem.super.transition(key, project, transition, comment);
+                }
+                throw e;
+            }
+            String id = newestCommentId(k, comment);
+            return new WriteResult(k, "Status → " + transition.to() + " ('" + transition.name() + "') mit Kommentar"
+                    + (id == null ? "" : " " + id), http.baseUrl() + "/browse/" + k
+                    + (id == null ? "" : "?focusedCommentId=" + id), id);
+        }
+
+        /** ID des neuesten Kommentars, wenn er den gesendeten Text trägt – der Übergang selbst liefert sie nicht. */
+        private String newestCommentId(String k, String body) {
+            try {
+                JsonNode newest = http.getJson("/rest/api/2/issue/" + HttpJson.enc(k) + "/comment"
+                        + query("orderBy", "-created", "maxResults", 1)).path("comments").path(0);
+                String text = text(newest.path("body"));
+                return text != null && text.strip().equals(body.strip()) ? text(newest.path("id")) : null;
+            } catch (RuntimeException e) {
+                return null; // nur für die Liste selbst geschriebener Kommentare
+            }
         }
 
         @Override
@@ -475,9 +573,17 @@ public class JiraTicketProvider implements TicketProvider {
 
         /** Sucht unter den für das Ticket zuweisbaren Benutzern – braucht nur Projektrechte, nicht „Browse Users“. */
         private JsonNode assignableUser(String issueKey, String who) {
+            return assignableUser("issueKey", issueKey, who);
+        }
+
+        /**
+         * Wie {@link #assignableUser(String, String)} für ein Ticket ({@code issueKey}) oder – beim Anlegen, wenn es noch
+         * keins gibt – ein Projekt ({@code project}).
+         */
+        private JsonNode assignableUser(String scope, String target, String who) {
             String q = who.trim().replaceFirst("^@", "");
             JsonNode users = http.getJson("/rest/api/2/user/assignable/search"
-                    + query("issueKey", issueKey, cloud ? "query" : "username", q, "maxResults", 20));
+                    + query(scope, target, cloud ? "query" : "username", q, "maxResults", 20));
             List<JsonNode> list = new ArrayList<>();
             users.forEach(list::add);
             // Stream.of statt List.of: je nach Variante fehlen Felder (DC: keine accountId, Cloud: kein name)
@@ -491,7 +597,7 @@ public class JiraTicketProvider implements TicketProvider {
                 return list.getFirst();
             }
             if (list.isEmpty()) {
-                throw new IllegalArgumentException("Jira: kein zuweisbarer Benutzer '" + q + "' für " + issueKey
+                throw new IllegalArgumentException("Jira: kein zuweisbarer Benutzer '" + q + "' für " + target
                         + " (Benutzername, E-Mail oder Anzeigename).");
             }
             throw new IllegalArgumentException("Jira: '" + q + "' ist mehrdeutig: " + String.join(", ",
@@ -519,21 +625,181 @@ public class JiraTicketProvider implements TicketProvider {
             return new WriteResult(k, "geändert: " + update.summary(), http.baseUrl() + "/browse/" + k);
         }
 
+        /** Felder per ID oder Anzeigename aus der Editmeta des Tickets; der Text wird passend zum Feldtyp umgewandelt. */
+        @Override
+        public WriteResult updateFields(String key, String project, Map<String, String> values) {
+            String k = issueKey(key);
+            if (values == null || values.isEmpty()) {
+                throw new IllegalArgumentException("Jira: keine Felder angegeben.");
+            }
+            JsonNode editable = http().getJson("/rest/api/2/issue/" + HttpJson.enc(k) + "/editmeta").path("fields");
+            var fields = HttpJson.object();
+            List<String> done = new ArrayList<>();
+            values.forEach((ref, raw) -> {
+                Map.Entry<String, JsonNode> f = field(editable, ref,
+                        "ist für " + k + " unbekannt oder nicht bearbeitbar. Bearbeitbar");
+                String name = HttpJson.first(text(f.getValue().path("name")), f.getKey());
+                String value = raw == null ? "" : raw.strip();
+                JsonNode v = fieldValue(who -> assignableUser(k, who), f.getValue(), name, value);
+                if (v == null) {
+                    fields.putNull(f.getKey());
+                } else {
+                    fields.set(f.getKey(), v);
+                }
+                done.add(value.isEmpty() ? name + " geleert" : name + " = " + value);
+            });
+            var body = HttpJson.object();
+            body.set("fields", fields);
+            http().put("/rest/api/2/issue/" + HttpJson.enc(k), body);
+            return new WriteResult(k, "Felder geändert: " + String.join(", ", done), http.baseUrl() + "/browse/" + k);
+        }
+
+        /**
+         * Feld aus der Edit- bzw. Createmeta per ID oder Anzeigename, beides ohne Groß-/Kleinschreibung.
+         *
+         * @param unknown was bei einem unbekannten Feld vor der Liste der möglichen steht
+         */
+        private static Map.Entry<String, JsonNode> field(JsonNode fields, String ref, String unknown) {
+            String r = ref == null ? "" : ref.strip();
+            List<Map.Entry<String, JsonNode>> all = new ArrayList<>(fields.properties());
+            for (Map.Entry<String, JsonNode> e : all) {
+                if (e.getKey().equalsIgnoreCase(r)) {
+                    return e;
+                }
+            }
+            List<Map.Entry<String, JsonNode>> byName = all.stream()
+                    .filter(e -> r.equalsIgnoreCase(text(e.getValue().path("name")))).toList();
+            if (byName.size() == 1) {
+                return byName.getFirst();
+            }
+            if (byName.size() > 1) {
+                throw new IllegalArgumentException("Jira: Feldname '" + r + "' ist mehrdeutig: " + fieldList(byName)
+                        + " – die Feld-ID angeben.");
+            }
+            throw new IllegalArgumentException("Jira: Feld '" + r + "' " + unknown + ": "
+                    + fieldList(all.stream().limit(40).toList()) + ".");
+        }
+
+        private static String fieldList(List<Map.Entry<String, JsonNode>> fields) {
+            return String.join(", ", fields.stream()
+                    .map(e -> HttpJson.first(text(e.getValue().path("name")), e.getKey()) + " (" + e.getKey() + ")").toList());
+        }
+
+        /**
+         * JSON-Wert für ein Feld; {@code null} = leeren. Text, der mit {@code {} oder {@code [} beginnt, geht unverändert
+         * als JSON hinaus – für Feldtypen ohne eigene Umwandlung.
+         *
+         * @param users sucht einen zuweisbaren Benutzer (für ein Ticket bzw. beim Anlegen für das Projekt)
+         */
+        private JsonNode fieldValue(Function<String, JsonNode> users, JsonNode field, String name, String value) {
+            JsonNode schema = field.path("schema");
+            boolean list = "array".equals(text(schema.path("type")));
+            if (value.isEmpty()) {
+                return list ? HttpJson.JSON.createArrayNode() : null;
+            }
+            if (value.startsWith("{") || value.startsWith("[")) {
+                try {
+                    return HttpJson.JSON.readTree(value);
+                } catch (RuntimeException e) {
+                    throw new IllegalArgumentException("Jira: Wert für " + name + " ist kein gültiges JSON: " + e.getMessage());
+                }
+            }
+            if (!list) {
+                return scalar(users, field, name, text(schema.path("type")), value);
+            }
+            var arr = HttpJson.JSON.createArrayNode();
+            for (String part : value.split(",")) {
+                if (!part.isBlank()) {
+                    arr.add(scalar(users, field, name, text(schema.path("items")), part.strip()));
+                }
+            }
+            return arr;
+        }
+
+        private JsonNode scalar(Function<String, JsonNode> users, JsonNode field, String name, String type, String v) {
+            Object value = switch (type == null ? "string" : type) {
+                case "string", "date", "datetime" -> v;
+                case "number" -> {
+                    try {
+                        yield new BigDecimal(v.replace(',', '.'));
+                    } catch (NumberFormatException e) {
+                        throw new IllegalArgumentException("Jira: " + name + " erwartet eine Zahl, erhalten: " + v);
+                    }
+                }
+                case "user" -> {
+                    JsonNode u = TicketSystem.isMe(v) ? http().getJson("/rest/api/2/myself") : users.apply(v);
+                    yield cloud ? Map.of("accountId", text(u.path("accountId"))) : Map.of("name", text(u.path("name")));
+                }
+                case "option" -> Map.of("value", allowed(field, "value", name, v));
+                case "version", "component", "priority", "resolution", "group" -> Map.of("name", allowed(field, "name", name, v));
+                default -> throw new IllegalArgumentException("Jira: " + name + " hat den Feldtyp '" + type + "' – den Wert "
+                        + "als JSON angeben, z.B. {\"id\":\"10001\"}.");
+            };
+            return HttpJson.JSON.valueToTree(value);
+        }
+
+        /** Erlaubter Wert in der Schreibweise von Jira; ohne Werteliste in der Edit- bzw. Createmeta unverändert. */
+        private static String allowed(JsonNode field, String property, String name, String v) {
+            JsonNode values = field.path("allowedValues");
+            if (!values.isArray() || values.isEmpty()) {
+                return v;
+            }
+            List<String> names = new ArrayList<>();
+            for (JsonNode a : values) {
+                String s = text(a.path(property));
+                if (s != null && s.equalsIgnoreCase(v)) {
+                    return s;
+                }
+                if (s != null) {
+                    names.add(s);
+                }
+            }
+            throw new IllegalArgumentException("Jira: '" + v + "' ist für " + name + " nicht erlaubt – erlaubt: "
+                    + String.join(", ", names.stream().limit(30).toList()) + ".");
+        }
+
         @Override
         public WriteResult create(String project, NewTicket t) {
+            return create(project, t, Map.of());
+        }
+
+        /**
+         * Legt das Ticket samt weiterer Felder in einem Aufruf an – Pflichtfelder wie Komponenten müssen schon im Create
+         * stehen. Die Felder kommen per ID oder Anzeigename aus dem Create-Screen von Projekt und Typ und werden wie bei
+         * {@link #updateFields} umgewandelt; ein leerer Wert setzt nichts.
+         */
+        @Override
+        public WriteResult create(String project, NewTicket t, Map<String, String> values) {
             if (project == null || project.isBlank()) {
                 throw new IllegalArgumentException("Jira: 'project' (Projektschlüssel) angeben oder Standardprojekt setzen.");
             }
+            String p = project.trim().toUpperCase(Locale.ROOT);
+            String type = HttpJson.first(t.type(), "Task");
             var fields = HttpJson.object();
-            fields.putObject("project").put("key", project.trim().toUpperCase(Locale.ROOT));
+            fields.putObject("project").put("key", p);
             fields.put("summary", t.title());
             if (t.description() != null) {
                 fields.put("description", t.description());
             }
-            fields.putObject("issuetype").put("name", HttpJson.first(t.type(), "Task"));
+            fields.putObject("issuetype").put("name", type);
             if (!t.labels().isEmpty()) {
                 var arr = fields.putArray("labels");
                 t.labels().forEach(l -> arr.add(l.replace(' ', '_')));
+            }
+            List<String> set = new ArrayList<>();
+            if (values != null && !values.isEmpty()) {
+                JsonNode creatable = createFields(p, type);
+                values.forEach((ref, raw) -> {
+                    String value = raw == null ? "" : raw.strip();
+                    if (value.isEmpty()) {
+                        return;
+                    }
+                    Map.Entry<String, JsonNode> f = field(creatable, ref,
+                            "gibt es beim Anlegen von " + type + " in " + p + " nicht. Möglich");
+                    String name = HttpJson.first(text(f.getValue().path("name")), f.getKey());
+                    fields.set(f.getKey(), fieldValue(who -> assignableUser("project", p, who), f.getValue(), name, value));
+                    set.add(name + " = " + value);
+                });
             }
             var body = HttpJson.object();
             body.set("fields", fields);
@@ -544,9 +810,14 @@ public class JiraTicketProvider implements TicketProvider {
                 if (e.status() == 400 && e.getMessage().toLowerCase(Locale.ROOT).contains("issuetype")) {
                     throw new IllegalArgumentException(e.getMessage() + " – gültige Typen: " + issueTypes(project), e);
                 }
+                String missing = e.status() == 400 ? missingRequiredFields(p, type, fields) : null;
+                if (missing != null) {
+                    throw new IllegalArgumentException(e.getMessage() + " – Pflichtfelder für " + type + " in " + p
+                            + ", per 'fields' angeben: " + missing, e);
+                }
                 throw e;
             }
-            String msg = "angelegt (" + HttpJson.first(t.type(), "Task") + ")";
+            String msg = "angelegt (" + type + ")" + (set.isEmpty() ? "" : ", Felder: " + String.join(", ", set));
             if (!t.assignees().isEmpty()) {
                 // Zuweisung getrennt: das Feld 'assignee' steht nicht auf jedem Create-Screen
                 try {
@@ -556,6 +827,47 @@ public class JiraTicketProvider implements TicketProvider {
                 }
             }
             return new WriteResult(newKey, msg, http.baseUrl() + "/browse/" + newKey);
+        }
+
+        @Override
+        public List<WorkLogEntry> worklogs(String key, String project) {
+            String k = issueKey(key);
+            List<WorkLogEntry> out = new ArrayList<>();
+            int startAt = 0;
+            while (out.size() < 1000) {
+                JsonNode res = http().getJson("/rest/api/2/issue/" + HttpJson.enc(k) + "/worklog"
+                        + query("startAt", startAt, "maxResults", 500));
+                JsonNode logs = res.path("worklogs");
+                for (JsonNode w : logs) {
+                    String started = text(w.path("started"));
+                    out.add(new WorkLogEntry(text(w.path("id")), user(w.path("author")), started == null ? null : day(started),
+                            Duration.ofSeconds(w.path("timeSpentSeconds").asLong()), text(w.path("comment")), null));
+                }
+                startAt += logs.size();
+                if (logs.isEmpty() || startAt >= res.path("total").asInt(startAt)) {
+                    break;
+                }
+            }
+            return out;
+        }
+
+        /** Zieht die Dauer automatisch von der Restschätzung ab (Jira-Standard {@code adjustEstimate=auto}). */
+        @Override
+        public WriteResult logTime(String key, String project, WorkLog work) {
+            if (work.activity() != null) {
+                throw new IllegalArgumentException("Jira kennt keine Tätigkeitsart beim Buchen – ohne 'activity' aufrufen.");
+            }
+            String k = issueKey(key);
+            var body = HttpJson.object();
+            body.put("timeSpentSeconds", work.duration().toSeconds());
+            body.put("started", work.start().format(STARTED));
+            if (work.comment() != null) {
+                body.put("comment", work.comment());
+            }
+            String id = text(http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/worklog", body).body().path("id"));
+            return new WriteResult(k, TicketSystem.formatDuration(work.duration()) + " gebucht am " + work.date()
+                    + (id == null ? "" : " (Buchung " + id + ")"),
+                    http.baseUrl() + "/browse/" + k + (id == null ? "" : "?focusedWorklogId=" + id), id);
         }
 
         @Override
@@ -597,6 +909,77 @@ public class JiraTicketProvider implements TicketProvider {
                         .path("issueTypes"), "name"));
             } catch (RuntimeException e) {
                 return "(nicht abrufbar)";
+            }
+        }
+
+        /**
+         * Felder des Create-Screens von Projekt und Typ in der Form der Editmeta: Feld-ID → Feld (Name, Schema, erlaubte
+         * Werte, Pflicht). Über {@code /issue/createmeta/{projekt}/issuetypes/{typ}} (Cloud und Data Center ab 8.4; Cloud
+         * liefert die Felder unter {@code fields}, Data Center unter {@code values}), ältere Data-Center-Versionen über die
+         * frühere Createmeta.
+         */
+        private JsonNode createFields(String project, String type) {
+            String typeId = null;
+            List<String> names = new ArrayList<>();
+            for (JsonNode it : http().getJson("/rest/api/2/project/" + HttpJson.enc(project)).path("issueTypes")) {
+                String n = text(it.path("name"));
+                if (n != null && typeId == null && n.equalsIgnoreCase(type)) {
+                    typeId = text(it.path("id"));
+                }
+                if (n != null) {
+                    names.add(n);
+                }
+            }
+            if (typeId == null) {
+                throw new IllegalArgumentException("Jira: Issue-Typ '" + type + "' gibt es in " + project
+                        + " nicht – gültige Typen: " + String.join(", ", names));
+            }
+            var out = HttpJson.object();
+            int startAt = 0;
+            while (true) {
+                JsonNode page;
+                try {
+                    page = http().getJson("/rest/api/2/issue/createmeta/" + HttpJson.enc(project) + "/issuetypes/"
+                            + HttpJson.enc(typeId) + query("startAt", startAt, "maxResults", 100));
+                } catch (HttpJson.StatusException e) {
+                    if (e.status() != 404 || startAt > 0) {
+                        throw e;
+                    }
+                    JsonNode old = http().getJson("/rest/api/2/issue/createmeta" + query("projectKeys", project,
+                            "issuetypeIds", typeId, "expand", "projects.issuetypes.fields"));
+                    return old.path("projects").path(0).path("issuetypes").path(0).path("fields");
+                }
+                JsonNode list = page.has("fields") ? page.path("fields") : page.path("values");
+                for (JsonNode f : list) {
+                    String id = HttpJson.first(text(f.path("fieldId")), text(f.path("key")));
+                    if (id != null) {
+                        out.set(id, f);
+                    }
+                }
+                startAt += list.size();
+                if (list.isEmpty() || page.path("isLast").asBoolean(false) || startAt >= page.path("total").asInt(startAt)) {
+                    return out;
+                }
+            }
+        }
+
+        /**
+         * Pflichtfelder ohne Standardwert, die im Create fehlen – für die Fehlermeldung, wenn Jira das Anlegen ablehnt;
+         * {@code null}, wenn keine fehlen oder der Create-Screen nicht lesbar ist.
+         */
+        private String missingRequiredFields(String project, String type, JsonNode sent) {
+            try {
+                List<String> missing = new ArrayList<>();
+                createFields(project, type).properties().forEach(e -> {
+                    JsonNode f = e.getValue();
+                    if (f.path("required").asBoolean(false) && !f.path("hasDefaultValue").asBoolean(false)
+                            && !sent.has(e.getKey())) {
+                        missing.add(HttpJson.first(text(f.path("name")), e.getKey()) + " (" + e.getKey() + ")");
+                    }
+                });
+                return missing.isEmpty() ? null : String.join(", ", missing);
+            } catch (RuntimeException e) {
+                return null;
             }
         }
 

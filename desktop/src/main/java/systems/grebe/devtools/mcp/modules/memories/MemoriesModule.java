@@ -3,11 +3,15 @@ package systems.grebe.devtools.mcp.modules.memories;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.backend.memories.Memory;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.DelegatingToolCallback;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
@@ -18,6 +22,11 @@ import systems.grebe.devtools.mcp.core.ToolModule;
  * je Aufgabentyp (z.B. {@code ticket-review}) – um die einzelnen Durchläufe; eine Memory kann auf den Skill verweisen,
  * nach dem gearbeitet wurde. Die Memories liegen im Backend ({@link MemoryBackend}) und gehören der E-Mail des
  * Benutzerkontos.
+ *
+ * <p>Memories sind dauerhaft, außer LLM oder Nutzer geben ausdrücklich {@code TEMPORARY} an – oder {@code INVOCATION}
+ * für einen Rückruf nach einer lang laufenden Aktion ({@link systems.grebe.devtools.mcp.core.InvocationService}).
+ * Temporäre und Rückruf-Memories dürfen ohne Freigabe angelegt, geändert und gelöscht werden: {@code save},
+ * {@code update} und {@code delete} sind deshalb immer registriert; ohne den jeweiligen Schalter nur für diese.
  */
 @Component
 public class MemoriesModule implements ToolModule {
@@ -64,7 +73,11 @@ public class MemoriesModule implements ToolModule {
                 statt neu zu recherchieren.
                 - Nach einer abgeschlossenen Aktion: `memories_save` (title = eine Zeile; content = Ergebnis, \
                 Begründung, offene Punkte; dazu project, skill, reference). Folgeaktion zur selben Sache: \
-                `memories_update` mit `append`. Keine Geheimnisse; `memories_delete` nur auf Wunsch.""";
+                `memories_update` mit `append`. Keine Geheimnisse.
+                - Typ: Standard dauerhaft. `type=TEMPORARY` nur, wenn der Nutzer es so will oder für kurzlebige \
+                Zwischenstände; temporäre Memories ohne Rückfrage ändern und löschen (z.B. wenn erledigt), \
+                dauerhafte mit `memories_delete` nur auf Wunsch.
+                - `type=INVOCATION` (Rückruf): vor einer lang laufenden Aktion kurz festhalten, was zu tun ist, wenn                 sie fertig ist, und die ID an das Tool der Aktion geben (z.B. `share_send invocation=<id>`). Die App                 meldet das Ergebnis samt dieser Memory per Channel – auch an eine später gestartete Sitzung – und                 löscht sie danach selbst.""";
     }
 
     @Override
@@ -81,8 +94,9 @@ public class MemoriesModule implements ToolModule {
     public List<ConfigField> configSchema() {
         return List.of(
                 ConfigField.of(ALLOW_WRITE, "Anlegen und Nachtragen erlauben", FieldType.BOOLEAN).withDefault("true")
-                        .withHelp("save, update."),
-                ConfigField.of(ALLOW_DELETE, "Löschen erlauben", FieldType.BOOLEAN).withDefault("false"),
+                        .withHelp("save, update für dauerhafte Memories; temporäre und Rückrufe gehen immer."),
+                ConfigField.of(ALLOW_DELETE, "Löschen erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("Dauerhafte Memories löschen; temporäre und Rückrufe gehen immer."),
                 ConfigField.of(MAX_CONTENT, "Max. Zeichen je Memory", FieldType.INT)
                         .withDefault(String.valueOf(DEFAULT_MAX_CONTENT))
                         .withHelp("Obergrenze für den Inhalt einer Memory (inkl. Nachträgen)."));
@@ -91,13 +105,45 @@ public class MemoriesModule implements ToolModule {
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
         List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(new MemoryReadTools(memories))));
-        if (config.getBoolean(ALLOW_WRITE)) {
-            tools.addAll(List.of(ToolCallbacks.from(new MemoryWriteTools(memories, maxContent(config)))));
-        }
-        if (config.getBoolean(ALLOW_DELETE)) {
-            tools.addAll(List.of(ToolCallbacks.from(new MemoryDeleteTools(memories))));
-        }
+        boolean write = config.getBoolean(ALLOW_WRITE);
+        boolean delete = config.getBoolean(ALLOW_DELETE);
+        // ohne Schalter nur temporäre Memories – die brauchen keine Freigabe
+        noted(tools, ToolCallbacks.from(new MemoryWriteTools(memories, maxContent(config), !write)), write,
+                ALLOW_WRITE);
+        noted(tools, ToolCallbacks.from(new MemoryDeleteTools(memories, !delete)), delete, ALLOW_DELETE);
         return tools;
+    }
+
+    private static void noted(List<ToolCallback> tools, ToolCallback[] callbacks, boolean permitted, String setting) {
+        for (ToolCallback cb : callbacks) {
+            tools.add(permitted ? cb : new TemporaryOnly(cb, " NUR temporäre Memories und Rückrufe – dauerhafte sind "
+                    + "nicht freigegeben (permissions_request mit module='memories', setting='" + setting + "')."));
+        }
+    }
+
+    /** Hängt an die Beschreibung an, dass das Tool nur temporäre Memories anfasst. */
+    private record TemporaryOnly(ToolCallback delegate, String note) implements DelegatingToolCallback {
+        @Override
+        public ToolDefinition getToolDefinition() {
+            ToolDefinition d = delegate.getToolDefinition();
+            return ToolDefinition.builder().name(d.name()).description(d.description() + note)
+                    .inputSchema(d.inputSchema()).build();
+        }
+
+        @Override
+        public ToolMetadata getToolMetadata() {
+            return delegate.getToolMetadata();
+        }
+
+        @Override
+        public String call(String toolInput) {
+            return delegate.call(toolInput);
+        }
+
+        @Override
+        public String call(String toolInput, ToolContext toolContext) {
+            return delegate.call(toolInput, toolContext);
+        }
     }
 
     private static int maxContent(ModuleConfig config) {

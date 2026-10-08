@@ -69,15 +69,15 @@ class TicketProviderWriteTest {
         new TicketAssignTools(env).assign("ABC-1", List.of(), null, null);
         assertThat(stub.last("/rest/api/2/issue/ABC-1/assignee").body()).isEqualTo("{\"name\":null}");
 
-        assertThat(new TicketEditTools(env).update("ABC-1", "Neu", null, List.of("needs review"), null, null))
+        assertThat(new TicketEditTools(env).update("ABC-1", "Neu", null, List.of("needs review"), null, null, null))
                 .contains("geändert: Titel, Labels [needs review]");
         assertThat(stub.last("/rest/api/2/issue/ABC-1").method()).isEqualTo("PUT");
         assertThat(stub.last("/rest/api/2/issue/ABC-1").body())
                 .isEqualTo("{\"fields\":{\"summary\":\"Neu\",\"labels\":[\"needs_review\"]}}");
-        assertThatThrownBy(() -> new TicketEditTools(env).update("ABC-1", " ", null, null, null, null))
+        assertThatThrownBy(() -> new TicketEditTools(env).update("ABC-1", " ", null, null, null, null, null))
                 .hasMessageContaining("Nichts zu ändern");
 
-        assertThat(new TicketCreateTools(env).create("Neues Ticket", "h2. Ziel", null, "Bug", List.of("x"), null, null))
+        assertThat(new TicketCreateTools(env).create("Neues Ticket", "h2. Ziel", null, "Bug", List.of("x"), null, null, null))
                 .isEqualTo("ABC-9: angelegt (Bug)\n" + stub.url() + "/browse/ABC-9");
         assertThat(stub.last("/rest/api/2/issue").body()).isEqualTo("{\"fields\":{\"project\":{\"key\":\"ABC\"},"
                 + "\"summary\":\"Neues Ticket\",\"description\":\"h2. Ziel\",\"issuetype\":{\"name\":\"Bug\"},\"labels\":[\"x\"]}}");
@@ -95,8 +95,196 @@ class TicketProviderWriteTest {
 
         new TicketAssignTools(env).assign("ABC-1", List.of("me"), null, null);
         assertThat(stub.last("/rest/api/2/issue/ABC-1/assignee").body()).isEqualTo("{\"accountId\":\"5b10ac\"}");
-        assertThatThrownBy(() -> new TicketCreateTools(env).create("T", null, null, "Bugg", null, null, null))
+        assertThatThrownBy(() -> new TicketCreateTools(env).create("T", null, null, "Bugg", null, null, null, null))
                 .hasMessageContaining("valid issue type").hasMessageContaining("gültige Typen: Task, Story");
+
+        stub.on("/rest/api/2/issue/ABC-1/editmeta", EDITMETA);
+        stub.on("/rest/api/2/issue/ABC-1", r -> new StubServer.Reply(204, "", Map.of()));
+        new TicketEditTools(env).update("ABC-1", null, null, null, Map.of("Tester", "me"), null, null);
+        assertThat(stub.last("/rest/api/2/issue/ABC-1").body()).isEqualTo("{\"fields\":{\"customfield_10368\":{\"accountId\":\"5b10ac\"}}}");
+    }
+
+    private static final String EDITMETA = """
+            {"fields":{
+             "customfield_10368":{"name":"Tester","schema":{"type":"user","custom":"com.atlassian.jira.plugin.system.customfieldtypes:userpicker"}},
+             "fixVersions":{"name":"Lösungsversionen","schema":{"type":"array","items":"version","system":"fixVersions"},
+               "allowedValues":[{"id":"1","name":"43.1"},{"id":"2","name":"42.6"}]},
+             "customfield_10016":{"name":"Story Points","schema":{"type":"number"}},
+             "customfield_10500":{"name":"Umgebung","schema":{"type":"option"},"allowedValues":[{"value":"Produktion"},{"value":"Test"}]},
+             "customfield_10600":{"name":"Notiz","schema":{"type":"string"}},
+             "customfield_10601":{"name":"Notiz","schema":{"type":"string"}},
+             "customfield_10700":{"name":"Kaskade","schema":{"type":"option-with-child"}}}}""";
+
+    @Test
+    void jiraUpdateFieldsResolvesNamesAndConvertsByFieldType() {
+        stub.on("/rest/api/2/issue/ABC-1/editmeta", EDITMETA);
+        stub.on("/rest/api/2/issue/ABC-1", r -> new StubServer.Reply(204, "", Map.of()));
+        stub.on("/rest/api/2/user/assignable/search", "[{\"name\":\"fgrebe\",\"displayName\":\"Felix Grebe\",\"emailAddress\":\"felix@example.com\"}]");
+        TicketEditTools tools = new TicketEditTools(env(jira()));
+
+        Map<String, String> fields = new java.util.LinkedHashMap<>();
+        fields.put("Tester", "");
+        fields.put("lösungsversionen", "43.1, 42.6");
+        fields.put("customfield_10016", "5,5");
+        fields.put("Umgebung", "test");
+        assertThat(tools.update("ABC-1", null, null, null, fields, null, null))
+                .startsWith("ABC-1: Felder geändert: Tester geleert, Lösungsversionen = 43.1, 42.6, Story Points = 5,5, Umgebung = test");
+        assertThat(stub.last("/rest/api/2/issue/ABC-1").method()).isEqualTo("PUT");
+        assertThat(stub.last("/rest/api/2/issue/ABC-1").body()).isEqualTo("{\"fields\":{\"customfield_10368\":null,"
+                + "\"fixVersions\":[{\"name\":\"43.1\"},{\"name\":\"42.6\"}],\"customfield_10016\":5.5,"
+                + "\"customfield_10500\":{\"value\":\"Test\"}}}");
+
+        // Data Center: Benutzer über die zuweisbaren Benutzer; Titel und Felder in einem Aufruf
+        assertThat(tools.update("ABC-1", "Neu", null, null, Map.of("Tester", "felix@example.com"), null, null))
+                .contains("geändert: Titel", "Felder geändert: Tester = felix@example.com");
+        assertThat(stub.last("/rest/api/2/issue/ABC-1").body()).isEqualTo("{\"fields\":{\"customfield_10368\":{\"name\":\"fgrebe\"}}}");
+        // Rohes JSON für Feldtypen ohne eigene Umwandlung
+        tools.update("ABC-1", null, null, null, Map.of("Kaskade", "{\"value\":\"a\",\"child\":{\"value\":\"b\"}}"), null, null);
+        assertThat(stub.last("/rest/api/2/issue/ABC-1").body())
+                .isEqualTo("{\"fields\":{\"customfield_10700\":{\"value\":\"a\",\"child\":{\"value\":\"b\"}}}}");
+
+        int before = stub.requests.size();
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of("Bearbeiter", "x"), null, null))
+                .hasMessageContaining("Feld 'Bearbeiter' ist für ABC-1 unbekannt oder nicht bearbeitbar")
+                .hasMessageContaining("Tester (customfield_10368)");
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of("Notiz", "x"), null, null))
+                .hasMessageContaining("mehrdeutig").hasMessageContaining("Notiz (customfield_10601)");
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of("Umgebung", "Staging"), null, null))
+                .hasMessageContaining("'Staging' ist für Umgebung nicht erlaubt – erlaubt: Produktion, Test");
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of("Story Points", "viel"), null, null))
+                .hasMessageContaining("Story Points erwartet eine Zahl");
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of("Kaskade", "a"), null, null))
+                .hasMessageContaining("Feldtyp 'option-with-child'").hasMessageContaining("als JSON angeben");
+        // abgelehnt, bevor geschrieben wurde
+        assertThat(stub.requests.subList(before, stub.requests.size())).noneMatch(r -> "PUT".equals(r.method()));
+        assertThatThrownBy(() -> tools.update("ABC-1", null, null, null, Map.of(), null, null))
+                .hasMessageContaining("title, description, labels oder fields");
+    }
+
+    private static final String CREATEMETA = """
+            {"startAt":0,"maxResults":100,"total":5,"fields":[
+             {"fieldId":"summary","name":"Zusammenfassung","required":true,"schema":{"type":"string","system":"summary"}},
+             {"fieldId":"components","name":"Komponenten","required":true,"schema":{"type":"array","items":"component","system":"components"},
+              "allowedValues":[{"id":"1","name":"GDPdU"},{"id":"2","name":"Transform"}]},
+             {"fieldId":"priority","name":"Priorität","required":false,"hasDefaultValue":true,"schema":{"type":"priority","system":"priority"},
+              "allowedValues":[{"id":"2","name":"High"},{"id":"3","name":"Medium"},{"id":"4","name":"Low"}]},
+             {"fieldId":"customfield_10900","name":"Dringlichkeit","required":false,"schema":{"type":"option"},
+              "allowedValues":[{"value":"High"},{"value":"Low"}]},
+             {"fieldId":"customfield_10368","name":"Tester","required":false,"schema":{"type":"user"}}]}""";
+
+    @Test
+    void jiraCreateSetsFieldsOfTheCreateScreenInTheSameCall() {
+        Map<String, String> cloud = with(jira(), "jira.deployment", "cloud", "jira.user", "me@example.com");
+        stub.on("/rest/api/2/project/ABC", "{\"issueTypes\":[{\"id\":\"10001\",\"name\":\"Task\"},{\"id\":\"10004\",\"name\":\"Bug\"}]}");
+        stub.on("/rest/api/2/issue/createmeta/ABC/issuetypes/10004", CREATEMETA);
+        stub.on("/rest/api/2/myself", "{\"accountId\":\"5b10ac\",\"displayName\":\"Ich\"}");
+        stub.on("/rest/api/2/issue", "{\"id\":\"1\",\"key\":\"ABC-10\"}");
+        TicketCreateTools tools = new TicketCreateTools(env(cloud));
+
+        Map<String, String> fields = new java.util.LinkedHashMap<>();
+        fields.put("komponenten", "transform");
+        fields.put("priority", "low");
+        fields.put("Dringlichkeit", "Low");
+        fields.put("Tester", "me");
+        fields.put("Sprint", " "); // leer: beim Anlegen nichts zu setzen, auch kein unbekanntes Feld
+        assertThat(tools.create("Endlosschleife", "Text", null, "Bug", null, null, fields, null))
+                .startsWith("ABC-10: angelegt (Bug), Felder: Komponenten = transform, Priorität = low, Dringlichkeit = Low, "
+                        + "Tester = me\n");
+        // Pflichtfelder im Create selbst, nicht danach – sonst lehnt Jira schon das Anlegen ab
+        assertThat(stub.requests).filteredOn(r -> r.path().startsWith("/rest/api/2/issue/ABC-10")).isEmpty();
+        assertThat(stub.last("/rest/api/2/issue").body()).isEqualTo("{\"fields\":{\"project\":{\"key\":\"ABC\"},"
+                + "\"summary\":\"Endlosschleife\",\"description\":\"Text\",\"issuetype\":{\"name\":\"Bug\"},"
+                + "\"components\":[{\"name\":\"Transform\"}],\"priority\":{\"name\":\"Low\"},"
+                + "\"customfield_10900\":{\"value\":\"Low\"},\"customfield_10368\":{\"accountId\":\"5b10ac\"}}}");
+
+        int before = stub.requests.size();
+        assertThatThrownBy(() -> tools.create("T", null, null, "Bug", null, null, Map.of("Sprint", "1"), null))
+                .hasMessageContaining("Feld 'Sprint' gibt es beim Anlegen von Bug in ABC nicht. Möglich: "
+                        + "Zusammenfassung (summary), Komponenten (components)");
+        assertThatThrownBy(() -> tools.create("T", null, null, "Bug", null, null, Map.of("Komponenten", "Kern"), null))
+                .hasMessageContaining("'Kern' ist für Komponenten nicht erlaubt – erlaubt: GDPdU, Transform");
+        assertThatThrownBy(() -> tools.create("T", null, null, "Epic", null, null, Map.of("Komponenten", "Transform"), null))
+                .hasMessageContaining("Issue-Typ 'Epic' gibt es in ABC nicht – gültige Typen: Task, Bug");
+        // abgelehnt, bevor angelegt wurde
+        assertThat(stub.requests.subList(before, stub.requests.size())).noneMatch(r -> "POST".equals(r.method()));
+    }
+
+    @Test
+    void jiraCreateNamesTheMissingRequiredFieldsAndFindsUsersInTheProject() {
+        stub.on("/rest/api/2/project/ABC", "{\"issueTypes\":[{\"id\":\"10004\",\"name\":\"Bug\"}]}");
+        // Data Center liefert die Felder unter 'values'
+        stub.on("/rest/api/2/issue/createmeta/ABC/issuetypes/10004", """
+                {"startAt":0,"maxResults":100,"total":3,"isLast":true,"values":[
+                 {"fieldId":"summary","name":"Summary","required":true,"schema":{"type":"string"}},
+                 {"fieldId":"components","name":"Komponenten","required":true,"schema":{"type":"array","items":"component"}},
+                 {"fieldId":"customfield_10368","name":"Tester","required":false,"schema":{"type":"user"}}]}""");
+        stub.on("/rest/api/2/issue", r -> r.body().contains("components") ? StubServer.Reply.json("{\"id\":\"2\",\"key\":\"ABC-11\"}")
+                : new StubServer.Reply(400, "{\"errorMessages\":[],\"errors\":{\"components\":\"Komponenten ist erforderlich.\"}}", Map.of()));
+        stub.on("/rest/api/2/user/assignable/search", "[{\"name\":\"fgrebe\",\"displayName\":\"Felix Grebe\"}]");
+        TicketCreateTools tools = new TicketCreateTools(env(jira()));
+
+        assertThatThrownBy(() -> tools.create("T", null, null, "Bug", null, null, null, null))
+                .hasMessageContaining("Komponenten ist erforderlich")
+                .hasMessageContaining("Pflichtfelder für Bug in ABC, per 'fields' angeben: Komponenten (components)");
+
+        Map<String, String> fields = new java.util.LinkedHashMap<>();
+        fields.put("Komponenten", "Transform");
+        fields.put("Tester", "fgrebe");
+        assertThat(tools.create("T", null, null, "Bug", null, null, fields, null))
+                .startsWith("ABC-11: angelegt (Bug), Felder: Komponenten = Transform, Tester = fgrebe");
+        // vor dem Anlegen gibt es kein Ticket – gesucht wird unter den im Projekt zuweisbaren Benutzern
+        assertThat(stub.last("/rest/api/2/user/assignable/search").decodedQuery()).contains("project=ABC", "username=fgrebe");
+        assertThat(stub.last("/rest/api/2/issue").body()).contains("\"components\":[{\"name\":\"Transform\"}],"
+                + "\"customfield_10368\":{\"name\":\"fgrebe\"}");
+    }
+
+    @Test
+    void jiraCreateReadsTheOldCreatemetaOnDataCentersBefore84() {
+        stub.on("/rest/api/2/project/ABC", "{\"issueTypes\":[{\"id\":\"10004\",\"name\":\"Bug\"}]}");
+        stub.on("/rest/api/2/issue/createmeta", """
+                {"projects":[{"key":"ABC","issuetypes":[{"id":"10004","name":"Bug","fields":{
+                 "components":{"name":"Komponenten","required":true,"schema":{"type":"array","items":"component"},
+                   "allowedValues":[{"name":"Transform"}]}}}]}]}""");
+        stub.on("/rest/api/2/issue", "{\"id\":\"3\",\"key\":\"ABC-12\"}");
+
+        assertThat(new TicketCreateTools(env(jira())).create("T", null, null, "Bug", null, null,
+                Map.of("components", "transform"), null)).startsWith("ABC-12: angelegt (Bug), Felder: Komponenten = transform");
+        assertThat(stub.last("/rest/api/2/issue/createmeta").decodedQuery())
+                .contains("projectKeys=ABC", "issuetypeIds=10004", "expand=projects.issuetypes.fields");
+        assertThat(stub.last("/rest/api/2/issue").body()).contains("\"components\":[{\"name\":\"Transform\"}]");
+    }
+
+    @Test
+    void createWithFieldsSetsThemAfterwardsOrReportsWhatTheSystemCannotSet() {
+        stub.on("/repos/octo/app/issues", "{\"number\":41,\"html_url\":\"https://github.com/octo/app/issues/41\"}");
+
+        assertThat(new TicketCreateTools(env(github())).create("Neu", null, null, null, null, null, Map.of("Tester", "x"), null))
+                .startsWith("octo/app#41: angelegt")
+                .contains("; Felder nicht gesetzt: Felder ändern wird vom Ticket-System 'github' nicht unterstützt");
+    }
+
+    @Test
+    void jiraTransitionWithCommentFallsBackWhenTheTransitionTakesNoComment() {
+        stub.on("/rest/api/2/issue/ABC-1/transitions", r -> !"POST".equals(r.method())
+                ? StubServer.Reply.json("{\"transitions\":[{\"id\":\"31\",\"name\":\"Erledigt\",\"to\":{\"name\":\"Done\"}}]}")
+                : r.body().contains("update") ? new StubServer.Reply(400, "{\"errorMessages\":[],\"errors\":{\"comment\":"
+                        + "\"Field 'comment' cannot be set. It is not on the appropriate screen, or unknown.\"}}", Map.of())
+                : new StubServer.Reply(204, "", Map.of()));
+        stub.on("/rest/api/2/issue/ABC-1/comment", "{\"id\":\"1003\"}");
+
+        assertThat(new TicketTransitionTools(env(jira()), true).transition("ABC-1", "Done", "fertig", null, null))
+                .contains("Status → Done ('Erledigt'); Kommentar 1003 hinzugefügt");
+        assertThat(stub.requests).filteredOn(r -> "POST".equals(r.method()) && r.path().endsWith("/transitions"))
+                .extracting(StubServer.Request::body).containsExactly(
+                        "{\"transition\":{\"id\":\"31\"},\"update\":{\"comment\":[{\"add\":{\"body\":\"fertig\"}}]}}",
+                        "{\"transition\":{\"id\":\"31\"}}");
+        assertThat(stub.last("/rest/api/2/issue/ABC-1/comment").body()).isEqualTo("{\"body\":\"fertig\"}");
+    }
+
+    @Test
+    void updateFieldsIsReportedAsUnsupportedWhereTheSystemHasNoSuchFields() {
+        assertThatThrownBy(() -> new TicketEditTools(env(github())).update("#12", null, null, null, Map.of("Tester", ""), null, null))
+                .hasMessageContaining("Felder ändern wird vom Ticket-System 'github' nicht unterstützt");
     }
 
     // ------------------------------------------------------------------ GitHub
@@ -148,7 +336,7 @@ class TicketProviderWriteTest {
         assertThat(stub.requests).filteredOn(r -> "PATCH".equals(r.method())).last()
                 .extracting(StubServer.Request::body).isEqualTo("{\"assignees\":[\"felix\",\"ghost\"]}");
 
-        assertThat(new TicketCreateTools(env).create("Neu", "Text", null, "Bug", List.of("bug"), List.of("me"), null))
+        assertThat(new TicketCreateTools(env).create("Neu", "Text", null, "Bug", List.of("bug"), List.of("me"), null, null))
                 .startsWith("octo/app#40: angelegt");
         assertThat(stub.last("/repos/octo/app/issues").body()).isEqualTo(
                 "{\"title\":\"Neu\",\"body\":\"Text\",\"labels\":[\"bug\"],\"assignees\":[\"felix\"],\"type\":\"Bug\"}");

@@ -31,7 +31,9 @@ class TicketWriteGuardTest {
                 : StubServer.Reply.json("""
                         {"transitions":[{"id":"11","name":"Start","to":{"name":"In Arbeit","statusCategory":{"key":"indeterminate"}}},
                           {"id":"31","name":"Erledigt","to":{"name":"Done","statusCategory":{"key":"done"}}}]}"""));
-        jira.on("/rest/api/2/issue/ABC-1/comment", "{\"id\":\"1001\"}");
+        jira.on("/rest/api/2/issue/ABC-1/comment", r -> "GET".equals(r.method())
+                ? StubServer.Reply.json("{\"comments\":[{\"id\":\"1002\",\"body\":\"fertig\\n\\n(via MCP)\"}]}")
+                : StubServer.Reply.json("{\"id\":\"1001\"}"));
     }
 
     @AfterEach
@@ -56,14 +58,16 @@ class TicketWriteGuardTest {
 
     @Test
     void eachSwitchAddsExactlyItsTool() {
-        List<String> read = List.of("providers", "boards", "board", "search", "get", "status", "links", "transitions");
+        List<String> read = List.of("providers", "boards", "board", "search", "get", "status", "links", "transitions", "worklogs");
         assertThat(toolNames(Map.of())).containsExactlyInAnyOrderElementsOf(read);
-        Map<String, String> switches = Map.of("allowComment", "comment", "allowTransition", "transition",
-                "allowAssign", "assign", "allowEdit", "update", "allowCreate", "create");
+        Map<String, String> switches = Map.ofEntries(Map.entry("allowComment", "comment"),
+                Map.entry("allowTransition", "transition"), Map.entry("allowAssign", "assign"),
+                Map.entry("allowEdit", "update"), Map.entry("allowCreate", "create"), Map.entry("allowLogTime", "log_time"));
         switches.forEach((sw, tool) -> assertThat(toolNames(Map.of(sw, "true"))).as(sw)
                 .hasSize(read.size() + 1).contains(tool));
         assertThat(toolNames(Map.ofEntries(switches.keySet().stream().map(k -> Map.entry(k, "true")).toArray(Map.Entry[]::new))))
                 .hasSize(read.size() + switches.size());
+        assertThat(toolNames(Map.of("allowLink", "true"))).hasSize(read.size() + 2).contains("link", "unlink");
     }
 
     @Test
@@ -81,8 +85,12 @@ class TicketWriteGuardTest {
 
         TicketTransitionTools withComment = new TicketTransitionTools(env(Map.of("commentSuffix", "(via MCP)")), true);
         assertThat(withComment.transition("ABC-1", "31", "fertig", null, null))
-                .contains("Status → Done", "Kommentar 1001 hinzugefügt");
-        assertThat(jira.last("/rest/api/2/issue/ABC-1/comment").body()).isEqualTo("{\"body\":\"fertig\\n\\n(via MCP)\"}");
+                .contains("Status → Done ('Erledigt') mit Kommentar 1002", "focusedCommentId=1002");
+        // Jira: Kommentar im Übergang selbst, damit Validatoren mit Pflichtkommentar ihn sehen
+        assertThat(jira.last("/rest/api/2/issue/ABC-1/transitions").body()).isEqualTo("{\"transition\":{\"id\":\"31\"},"
+                + "\"update\":{\"comment\":[{\"add\":{\"body\":\"fertig\\n\\n(via MCP)\"}}]}}");
+        assertThat(jira.requests).noneMatch(r -> r.path().endsWith("/comment") && "POST".equals(r.method()));
+        assertThat(jira.last("/rest/api/2/issue/ABC-1/comment").decodedQuery()).isEqualTo("orderBy=-created&maxResults=1");
 
         assertThatThrownBy(() -> withoutComment.transition("ABC-1", "Review", null, null, null))
                 .hasMessageContaining("nicht eindeutig oder nicht möglich").hasMessageContaining("'Start' → In Arbeit [11]");

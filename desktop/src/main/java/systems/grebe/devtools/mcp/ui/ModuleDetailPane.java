@@ -57,7 +57,9 @@ public class ModuleDetailPane extends ScrollPane {
         title.getStyleClass().add("detail-title");
         enabled.getStyleClass().add("switch");
         enabled.setOnAction(e -> {
-            registry.setModuleEnabled(module.id(), enabled.isSelected());
+            if (!apply(() -> registry.setModuleEnabled(module.id(), enabled.isSelected()))) {
+                enabled.setSelected(!enabled.isSelected());
+            }
             updateEnabledText();
         });
         Region spacer = new Region();
@@ -143,6 +145,13 @@ public class ModuleDetailPane extends ScrollPane {
     }
 
     private void updateOverlay() {
+        boolean permitted = registry.modulePermitted(module.id());
+        enabled.setDisable(!permitted);
+        if (!permitted) {
+            overlay.setText("Für dieses Modul fehlt dir das Recht – es bleibt aus. Rechte vergeben Rollen "
+                    + "(Administrator: Tab „Benutzer“ bzw. Web-UI des Team-Servers).");
+            return;
+        }
         java.util.Set<String> locked = registry.lockedKeys(module.id());
         List<String> parts = new java.util.ArrayList<>();
         if (locked.contains("@enabled")) {
@@ -225,10 +234,29 @@ public class ModuleDetailPane extends ScrollPane {
     }
 
     private void store(Map<String, String> values) {
-        registry.updateConfig(module.id(), values);
+        if (!apply(() -> registry.updateConfig(module.id(), values))) {
+            updateDirty();
+            return;
+        }
         savedValues = registry.settings(module.id()).values();
         updateDirty();
         showStatus(true, "Gespeichert. Die Tools wurden neu registriert.");
+    }
+
+    /**
+     * Speichert über die Registry; abgelehnte Änderungen (gesperrt, fehlendes Recht, Backend nicht erreichbar)
+     * erscheinen als Meldung.
+     *
+     * @return ob gespeichert wurde
+     */
+    private boolean apply(Runnable change) {
+        try {
+            change.run();
+            return true;
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            showStatus(false, e.getMessage());
+            return false;
+        }
     }
 
     private void testConnection(Button button) {
@@ -270,11 +298,16 @@ public class ModuleDetailPane extends ScrollPane {
         List<ToolDefinition> tools = registry.availableTools(module.id());
         boolean moduleOn = registry.settings(module.id()).enabled();
         for (ToolDefinition t : tools) {
-            CheckBox cb = new CheckBox(t.name());
+            boolean permitted = registry.toolPermitted(module.id(), t.name());
+            CheckBox cb = new CheckBox(permitted ? t.name() : t.name() + " (keine Berechtigung)");
             cb.getStyleClass().add("tool-name");
-            cb.setSelected(!registry.settings(module.id()).disabledTools().contains(t.name()));
-            cb.setDisable(!moduleOn);
-            cb.setOnAction(e -> registry.setToolEnabled(module.id(), t.name(), cb.isSelected()));
+            cb.setSelected(permitted && !registry.settings(module.id()).disabledTools().contains(t.name()));
+            cb.setDisable(!moduleOn || !permitted);
+            cb.setOnAction(e -> {
+                if (!apply(() -> registry.setToolEnabled(module.id(), t.name(), cb.isSelected()))) {
+                    cb.setSelected(!cb.isSelected());
+                }
+            });
             Label desc = new Label(t.description());
             desc.setWrapText(true);
             desc.getStyleClass().add("tool-description");

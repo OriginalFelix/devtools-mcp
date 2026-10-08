@@ -39,6 +39,7 @@ public class SettingsStore implements DataHome {
     private ServerSettings server = ServerSettings.defaults();
     private PluginSettings plugins = PluginSettings.defaults();
     private TeamSettings team = TeamSettings.none();
+    private GraphDatabaseSettings graph = GraphDatabaseSettings.none();
     private final Map<String, ModuleSettings> modules = new LinkedHashMap<>();
     private final Map<String, Set<String>> secretKeys = new LinkedHashMap<>();
 
@@ -75,9 +76,19 @@ public class SettingsStore implements DataHome {
         return team;
     }
 
-    /** Speichert die Anbindung an den Team-Server; das Token wird verschlüsselt abgelegt. */
+    /** Speichert die Anbindung an das Backend; das Token wird verschlüsselt abgelegt. */
     public synchronized void saveTeam(TeamSettings value) {
         this.team = value;
+        persist();
+    }
+
+    public synchronized GraphDatabaseSettings graph() {
+        return graph;
+    }
+
+    /** Speichert die Graph-Datenbank des eingebetteten Backends; das Passwort wird verschlüsselt abgelegt. */
+    public synchronized void saveGraph(GraphDatabaseSettings value) {
+        this.graph = value;
         persist();
     }
 
@@ -143,7 +154,13 @@ public class SettingsStore implements DataHome {
                     }
                 });
                 team = new TeamSettings(t.path("url").asString(""), cipher.decrypt(t.path("token").asString("")),
-                        paths);
+                        t.path("username").asString(""), paths);
+            }
+            JsonNode g = root.path("graph");
+            if (g.isObject()) {
+                graph = new GraphDatabaseSettings(g.path("mode").asString(""), g.path("host").asString(""),
+                        g.path("port").asInt(GraphDatabaseSettings.DEFAULT_PORT), g.path("database").asString(""),
+                        g.path("user").asString(""), cipher.decrypt(g.path("password").asString("")));
             }
             JsonNode p = root.path("plugins");
             if (p.isObject()) {
@@ -181,8 +198,16 @@ public class SettingsStore implements DataHome {
         ObjectNode t = root.putObject("team");
         t.put("url", team.url());
         t.put("token", cipher.encrypt(team.token()));
+        t.put("username", team.username());
         ObjectNode paths = t.putObject("projectPaths");
         team.projectPaths().forEach((id, path) -> paths.put(Long.toString(id), path));
+        ObjectNode g = root.putObject("graph");
+        g.put("mode", graph.mode());
+        g.put("host", graph.host());
+        g.put("port", graph.port());
+        g.put("database", graph.database());
+        g.put("user", graph.user());
+        g.put("password", cipher.encrypt(graph.password()));
         writePlugins(root.putObject("plugins"));
 
         ObjectNode mods = root.putObject("modules");
@@ -227,9 +252,11 @@ public class SettingsStore implements DataHome {
                 r.path("enabled").asBoolean(true))));
         Map<String, String> sources = new LinkedHashMap<>();
         p.path("sources").properties().forEach(e -> sources.put(e.getKey(), e.getValue().asString()));
+        List<String> trustedKeys = new ArrayList<>();
+        p.path("trustedKeys").forEach(n -> trustedKeys.add(n.asString()));
         // "repositories" fehlt nur vor dem ersten Speichern – eine bewusst geleerte Liste bleibt leer
         return new PluginSettings(disabled, p.has("repositories") ? repos : PluginSettings.defaults().repositories(),
-                sources);
+                sources, trustedKeys);
     }
 
     private void writePlugins(ObjectNode p) {
@@ -249,6 +276,8 @@ public class SettingsStore implements DataHome {
         }
         ObjectNode sources = p.putObject("sources");
         new TreeMap<>(plugins.sources()).forEach(sources::put);
+        var trustedKeys = p.putArray("trustedKeys");
+        plugins.trustedKeys().forEach(trustedKeys::add);
     }
 
     private void backupBroken() {

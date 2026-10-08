@@ -24,11 +24,13 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
+import systems.grebe.devtools.mcp.channel.BridgeJar;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptToolModule;
 import systems.grebe.devtools.mcp.plugin.PluginToolModule;
 
 /** Hauptfenster: Kopfzeile mit Serverstatus, Tabs „Module“ und „Aufrufe“. */
@@ -43,6 +45,8 @@ public class MainView extends BorderPane {
     private final StackPane detailHolder = new StackPane();
     private final Label toolCount = new Label();
     private final Label authBadge = new Label();
+    private final Label userBadge = new Label();
+    private final TabPane tabs = new TabPane();
 
     public MainView(ToolRegistry registry, ToolInvocationLog log, SettingsStore store, String endpoint, Stage stage,
                     java.util.List<Tab> extraTabs) {
@@ -54,7 +58,6 @@ public class MainView extends BorderPane {
 
         setTop(header());
 
-        TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getTabs().add(new Tab("Module", modulesPane()));
         tabs.getTabs().add(new Tab("Aufrufe", new InvocationLogView(log)));
@@ -80,14 +83,17 @@ public class MainView extends BorderPane {
         });
         Button connect = new Button("Client verbinden…");
         connect.getStyleClass().add("accent");
-        connect.setOnAction(e -> new ClientConfigDialog(stage, endpoint, store.server()).showAndWait());
+        connect.setOnAction(e -> new ClientConfigDialog(stage, endpoint, store.server(),
+                BridgeJar.path(store.dir())).showAndWait());
         Button settings = new Button("Einstellungen…");
         settings.setOnAction(e -> openSettings());
         toolCount.getStyleClass().add("badge");
         authBadge.getStyleClass().add("badge");
+        userBadge.getStyleClass().add("badge");
+        userBadge.setVisible(false);
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox box = new HBox(10, dot, title, url, toolCount, authBadge, spacer, copy, connect, settings);
+        HBox box = new HBox(10, dot, title, url, toolCount, authBadge, userBadge, spacer, copy, connect, settings);
         box.setAlignment(Pos.CENTER_LEFT);
         box.setPadding(new Insets(12, 16, 12, 16));
         box.getStyleClass().add("header");
@@ -133,7 +139,7 @@ public class MainView extends BorderPane {
     }
 
     /**
-     * Plugins fügen Module zur Laufzeit hinzu oder entfernen sie: Liste abgleichen, Auswahl über die ID halten und
+     * Plugins und Skripte fügen Module zur Laufzeit hinzu oder entfernen sie: Liste abgleichen, Auswahl über die ID halten und
      * Detailansichten entfernter Module verwerfen (sie halten das Modul und damit den ClassLoader des Plugins fest).
      */
     private void syncModules() {
@@ -150,6 +156,21 @@ public class MainView extends BorderPane {
         current.stream().filter(m -> m.id().equals(selectedId)).findFirst()
                 .ifPresentOrElse(m -> moduleList.getSelectionModel().select(m),
                         () -> moduleList.getSelectionModel().selectFirst());
+    }
+
+    /** Angemeldeter Benutzer im Kopf; {@code null} = niemand. */
+    public void setUser(String label) {
+        userBadge.setText(label == null ? "" : label);
+        userBadge.setVisible(label != null);
+    }
+
+    /** Blendet einen der zusätzlichen Tabs ein oder aus (z.B. „Benutzer“ nur mit dem Recht dazu). */
+    public void showTab(Tab tab, boolean shown) {
+        if (shown && !tabs.getTabs().contains(tab)) {
+            tabs.getTabs().add(tab);
+        } else if (!shown) {
+            tabs.getTabs().remove(tab);
+        }
     }
 
     private void openSettings() {
@@ -171,17 +192,22 @@ public class MainView extends BorderPane {
                 return;
             }
             boolean enabled = registry.settings(m.id()).enabled();
+            boolean permitted = !m.hasTools() || registry.modulePermitted(m.id());
             boolean error = registry.moduleError(m.id()).isPresent();
             int total = registry.availableTools(m.id()).size();
             long active = registry.availableTools(m.id()).stream()
                     .filter(t -> registry.isToolActive(m.id(), t.name())).count();
             Circle dot = new Circle(5);
-            dot.getStyleClass().addAll("module-dot", !m.hasTools() ? "settings" : error ? "error" : enabled ? "on" : "off");
+            dot.getStyleClass().addAll("module-dot", !m.hasTools() ? "settings" : error ? "error"
+                    : enabled && permitted ? "on" : "off");
             Label name = new Label(m.displayName());
             name.getStyleClass().add("module-name");
-            String state = !m.hasTools() ? "Einstellungen" : error ? "Fehler"
+            String state = !m.hasTools() ? "Einstellungen" : !permitted ? "keine Berechtigung" : error ? "Fehler"
                     : enabled ? active + " von " + total + " Tools aktiv" : "deaktiviert";
-            Label sub = new Label(PluginToolModule.pluginOf(m).map(p -> state + " · Plugin " + p).orElse(state));
+            Label sub = new Label(PluginToolModule.pluginOf(m).map(p -> state + " · Plugin " + p)
+                    .or(() -> ScriptToolModule.scriptOf(m).map(s -> state + (s.summary().global() ? " · globales Skript"
+                            : " · Skript")))
+                    .orElse(state));
             sub.getStyleClass().add("module-sub");
             HBox row = new HBox(10, dot, new VBox(1, name, sub));
             row.setAlignment(Pos.CENTER_LEFT);

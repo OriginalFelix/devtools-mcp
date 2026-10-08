@@ -114,9 +114,29 @@ public class ToolRegistry {
         ids.forEach(this::rebuild);
     }
 
-    /** Gesperrte Schlüssel eines Moduls (siehe {@link SettingsResolver#locked}). */
+    /**
+     * Gesperrte Schlüssel eines Moduls (siehe {@link SettingsResolver#locked}); ohne Recht auf das Modul auch der
+     * Schalter und die Tools.
+     */
     public java.util.Set<String> lockedKeys(String moduleId) {
-        return resolver().locked(state(moduleId).module);
+        Set<String> locked = new LinkedHashSet<>(resolver().locked(state(moduleId).module));
+        if (!modulePermitted(moduleId)) {
+            locked.add("@enabled");
+            locked.add("@tools");
+        }
+        return locked;
+    }
+
+    /** Ob der angemeldete Benutzer das Tool nutzen darf (siehe {@link SettingsResolver#permitted}). */
+    public boolean toolPermitted(String moduleId, String toolName) {
+        return resolver().permitted(state(moduleId).module, toolName);
+    }
+
+    /** Ob das Modul nutzbar ist: es hat keine Tools oder der Benutzer darf mindestens eines davon nutzen. */
+    public boolean modulePermitted(String moduleId) {
+        ToolModule m = state(moduleId).module;
+        List<ToolDefinition> tools = availableTools(moduleId);
+        return tools.isEmpty() || tools.stream().anyMatch(t -> resolver().permitted(m, t.name()));
     }
 
     /** Wohin Änderungen an Einstellungen gehen (Anzeige). */
@@ -205,6 +225,28 @@ public class ToolRegistry {
         return local.tools(moduleId).stream().map(ToolCallback::getToolDefinition).toList();
     }
 
+    /**
+     * Namen der Tools, die das Modul mit geänderten Werten anbieten würde – etwa um zu zeigen, welcher Schalter welche
+     * Tools freischaltet. Registriert nichts; was das Modul dabei an Zustand anlegt, liegt in einem eigenen Scope und
+     * wird gleich wieder geschlossen. Kann das Modul seine Tools so nicht bauen, ist das Ergebnis leer.
+     */
+    public Set<String> probeTools(String moduleId, Map<String, String> overrides) {
+        ModuleState s = state(moduleId);
+        Map<String, String> values = new LinkedHashMap<>(toolSettings(s).values());
+        values.putAll(overrides);
+        ModuleConfig cfg = ModuleConfig.of(s.module.configSchema(), values);
+        ToolScope probe = new ToolScope("probe:" + moduleId, null, null, null, null, local.scope().admin());
+        probe.setUnrestricted(local.scope().unrestricted());
+        try (probe) {
+            return ToolScope.callIn(probe, () -> s.module.createTools(cfg, probe)).stream()
+                    .map(cb -> ManagedToolCallback.prefixed(moduleId, cb.getToolDefinition().name()))
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+        } catch (RuntimeException e) {
+            LOG.debug("Tools von {} mit {} nicht ermittelbar", moduleId, overrides.keySet(), e);
+            return Set.of();
+        }
+    }
+
     /** Fehler beim Erzeugen der Tools, falls vorhanden. */
     public Optional<String> moduleError(String moduleId) {
         state(moduleId);
@@ -222,6 +264,11 @@ public class ToolRegistry {
 
     public List<String> activeToolNames() {
         return local.activeToolNames();
+    }
+
+    /** Aktives Tool mit vollem Namen zum Aufrufen aus Skripten (siehe {@link McpRuntime#activeTool}). */
+    public Optional<ToolCallback> activeTool(String name) {
+        return local.activeTool(name);
     }
 
     // ------------------------------------------------------------------ Ändern
@@ -244,6 +291,11 @@ public class ToolRegistry {
 
     public void updateConfig(String moduleId, Map<String, String> values) {
         update(moduleId, s -> s.withValues(values));
+    }
+
+    /** Ändert einzelne Werte; die übrigen bleiben, wie sie sind (anders als {@link #updateConfig}). */
+    public void updateValues(String moduleId, java.util.function.UnaryOperator<Map<String, String>> change) {
+        update(moduleId, s -> s.withValues(change.apply(new LinkedHashMap<>(s.values()))));
     }
 
     public ConnectionTestResult testConnection(String moduleId, Map<String, String> values) {
@@ -370,7 +422,8 @@ public class ToolRegistry {
             if (AccessModule.ID.equals(moduleId)) {
                 local.scope().setUnrestricted(accessConfig().getBoolean(AccessModule.UNRESTRICTED));
             }
-            local.rebuild(s.module, toolSettings(s), callListeners());
+            SettingsResolver resolver = resolver();
+            local.rebuild(s.module, toolSettings(s), callListeners(), tool -> resolver.permitted(s.module, tool));
         }
         // Kein explizites notifyToolsListChanged(): addTool/removeTool benachrichtigen die Clients bereits selbst
         // (spring.ai.mcp.server.tool-change-notification=true), LiveInstructionsTransport bündelt sie zu einer Meldung.

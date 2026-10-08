@@ -23,13 +23,17 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
 import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
 import systems.grebe.devtools.mcp.backend.account.ApiToken;
 import systems.grebe.devtools.mcp.backend.account.TokenService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 
-/** Eigenes Konto: Name/E-Mail, Passwort und die persönlichen Desktop-Tokens (Anmeldung der Desktop-App). */
+/**
+ * Eigenes Konto: Name/E-Mail, Rollen, Passwort, die Anmeldungen der Desktop-Apps und persönliche Desktop-Tokens (für
+ * den Start ohne Anmeldedialog, Recht „Desktop-Tokens erzeugen“).
+ */
 @Route("konto")
 @PageTitle("Mein Konto – DevTools MCP")
 @PermitAll
@@ -57,11 +61,19 @@ public class AccountView extends VerticalLayout {
         this.userId = auth.getAuthenticatedUser(AccountPrincipal.class).orElseThrow().id();
         UserAccount me = accounts.user(userId).orElseThrow();
 
-        add(new H2("Profil"), profile(me), new H2("Passwort"), password(), new H2("Desktop-Tokens"),
-                new Paragraph("Mit einem Token meldet sich deine Desktop-App am Server an (Server → Adresse " + serverUrl
-                        + " und Token). Die MCP-Clients verbinden sich weiter mit der Desktop-App. Das Token wird nur "
-                        + "beim Erzeugen angezeigt; verlorene Tokens widerrufen und neu erzeugen."),
-                tokenGrid());
+        if (me.passwordChangeRequired()) {
+            Paragraph notice = new Paragraph("Bitte ändere zuerst dein Passwort – vorher sind die anderen Seiten und "
+                    + "die Desktop-App gesperrt.");
+            notice.getStyle().set("font-weight", "bold");
+            add(notice);
+        }
+        add(new H2("Profil"), profile(me), new H2("Passwort"), password(),
+                new H2("Anmeldungen und Desktop-Tokens"),
+                new Paragraph("Die Desktop-App meldet sich beim Start mit Benutzername und Passwort an (Server-Adresse "
+                        + serverUrl + "); jede Anmeldung steht hier, bis sich die App abmeldet. Persönliche Tokens "
+                        + "braucht nur ein Start ohne Anmeldedialog (headless: Umgebungsvariable DEVTOOLS_MCP_TOKEN). "
+                        + "Ein Token wird nur beim Erzeugen angezeigt; verlorene Tokens widerrufen und neu erzeugen."),
+                tokenGrid(me.has(Permission.TOKENS_CREATE)));
         refresh();
     }
 
@@ -69,17 +81,20 @@ public class AccountView extends VerticalLayout {
         TextField username = new TextField("Benutzername");
         username.setValue(me.username());
         username.setReadOnly(true);
+        TextField roles = new TextField("Rollen");
+        roles.setValue(me.roles().isEmpty() ? "keine" : String.join(", ", me.roles()));
+        roles.setReadOnly(true);
         TextField name = new TextField("Anzeigename");
         name.setValue(me.displayName() == null ? "" : me.displayName());
         EmailField email = new EmailField("E-Mail");
-        email.setHelperText("Eigentümer deiner Skills");
+        email.setHelperText("Eigentümer deiner Skills und Skripte");
         email.setValue(me.email() == null ? "" : me.email());
         Button save = new Button("Speichern", e -> Ui.run(() -> {
             UserAccount current = accounts.user(userId).orElseThrow();
-            accounts.update(userId, name.getValue(), email.getValue(), current.role(), current.enabled());
+            accounts.update(userId, name.getValue(), email.getValue(), null, current.enabled());
         }, "Gespeichert"));
         save.addThemeVariants(ButtonVariant.PRIMARY);
-        FormLayout form = new FormLayout(username, name, email, save);
+        FormLayout form = new FormLayout(username, roles, name, email, save);
         form.setMaxWidth("40rem");
         return form;
     }
@@ -98,6 +113,8 @@ public class AccountView extends VerticalLayout {
                 current.clear();
                 next.clear();
                 repeat.clear();
+                // Pflicht zum Ändern erledigt: neu laden, damit Navigation und Seiten wieder offen sind
+                getUI().ifPresent(ui -> ui.getPage().reload());
             }
         });
         FormLayout form = new FormLayout(current, next, repeat, change);
@@ -105,7 +122,9 @@ public class AccountView extends VerticalLayout {
         return form;
     }
 
-    private VerticalLayout tokenGrid() {
+    private VerticalLayout tokenGrid(boolean canCreate) {
+        grid.addColumn(t -> t.kind() == ApiToken.Kind.SESSION ? "Anmeldung" : "Token").setHeader("Art")
+                .setAutoWidth(true);
         grid.addColumn(ApiToken::name).setHeader("Name").setAutoWidth(true);
         grid.addColumn(t -> Ui.time(t.createdAt())).setHeader("Erstellt");
         grid.addColumn(t -> t.expiresAt() == null ? "unbegrenzt" : Ui.time(t.expiresAt())).setHeader("Läuft ab");
@@ -114,8 +133,9 @@ public class AccountView extends VerticalLayout {
                 : t.activeAt(Instant.now()) ? "gültig" : "abgelaufen").setHeader("Status");
         grid.addComponentColumn(t -> {
             if (t.activeAt(Instant.now())) {
-                Button revoke = new Button("Widerrufen", e -> {
-                    Ui.run(() -> tokens.revoke(userId, t.id()), "Token widerrufen");
+                boolean session = t.kind() == ApiToken.Kind.SESSION;
+                Button revoke = new Button(session ? "Abmelden" : "Widerrufen", e -> {
+                    Ui.run(() -> tokens.revoke(userId, t.id()), session ? "Abgemeldet" : "Token widerrufen");
                     refresh();
                 });
                 revoke.addThemeVariants(ButtonVariant.ERROR, ButtonVariant.TERTIARY);
@@ -146,6 +166,7 @@ public class AccountView extends VerticalLayout {
         create.addThemeVariants(ButtonVariant.PRIMARY);
         HorizontalLayout bar = new HorizontalLayout(name, validity, create);
         bar.setAlignItems(Alignment.BASELINE);
+        bar.setVisible(canCreate);
         VerticalLayout box = new VerticalLayout(bar, grid);
         box.setPadding(false);
         return box;

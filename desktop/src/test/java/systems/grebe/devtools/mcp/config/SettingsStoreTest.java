@@ -7,6 +7,8 @@ import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import systems.grebe.devtools.mcp.backend.graph.GraphStorage;
+import systems.grebe.devtools.mcp.remote.EmbeddedBackend;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,6 +34,26 @@ class SettingsStoreTest {
         assertThat(sonar.enabled()).isTrue();
         assertThat(sonar.disabledTools()).containsExactly("sonar_rule");
         assertThat(sonar.values()).containsEntry("token", "squ_geheim").containsEntry("baseUrl", "https://sonar.example");
+    }
+
+    @Test
+    void graphDatabaseFromTheBackendTab() throws Exception {
+        SettingsStore store = new SettingsStore(home);
+        assertThat(store.graph().configured()).isFalse();
+        assertThat(EmbeddedBackend.graphSettings(store.graph())).isNull(); // dann gelten devtools.graph.*
+
+        store.saveGraph(new GraphDatabaseSettings(GraphDatabaseSettings.REMOTE, "arcade.example", 2481, "", "",
+                "arcade-geheim"));
+        assertThat(Files.readString(home.resolve("settings.json"))).contains("arcade.example")
+                .doesNotContain("arcade-geheim");
+        GraphDatabaseSettings reloaded = new SettingsStore(home).graph();
+        assertThat(reloaded.password()).isEqualTo("arcade-geheim");
+        assertThat(EmbeddedBackend.graphSettings(reloaded)).isEqualTo(GraphStorage.Settings.remote("arcade.example",
+                2481, "devtools", "root", "arcade-geheim"));
+
+        store.saveGraph(new GraphDatabaseSettings(GraphDatabaseSettings.EMBEDDED, "", 0, "", "", ""));
+        assertThat(EmbeddedBackend.graphSettings(new SettingsStore(home).graph()))
+                .isEqualTo(GraphStorage.Settings.embedded(null)); // Pfad: graphdb/ im Datenverzeichnis
     }
 
     @Test

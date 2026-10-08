@@ -40,6 +40,10 @@ import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
  * <p><b>Suche:</b> Der Suchtext wird in Begriffe zerlegt; ein Treffer braucht mindestens einen Begriff in Titel,
  * Inhalt, Tags, Bezug, Projekt oder Skill. Sortiert wird nach Anzahl getroffener Begriffe (Treffer in Titel und Bezug
  * zählen doppelt), dann nach Datum – neueste zuerst. Ohne Suchtext liefert die Suche die neuesten Memories.
+ *
+ * <p><b>Typ:</b> Memories sind dauerhaft, außer sie werden ausdrücklich als temporär angelegt. Mit
+ * {@code temporaryOnly} (Aufrufer ohne Freigabe für dauerhafte Memories) lassen sich nur temporäre ändern und
+ * löschen; dauerhaft machen lässt sich eine temporäre Memory so nicht.
  */
 @Service
 @Transactional
@@ -84,7 +88,7 @@ public class MemoryService implements MemoryBackend {
     @Override
     @Transactional(readOnly = true)
     public List<MemoryViews.Entry> overview(String query, String project, String skill, int limit) {
-        return find(users.email(), query, project, skill, null, null, Math.max(1, limit)).stream()
+        return find(users.email(), query, project, skill, null, null, null, Math.max(1, limit)).stream()
                 .map(h -> entry(h.memory())).toList();
     }
 
@@ -98,6 +102,15 @@ public class MemoryService implements MemoryBackend {
     @Transactional(readOnly = true)
     public int count() {
         return (int) memories.countByOwner(users.email());
+    }
+
+    /**
+     * Ob die Memory ohne Freigabe für dauerhafte Memories geändert werden darf (temporär oder Rückruf); unbekannte oder
+     * fremde Memories wie bei {@link #view}.
+     */
+    @Transactional(readOnly = true)
+    public boolean temporary(long id) {
+        return find(users.email(), id).isEphemeral();
     }
 
     @Override
@@ -129,26 +142,27 @@ public class MemoryService implements MemoryBackend {
         return memories.findAll(spec, PageRequest.of(0, Math.max(1, Math.min(MAX_LIMIT, limit)),
                         Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))).stream()
                 .map(m -> new MemoryViews.Entry(m.getId(), m.getTitle(), null, m.getProject(), m.getSkill(),
-                        m.getReference(), m.tagList(), m.getCreatedAt(), m.getUpdatedAt()))
+                        m.getReference(), m.tagList(), m.getType(), m.getCreatedAt(), m.getUpdatedAt()))
                 .toList();
     }
 
     private static MemoryViews.Entry entry(Memory m) {
         return new MemoryViews.Entry(m.getId(), m.getTitle(), m.getContent(), m.getProject(), m.getSkill(),
-                m.getReference(), m.tagList(), m.getCreatedAt(), m.getUpdatedAt());
+                m.getReference(), m.tagList(), m.getType(), m.getCreatedAt(), m.getUpdatedAt());
     }
 
     // ------------------------------------------------------------------ Lesen
 
     @Override
     @Transactional(readOnly = true)
-    public String search(String query, String project, String skill, String tag, Integer days, Integer limit) {
+    public String search(String query, String project, String skill, String tag, MemoryViews.Type type,
+                         Integer days, Integer limit) {
         if (days != null && days < 1) {
             throw new IllegalArgumentException("'days' muss mindestens 1 sein (leer = beliebig alt).");
         }
         int max = limit == null ? DEFAULT_LIMIT : Math.max(1, Math.min(MAX_LIMIT, limit));
-        List<Hit> found = find(users.email(), query, project, skill, tag, days, max);
-        String filters = describeFilters(query, project, skill, tag, days);
+        List<Hit> found = find(users.email(), query, project, skill, tag, type, days, max);
+        String filters = describeFilters(query, project, skill, tag, type, days);
         if (found.isEmpty()) {
             return filters.isEmpty()
                     ? "Noch keine Memories gespeichert. Nach einer abgeschlossenen Aktion (Ticket reviewt, Fehler "
@@ -170,7 +184,7 @@ public class MemoryService implements MemoryBackend {
         return sb.toString().stripTrailing();
     }
 
-    /** Eine Zeile: Nummer, Datum, Titel und – kompakt – Projekt, Skill, Bezug. */
+    /** Eine Zeile: Nummer, Datum, Titel und – kompakt – temporär, Projekt, Skill, Bezug. */
     static String line(Memory m) {
         String meta = meta(m);
         return "#" + m.getId() + " " + DAY.format(m.getCreatedAt()) + " " + m.getTitle()
@@ -187,6 +201,9 @@ public class MemoryService implements MemoryBackend {
     private static String render(Memory m) {
         StringBuilder sb = new StringBuilder("# #").append(m.getId()).append(' ').append(m.getTitle()).append('\n');
         List<String> parts = new ArrayList<>();
+        if (m.isEphemeral()) {
+            parts.add(m.getType().label());
+        }
         if (m.getProject() != null) {
             parts.add("Projekt " + m.getProject());
         }
@@ -207,8 +224,8 @@ public class MemoryService implements MemoryBackend {
     // ------------------------------------------------------------------ Schreiben
 
     @Override
-    public String save(String title, String content, String project, String skill, String reference,
-                       List<String> tags, int maxContentChars) {
+    public String save(String title, String content, MemoryViews.Type type, String project, String skill,
+                       String reference, List<String> tags, int maxContentChars) {
         String user = users.email();
         String t = requireTitle(title);
         String body = requireContent(content, "content", maxContentChars);
@@ -218,9 +235,10 @@ public class MemoryService implements MemoryBackend {
         String tg = SkillService.normalizeTags(tags);
         // vor dem Speichern suchen, damit die neue Memory nicht selbst als Vorgänger erscheint
         List<Long> earlier = r == null ? List.of() : sameReference(user, r);
-        Memory m = memories.save(new Memory(user, t, body, p, s, r, tg, Instant.now()));
+        Memory m = memories.save(new Memory(user, t, body, p, s, r, tg, type, Instant.now()));
         changed();
-        String msg = "Memory #" + m.getId() + " gespeichert.";
+        String msg = "Memory #" + m.getId() + (m.isEphemeral() ? " (" + m.getType().label() + ")" : "")
+                + " gespeichert.";
         if (!earlier.isEmpty()) {
             msg += " Zu '" + r + "' gibt es außerdem " + earlier.stream().map(id -> "#" + id)
                     .collect(Collectors.joining(", ")) + " – Ergänzungen zu einer bestehenden Aktion besser mit "
@@ -230,13 +248,22 @@ public class MemoryService implements MemoryBackend {
     }
 
     @Override
-    public String update(long id, String title, String content, String append, String project, String skill,
-                         String reference, List<String> tags, int maxContentChars) {
+    public String update(long id, String title, String content, String append, MemoryViews.Type type,
+                         String project, String skill, String reference, List<String> tags, boolean temporaryOnly,
+                         int maxContentChars) {
         if (content != null && append != null) {
             throw new IllegalArgumentException("Entweder 'content' (ersetzt den Inhalt) oder 'append' (hängt einen "
                     + "Nachtrag an) angeben, nicht beides.");
         }
         Memory m = find(users.email(), id);
+        if (temporaryOnly) {
+            requireTemporary(m, "geändert");
+            if (type == MemoryViews.Type.PERMANENT) {
+                throw new IllegalArgumentException("Memory #" + id + " dauerhaft zu machen braucht die Freigabe für "
+                        + "dauerhafte Memories (permissions_request) – ohne sie bleibt sie " + m.getType().label()
+                        + ".");
+            }
+        }
         Instant now = Instant.now();
         List<String> changes = new ArrayList<>();
         if (title != null) {
@@ -269,6 +296,10 @@ public class MemoryService implements MemoryBackend {
             m.setTags(SkillService.normalizeTags(tags));
             changes.add("Tags");
         }
+        if (type != null && type != m.getType()) {
+            m.setType(type);
+            changes.add("jetzt " + type.label());
+        }
         if (changes.isEmpty()) {
             return "Keine Änderung an Memory #" + id + " – mindestens ein Feld angeben (z.B. append).";
         }
@@ -278,8 +309,11 @@ public class MemoryService implements MemoryBackend {
     }
 
     @Override
-    public String delete(long id) {
+    public String delete(long id, boolean temporaryOnly) {
         Memory m = find(users.email(), id);
+        if (temporaryOnly) {
+            requireTemporary(m, "gelöscht");
+        }
         memories.delete(m);
         changed();
         return "Memory #" + id + " („" + m.getTitle() + "“) gelöscht.";
@@ -291,8 +325,8 @@ public class MemoryService implements MemoryBackend {
     record Hit(Memory memory, int score) {
     }
 
-    private List<Hit> find(String user, String query, String project, String skill, String tag, Integer days,
-                           int limit) {
+    private List<Hit> find(String user, String query, String project, String skill, String tag,
+                           MemoryViews.Type type, Integer days, int limit) {
         List<String> terms = terms(query);
         String p = blankToNull(project);
         String s = blankToNull(skill);
@@ -311,6 +345,12 @@ public class MemoryService implements MemoryBackend {
                 // exakter Tag in der kommagetrennten Liste
                 and.add(cb.like(cb.concat(cb.concat(",", root.<String>get("tags")), ","),
                         "%," + t.toLowerCase(Locale.ROOT).replaceAll("\\s+", "-") + ",%"));
+            }
+            if (type == MemoryViews.Type.PERMANENT) {
+                // leer = Memory von vor dem Typ, also dauerhaft
+                and.add(cb.or(cb.isNull(root.get("type")), cb.equal(root.get("type"), type.name())));
+            } else if (type != null) {
+                and.add(cb.equal(root.get("type"), type.name()));
             }
             if (since != null) {
                 and.add(cb.greaterThanOrEqualTo(root.get("createdAt"), since));
@@ -390,6 +430,9 @@ public class MemoryService implements MemoryBackend {
 
     private static String meta(Memory m) {
         List<String> parts = new ArrayList<>();
+        if (m.isEphemeral()) {
+            parts.add(m.getType().label());
+        }
         if (m.getProject() != null) {
             parts.add(m.getProject());
         }
@@ -402,7 +445,8 @@ public class MemoryService implements MemoryBackend {
         return String.join(" · ", parts);
     }
 
-    private static String describeFilters(String query, String project, String skill, String tag, Integer days) {
+    private static String describeFilters(String query, String project, String skill, String tag,
+                                          MemoryViews.Type type, Integer days) {
         StringBuilder sb = new StringBuilder();
         if (blankToNull(query) != null) {
             sb.append(" für '").append(query.strip()).append('\'');
@@ -416,6 +460,13 @@ public class MemoryService implements MemoryBackend {
         if (blankToNull(tag) != null) {
             sb.append(" mit Tag '").append(tag.strip()).append('\'');
         }
+        if (type != null) {
+            sb.append(switch (type) {
+                case PERMANENT -> " (nur dauerhafte)";
+                case TEMPORARY -> " (nur temporäre)";
+                case INVOCATION -> " (nur Rückrufe)";
+            });
+        }
         if (days != null) {
             sb.append(" der letzten ").append(days).append(days == 1 ? " Tag" : " Tage");
         }
@@ -427,6 +478,15 @@ public class MemoryService implements MemoryBackend {
     private Memory find(String user, long id) {
         return memories.findByIdAndOwner(id, user).orElseThrow(() -> new IllegalArgumentException("Memory #" + id
                 + " gibt es nicht (oder sie gehört einem anderen Benutzer). Mit memories_search suchen."));
+    }
+
+    /** Ohne Freigabe für dauerhafte Memories: nur temporäre und Rückrufe dürfen geändert bzw. gelöscht werden. */
+    private static void requireTemporary(Memory m, String action) {
+        if (!m.isEphemeral()) {
+            throw new IllegalArgumentException("Memory #" + m.getId() + " ist dauerhaft und darf hier nicht "
+                    + action + " werden – ohne Freigabe nur temporäre Memories und Rückrufe. Freigabe für dauerhafte "
+                    + "Memories mit permissions_request anfragen oder den Nutzer fragen.");
+        }
     }
 
     private void changed() {

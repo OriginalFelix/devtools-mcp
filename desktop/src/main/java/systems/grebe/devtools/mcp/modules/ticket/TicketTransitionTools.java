@@ -40,15 +40,10 @@ public class TicketTransitionTools {
                     + "Nutzer fragen.");
         }
         TicketSystem.Transition t = TicketSystem.pickTransition(e.system().transitions(k, p), to, e.provider().displayName(), k);
-        StringBuilder out = new StringBuilder(TicketTools.written(e.system().transition(k, p, t)));
-        if (withComment) {
-            try {
-                out.append("\n").append(TicketTools.written(env.remember(e, e.system().comment(k, p, env.commentBody(comment)), false)));
-            } catch (RuntimeException ex) {
-                // der Wechsel ist bereits erfolgt – nicht als Fehlschlag des ganzen Aufrufs melden
-                out.append("\nStatus gewechselt, aber Kommentar fehlgeschlagen: ").append(ex.getMessage());
-            }
+        if (!withComment) {
+            return TicketTools.written(e.system().transition(k, p, t));
         }
-        return out.toString();
+        // in einem Aufruf: manche Workflows (Jira-Validatoren) lassen den Wechsel nur mit Kommentar zu
+        return TicketTools.written(env.remember(e, e.system().transition(k, p, t, env.commentBody(comment)), false));
     }
 }

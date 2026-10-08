@@ -7,7 +7,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import systems.grebe.devtools.mcp.backend.BackendConfig;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
-import systems.grebe.devtools.mcp.backend.account.TokenService;
+import systems.grebe.devtools.mcp.backend.graph.GraphStorage;
+import systems.grebe.devtools.mcp.config.GraphDatabaseSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 
 /**
@@ -22,10 +23,26 @@ public class EmbeddedBackend {
 
     public static final String PROPERTY = "devtools.backend.embedded";
 
-    /** {@code devtools.local-user.email} setzt die E-Mail fest (z.B. in Tests statt der Git-E-Mail). */
+    /** {@code devtools.local-user.email} setzt die E-Mail des ersten Kontos fest (z.B. in Tests statt Git-E-Mail). */
     @Bean
-    LocalUser localUser(AccountService accounts, TokenService tokens, SettingsStore store,
-                        @Value("${devtools.local-user.email:}") String email) {
-        return new LocalUser(accounts, tokens, store, email);
+    EmbeddedAccounts embeddedAccounts(AccountService accounts, SettingsStore store,
+                                      @Value("${devtools.local-user.email:}") String email) {
+        return new EmbeddedAccounts(accounts, store, email);
+    }
+
+    /** Graph-Datenbank aus dem Reiter „Backend“ – hat Vorrang vor {@code devtools.graph.*}. */
+    @Bean
+    GraphStorage.Configured graphSettings(SettingsStore store) {
+        return () -> graphSettings(store.graph());
+    }
+
+    /** Einstellung der App als Einstellung der Graph-Storage; {@code null} = nicht eingestellt. */
+    public static GraphStorage.Settings graphSettings(GraphDatabaseSettings g) {
+        if (!g.configured()) {
+            return null;
+        }
+        return g.remote() ? GraphStorage.Settings.remote(g.host().isEmpty() ? "localhost" : g.host(), g.port(),
+                g.database().isEmpty() ? "devtools" : g.database(), g.user().isEmpty() ? "root" : g.user(),
+                g.password()) : GraphStorage.Settings.embedded(null);
     }
 }

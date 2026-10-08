@@ -12,15 +12,19 @@ import java.util.regex.Pattern;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Confidence;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
+import systems.grebe.devtools.mcp.syntax.Language;
+import systems.grebe.devtools.mcp.syntax.SyntaxEngine;
+import systems.grebe.devtools.mcp.syntax.SyntaxNode;
+import systems.grebe.devtools.mcp.syntax.SyntaxTree;
 
 /**
- * Liest Java-Quelltext mit tree-sitter (deterministisch, ohne LLM) in zwei Durchläufen:
+ * Liest Java-Quelltext mit tree-sitter ({@link SyntaxEngine}, reines Java; deterministisch, ohne LLM) in zwei Durchläufen:
  * <ol>
  *   <li>{@link #declarations}: Paket, Imports, Typen, Methoden, Konstruktoren, Felder, Javadoc.</li>
  *   <li>{@link #references}: Vererbung, Annotationen, Feldtypen, Überschreibungen und der Aufrufgraph –
  *       aufgelöst über den {@link JavaResolver} mit den Deklarationen aller Dateien.</li>
  * </ol>
- * Gearbeitet wird auf einer Java-Kopie des Syntaxbaums ({@link SyntaxNode}); der native Baum ist danach bereits frei.
+ * Gearbeitet wird auf dem Syntaxbaum als Java-Struktur ({@link SyntaxNode}).
  */
 final class JavaExtractor {
 
@@ -88,13 +92,13 @@ final class JavaExtractor {
             if (n == null) {
                 return "";
             }
-            return new String(bytes, n.startByte, n.endByte - n.startByte, StandardCharsets.UTF_8);
+            return new String(bytes, n.startByte(), n.endByte() - n.startByte(), StandardCharsets.UTF_8);
         }
     }
 
     static Parsed parse(String source) {
-        SyntaxNode.Parsed tree = SyntaxNode.parse(source);
-        return new Parsed(tree.root(), tree.hasError(), source.getBytes(StandardCharsets.UTF_8));
+        SyntaxTree tree = SyntaxEngine.parse(Language.JAVA, source);
+        return new Parsed(tree.root(), tree.hasError(), tree.source());
     }
 
     // ------------------------------------------------------------------ Hilfen für beide Durchläufe
@@ -104,7 +108,7 @@ final class JavaExtractor {
     }
 
     static SyntaxNode field(SyntaxNode n, String name) {
-        return n.field(name);
+        return n.child(name);
     }
 
     static List<SyntaxNode> namedChildren(SyntaxNode n) {
@@ -117,7 +121,7 @@ final class JavaExtractor {
 
     static SyntaxNode firstChildOfType(SyntaxNode n, String type) {
         for (SyntaxNode c : namedChildren(n)) {
-            if (c.getType().equals(type)) {
+            if (c.type().equals(type)) {
                 return c;
             }
         }
@@ -125,11 +129,11 @@ final class JavaExtractor {
     }
 
     static int line(SyntaxNode n) {
-        return n.startRow + 1;
+        return n.line();
     }
 
     static int endLine(SyntaxNode n) {
-        return n.endRow + 1;
+        return n.endLine();
     }
 
     /** Entfernt Generics, Annotationen und Leerzeichen: {@code Map<String, List<X>>[]} → {@code Map[]}. */
@@ -162,7 +166,7 @@ final class JavaExtractor {
     /** Erster Satz eines Javadoc-Kommentars, bereinigt und gekürzt. */
     static String javadoc(Parsed p, SyntaxNode decl) {
         SyntaxNode prev = decl.prevNamedSibling();
-        if (!has(prev) || !prev.getType().equals("block_comment")) {
+        if (!has(prev) || !prev.type().equals("block_comment")) {
             return null;
         }
         String raw = p.text(prev);
@@ -213,10 +217,10 @@ final class JavaExtractor {
         FileDecl read() {
             SyntaxNode root = p.root();
             for (SyntaxNode c : namedChildren(root)) {
-                switch (c.getType()) {
+                switch (c.type()) {
                     case "package_declaration" -> {
                         for (SyntaxNode n : namedChildren(c)) {
-                            if (n.getType().equals("scoped_identifier") || n.getType().equals("identifier")) {
+                            if (n.type().equals("scoped_identifier") || n.type().equals("identifier")) {
                                 pkg = p.text(n);
                             }
                         }
@@ -229,7 +233,7 @@ final class JavaExtractor {
                     }
                 }
             }
-            int lines = p.root().endRow + 1;
+            int lines = p.root().endLine();
             return new FileDecl(path, pkg, List.copyOf(imports), List.copyOf(types), lines, p.hasError());
         }
 
@@ -239,7 +243,7 @@ final class JavaExtractor {
             boolean wildcard = firstChildOfType(c, "asterisk") != null || text.replaceAll("\\s", "").endsWith(".*;");
             String name = null;
             for (SyntaxNode n : namedChildren(c)) {
-                if (n.getType().equals("scoped_identifier") || n.getType().equals("identifier")) {
+                if (n.type().equals("scoped_identifier") || n.type().equals("identifier")) {
                     name = p.text(n);
                 }
             }
@@ -251,7 +255,7 @@ final class JavaExtractor {
         private void readType(SyntaxNode n, TypeDecl outer, String prefix) {
             String simple = p.text(field(n, "name"));
             String fqn = prefix + simple;
-            Kind kind = switch (n.getType()) {
+            Kind kind = switch (n.type()) {
                 case "interface_declaration" -> Kind.INTERFACE;
                 case "enum_declaration" -> Kind.ENUM;
                 case "record_declaration" -> Kind.RECORD;
@@ -286,7 +290,7 @@ final class JavaExtractor {
                 SyntaxNode params = field(n, "parameters");
                 if (params != null) {
                     for (SyntaxNode fp : namedChildren(params)) {
-                        if (fp.getType().equals("formal_parameter")) {
+                        if (fp.type().equals("formal_parameter")) {
                             String name = p.text(field(fp, "name"));
                             String type = p.text(field(fp, "type"));
                             members.add(member(fqn, Kind.FIELD, name, List.of(), false, type, fp, "private final",
@@ -304,14 +308,14 @@ final class JavaExtractor {
             }
             List<SyntaxNode> decls = new ArrayList<>();
             for (SyntaxNode c : namedChildren(body)) {
-                if (c.getType().equals("enum_body_declarations")) {
+                if (c.type().equals("enum_body_declarations")) {
                     decls.addAll(namedChildren(c));
                 } else {
                     decls.add(c);
                 }
             }
             for (SyntaxNode c : decls) {
-                switch (c.getType()) {
+                switch (c.type()) {
                     case "method_declaration", "annotation_type_element_declaration" -> members.add(method(fqn, c, Kind.METHOD));
                     case "constructor_declaration", "compact_constructor_declaration" -> members.add(method(fqn, c, Kind.CONSTRUCTOR));
                     case "field_declaration", "constant_declaration" -> fields(fqn, c, members);
@@ -339,7 +343,7 @@ final class JavaExtractor {
             SyntaxNode fps = field(n, "parameters");
             if (fps != null) {
                 for (SyntaxNode fp : namedChildren(fps)) {
-                    switch (fp.getType()) {
+                    switch (fp.type()) {
                         case "formal_parameter" -> {
                             String t = p.text(field(fp, "type"));
                             params.add(t);
@@ -350,9 +354,9 @@ final class JavaExtractor {
                             String t = null;
                             String pn = "";
                             for (SyntaxNode sc : namedChildren(fp)) {
-                                if (sc.getType().equals("variable_declarator")) {
+                                if (sc.type().equals("variable_declarator")) {
                                     pn = p.text(field(sc, "name"));
-                                } else if (!sc.getType().equals("modifiers") && t == null) {
+                                } else if (!sc.type().equals("modifiers") && t == null) {
                                     t = p.text(sc);
                                 }
                             }
@@ -375,7 +379,7 @@ final class JavaExtractor {
             String type = p.text(field(n, "type"));
             String doc = javadoc(p, n);
             for (SyntaxNode d : namedChildren(n)) {
-                if (d.getType().equals("variable_declarator")) {
+                if (d.type().equals("variable_declarator")) {
                     String name = p.text(field(d, "name"));
                     members.add(member(owner, Kind.FIELD, name, List.of(), false, type, d, modifierText(mods),
                             annotations(mods), List.of(), doc, WS.matcher(type).replaceAll(" ") + " " + name));
@@ -399,8 +403,8 @@ final class JavaExtractor {
                 return null;
             }
             List<String> words = new ArrayList<>();
-            for (SyntaxNode c : mods.allChildren()) {
-                String t = c.getType();
+            for (SyntaxNode c : mods.children()) {
+                String t = c.type();
                 if (!t.endsWith("annotation") && !t.equals("line_comment") && !t.equals("block_comment")) {
                     words.add(p.text(c));
                 }
@@ -414,7 +418,7 @@ final class JavaExtractor {
             }
             List<String> out = new ArrayList<>();
             for (SyntaxNode c : namedChildren(mods)) {
-                if (c.getType().equals("marker_annotation") || c.getType().equals("annotation")) {
+                if (c.type().equals("marker_annotation") || c.type().equals("annotation")) {
                     out.add(p.text(field(c, "name")));
                 }
             }
@@ -428,7 +432,7 @@ final class JavaExtractor {
             List<String> out = new ArrayList<>();
             for (SyntaxNode tp : namedChildren(tps)) {
                 for (SyntaxNode c : namedChildren(tp)) {
-                    if (c.getType().equals("type_identifier") || c.getType().equals("identifier")) {
+                    if (c.type().equals("type_identifier") || c.type().equals("identifier")) {
                         out.add(p.text(c));
                         break;
                     }
@@ -439,7 +443,7 @@ final class JavaExtractor {
     }
 
     static boolean isTypeDecl(SyntaxNode n) {
-        return switch (n.getType()) {
+        return switch (n.type()) {
             case "class_declaration", "interface_declaration", "enum_declaration", "record_declaration",
                  "annotation_type_declaration" -> true;
             default -> false;
@@ -537,16 +541,16 @@ final class JavaExtractor {
             }
             List<SyntaxNode> decls = new ArrayList<>();
             for (SyntaxNode c : namedChildren(body)) {
-                if (c.getType().equals("enum_body_declarations")) {
+                if (c.type().equals("enum_body_declarations")) {
                     decls.addAll(namedChildren(c));
                 } else {
                     decls.add(c);
                 }
             }
             for (SyntaxNode c : decls) {
-                switch (c.getType()) {
+                switch (c.type()) {
                     case "method_declaration", "constructor_declaration", "compact_constructor_declaration" -> {
-                        Kind k = c.getType().equals("method_declaration") ? Kind.METHOD : Kind.CONSTRUCTOR;
+                        Kind k = c.type().equals("method_declaration") ? Kind.METHOD : Kind.CONSTRUCTOR;
                         String name = k == Kind.CONSTRUCTOR ? t.simpleName() : p.text(field(c, "name"));
                         MemberDecl m = byLine.get(k + "@" + line(c) + "@" + name);
                         SyntaxNode b = field(c, "body");
@@ -563,7 +567,7 @@ final class JavaExtractor {
                     }
                     case "field_declaration", "constant_declaration" -> {
                         for (SyntaxNode d : namedChildren(c)) {
-                            if (d.getType().equals("variable_declarator") && field(d, "value") != null) {
+                            if (d.type().equals("variable_declarator") && field(d, "value") != null) {
                                 MemberDecl m = byLine.get(Kind.FIELD + "@" + line(d) + "@" + p.text(field(d, "name")));
                                 new BodyWalker(m == null ? fqn : m.id(), ctx).walk(field(d, "value"));
                             }
@@ -652,11 +656,11 @@ final class JavaExtractor {
             }
 
             void declareParam(SyntaxNode fp) {
-                switch (fp.getType()) {
+                switch (fp.type()) {
                     case "formal_parameter" -> declare(p.text(field(fp, "name")), p.text(field(fp, "type")), null);
                     case "spread_parameter" -> {
                         for (SyntaxNode c : namedChildren(fp)) {
-                            if (c.getType().equals("variable_declarator")) {
+                            if (c.type().equals("variable_declarator")) {
                                 declare(p.text(field(c, "name")), null, null);
                             }
                         }
@@ -684,11 +688,11 @@ final class JavaExtractor {
             }
 
             void walk(SyntaxNode n) {
-                switch (n.getType()) {
+                switch (n.type()) {
                     case "local_variable_declaration" -> {
                         String type = p.text(field(n, "type"));
                         for (SyntaxNode d : namedChildren(n)) {
-                            if (d.getType().equals("variable_declarator")) {
+                            if (d.type().equals("variable_declarator")) {
                                 declare(p.text(field(d, "name")), type, field(d, "value"));
                             }
                         }
@@ -708,9 +712,9 @@ final class JavaExtractor {
                     case "lambda_expression" -> {
                         SyntaxNode params = field(n, "parameters");
                         if (params != null) {
-                            if (params.getType().equals("identifier")) {
+                            if (params.type().equals("identifier")) {
                                 vars.put(p.text(params), UNKNOWN);
-                            } else if (params.getType().equals("inferred_parameters")) {
+                            } else if (params.type().equals("inferred_parameters")) {
                                 namedChildren(params).forEach(c -> vars.put(p.text(c), UNKNOWN));
                             }
                         }
@@ -760,7 +764,7 @@ final class JavaExtractor {
                 if (ctor == null || ctx.type() == null) {
                     return;
                 }
-                String target = ctor.getType().equals("super") ? r.superclass(ctx.type()) : ctx.type();
+                String target = ctor.type().equals("super") ? r.superclass(ctx.type()) : ctx.type();
                 if (target == null || !r.isProjectType(target)) {
                     return;
                 }
@@ -776,8 +780,8 @@ final class JavaExtractor {
                 SyntaxNode recv = cs.getFirst();
                 String text = p.text(n);
                 String name = text.substring(text.lastIndexOf("::") + 2).strip();
-                TypeRef t = recv.getType().equals("this") || recv.getType().equals("super") || recv.getType().equals("identifier")
-                        || recv.getType().equals("field_access") ? exprType(recv) : null;
+                TypeRef t = recv.type().equals("this") || recv.type().equals("super") || recv.type().equals("identifier")
+                        || recv.type().equals("field_access") ? exprType(recv) : null;
                 if (t == null) {
                     String fqn = r.resolveType(erase(p.text(recv)), ctx);
                     t = fqn == null ? null : new TypeRef(fqn, false, true);
@@ -847,7 +851,7 @@ final class JavaExtractor {
 
             /** Statischer Typ eines Ausdrucks, soweit ohne Typinferenz ermittelbar. */
             TypeRef exprType(SyntaxNode n) {
-                switch (n.getType()) {
+                switch (n.type()) {
                     case "this" -> {
                         return ctx.type() == null ? null : new TypeRef(ctx.type(), false, false);
                     }

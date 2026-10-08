@@ -1,6 +1,7 @@
 package systems.grebe.devtools.mcp.modules.ticket.openproject;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
@@ -394,13 +395,108 @@ public class OpenProjectTicketProvider implements TicketProvider {
                 out.add(link("Parent", parent));
             }
             wp.path("_links").path("children").forEach(c -> out.add(link("Unteraufgabe", c)));
-            for (JsonNode r : http.getJson(path(id) + "/relations").path("_embedded").path("elements")) {
-                JsonNode from = r.path("_links").path("from");
-                boolean outgoing = String.valueOf(id).equals(lastSegment(text(from.path("href"))));
-                out.add(link(relation(text(r.path(outgoing ? "type" : "reverseType"))),
-                        outgoing ? r.path("_links").path("to") : from));
+            for (JsonNode r : relations(id)) {
+                out.add(link(relation(id, r), other(id, r)));
             }
             return out;
+        }
+
+        private List<JsonNode> relations(int id) {
+            List<JsonNode> out = new ArrayList<>();
+            http().getJson(path(id) + "/relations").path("_embedded").path("elements").forEach(out::add);
+            return out;
+        }
+
+        /** Beziehung aus Sicht von {@code id} – eine Relation steht bei beiden Arbeitspaketen, mit Typ bzw. Gegentyp. */
+        private static String relation(int id, JsonNode r) {
+            return relation(text(r.path(outgoing(id, r) ? "type" : "reverseType")));
+        }
+
+        private static JsonNode other(int id, JsonNode r) {
+            return outgoing(id, r) ? r.path("_links").path("to") : r.path("_links").path("from");
+        }
+
+        private static boolean outgoing(int id, JsonNode r) {
+            return String.valueOf(id).equals(lastSegment(text(r.path("_links").path("from").path("href"))));
+        }
+
+        /** Beziehungstypen der API (IDs) plus Parent/Unteraufgabe (Feld {@code parent}); Namen wie in {@link #links}. */
+        private static final List<LinkType> LINK_TYPES = List.of(
+                linkType("relates", "relates"), linkType("duplicates", "duplicated"), linkType("duplicated", "duplicates"),
+                linkType("blocks", "blocked"), linkType("blocked", "blocks"), linkType("precedes", "follows"),
+                linkType("follows", "precedes"), linkType("includes", "partof"), linkType("partof", "includes"),
+                linkType("requires", "required"), linkType("required", "requires"),
+                new LinkType("parent", "Parent", "Unteraufgabe"), new LinkType("child", "Unteraufgabe", "Parent"));
+
+        private static LinkType linkType(String type, String reverse) {
+            return new LinkType(type, relation(type), relation(reverse));
+        }
+
+        @Override
+        public List<LinkType> linkTypes(String project) {
+            return LINK_TYPES;
+        }
+
+        @Override
+        public WriteResult link(String key, String project, LinkType type, String target) {
+            int id = packageId(key);
+            int other = packageId(target);
+            switch (type.id()) {
+                case "parent" -> setParent(id, other);
+                case "child" -> setParent(other, id);
+                default -> {
+                    var body = HttpJson.object();
+                    body.put("type", type.id());
+                    body.putObject("_links").putObject("to").put("href", "/api/v3" + path(other));
+                    try {
+                        http().post(path(id) + "/relations", body);
+                    } catch (HttpJson.StatusException e) {
+                        if (e.status() == 422) {
+                            throw new IllegalArgumentException(e.getMessage(), e);
+                        }
+                        throw e;
+                    }
+                }
+            }
+            return new WriteResult("#" + id, "verknüpft: #" + id + " " + type.name() + " #" + other, webUrl(id));
+        }
+
+        @Override
+        public WriteResult unlink(String key, String project, String target, String relation) {
+            int id = packageId(key);
+            int other = packageId(target);
+            String otherId = String.valueOf(other);
+            record Found(String relation, Runnable remove) { }
+            List<Found> found = new ArrayList<>();
+            JsonNode wp = http().getJson(path(id));
+            if (otherId.equals(lastSegment(href(wp, "parent")))) {
+                found.add(new Found("Parent", () -> setParent(id, null)));
+            }
+            for (JsonNode c : wp.path("_links").path("children")) {
+                if (otherId.equals(lastSegment(text(c.path("href"))))) {
+                    found.add(new Found("Unteraufgabe", () -> setParent(other, null)));
+                }
+            }
+            for (JsonNode r : relations(id)) {
+                if (otherId.equals(lastSegment(text(other(id, r).path("href"))))) {
+                    found.add(new Found(relation(id, r), () -> http.delete("/relations/" + text(r.path("id")))));
+                }
+            }
+            Found hit = TicketSystem.pickLink(found, Found::relation, relation, "OpenProject", "#" + id, "#" + other);
+            hit.remove().run();
+            return new WriteResult("#" + id, "Verknüpfung entfernt: #" + id + " " + hit.relation() + " #" + other, webUrl(id));
+        }
+
+        /** Setzt den Parent eines Arbeitspakets; {@code null} entfernt ihn. */
+        private void setParent(int id, Integer parent) {
+            patch(id, b -> {
+                ObjectNode p = b.putObject("_links").putObject("parent");
+                if (parent == null) {
+                    p.putNull("href");
+                } else {
+                    p.put("href", "/api/v3" + path(parent));
+                }
+            });
         }
 
         private Link link(String relation, JsonNode ref) {
@@ -605,6 +701,98 @@ public class OpenProjectTicketProvider implements TicketProvider {
                     .findFirst().orElseThrow(() -> new IllegalArgumentException("OpenProject: Typ '" + type + "' gibt es "
                             + "in " + project + " nicht. Gültig: " + String.join(", ", types.stream()
                             .map(x -> text(x.path("name"))).toList())));
+        }
+
+        // ------------------------------------------------------------------ Zeiterfassung
+
+        @Override
+        public List<WorkLogEntry> worklogs(String key, String project) {
+            int id = packageId(key);
+            String filters = "[{\"workPackage\":{\"operator\":\"=\",\"values\":[\"" + id + "\"]}}]";
+            List<WorkLogEntry> out = new ArrayList<>();
+            for (int page = 1; out.size() < 1000; page++) {
+                JsonNode res = http().getJson("/time_entries" + query("filters", filters,
+                        "sortBy", "[[\"spentOn\",\"asc\"]]", "pageSize", 200, "offset", page));
+                JsonNode elements = res.path("_embedded").path("elements");
+                for (JsonNode t : elements) {
+                    out.add(new WorkLogEntry(text(t.path("id")), title(t, "user"), text(t.path("spentOn")),
+                            hours(text(t.path("hours"))), text(t.path("comment").path("raw")), title(t, "activity")));
+                }
+                if (elements.isEmpty() || out.size() >= res.path("total").asInt(out.size())) {
+                    break;
+                }
+            }
+            return out;
+        }
+
+        /** {@code PT1H30M}; OpenProject schreibt längere Zeiten auch als {@code P1DT2H} (1 Tag = 24 Stunden). */
+        private static Duration hours(String iso) {
+            try {
+                return iso == null ? Duration.ZERO : Duration.parse(iso);
+            } catch (RuntimeException e) {
+                return Duration.ZERO;
+            }
+        }
+
+        @Override
+        public WriteResult logTime(String key, String project, WorkLog work) {
+            int id = packageId(key);
+            var body = HttpJson.object();
+            body.put("hours", work.duration().toString());
+            body.put("spentOn", work.date().toString());
+            if (work.comment() != null) {
+                body.putObject("comment").put("raw", work.comment());
+            }
+            ObjectNode links = body.putObject("_links");
+            links.putObject("workPackage").put("href", "/api/v3" + path(id));
+            if (work.activity() != null) {
+                links.putObject("activity").put("href", activityHref(id, work.activity()));
+            }
+            JsonNode res;
+            try {
+                res = http().post("/time_entries", body).body();
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 422) {
+                    throw new IllegalArgumentException(e.getMessage() + (work.activity() != null ? ""
+                            : " – ggf. 'activity' angeben: " + activityNames(id)), e);
+                }
+                throw e;
+            }
+            String tid = text(res.path("id"));
+            return new WriteResult("#" + id, TicketSystem.formatDuration(work.duration()) + " gebucht am " + work.date()
+                    + " (" + HttpJson.first(title(res, "activity"), work.activity(), "Standardaktivität") + ")"
+                    + (tid == null ? "" : ", Buchung " + tid), webUrl(id) + "/activity", tid);
+        }
+
+        /** Aktivitäten, die für Zeiteinträge auf diesem Arbeitspaket erlaubt sind (Formular-Endpunkt). */
+        private List<JsonNode> activities(int id) {
+            var body = HttpJson.object();
+            body.putObject("_links").putObject("workPackage").put("href", "/api/v3" + path(id));
+            List<JsonNode> out = new ArrayList<>();
+            http().post("/time_entries/form", body).body().path("_embedded").path("schema").path("activity")
+                    .path("_embedded").path("allowedValues").forEach(out::add);
+            return out;
+        }
+
+        private String activityHref(int id, String name) {
+            List<JsonNode> all = activities(id);
+            List<JsonNode> exact = all.stream().filter(a -> name.equalsIgnoreCase(text(a.path("name")))).toList();
+            String lower = name.toLowerCase(Locale.ROOT);
+            List<JsonNode> hits = exact.isEmpty() ? all.stream().filter(a -> HttpJson.first(text(a.path("name")), "")
+                    .toLowerCase(Locale.ROOT).contains(lower)).toList() : exact;
+            if (hits.size() == 1) {
+                return href(hits.getFirst(), "self");
+            }
+            throw new IllegalArgumentException("OpenProject: Aktivität '" + name + "' " + (hits.isEmpty() ? "gibt es nicht"
+                    : "ist mehrdeutig") + ". Verfügbar: " + String.join(", ", all.stream().map(a -> text(a.path("name"))).toList()));
+        }
+
+        private String activityNames(int id) {
+            try {
+                return String.join(", ", activities(id).stream().map(a -> text(a.path("name"))).toList());
+            } catch (RuntimeException e) {
+                return "(nicht abrufbar)";
+            }
         }
 
         @Override

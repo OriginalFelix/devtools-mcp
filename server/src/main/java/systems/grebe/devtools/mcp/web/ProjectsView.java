@@ -23,7 +23,7 @@ import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
 import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
-import systems.grebe.devtools.mcp.backend.account.Role;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.backend.project.Project;
 import systems.grebe.devtools.mcp.backend.project.ProjectService;
@@ -39,13 +39,13 @@ public class ProjectsView extends VerticalLayout {
     private final long userId;
     private final boolean admin;
     private final Grid<Project.Visible> grid = new Grid<>();
-    private final Checkbox showAll = new Checkbox("Alle Projekte (Administrator)");
+    private final Checkbox showAll = new Checkbox("Alle Projekte");
 
     public ProjectsView(ProjectService projects, AccountService accounts, AuthenticationContext auth) {
         this.projects = projects;
         this.accounts = accounts;
         this.userId = auth.getAuthenticatedUser(AccountPrincipal.class).orElseThrow().id();
-        this.admin = auth.hasRole(Role.ADMIN.name());
+        this.admin = auth.hasRole(Permission.PROJECTS_MANAGE_ALL.name());
 
         grid.addColumn(Project.Visible::toolName).setHeader("Name (in Tools)").setAutoWidth(true);
         grid.addColumn(v -> v.access().label()).setHeader("Zugriff").setAutoWidth(true);
@@ -69,6 +69,7 @@ public class ProjectsView extends VerticalLayout {
 
         Button create = new Button("Neues Projekt", e -> edit(null));
         create.addThemeVariants(ButtonVariant.PRIMARY);
+        create.setVisible(auth.hasRole(Permission.PROJECTS_CREATE.name()));
         showAll.setVisible(admin);
         showAll.addValueChangeListener(e -> refresh());
         HorizontalLayout bar = new HorizontalLayout(create, showAll);

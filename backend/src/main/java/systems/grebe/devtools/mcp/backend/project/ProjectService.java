@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.backend.BackendChanged;
@@ -19,8 +20,9 @@ import systems.grebe.devtools.mcp.backend.BackendChanged;
  * Projekte der Benutzer und ihre Freigaben – nur Metadaten (Name, Beschreibung, Sonar-Schlüssel, Ticket-Projekt).
  *
  * <ul>
- *   <li>Jeder Benutzer legt eigene Projekte an; Eigentümer (und Administratoren) ändern, löschen und geben frei:
- *       {@code READ} oder {@code WRITE}.</li>
+ *   <li>Benutzer mit dem Recht {@link Permission#PROJECTS_CREATE} legen eigene Projekte an; Eigentümer (und wer
+ *       {@link Permission#PROJECTS_MANAGE_ALL} hat) ändern, löschen und geben frei: {@code READ} oder
+ *       {@code WRITE}.</li>
  *   <li>Die Desktop-App holt die sichtbaren Projekte über die REST-API und ordnet ihnen lokal ein Verzeichnis zu; Git,
  *       Build und Code-Graph arbeiten dort mit diesen Verzeichnissen, schreibende Tools nur bei {@code WRITE}.</li>
  * </ul>
@@ -54,7 +56,7 @@ public class ProjectService {
         return out;
     }
 
-    /** Alle Projekte (Administratoren). */
+    /** Alle Projekte (Recht „Alle Projekte verwalten“). */
     public List<Project> all() {
         return repo.all();
     }
@@ -68,7 +70,9 @@ public class ProjectService {
 
     public Project create(long actorId, String name, String description, String sonarKey,
                           String ticketProject) {
-        user(actorId);
+        if (!user(actorId).has(Permission.PROJECTS_CREATE)) {
+            throw new IllegalArgumentException("Dafür fehlt das Recht „" + Permission.PROJECTS_CREATE.label() + "“.");
+        }
         String n = name(name);
         long id = tx.execute(s -> {
             if (repo.owned(actorId).stream().anyMatch(p -> p.name().equalsIgnoreCase(n))) {
@@ -125,7 +129,7 @@ public class ProjectService {
 
     private Project manageable(long actorId, long projectId) {
         Project p = repo.project(projectId).orElseThrow(() -> new IllegalArgumentException("Unbekanntes Projekt"));
-        if (p.ownerId() != actorId && !user(actorId).admin()) {
+        if (p.ownerId() != actorId && !user(actorId).has(Permission.PROJECTS_MANAGE_ALL)) {
             throw new IllegalArgumentException("Nur der Eigentümer kann das Projekt ändern oder freigeben.");
         }
         return p;

@@ -20,6 +20,8 @@ public class BackendConfig {
 
     /** Schema der GraphQL-API. */
     public static final String SCHEMA = "backend-graphql/schema.graphqls";
+    /** Erweiterung um die Code-Graphen der Graph-Storage. */
+    public static final String GRAPH_SCHEMA = "backend-graphql/graph.graphqls";
 
     @Bean
     Sha3Pbkdf2PasswordEncoder passwordEncoder() {
@@ -27,11 +29,11 @@ public class BackendConfig {
     }
 
     /**
-     * Schema als einzelne Ressource statt über die Pattern-Suche {@code classpath*:graphql/**}: die findet im WAR
+     * Schema als einzelne Ressourcen statt über die Pattern-Suche {@code classpath*:graphql/**}: die findet im WAR
      * unter WildFly (VFS) nichts, und ohne Schema schaltete sich GraphQL ganz ab.
      */
     @Bean
     GraphQlSourceBuilderCustomizer backendSchema() {
-        return builder -> builder.schemaResources(new ClassPathResource(SCHEMA));
+        return builder -> builder.schemaResources(new ClassPathResource(SCHEMA), new ClassPathResource(GRAPH_SCHEMA));
     }
 }

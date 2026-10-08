@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
@@ -15,9 +16,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.annotation.DirtiesContext;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
+import systems.grebe.devtools.mcp.backend.account.Role;
+import systems.grebe.devtools.mcp.backend.account.RoleService;
+import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.backend.profile.Profile;
+import systems.grebe.devtools.mcp.backend.profile.ProfileRepository;
 import systems.grebe.devtools.mcp.backend.profile.ProfileService;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
@@ -31,12 +37,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Desktop-App mit eingebettetem Backend: Übernahme der alten Einstellungen, Speichern ins aktive Profil über GraphQL,
- * Subscriptions (Änderung wie aus der Web-UI kommt sofort an), Profilwechsel, Projekte mit lokalem Verzeichnis und
- * Skills des lokalen Benutzers.
+ * Desktop-App mit eingebettetem Backend: erstes Konto aus den Anmeldedaten, Übernahme der alten Einstellungen,
+ * Speichern ins aktive Profil über GraphQL, Subscriptions (Änderung wie aus der Web-UI kommt sofort an), Profilwechsel,
+ * Projekte mit lokalem Verzeichnis, Skills des angemeldeten Benutzers, Abmelden und Rechte auf Module und Tools.
  */
+// Kontext nach der Klasse schließen: die Graph-Datenbank des Backends hält sonst Dateien im temporären Ordner offen
+@DirtiesContext
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "devtools.local-user.email=local@example.com")
+        properties = {"devtools.local-user.email=local@example.com", "devtools.login.username=tester",
+                "devtools.login.password=tester-passwort"})
 class EmbeddedBackendIntegrationTest {
 
     @TempDir
@@ -73,8 +82,17 @@ class EmbeddedBackendIntegrationTest {
     @Autowired
     AccountService accounts;
 
+    @Autowired
+    RoleService roles;
+
+    @Autowired
+    EmbeddedAccounts embeddedAccounts;
+
+    static final String USER = "tester";
+    static final String PASSWORD = "tester-passwort";
+
     private long localUserId() {
-        return accounts.userByName(LocalUser.USERNAME).orElseThrow().id();
+        return accounts.userByName(USER).orElseThrow().id();
     }
 
     private static void await(BooleanSupplier condition, String what) throws InterruptedException {
@@ -89,11 +107,13 @@ class EmbeddedBackendIntegrationTest {
 
     @Test
     void embeddedBackendWithLegacyImportProfilesProjectsAndSkills(@TempDir Path repo) throws Exception {
-        // Start: eingebettet, lokaler Benutzer, alte Einstellungen als globale Vorgaben
+        // Start: eingebettet, erstes Konto aus den Anmeldedaten (Administrator), alte Einstellungen global
         assertThat(backend.embedded()).isTrue();
         assertThat(backend.status()).isEqualTo(BackendConnection.Status.ONLINE);
-        assertThat(backend.me().orElseThrow().username()).isEqualTo(LocalUser.USERNAME);
+        assertThat(backend.me().orElseThrow().username()).isEqualTo(USER);
         assertThat(backend.me().orElseThrow().email()).isEqualTo("local@example.com");
+        assertThat(backend.me().orElseThrow().admin()).isTrue();
+        assertThat(embeddedAccounts.setupRequired()).isFalse();
         assertThat(registry.settings("sonar").enabled()).isTrue();
         assertThat(registry.settings("sonar").values()).containsEntry("organization", "legacy-org")
                 .doesNotContainKey("gibtsnicht");
@@ -159,11 +179,10 @@ class EmbeddedBackendIntegrationTest {
     @Test
     void readOnlyProjectsBlockWrites(@TempDir Path dir) throws IOException {
         // Freigabe „nur lesen“ lässt sich eingebettet nur mit einem zweiten Benutzer nachstellen
-        var other = accounts.create("bob", null, "bob@example.com", systems.grebe.devtools.mcp.backend.account.Role.USER,
-                "passwort-123");
+        var other = accounts.create("bob", null, "bob@example.com", List.of(Role.USER), "passwort-123", false);
         var projects = registryBean(systems.grebe.devtools.mcp.backend.project.ProjectService.class);
         var p = projects.create(other.id(), "lib", null, null, null);
-        projects.share(other.id(), p.id(), LocalUser.USERNAME, systems.grebe.devtools.mcp.backend.project.Project.Access.READ);
+        projects.share(other.id(), p.id(), USER, systems.grebe.devtools.mcp.backend.project.Project.Access.READ);
         try {
             awaitQuietly(() -> backend.projects().stream().anyMatch(i -> i.id() == p.id()));
             backend.setProjectPath(p.id(), dir.toString());
@@ -171,6 +190,89 @@ class EmbeddedBackendIntegrationTest {
                     .hasMessageContaining("nur lesend");
         } finally {
             backend.setProjectPath(p.id(), null);
+        }
+    }
+
+    @Test
+    void withoutLoginThereAreNoTools() {
+        assertThat(registry.activeToolCount()).isPositive();
+        try {
+            assertThatThrownBy(() -> backend.login(USER, "falsch")).isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("falsch");
+            assertThat(backend.signedIn()).isTrue(); // falsches Passwort ändert nichts
+
+            backend.logout();
+            assertThat(backend.signedIn()).isFalse();
+            assertThat(backend.status()).isEqualTo(BackendConnection.Status.SIGNED_OUT);
+            assertThat(registry.activeToolCount()).isZero();
+            assertThat(registry.settings("git").enabled()).isFalse();
+            assertThatThrownBy(() -> registry.updateConfig("sonar", Map.of("organization", "x")))
+                    .hasMessageContaining("Nicht angemeldet");
+        } finally {
+            backend.login(USER, PASSWORD);
+        }
+        assertThat(registry.activeToolCount()).isPositive();
+    }
+
+    @Test
+    void rolesLimitModulesAndToolsAndChangesApplyImmediately() throws InterruptedException {
+        List<String> gitTools = registry.availableTools("git").stream().map(t -> t.name()).toList();
+        assertThat(gitTools).hasSizeGreaterThan(1);
+        String allowed = gitTools.stream().filter(t -> registry.isToolActive("git", t)).findFirst().orElseThrow();
+        String other = gitTools.stream().filter(t -> !t.equals(allowed)).findFirst().orElseThrow();
+        Role role = roles.create("Nur " + allowed, null, List.of("tool:" + allowed));
+        UserAccount carol = accounts.create("carol", null, "carol@example.com", List.of(role.name()),
+                "carol-passwort", false);
+        try {
+            assertThat(backend.login("carol", "carol-passwort")).isEqualTo(BackendConnection.LoginOutcome.SIGNED_IN);
+            assertThat(backend.me().orElseThrow().roles()).containsExactly(role.name());
+            assertThat(registry.toolPermitted("git", allowed)).isTrue();
+            assertThat(registry.toolPermitted("git", other)).isFalse();
+            assertThat(registry.modulePermitted("git")).isTrue();
+            assertThat(registry.modulePermitted("sonar")).isFalse();
+            assertThat(registry.lockedKeys("sonar")).contains("@enabled", "@tools");
+            assertThat(registry.activeToolNames()).containsExactly(allowed);
+            // keine Rechte auf die Skill-Tools: auch das Backend lehnt ab
+            assertThatThrownBy(() -> skills.create("x", "d", "c", null, null, 5_000))
+                    .hasMessageContaining("skills_create");
+
+            // Rolle ändern (wie in der Web-UI): kommt per Subscription an, die Tools werden neu aufgebaut
+            roles.update(role.id(), role.name(), null, List.of("tool:" + allowed, "module:skills"));
+            await(() -> registry.modulePermitted("skills"), "Recht per Subscription");
+            assertThat(registry.toolPermitted("skills", "skills_create")).isTrue();
+            assertThat(registry.activeToolNames()).contains(allowed);
+        } finally {
+            backend.login(USER, PASSWORD);
+            accounts.delete(carol.id());
+            roles.delete(role.id());
+        }
+        assertThat(registry.modulePermitted("sonar")).isTrue();
+    }
+
+    @Test
+    void setupTakesOverTheFormerLocalAccount() throws IOException {
+        // Stand vor der Anmeldung: Konto „local“ ohne bekanntes Passwort, noch nicht eingerichtet
+        UserAccount local = accounts.create(EmbeddedAccounts.LEGACY_USERNAME, "Lokal", "alt@example.com",
+                List.of(Role.USER), AccountService.randomPassword(), false);
+        Path marker = store.dir().resolve("account-setup.done");
+        Files.deleteIfExists(marker);
+        try {
+            assertThat(embeddedAccounts.setupRequired()).isTrue();
+            assertThat(embeddedAccounts.legacyAccount()).isPresent();
+            assertThat(embeddedAccounts.suggestedEmail()).isEqualTo("local@example.com");
+
+            UserAccount lena = embeddedAccounts.setup("Lena", "Lena L.", "", "lenas-passwort");
+            assertThat(lena.id()).isEqualTo(local.id()); // Profile, Projekte, Skills hängen an ID bzw. E-Mail
+            assertThat(lena.username()).isEqualTo("lena");
+            assertThat(lena.email()).isEqualTo("local@example.com");
+            assertThat(lena.roles()).contains(Role.ADMINISTRATOR);
+            assertThat(embeddedAccounts.setupRequired()).isFalse();
+            assertThatThrownBy(() -> embeddedAccounts.setup("x", null, null, "noch-ein-passwort"))
+                    .hasMessageContaining("schon ein Konto");
+            assertThat(accounts.authenticate("lena", "lenas-passwort").id()).isEqualTo(local.id());
+        } finally {
+            Files.writeString(marker, "test");
+            accounts.delete(local.id());
         }
     }
 
@@ -187,5 +289,22 @@ class EmbeddedBackendIntegrationTest {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    @Autowired
+    ProfileRepository profileRepository;
+
+    /** Überschreibungen entfallener Felder (z.B. aus der Neo4j-Zeit) dürfen das Speichern nicht blockieren. */
+    @Test
+    void staleOverridesOfRemovedFieldsDoNotBlockSaving() {
+        long profileId = profiles.activeProfile(localUserId()).id();
+        profileRepository.replaceOverrides(Overrides.Level.PROFILE, profileId, "graph", List.of(
+                new ProfileRepository.OverrideRow("neo4jUser", "neo4j", false),
+                new ProfileRepository.OverrideRow("storage", "neo4j", false),
+                new ProfileRepository.OverrideRow("includeTests", "false", false)));
+        registry.updateConfig("graph", Map.of("maxFiles", "1234"));
+        assertThat(profiles.overrides(Overrides.Level.PROFILE, profileId, "graph").values())
+                .containsEntry("maxFiles", "1234").containsEntry("includeTests", "false")
+                .doesNotContainKeys("neo4jUser", "storage");
     }
 }

@@ -1,7 +1,9 @@
 package systems.grebe.devtools.mcp.modules.ticket.gitlab;
 
 import java.net.URI;
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -21,6 +23,7 @@ import systems.grebe.devtools.mcp.modules.ticket.spi.ProviderSettings;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import static systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson.enc;
 import static systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson.query;
@@ -94,6 +97,9 @@ public class GitLabTicketProvider implements TicketProvider {
         private static final Pattern SHORT_KEY = Pattern.compile("#?(\\d+)");
         private static final Pattern URL_KEY = Pattern.compile("https?://[^/]+/(.+?)/-/(?:issues|work_items)/(\\d+).*");
         private static final Set<String> RAW_KEYS_BLOCKED = Set.of("private_token", "access_token", "sudo");
+        private static final String TIMELOGS_QUERY = "query($project:ID!,$iid:String!,$after:String){project(fullPath:$project)"
+                + "{issue(iid:$iid){timelogs(first:100,after:$after){nodes{id timeSpent spentAt summary user{username name}}"
+                + " pageInfo{hasNextPage endCursor}}}}}";
 
         private final HttpJson http;
         private final String webBase;
@@ -442,20 +448,77 @@ public class GitLabTicketProvider implements TicketProvider {
             Ref ref = ref(key, project);
             List<Link> out = new ArrayList<>();
             for (JsonNode l : http.getJson(issuePath(ref) + "/links")) {
-                String relation = switch (HttpJson.first(text(l.path("link_type")), "relates_to")) {
-                    case "blocks" -> "blocks";
-                    case "is_blocked_by" -> "is blocked by";
-                    default -> "relates to";
-                };
-                out.add(new Link(relation, HttpJson.first(text(l.path("references").path("full")),
-                        projectFromUrl(text(l.path("web_url"))) + "#" + text(l.path("iid"))), text(l.path("title")),
-                        text(l.path("state")), text(l.path("web_url"))));
+                out.add(new Link(relation(l), linkedKey(l), text(l.path("title")), text(l.path("state")), text(l.path("web_url"))));
             }
             for (JsonNode mr : http.getJson(issuePath(ref) + "/related_merge_requests")) {
                 out.add(new Link("Merge Request", HttpJson.first(text(mr.path("references").path("full")),
                         "!" + text(mr.path("iid"))), text(mr.path("title")), text(mr.path("state")), text(mr.path("web_url"))));
             }
             return out;
+        }
+
+        private static String relation(JsonNode link) {
+            return switch (HttpJson.first(text(link.path("link_type")), "relates_to")) {
+                case "blocks" -> "blocks";
+                case "is_blocked_by" -> "is blocked by";
+                default -> "relates to";
+            };
+        }
+
+        private static String linkedKey(JsonNode link) {
+            return HttpJson.first(text(link.path("references").path("full")),
+                    projectFromUrl(text(link.path("web_url"))) + "#" + text(link.path("iid")));
+        }
+
+        /** {@code blocks}/{@code is_blocked_by} gibt es erst ab GitLab Premium, {@code relates_to} überall. */
+        private static final List<LinkType> LINK_TYPES = List.of(
+                new LinkType("relates_to", "relates to", "relates to"),
+                new LinkType("blocks", "blocks", "is blocked by"),
+                new LinkType("is_blocked_by", "is blocked by", "blocks"));
+
+        @Override
+        public List<LinkType> linkTypes(String project) {
+            return LINK_TYPES;
+        }
+
+        @Override
+        public WriteResult link(String key, String project, LinkType type, String target) {
+            requireToken("Verknüpfen");
+            Ref a = ref(key, project);
+            Ref b = ref(target, project);
+            var body = HttpJson.object();
+            body.put("target_project_id", b.project());
+            body.put("target_issue_iid", b.iid());
+            body.put("link_type", type.id());
+            try {
+                http.post(issuePath(a) + "/links", body);
+            } catch (HttpJson.StatusException e) {
+                if (!"relates_to".equals(type.id()) && (e.status() == 403 || e.status() == 400)) {
+                    throw new IllegalStateException(e.getMessage() + " – 'blocks'/'is blocked by' braucht GitLab Premium; "
+                            + "sonst 'relates to' verwenden.", e);
+                }
+                throw e;
+            }
+            return new WriteResult(canonicalKey(key, project), "verknüpft: " + a.key() + " " + type.name() + " " + b.key(),
+                    webBase + "/" + a.project() + "/-/issues/" + a.iid());
+        }
+
+        @Override
+        public WriteResult unlink(String key, String project, String target, String relation) {
+            requireToken("Verknüpfung entfernen");
+            Ref a = ref(key, project);
+            Ref b = ref(target, project);
+            String other = canonicalKey(target, project);
+            List<JsonNode> found = new ArrayList<>();
+            for (JsonNode l : http.getJson(issuePath(a) + "/links")) {
+                if (other.equals(linkedKey(l).toLowerCase(Locale.ROOT))) {
+                    found.add(l);
+                }
+            }
+            JsonNode hit = TicketSystem.pickLink(found, GitLab::relation, relation, "GitLab", a.key(), b.key());
+            http.delete(issuePath(a) + "/links/" + text(hit.path("issue_link_id")));
+            return new WriteResult(canonicalKey(key, project), "Verknüpfung entfernt: " + a.key() + " " + relation(hit)
+                    + " " + b.key(), webBase + "/" + a.project() + "/-/issues/" + a.iid());
         }
 
         /**
@@ -588,6 +651,80 @@ public class GitLabTicketProvider implements TicketProvider {
             }
             JsonNode res = http.put(issuePath(ref), body).body();
             return new WriteResult(ref.key(), "geändert: " + u.summary(), text(res.path("web_url")));
+        }
+
+        // ------------------------------------------------------------------ Zeiterfassung (GraphQL: nur dort mit Datum)
+
+        @Override
+        public List<WorkLogEntry> worklogs(String key, String project) {
+            Ref ref = ref(key, project);
+            var vars = HttpJson.object();
+            vars.put("project", ref.project());
+            vars.put("iid", String.valueOf(ref.iid()));
+            List<WorkLogEntry> out = new ArrayList<>();
+            while (out.size() < 1000) {
+                JsonNode issue = graphql(TIMELOGS_QUERY, vars).path("project").path("issue");
+                if (!issue.isObject()) {
+                    throw new IllegalArgumentException("GitLab: Issue " + ref.key() + " nicht gefunden (oder das Token sieht es nicht).");
+                }
+                JsonNode logs = issue.path("timelogs");
+                for (JsonNode t : logs.path("nodes")) {
+                    String spentAt = text(t.path("spentAt"));
+                    out.add(new WorkLogEntry(lastSegment(text(t.path("id"))), HttpJson.first(text(t.path("user").path("name")),
+                            text(t.path("user").path("username"))), spentAt == null || spentAt.length() < 10 ? spentAt
+                            : spentAt.substring(0, 10), Duration.ofSeconds(t.path("timeSpent").asLong()),
+                            text(t.path("summary")), null));
+                }
+                if (!logs.path("pageInfo").path("hasNextPage").asBoolean(false)) {
+                    break;
+                }
+                vars.put("after", text(logs.path("pageInfo").path("endCursor")));
+            }
+            return out;
+        }
+
+        @Override
+        public WriteResult logTime(String key, String project, WorkLog work) {
+            requireToken("Zeiten buchen");
+            if (work.activity() != null) {
+                throw new IllegalArgumentException("GitLab kennt keine Tätigkeitsart beim Buchen – ohne 'activity' aufrufen.");
+            }
+            Ref ref = ref(key, project);
+            JsonNode issue = http.getJson(issuePath(ref));
+            var input = HttpJson.object();
+            input.put("issuableId", "gid://gitlab/Issue/" + text(issue.path("id")));
+            input.put("timeSpent", TicketSystem.formatDuration(work.duration()));
+            input.put("spentAt", work.start().toOffsetDateTime().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
+            input.put("summary", work.comment() == null ? "" : work.comment()); // Pflichtfeld, leer erlaubt
+            var vars = HttpJson.object();
+            vars.set("input", input);
+            JsonNode res = graphql("mutation($input:TimelogCreateInput!){timelogCreate(input:$input)"
+                    + "{timelog{id} errors}}", vars).path("timelogCreate");
+            List<String> errors = texts(res.path("errors"), null);
+            if (!errors.isEmpty()) {
+                throw new IllegalArgumentException("GitLab: Zeit nicht gebucht – " + String.join("; ", errors));
+            }
+            String id = lastSegment(text(res.path("timelog").path("id")));
+            return new WriteResult(canonicalKey(key, project), TicketSystem.formatDuration(work.duration())
+                    + " gebucht am " + work.date() + (id == null ? "" : " (Buchung " + id + ")"),
+                    text(issue.path("web_url")), id);
+        }
+
+        private JsonNode graphql(String query, ObjectNode variables) {
+            var body = HttpJson.object();
+            body.put("query", query);
+            body.set("variables", variables);
+            JsonNode res = http.post(webBase + "/api/graphql", body).body();
+            List<String> errors = texts(res.path("errors"), "message");
+            if (!errors.isEmpty()) {
+                throw new IllegalStateException("GitLab GraphQL: " + String.join("; ", errors));
+            }
+            return res.path("data");
+        }
+
+        /** {@code gid://gitlab/Timelog/12} → {@code 12}. */
+        private static String lastSegment(String gid) {
+            return gid == null ? null : gid.substring(gid.lastIndexOf('/') + 1);
         }
 
         @Override

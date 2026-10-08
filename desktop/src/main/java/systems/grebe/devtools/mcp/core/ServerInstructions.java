@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStreamableServerTransportProvider;
+import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
 import systems.grebe.devtools.mcp.plugin.PluginManager;
 
 /**
@@ -26,8 +27,9 @@ import systems.grebe.devtools.mcp.plugin.PluginManager;
  *
  * <p>Der Text wird bei jedem {@code initialize} neu gebaut ({@link LiveInstructionsTransport}) – neue Client-Sessions
  * sehen Plugin-Änderungen sofort, bestehende behalten ihren Stand (MCP kennt keine Änderungsbenachrichtigung für
- * Instructions). Aufgenommen werden alle Module, auch deaktivierte; die Texte sind bedingt formuliert („wenn
- * angeboten“) und die tatsächlich verfügbaren Tools liefert weiterhin {@code tools/list}.
+ * Instructions); dasselbe gilt für Module aus Groovy-Skripten. Aufgenommen werden alle Module, auch deaktivierte;
+ * die Texte sind bedingt formuliert („wenn angeboten“) und die tatsächlich verfügbaren Tools liefert weiterhin
+ * {@code tools/list}.
  */
 @Configuration(proxyBeanMethods = false)
 public class ServerInstructions {
@@ -48,7 +50,8 @@ public class ServerInstructions {
             nicht abdeckt oder mit einer Fehlermeldung ablehnt, die sich nicht beheben lässt. Sag dem Nutzer dann \
             kurz, warum du die Shell verwendest.
             - Meldet ein Tool „nicht freigegeben“, liegt das Ziel außerhalb der Freigaben in der DevTools-App. \
-            Nicht still per Shell umgehen, sondern den Nutzer darauf hinweisen.
+            Nicht still per Shell umgehen, sondern den Nutzer darauf hinweisen – oder, wenn angeboten, mit \
+            `permissions_check` prüfen, was fehlt, und es mit `permissions_request` beim Nutzer anfragen.
             - Tools nicht raten: welche angeboten werden, hängt von den Schaltern in der App ab und kann sich zur \
             Laufzeit ändern (notifications/tools/list_changed).
             """;
@@ -62,16 +65,25 @@ public class ServerInstructions {
     }
 
     /**
-     * @param pluginModules Module der beim Start aktiven Plugins (siehe {@code PluginManager}); später installierte
-     *                      Plugins erscheinen erst nach einem Neustart in den Instructions, ihre Tools sofort
+     * @param plugins Module der jeweils aktiven Plugins (siehe {@code PluginManager})
+     * @param scripts Module aus den geladenen Groovy-Skripten (siehe {@code ScriptManager})
      */
     @Autowired
     public ServerInstructions(List<ToolModule> modules, ObjectProvider<PluginManager> plugins,
+                              ObjectProvider<ScriptManager> scripts,
                               @Value("${spring.ai.mcp.server.instructions:}") String base) {
         this(modules, () -> {
+            List<ToolModule> runtime = new ArrayList<>();
             PluginManager pm = plugins.getIfAvailable();
             // lädt nichts nach: beim Serveraufbau sind noch keine Plugins aktiv, danach die jeweils aktiven
-            return pm == null ? List.of() : pm.activeModules();
+            if (pm != null) {
+                runtime.addAll(pm.activeModules());
+            }
+            ScriptManager sm = scripts.getIfAvailable();
+            if (sm != null) {
+                runtime.addAll(sm.modules());
+            }
+            return runtime;
         }, base);
     }
 
@@ -117,7 +129,7 @@ public class ServerInstructions {
         try {
             all.addAll(pluginModules.get());
         } catch (RuntimeException e) {
-            LOG.warn("Plugin-Module für die Instructions nicht ermittelbar", e);
+            LOG.warn("Plugin- und Skript-Module für die Instructions nicht ermittelbar", e);
         }
         all.stream()
                 // gleiche Reihenfolge wie Modulliste und Tool-Registrierung (ToolRegistry)

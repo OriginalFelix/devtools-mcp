@@ -225,6 +225,136 @@ class GraphToolsTest {
     }
 
     @Test
+    void filesToolFindsFilesWithLineRanges() {
+        GraphTools t = tools();
+        t.build(null, false);
+        String byName = t.files(null, "OrderRepository", null, null, null, null, null, null, null);
+        assertThat(byName).startsWith("4 Dateien (Stichworte [orderrepository, order, repository]):\n"
+                        + "src/main/java/com/acme/shop/repo/OrderRepository.java  (10 Z.)\n"
+                        + "  OrderRepository [interface] Z5-9 · OrderRepository#findById(long) Z6 · "
+                        + "OrderRepository#save(Order) Z8")
+                .contains("JpaOrderRepository#save(Order) Z12-15", "graph_read");
+
+        assertThat(t.files(null, "shop/repo/*.java", null, null, null, null, null, null, null))
+                .startsWith("2 Dateien (Pfad):\n")
+                .contains("src/main/java/com/acme/shop/repo/OrderRepository.java  (10 Z.)\n"
+                        + "  OrderRepository [interface] Z5-9\n")
+                .doesNotContain("OrderService");
+        assertThat(t.files(null, "OrderService.java", null, null, null, null, null, null, null))
+                .startsWith("1 Datei (Pfad):\nsrc/main/java/com/acme/shop/OrderService.java  (45 Z.)");
+        assertThat(t.files(null, "*Repository", null, null, null, null, null, 2, null))
+                .startsWith("3 Dateien (Namensmuster, die besten 2):\n");
+        assertThat(t.files(null, "Nirgendwo", null, null, null, null, null, null, null)).startsWith("Keine Datei passt");
+
+        // Wer verwendet OrderRepository – mit Begründung und Zeile je Datei
+        String users = t.files(null, null, List.of("OrderRepository"), "in", null, null, null, null, null);
+        assertThat(users).contains("Ausgang:\n  com.acme.shop.repo.OrderRepository  [interface]  Z5-9\n",
+                        "2 verbundene Dateien (verwenden den Ausgang):",
+                        "  OrderService#save(Order) --calls--> OrderRepository#save(Order) (Z25)",
+                        "  JpaOrderRepository --implements--> OrderRepository (Z6)")
+                .doesNotContain("Order.java ");
+
+        // Was OrderService#save über zwei Ebenen aufruft; Aufrufe in der eigenen Datei zählen mit
+        String deep = t.files(null, null, List.of("OrderService#save"), "out", List.of("calls"), 2, null, null, null);
+        assertThat(deep).contains("vom Ausgang verwendet, Tiefe 2",
+                "src/main/java/com/acme/shop/OrderService.java  (45 Z.)  [Ausgangsdatei]",
+                "OrderService#save(Order) --calls--> Money#add(int) (INFERRED 0.8, Z26)");
+
+        assertThatThrownBy(() -> t.files(null, "x", List.of("OrderService"), null, null, null, null, null, null))
+                .hasMessageContaining("Genau eins angeben");
+        assertThatThrownBy(() -> t.files(null, null, null, null, null, null, null, null, null))
+                .hasMessageContaining("Genau eins angeben");
+    }
+
+    @Test
+    void searchBuildsMissingGraphFirstAndSaysSo() {
+        GraphTools t = tools();
+        assertThat(GraphStore.files(project)).isEmpty();
+        String first = t.files(null, "OrderRepository", null, null, null, null, null, null, null);
+        assertThat(first).startsWith("Noch kein Graph für " + project.getFileName() + " (Branch ")
+                .contains(" – eben gebaut in ", " ms, 4 Dateien.\n\n4 Dateien (Stichworte ")
+                .contains("src/main/java/com/acme/shop/repo/OrderRepository.java  (10 Z.)");
+        // danach ohne Hinweis – der Graph ist gespeichert
+        assertThat(t.files(null, "OrderRepository", null, null, null, null, null, null, null)).startsWith("4 Dateien");
+    }
+
+    @Test
+    void readBuildsMissingGraphFirst() {
+        assertThat(tools().read(null, List.of("OrderRepository#save"), null, null, null, null))
+                .startsWith("Noch kein Graph für ").contains("8\t    void save(Order o);");
+    }
+
+    @Test
+    void filesToolCanHideTests() throws Exception {
+        Path test = project.resolve("src/test/java/com/acme/shop/OrderServiceTest.java");
+        Files.createDirectories(test.getParent());
+        Files.writeString(test, "package com.acme.shop;\nclass OrderServiceTest { void saves() { new OrderService(null)"
+                + ".save(null); } }\n");
+        GraphTools t = tools();
+        t.build(null, false);
+        assertThat(t.files(null, null, List.of("OrderService#save"), "in", null, null, null, null, null))
+                .contains("src/test/java/com/acme/shop/OrderServiceTest.java");
+        assertThat(t.files(null, null, List.of("OrderService#save"), "in", null, null, false, null, null))
+                .doesNotContain("OrderServiceTest");
+        assertThat(t.files(null, "OrderService", null, null, null, null, false, null, null))
+                .doesNotContain("OrderServiceTest");
+    }
+
+    @Test
+    void readToolReadsMembersOutlinesAndRanges() {
+        GraphTools t = tools();
+        t.build(null, false);
+        assertThat(t.read(null, List.of("OrderService#save"), null, null, null, null)).isEqualTo("""
+                src/main/java/com/acme/shop/OrderService.java:24-30  (45 Z.)  com.acme.shop.OrderService#save(Order) [method]
+                24\t    public void save(Order o) {
+                25\t        repo.save(o);
+                26\t        o.total().add(1);
+                27\t        validate(o);
+                28\t        Util.check(o);
+                29\t        printer.print(o);
+                30\t    }""");
+
+        // Überladungen und mehrere Knoten in einem Aufruf, mit Kontextzeilen
+        String several = t.read(null, List.of("OrderRepository#save", "Printer#print"), null, null, 1, null);
+        assertThat(several).contains("OrderRepository.java:7-9  (10 Z.)", "8\t    void save(Order o);",
+                "com.acme.shop.Printer#print(Order) [method]", "com.acme.shop.Printer#print(String) [method]",
+                "24\t    void print(String s) {").doesNotContain("Achtung");
+
+        // Gliederung: Signaturen und Zeilenbereiche ohne Rümpfe
+        String outline = t.read(null, List.of("OrderService.java"), null, true, null, null);
+        assertThat(outline).startsWith("src/main/java/com/acme/shop/OrderService.java  (45 Z.)  Gliederung\n"
+                        + "Z7-40 public class OrderService  – Service für Aufträge.\n"
+                        + "  Z8 private final OrderRepository repo\n")
+                .contains("  Z24-30 public void save(Order o)\n", "Z42-44 interface Service\n  Z43 void start()\n")
+                .doesNotContain("repo.save(o)");
+
+        assertThat(t.read(null, List.of("Order.java"), "5+3", null, null, null)).isEqualTo("""
+                src/main/java/com/acme/shop/Order.java:5-7  (32 Z.)
+                5\t    Money total() {
+                6\t        return new Money();
+                7\t    }""");
+
+        assertThat(t.read(null, List.of("OrderService"), null, null, null, 5))
+                .contains("7\tpublic class OrderService implements Service {", "11\t")
+                .endsWith("… abgeschnitten nach Zeile 11 (maxLines erhöhen oder mit lines='12-40' weiterlesen)");
+
+        assertThatThrownBy(() -> t.read(null, List.of("java.util.List"), null, null, null, null))
+                .hasMessageContaining("keinen Quelltext");
+        assertThatThrownBy(() -> t.read(null, List.of("Order.java"), "40-50", null, null, null))
+                .hasMessageContaining("außerhalb der Datei (1-32)");
+    }
+
+    @Test
+    void readToolWarnsWhenFileChangedSinceBuild() throws Exception {
+        GraphTools t = tools();
+        t.build(null, false);
+        Path file = project.resolve("src/main/java/com/acme/shop/repo/OrderRepository.java");
+        Files.writeString(file, "// neu\n// noch neuer\n" + Files.readString(file));
+        assertThat(t.read(null, List.of("OrderRepository#save"), null, null, null, null))
+                .contains("Achtung: Datei wurde seit graph_build geändert");
+    }
+
+    @Test
     void queryMatchesWordFormsAndPrefersProductionCode() throws Exception {
         assertThat(GraphQueries.stem("gebucht")).isEqualTo(GraphQueries.stem("buchen")).isEqualTo("buch");
         assertThat(GraphQueries.stem("gespeichert")).isEqualTo(GraphQueries.stem("speichern"));
@@ -246,6 +376,32 @@ class GraphToolsTest {
         int testHit = answer.indexOf("LedgerBuchenTest#testBuchenWirdGebucht()");
         assertThat(prod).as(answer).isPositive();
         assertThat(testHit < 0 || prod < testHit).as(answer).isTrue();
+    }
+
+    @Test
+    void callsThroughInterfacesReachTheImplementations() {
+        CodeGraph g = graph();
+        String load = "com.acme.shop.OrderService#load(long)";
+        // der Aufruf aufs Interface bleibt, dazu eine abgeleitete Kante zur Implementierung
+        assertThat(edge(g, load, "com.acme.shop.repo.OrderRepository#findById(long)", Relation.CALLS).conf())
+                .isEqualTo(Confidence.EXTRACTED);
+        Edge dispatched = edge(g, load, "com.acme.shop.repo.JpaOrderRepository#findById(long)", Relation.CALLS);
+        assertThat(dispatched.conf()).isEqualTo(Confidence.INFERRED);
+        assertThat(dispatched.score()).isEqualTo(GraphBuilder.DISPATCH_SCORE);
+        // so findet graph_path die Aufrufkette bis in die Implementierung
+        assertThat(tools().path(null, "OrderService#start", "JpaOrderRepository#findById", true, List.of("calls"), 4,
+                null)).doesNotStartWith("Kein Pfad").contains("JpaOrderRepository#findById", "INFERRED");
+    }
+
+    @Test
+    void searchTermsKeepUmlautsAndWildcardsStayCheap() {
+        assertThat(GraphQueries.terms("Wie wird ein Graph veröffentlicht?")).contains("veröffentlicht")
+                .doesNotContain("ver", "ffentlicht");
+        assertThat(GraphQueries.terms("ÄnderungsZähler")).contains("änderungszähler", "änderungs", "zähler");
+        // kein doppeltes .* (*name* ergab .*.*name.*.* – ArcadeDB brach das mit regexTimeout ab)
+        assertThat(GraphQueries.globRegex("*terms*".split("\\*", -1), false)).isEqualTo(".*\\Qterms\\E.*");
+        assertThat(GraphQueries.globRegex("*terms*".split("\\*", -1), true)).isEqualTo(".*\\Qterms\\E.*");
+        assertThat(GraphQueries.globRegex("order*dao".split("\\*", -1), true)).isEqualTo("\\Qorder\\E.*\\Qdao\\E");
     }
 
     @Test
@@ -389,45 +545,34 @@ class GraphToolsTest {
         assertThat(tools().report(null, 5, null)).contains("Syntax- oder Lesefehlern", "src/main/java/com/acme/shop/Broken.java");
     }
 
-    /** Plattform → Ressourcenname der nativen Bibliothek (liegt in den bonede-Artefakten). */
+    /**
+     * Syntaxbäume nur über die Wasm-Module in Chicory: keine nativen Bibliotheken (Windows blockiert unsignierte DLLs,
+     * die JNI-Bindings org.treesitter stürzen bei vollem Heap mit SIGSEGV ab).
+     */
     @Test
-    void resolvesNativeLibraryPerPlatform() {
-        assertThat(TreeSitterNatives.resource("tree-sitter", "Mac OS X", "aarch64")).isEqualTo("lib/aarch64-macos-tree-sitter.dylib");
-        assertThat(TreeSitterNatives.resource("tree-sitter-java", "Linux", "amd64")).isEqualTo("lib/x86_64-linux-gnu-tree-sitter-java.so");
-        // Windows: eigene Kernbibliothek (bonede exportiert dort nur JNI), Grammatik weiter von bonede
-        assertThat(TreeSitterNatives.resource("tree-sitter", "Windows 11", "amd64")).isEqualTo("natives/x86_64-windows-tree-sitter.dll");
-        assertThat(TreeSitterNatives.resource("tree-sitter-java", "Windows 11", "amd64")).isEqualTo("lib/x86_64-windows-tree-sitter-java.dll");
-        assertThatThrownBy(() -> TreeSitterNatives.resource("tree-sitter", "Windows 11", "aarch64"))
-                .hasMessageContaining("nicht verfügbar");
-        for (String os : List.of("Mac OS X|aarch64", "Mac OS X|x86_64", "Linux|aarch64", "Linux|amd64", "Windows 11|amd64")) {
-            String[] p = os.split("\\|");
-            for (String lib : List.of("tree-sitter", "tree-sitter-java")) {
-                String res = TreeSitterNatives.resource(lib, p[0], p[1]);
-                assertThat(getClass().getClassLoader().getResource(res)).as(res).isNotNull();
+    void graphCodeLoadsNoNativeLibraries() throws Exception {
+        for (String dir : List.of("modules/graph", "syntax")) {
+            try (Stream<Path> files = Files.walk(Path.of("src/main/java/systems/grebe/devtools/mcp", dir))) {
+                for (Path f : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                    assertThat(Files.readString(f)).as(f.toString()).doesNotContain("import org.treesitter",
+                            "jtreesitter", "java.lang.foreign", "System.load");
+                }
             }
         }
     }
 
-    /** Die JNI-Bindings (org.treesitter) stürzen bei vollem Heap mit SIGSEGV ab – sie dürfen nicht benutzt werden. */
-    @Test
-    void graphCodeDoesNotUseJniBindings() throws Exception {
-        try (Stream<Path> files = Files.walk(Path.of("src/main/java/systems/grebe/devtools/mcp/modules/graph"))) {
-            for (Path f : files.filter(p -> p.toString().endsWith(".java")).toList()) {
-                assertThat(Files.readString(f)).as(f.toString()).doesNotContain("import org.treesitter");
-            }
-        }
-    }
-
-    /** Echter Code: die Quellen dieses Servers. Prüft Robustheit und einige bekannte Kanten. */
+    /** Echter Code: die Quellen dieses Servers samt Plugin-API. Prüft Robustheit und einige bekannte Kanten. */
     @Test
     void graphOfOwnSources() throws Exception {
-        Path own = Path.of("src/main/java").toAbsolutePath();
         Path copy = project.resolve("self");
-        try (Stream<Path> files = Files.walk(own)) {
-            for (Path p : files.filter(Files::isRegularFile).toList()) {
-                Path target = copy.resolve("src/main/java").resolve(own.relativize(p).toString());
-                Files.createDirectories(target.getParent());
-                Files.copy(p, target);
+        for (Path own : List.of(Path.of("src/main/java"), Path.of("../plugin-api/src/main/java"))) {
+            Path root = own.toAbsolutePath().normalize();
+            try (Stream<Path> files = Files.walk(root)) {
+                for (Path p : files.filter(Files::isRegularFile).toList()) {
+                    Path target = copy.resolve("src/main/java").resolve(root.relativize(p).toString());
+                    Files.createDirectories(target.getParent());
+                    Files.copy(p, target);
+                }
             }
         }
         Files.writeString(copy.resolve("build.gradle.kts"), "");

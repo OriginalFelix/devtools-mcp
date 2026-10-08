@@ -44,11 +44,13 @@ public class TicketModule implements ToolModule {
     static final String ALLOW_ASSIGN = "allowAssign";
     static final String ALLOW_EDIT = "allowEdit";
     static final String ALLOW_CREATE = "allowCreate";
+    static final String ALLOW_LINK = "allowLink";
     static final String WRITE_PROJECTS = "writeProjects";
     static final String COMMENT_SUFFIX = "commentSuffix";
     static final String ALLOW_DELETE = "allowDelete";
     static final String DELETE_ONLY_OWN = "deleteOnlyOwn";
     static final String ALLOW_CLASSIFY = "allowClassify";
+    static final String ALLOW_LOG_TIME = "allowLogTime";
 
     private final TicketProviders providers;
     /** Über alle Konfigurationsänderungen hinweg dieselbe Instanz – sonst ginge die Zuordnung beim Umschalten verloren. */
@@ -101,7 +103,8 @@ public class TicketModule implements ToolModule {
     public String description() {
         return "Jira, GitHub, GitLab, YouTrack, OpenProject und weitere Systeme (erweiterbar per ServiceLoader): Boards mit ihren Spalten, "
                 + "Tickets suchen, Status, Zuständige, Beschreibung, Kommentare und Verknüpfungen lesen; optional "
-                + "kommentieren, Status wechseln, zuweisen, bearbeiten und anlegen (einzeln schaltbar, je Projekt freigebbar) sowie "
+                + "kommentieren, Status wechseln, zuweisen, bearbeiten, anlegen, verknüpfen und Zeiten buchen (einzeln schaltbar, je Projekt "
+                + "freigebbar) sowie "
                 + "die Komplexität einschätzen und das Modell für die Umsetzung empfehlen.";
     }
 
@@ -116,9 +119,14 @@ public class TicketModule implements ToolModule {
                 - `ticket_search`: Tickets filtern (Status, Zuständige, Labels, Text, systemeigene Abfrage wie JQL).
                 - `ticket_get`: ein Ticket vollständig (Titel, Status, Zuständige, Beschreibung, Kommentare); \
                 `ticket_status`: Status und Zuständige mehrerer Tickets auf einmal; `ticket_links`: Parent, Unteraufgaben, \
-                verknüpfte Tickets und Pull/Merge Requests; `ticket_transitions`: mögliche Statuswechsel.
+                verknüpfte Tickets und Pull/Merge Requests; `ticket_transitions`: mögliche Statuswechsel; `ticket_worklogs`: \
+                gebuchte Arbeitszeiten.
                 - Schreiben, nur wenn angeboten (einzeln in der App schaltbar): `ticket_comment`, `ticket_transition` \
-                (Ziel aus `ticket_transitions`), `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_delete_comment`, \
+                (Ziel aus `ticket_transitions`, optional mit Kommentar im selben Aufruf), `ticket_assign`, `ticket_update` (auch \
+                weitere Felder per `fields`, z.B. Jira-Custom-Fields), `ticket_create` (Pflichtfelder wie Jira-Komponenten \
+                gleich per `fields`), `ticket_link`/`ticket_unlink` (Tickets verknüpfen: blocks, relates to, Parent/Unteraufgabe …; \
+                ohne `relation` listet `ticket_link` die möglichen Arten), `ticket_log_time` (Zeit buchen; \
+                Dauer vom Nutzer, nicht geschätzt), `ticket_delete_comment`, \
                 `ticket_delete` (standardmäßig nur selbst angelegte; Schließen ist meist richtiger). Nur auf ausdrückliche \
                 Anweisung des Nutzers schreiben und das Ergebnis mit Link melden. Fehlt ein schreibendes Tool, ist es \
                 abgeschaltet: dem Nutzer den Schalter nennen, nicht per `curl`/`gh`/`glab` ausweichen.
@@ -170,10 +178,16 @@ public class TicketModule implements ToolModule {
                         .withHelp("ticket_transition: Workflow-Übergang, Schließen/Öffnen, Board-Spalte."),
                 ConfigField.of(ALLOW_ASSIGN, "Zuweisen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("ticket_assign"),
-                ConfigField.of(ALLOW_EDIT, "Titel/Beschreibung/Labels ändern erlauben", FieldType.BOOLEAN).withDefault("false")
+                ConfigField.of(ALLOW_EDIT, "Titel/Beschreibung/Labels/Felder ändern erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("ticket_update"),
                 ConfigField.of(ALLOW_CREATE, "Tickets anlegen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("ticket_create"),
+                ConfigField.of(ALLOW_LINK, "Tickets verknüpfen erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("ticket_link, ticket_unlink: Verknüpfungen wie blocks, relates to, Parent/Unteraufgabe "
+                                + "anlegen und entfernen."),
+                ConfigField.of(ALLOW_LOG_TIME, "Zeiten buchen erlauben", FieldType.BOOLEAN).withDefault("false")
+                        .withHelp("ticket_log_time: Jira-Worklog, GitLab-Zeiterfassung, YouTrack-Arbeitselement, "
+                                + "OpenProject-Zeiteintrag."),
                 ConfigField.of(WRITE_PROJECTS, "Schreiben nur in diesen Projekten", FieldType.STRING_LIST)
                         .withHelp("Ein Projekt je Zeile, optional mit System: ABC, jira:ABC, github:owner/repo, "
                                 + "gitlab:gruppe/projekt, youtrack:ABC, openproject:kennung, * am Ende als Präfix (gitlab:gruppe/*). Leer = alle Projekte."),
@@ -209,6 +223,12 @@ public class TicketModule implements ToolModule {
         }
         if (config.getBoolean(ALLOW_CREATE)) {
             beans.add(new TicketCreateTools(env));
+        }
+        if (config.getBoolean(ALLOW_LINK)) {
+            beans.add(new TicketLinkTools(env));
+        }
+        if (config.getBoolean(ALLOW_LOG_TIME)) {
+            beans.add(new TicketTimeTools(env));
         }
         if (config.getBoolean(ALLOW_DELETE)) {
             beans.add(new TicketDeleteTools(env, config.getBoolean(DELETE_ONLY_OWN)));

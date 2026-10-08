@@ -12,6 +12,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
+import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 
 /**
  * Eine Memory: was bei einer früheren Aktion passiert ist – z.B. „Ticket ABC-123 reviewt: Akzeptanzkriterien fehlen,
@@ -21,6 +22,9 @@ import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
  *
  * <p>Jede Memory gehört genau einem Benutzer ({@link #owner} = E-Mail, wie bei den Skills); globale Memories gibt es
  * nicht.
+ *
+ * <p>{@link #type}: dauerhaft (Standard) oder temporär – temporäre Memories dürfen auch ohne die Freigaben für
+ * dauerhafte Memories geändert und gelöscht werden.
  */
 @Entity
 @Table(name = "memory", indexes = {
@@ -61,6 +65,10 @@ public class Memory {
     @Column(length = 500)
     private String tags;
 
+    /** PERMANENT, TEMPORARY oder INVOCATION; leer bei Memories von vor dem Typ (= dauerhaft). */
+    @Column(length = 16)
+    private String type;
+
     @Column(nullable = false)
     private Instant createdAt;
 
@@ -75,7 +83,7 @@ public class Memory {
     }
 
     Memory(String owner, String title, String content, String project, String skill, String reference, String tags,
-           Instant now) {
+           MemoryViews.Type type, Instant now) {
         this.owner = owner;
         this.title = title;
         this.content = content;
@@ -83,6 +91,7 @@ public class Memory {
         this.skill = skill;
         this.reference = reference;
         this.tags = tags;
+        this.type = MemoryViews.Type.orDefault(type).name();
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -149,6 +158,23 @@ public class Memory {
 
     void setTags(String tags) {
         this.tags = tags;
+    }
+
+    public MemoryViews.Type getType() {
+        return type == null ? MemoryViews.Type.PERMANENT : MemoryViews.Type.valueOf(type);
+    }
+
+    void setType(MemoryViews.Type type) {
+        this.type = MemoryViews.Type.orDefault(type).name();
+    }
+
+    public boolean isTemporary() {
+        return getType() == MemoryViews.Type.TEMPORARY;
+    }
+
+    /** Temporär oder Rückruf: ohne Freigabe für dauerhafte Memories änderbar. */
+    public boolean isEphemeral() {
+        return getType().ephemeral();
     }
 
     public Instant getCreatedAt() {

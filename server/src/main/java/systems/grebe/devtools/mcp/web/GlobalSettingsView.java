@@ -36,7 +36,7 @@ import systems.grebe.devtools.mcp.backend.profile.ProfileService;
  */
 @Route("global")
 @PageTitle("Globale Einstellungen – DevTools MCP")
-@RolesAllowed("ADMIN")
+@RolesAllowed("SETTINGS_GLOBAL")
 public class GlobalSettingsView extends HorizontalLayout {
 
     private final ProfileService profiles;

@@ -11,8 +11,10 @@ package systems.grebe.devtools.mcp.core;
 public final class ShellHints {
 
     public static final String GIT = " Für freigegebene Repositories gilt: Git immer über die git_*-Tools, "
-            + "`git` in der Shell nur für Befehle ohne passendes Tool (submodule, bisect, interaktiver Rebase …). Fehlt "
-            + "ein Tool, ist sein Schalter in der DevTools-App aus – nachfragen statt per Shell auszuweichen.";
+            + "`git` in der Shell nur für Befehle ohne passendes Tool (submodule, bisect, interaktiver Rebase …). Es gibt "
+            + "auch git_fetch/git_pull/git_push, git_merge/git_rebase/git_cherry_pick/git_revert und git_restore/"
+            + "git_delete_branch – fehlen sie in der Tool-Liste, ist ihr Schalter in der DevTools-App aus: mit "
+            + "permissions_request (z.B. tool=git_push) beim Nutzer anfragen statt per Shell auszuweichen.";
 
     public static final String BUILD = " Für freigegebene Projekte gilt: Builds und Tests immer über die build_*-Tools, "
             + "nicht mit `./gradlew`, `gradle` oder `mvn` in der Shell.";
@@ -47,8 +49,11 @@ public final class ShellHints {
 
     public static final String MEMORIES = " Memories nur über memories_*-Tools, nicht als Notizdateien.";
 
-    public static final String GRAPH = " Für freigegebene Java-Projekte gilt: Struktur, Aufrufer und Abhängigkeiten über "
-            + "die graph_*-Tools ermitteln, nicht mit `grep`/`find` in der Shell.";
+    public static final String SCRIPTS = " Eigene Tools als Groovy-Skripte immer über die scripts_*-Tools anlegen und "
+            + "pflegen, nicht als Dateien im Dateisystem und nicht per `groovy` in der Shell ausführen.";
+
+    public static final String GRAPH = " Für freigegebene Java-Projekte gilt: Dateien, Struktur, Aufrufer und Abhängigkeiten "
+            + "immer zuerst über die graph_*-Tools suchen, nicht mit `grep`/`find`/Glob in der Shell.";
 
     public static final String TICKET = " Tickets (Jira, GitHub, GitLab, YouTrack, OpenProject) immer über die ticket_*-Tools lesen, nicht per "
             + "`curl` gegen die REST-API, mit `gh`/`glab` in der Shell oder im Browser.";
@@ -59,14 +64,33 @@ public final class ShellHints {
     public static final String SSH =" Konfigurierte SSH-Server immer über die ssh_*-Tools ansprechen, nicht mit "
             + "`ssh`, `scp` oder `sftp` in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
 
-    public static final String CHAT = " Chat-Nachrichten (Matrix, Teams) immer über die chat_*-Tools senden und lesen, "
+    public static final String JDBC = " Konfigurierte Datenbanken immer über die jdbc_*-Tools ansprechen, nicht mit "
+            + "`psql`, `mysql`, `sqlplus`, `sqlcmd` o.ä. in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
+
+    public static final String DOLT = " Branches verknüpfter Dolt-, Doltgres- und Doltlite-Datenbanken nicht mit `dolt`, "
+            + "`doltlite`, `mysql` oder `psql` in der Shell umschalten – DevTools stellt sie beim Wechsel des Git-Branches "
+            + "selbst um (dolt_status, dolt_sync).";
+
+    public static final String CHAT =" Chat-Nachrichten (Matrix, Teams) immer über die chat_*-Tools senden und lesen, "
             + "nicht per `curl` gegen die APIs – die Zugangsdaten liegen nur in der DevTools-App.";
+
+    public static final String INVOCATIONS = " Auf lang laufende Aktionen per Rückruf warten (Memory vom Typ "
+            + "INVOCATION, Parameter invocation des Tools), nicht mit Schleifen, `sleep` oder Abfragen in der Shell.";
+
+    public static final String SHARE = " Inhalte mit den Claude-Instanzen anderer Nutzer oder Geräte immer über die "
+            + "share_*-Tools austauschen, nicht per Mail, Chat, Dateiablage oder Shell.";
+
+    public static final String MAIL = " E-Mails konfigurierter Konten immer über die mail_*-Tools lesen und verwalten, "
+            + "nicht per `curl`, Skript oder Mail-Programm – die Zugangsdaten liegen nur in der DevTools-App.";
 
     public static final String PROJECTS = " Welche Projekte (Repositories, Build-, Graph-Projekte) zur Verfügung stehen, "
             + "immer über projects_list ermitteln, nicht durch Durchsuchen des Dateisystems in der Shell.";
 
     public static final String WINDOW = " Fenster anderer Anwendungen immer über die window_*-Tools sehen und bedienen, "
             + "nicht per PowerShell, AppleScript, xdotool oder Skripten in der Shell.";
+
+    public static final String PERMISSIONS = " Was in DevTools erlaubt ist, immer über die permissions_*-Tools klären, "
+            + "nicht durch Lesen von Konfigurationsdateien und nicht durch Ausweichen auf die Shell.";
 
     private ShellHints() {
     }

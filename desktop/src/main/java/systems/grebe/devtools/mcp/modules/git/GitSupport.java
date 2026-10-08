@@ -11,12 +11,15 @@ import java.time.Duration;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.RebaseResult;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
@@ -24,6 +27,7 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.RepositoryState;
+import org.eclipse.jgit.merge.ResolveMerger;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
@@ -111,13 +115,29 @@ final class GitSupport {
         }
         Path p;
         try {
-            p = Path.of(wanted).toAbsolutePath().normalize();
+            p = realPath(Path.of(wanted));
         } catch (InvalidPathException e) {
             return null;
         }
         // der speziellste Worktree gewinnt (Worktrees liegen oft im Haupt-Repository, z.B. .claude/worktrees)
-        return all.stream().filter(w -> p.startsWith(w.dir()))
+        return all.stream().filter(w -> p.startsWith(realPath(w.dir())))
                 .max(Comparator.comparingInt(w -> w.dir().getNameCount())).orElse(null);
+    }
+
+    /**
+     * Pfad mit aufgelösten Symlinks (z.B. macOS {@code /var} → {@code /private/var}; git schreibt den echten Pfad
+     * nach {@code gitdir}); existiert der Pfad nicht, wird der nächste vorhandene Elternordner aufgelöst.
+     */
+    private static Path realPath(Path p) {
+        Path abs = p.toAbsolutePath().normalize();
+        for (Path base = abs; base != null; base = base.getParent()) {
+            try {
+                return base.toRealPath().resolve(base.relativize(abs));
+            } catch (IOException e) {
+                // weiter mit dem Elternordner
+            }
+        }
+        return abs;
     }
 
     /** Verknüpfte Worktrees aller freigegebenen Repositories (aus {@code .git/worktrees/*}/gitdir). */
@@ -247,5 +267,48 @@ final class GitSupport {
 
     static String shortId(ObjectId id) {
         return id == null ? "-" : id.abbreviate(8).name();
+    }
+
+    // ------------------------------------------------------------------ Integrieren/Konflikte
+
+    static final String CONFLICT_HINT = "\nKonflikte lösen (Dateien bearbeiten), git_stage, dann git_continue – "
+            + "oder git_abort für den Ausgangszustand.";
+
+    /** Lehnt ab, solange ein Merge, Rebase, Cherry-Pick oder Revert angehalten ist. */
+    static void requireSafe(Repository repo) {
+        RepositoryState state = repo.getRepositoryState();
+        if (state != RepositoryState.SAFE) {
+            throw new IllegalStateException("Es läuft bereits: " + describe(state)
+                    + " – zuerst git_continue oder git_abort.");
+        }
+    }
+
+    static String describe(RebaseResult r, String branch, String onto) throws IOException {
+        return switch (r.getStatus()) {
+            case OK -> branch + (onto == null ? " fertig rebased." : " auf " + onto + " rebased.");
+            case UP_TO_DATE -> branch + " ist bereits auf " + (onto == null ? "der Basis" : onto) + ".";
+            case FAST_FORWARD -> branch + " per Fast-Forward auf " + (onto == null ? "die Basis" : onto) + " gebracht.";
+            case STOPPED, CONFLICTS -> "Rebase angehalten bei Commit "
+                    + (r.getCurrentCommit() == null ? "?" : shortId(r.getCurrentCommit()) + " ("
+                    + r.getCurrentCommit().getShortMessage() + ")")
+                    + (r.getConflicts() == null || r.getConflicts().isEmpty() ? ""
+                    : " – Konflikte in:\n  " + String.join("\n  ", new TreeSet<>(r.getConflicts()))) + CONFLICT_HINT;
+            case UNCOMMITTED_CHANGES -> throw new IllegalStateException("Rebase nicht möglich – nicht committete "
+                    + "Änderungen: " + (r.getUncommittedChanges() == null ? "" : String.join(", ", r.getUncommittedChanges()))
+                    + ". Zuerst committen oder git_stash.");
+            case FAILED -> throw new IllegalStateException("Rebase fehlgeschlagen – lokale Änderungen würden "
+                    + "überschrieben: " + failing(r.getFailingPaths()) + ". Zuerst committen oder git_stash.");
+            case NOTHING_TO_COMMIT -> "Commit ist nach der Konfliktlösung leer – git_abort oder Änderungen stagen.";
+            default -> "Rebase: " + r.getStatus();
+        };
+    }
+
+    static String conflicts(Git g) throws GitAPIException {
+        Collection<String> c = g.status().call().getConflicting();
+        return c.isEmpty() ? "" : "\nKonflikte in:\n  " + String.join("\n  ", new TreeSet<>(c));
+    }
+
+    static String failing(Map<String, ResolveMerger.MergeFailureReason> paths) {
+        return paths == null || paths.isEmpty() ? "?" : String.join(", ", new TreeSet<>(paths.keySet()));
     }
 }

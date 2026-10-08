@@ -163,8 +163,8 @@ public class SkillService implements SkillBackend {
 
     private String requireAdmin() {
         if (!users.admin()) {
-            throw new IllegalStateException("Globale Vorlagen verwalten ist nicht freigegeben (Schalter im Modul "
-                    + "„Skills“).");
+            throw new IllegalStateException("Globale Vorlagen verwalten: dafür fehlt das Recht „Vorlagen "
+                    + "veröffentlichen“.");
         }
         return users.email();
     }

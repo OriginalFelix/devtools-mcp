@@ -198,7 +198,7 @@ class YouTrackTicketProviderTest {
         assertThat(yt.last("/api/issues/ABC-1").body()).contains("\"value\":null");
 
         int before = yt.requests.size();
-        assertThat(new TicketEditTools(env).update("ABC-1", "Neu", null, List.of("bleibt", "neu tag"), null, null))
+        assertThat(new TicketEditTools(env).update("ABC-1", "Neu", null, List.of("bleibt", "neu tag"), null, null, null))
                 .contains("geändert: Titel, Labels [bleibt, neu tag]");
         List<String> writes = yt.requests.subList(before, yt.requests.size()).stream()
                 .filter(r -> r.method().equals("POST")).map(StubServer.Request::body).toList();
@@ -222,14 +222,14 @@ class YouTrackTicketProviderTest {
                 : StubServer.Reply.json("{\"customFields\":[{\"name\":\"Assignee\",\"$type\":\"SingleUserIssueCustomField\"}]}"));
         TicketEnvironment env = env();
 
-        assertThat(new TicketCreateTools(env).create("Neu", "Text", null, "Bug", List.of("x"), List.of("me"), null))
+        assertThat(new TicketCreateTools(env).create("Neu", "Text", null, "Bug", List.of("x"), List.of("me"), null, null))
                 .startsWith("ABC-50: angelegt (Bug), Tags [x], zugewiesen an Felix Grebe");
         assertThat(yt.last("/api/issues").body()).isEqualTo("{\"project\":{\"id\":\"0-2\"},\"summary\":\"Neu\","
                 + "\"description\":\"Text\",\"customFields\":[{\"name\":\"Type\",\"$type\":\"SingleEnumIssueCustomField\","
                 + "\"value\":{\"name\":\"Bug\"}}]}");
         assertThat(yt.last("/api/commands").body()).contains("tag {x}", "ABC-50");
 
-        assertThatThrownBy(() -> new TicketCreateTools(env).create("Neu", null, "NOPE", null, null, null, null))
+        assertThatThrownBy(() -> new TicketCreateTools(env).create("Neu", null, "NOPE", null, null, null, null, null))
                 .hasMessageContaining("Projekt 'NOPE' nicht gefunden").hasMessageContaining("XYZ, ABC");
 
         TicketDeleteTools del = new TicketDeleteTools(env, true);
