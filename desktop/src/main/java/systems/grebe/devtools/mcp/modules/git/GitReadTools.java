@@ -49,8 +49,10 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.ToolHints;
 
 /** Lesende Git-Tools. */
+@ToolHints(readOnly = true, openWorld = false)
 public class GitReadTools {
 
     private static final String REPO_PARAM = "Repository-Name (Ordnername) oder Pfad; leer = Standard-Repository";
@@ -122,6 +124,25 @@ public class GitReadTools {
             section(sb, "Unversioniert", s.getUntracked());
             return Text.limitLines(sb.toString().trim(), git.maxLines());
         });
+    }
+
+    @Tool(name = "overview", description = "Alles für den Einstieg in einem Aufruf: Arbeitsstand wie git_status "
+            + "(Branch, Ahead/Behind, geänderte Dateien) plus die letzten Commits und die Zahl der Stash-Einträge – "
+            + "statt git_status, git_log und git_stash_list einzeln." + ShellHints.GIT)
+    public String overview(
+            @ToolParam(required = false, description = REPO_PARAM) String repository,
+            @ToolParam(required = false, description = "Anzahl Commits (Standard 5, max. 30)") Integer commits) {
+        String status = status(repository);
+        String log = log(repository, null, null, null, clamp(commits, 5, 30), null, null);
+        int stashes = git.with(repository, (g, root) -> {
+            int n = 0;
+            for (RevCommit ignored : g.stashList().call()) {
+                n++;
+            }
+            return n;
+        });
+        return status + "\n\nLetzte Commits:\n" + log + (stashes == 0 ? "" : "\n\nStash: " + stashes + " Eintrag/Einträge "
+                + "(git_stash_list)");
     }
 
     private static void section(StringBuilder sb, String title, Set<String> files) {

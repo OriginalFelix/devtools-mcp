@@ -86,9 +86,50 @@ public final class ShellHints {
     public static final String PROJECTS = " Welche Projekte (Repositories, Build-, Graph-Projekte) zur Verfügung stehen, "
             + "immer über projects_list ermitteln, nicht durch Durchsuchen des Dateisystems in der Shell.";
 
-    public static final String PERMISSIONS = " Was in DevTools erlaubt ist, immer über die permissions_*-Tools klären, "
+    public static final String CONTEXT = " Gekürzte Ergebnisse über context_slice nachlesen, statt das Tool mit höherem "
+            + "Limit erneut aufzurufen oder Ausgaben per Shell in Dateien umzuleiten.";
+
+    public static final String PERMISSIONS =" Was in DevTools erlaubt ist, immer über die permissions_*-Tools klären, "
             + "nicht durch Lesen von Konfigurationsdateien und nicht durch Ausweichen auf die Shell.";
 
+    /**
+     * Hinweis je Modul-ID. Mit {@link ContextSettings#shellHintsOnce} steht jeder Hinweis nur einmal in den
+     * Instructions statt in jeder Tool-Beschreibung (der Git-Hinweis allein steckt sonst in über 30 Beschreibungen).
+     */
+    static final java.util.Map<String, String> BY_MODULE = java.util.Map.ofEntries(
+            java.util.Map.entry("git", GIT), java.util.Map.entry("build", BUILD),
+            java.util.Map.entry("container", CONTAINER), java.util.Map.entry("sonar", SONAR),
+            java.util.Map.entry("maven", MAVEN), java.util.Map.entry("jvm", JVM), java.util.Map.entry("jfr", JFR),
+            java.util.Map.entry("asprof", ASPROF), java.util.Map.entry("visualvm", VISUALVM),
+            java.util.Map.entry("decompile", DECOMPILE), java.util.Map.entry("debug", DEBUG),
+            java.util.Map.entry("skills", SKILLS), java.util.Map.entry("memories", MEMORIES),
+            java.util.Map.entry("scripts", SCRIPTS), java.util.Map.entry("graph", GRAPH),
+            java.util.Map.entry("ticket", TICKET), java.util.Map.entry("pr", PR), java.util.Map.entry("ssh", SSH),
+            java.util.Map.entry("jdbc", JDBC), java.util.Map.entry("dolt", DOLT), java.util.Map.entry("chat", CHAT),
+            java.util.Map.entry("invocations", INVOCATIONS), java.util.Map.entry("share", SHARE),
+            java.util.Map.entry("mail", MAIL), java.util.Map.entry("projects", PROJECTS),
+            java.util.Map.entry("permissions", PERMISSIONS), java.util.Map.entry("context", CONTEXT));
+
     private ShellHints() {
+    }
+
+    /** Hinweis des Moduls ohne führendes Leerzeichen, {@code null} wenn es keinen gibt. */
+    public static String forModule(String moduleId) {
+        String h = BY_MODULE.get(moduleId);
+        return h == null ? null : h.strip();
+    }
+
+    /** Beschreibung ohne die Shell-Hinweise, die darin stehen. */
+    public static String strip(String description) {
+        if (description == null) {
+            return null;
+        }
+        String out = description;
+        for (String h : BY_MODULE.values()) {
+            if (out.contains(h)) {
+                out = out.replace(h, "");
+            }
+        }
+        return out;
     }
 }

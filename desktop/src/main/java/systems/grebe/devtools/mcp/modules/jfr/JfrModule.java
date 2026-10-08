@@ -51,6 +51,12 @@ public class JfrModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "jfr_record für eine feste Dauer, auswerten mit jfr_analyze und jfr_flamegraph – erste Wahl "
+                + "für CPU-, Allokations- und Lock-Analysen.";
+    }
+
+    @Override
     public int order() {
         return 220;
     }

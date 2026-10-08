@@ -59,6 +59,12 @@ public class ClassifyModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Vor größeren Aufgaben classify_task (für Tickets ticket_classify) und das empfohlene Modell "
+                + "für die Umsetzung verwenden.";
+    }
+
+    @Override
     public int order() {
         return 165;
     }

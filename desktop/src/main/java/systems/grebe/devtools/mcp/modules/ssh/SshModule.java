@@ -127,6 +127,12 @@ public class SshModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Konfigurierte Server über ssh_* (ssh_exec für einzelne Befehle, ssh_shell_* für Sitzungen); "
+                + "verändernde Befehle nur auf Anweisung, nie nach Passwörtern fragen (dafür ssh_sudo).";
+    }
+
+    @Override
     public int order() {
         return 170;
     }

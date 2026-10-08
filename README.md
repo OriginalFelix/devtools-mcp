@@ -1653,6 +1653,32 @@ gibt, den ersetzten Befehl („Statt `git status` in der Shell verwenden.“, �
 Ein Integrationstest prüft das für alle Tools; neue `@Tool`-Methoden brauchen `+ ShellHints.<MODUL>` am Ende der
 Beschreibung.
 
+### Kontext sparen (Modul `context`)
+
+Alles, was DevTools in den Kontext des LLM schreibt, kostet Tokens – in jeder weiteren Runde der Sitzung erneut. Das
+Modul „Kontext sparen“ (standardmäßig an) senkt das zentral für alle Module:
+
+| Maßnahme | Wo | Wirkung |
+|---|---|---|
+| **Ergebnis-Budget**: Ergebnisse über *Höchstlänge* (Standard 12.000 Zeichen ≈ 3.000 Tokens) gehen als Anfang + Ende an das LLM, dazwischen ein Hinweis mit Handle (`r12`); vollständig liegen sie im Speicher | `context/ResultBudget`, `ResultStore` | lange Logs, Diffs, Dumps kosten höchstens das Budget |
+| **Nachlesen** statt neu aufrufen: `context_slice(handle, grep=…)` (Treffer mit Zeilennummer und Umgebung) oder `from_line`/`to_line` | `context_slice` | nur die gebrauchte Stelle kommt in den Kontext |
+| **Zusammenfassen** mit einem kleinen Modell: `context_digest(handle, focus=…)` – per Sampling über den Client, sonst Claude API (Key im Modul, aus „Modellwahl“ oder `ANTHROPIC_API_KEY`) | `context/Digester` | Überblick über riesige Ausgaben für ein paar hundert Tokens |
+| **Aufräumen**: Terminal-Steuerzeichen, überschriebene Fortschrittszeilen; bei Logs und Befehlsausgaben zusätzlich Framework-Frames in Stacktraces (JUnit, Gradle, Reflection, Proxies …), gleiche Zeilen in Folge und Leerzeilen-Serien. Dateien, Diffs und Abfragen bleiben wortgetreu (Liste *Wortgetreu*) | `core/OutputCleaner` | Stacktraces oft auf ein Drittel |
+| **Schon gesehen**: liefert ein lesendes Tool (`@ToolHints(readOnly = true)`) in derselben Session mit denselben Argumenten dasselbe wie vor höchstens 10 Minuten, geht nur ein Verweis mit Handle raus | `ResultBudget` | wiederholte `git_status`/`git_log` fast kostenlos |
+| **Kompakte Instructions**: je Modul Überschrift plus Kurzfassung (`ToolModule#briefInstructions()`, sonst kurze Instructions ganz oder der erste Satz der Beschreibung); alles Weitere über `context_guide(module)` | `ServerInstructions` | ≈ 33.000 → 7.400 Zeichen je Sitzung |
+| **Shell-Hinweise nur einmal** (aus): die Grundregel je Modul steht dann einmal in den Instructions statt in jeder Tool-Beschreibung | `McpRuntime` | ≈ 39.000 Zeichen Tool-Definitionen weniger (alle Module an); nur für Clients, die Instructions übernehmen |
+| **Nur Such- und Aufruf-Tools** (aus): der Client sieht nur `context_*` (plus eine Liste), alle übrigen findet das LLM mit `context_find` und ruft sie mit `context_call` auf | `McpRuntime`, `context_call` | Tool-Definitionen von ≈ 170.000 auf wenige tausend Zeichen – für Clients, die alle Tools sofort laden |
+| **Stabile Tool-Liste**: ein Neuaufbau tauscht bei unveränderter Definition nur den Aufruf aus – keine `list_changed`-Meldung, der Prompt-Cache des Clients bleibt gültig | `McpRuntime` | weniger Cache-Misses |
+| **Code Mode**: `scripts_run` (Schalter im Modul Skripte, aus) führt ein Groovy-Programm aus, das Tools aufruft (`tools.git_status(repository: 'x')`) – nur Ausgabe und Rückgabewert kommen zurück | `scripts/ScriptRunTools` | viele Aufrufe mit langen Zwischenergebnissen → eine kurze Antwort |
+| **Fehler mit nächstem Schritt**: „nicht freigegeben“ nennt `permissions_check`, Zeitlimits den Rückruf-Weg | `core/ErrorHints` | weniger Fehlversuche |
+
+**Messen:** Der Reiter „Aufrufe“ zeigt je Aufruf die geschätzten Tokens (bei gekürzten Ergebnissen mit der
+Ursprungsgröße) und daneben die Summen je Tool, teuerste zuerst. `context_stats` liefert dasselbe dem LLM, dazu die
+Größe der Instructions und der angebotenen Tool-Definitionen. Geschätzt wird mit Zeichen / 4.
+
+Für eigene Module: `briefInstructions()` überschreiben (ein, zwei Sätze, was das LLM ohne Nachfrage wissen muss),
+lesende Tools mit `@ToolHints(readOnly = true)` markieren und lange Ausgaben ruhig liefern – gekürzt wird zentral.
+
 ## Eigenes Modul schreiben
 
 1. Tool-Klasse mit `@Tool`-Methoden (Spring AI). Rückgabe: kompakter Text für das LLM.

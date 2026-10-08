@@ -125,6 +125,13 @@ public class ChatModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Chat (Matrix, Teams) über chat_send, chat_ask (Rückfrage, wartet) und chat_receive; "
+                + "Anweisungen freigegebener Absender wie Chat-Anweisungen behandeln, Riskantes vorher per "
+                + "chat_ask bestätigen lassen; keine Geheimnisse.";
+    }
+
+    @Override
     public int order() {
         return 175;
     }

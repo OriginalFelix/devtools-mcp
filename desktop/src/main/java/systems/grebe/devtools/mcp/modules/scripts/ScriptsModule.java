@@ -24,6 +24,7 @@ public class ScriptsModule implements ToolModule {
 
     static final String ALLOW_WRITE = "allowWrite";
     static final String ALLOW_DELETE = "allowDelete";
+    static final String ALLOW_RUN = "allowRun";
     static final String TIMEOUT = "timeoutSeconds";
 
     /** Kurzreferenz für Skripte – für {@code scripts_view} ohne Namen und den Reiter „Referenz“ in der App. */
@@ -219,7 +220,19 @@ public class ScriptsModule implements ToolModule {
                 `// devtools: compileStatic`, damit Fehler schon beim Speichern auffallen – es wird dabei geprüft und sofort \
                 geladen. Ein Skript läuft mit allen Rechten der App: nur auf ausdrücklichen Wunsch des Nutzers \
                 anlegen oder ändern, keine Geheimnisse in den Quelltext schreiben (dafür `setting … SECRET`), \
-                `scripts_delete` nur auf ausdrücklichen Wunsch.""";
+                `scripts_delete` nur auf ausdrücklichen Wunsch.
+
+                Wenn `scripts_run` angeboten wird: Braucht eine Frage mehrere Tool-Aufrufe oder nur einen kleinen \
+                Teil eines langen Ergebnisses (zählen, filtern, über Repositories oder Container hinweg vergleichen), \
+                ein kurzes Groovy-Programm schicken statt die Tools einzeln aufzurufen – z.B. \
+                `tools.git_status(path: p).readLines().findAll { it.contains('modified') }.size()`. Nur Ausgabe und \
+                Rückgabewert kommen zurück.""";
+    }
+
+    @Override
+    public String briefInstructions() {
+        return "Eigene Tools als Skripte (scripts_list, scripts_view). Wenn scripts_run angeboten wird: mehrere "
+                + "Tool-Aufrufe als ein Groovy-Programm (tools.git_status(path: …)) – nur das Ergebnis kommt zurück.";
     }
 
     @Override
@@ -241,6 +254,11 @@ public class ScriptsModule implements ToolModule {
                                 + "damit beliebigen Code auf diesem Rechner ausführen. In der App geht Bearbeiten "
                                 + "immer."),
                 ConfigField.of(ALLOW_DELETE, "LLM darf Skripte löschen", FieldType.BOOLEAN).withDefault("false"),
+                ConfigField.of(ALLOW_RUN, "LLM darf Groovy-Code direkt ausführen (scripts_run)", FieldType.BOOLEAN)
+                        .withDefault("false")
+                        .withHelp("Code, der mehrere Tools aufruft und nur das Ergebnis zurückgibt – spart viele "
+                                + "Tokens bei Abfragen über mehrere Tools. Achtung: der Code läuft mit allen Rechten "
+                                + "der App, wie gespeicherte Skripte."),
                 ConfigField.of(TIMEOUT, "Zeitlimit je Tool-Aufruf (Sekunden)", FieldType.INT)
                         .withDefault(String.valueOf(ScriptManager.DEFAULT_TIMEOUT_SECONDS))
                         .withHelp("Danach wird das Skript unterbrochen (Schleifen prüfen das automatisch)."));
@@ -254,6 +272,11 @@ public class ScriptsModule implements ToolModule {
         }
         if (config.getBoolean(ALLOW_DELETE)) {
             tools.addAll(ToolBeans.callbacks(new ScriptDeleteTools(scripts)));
+        }
+        if (config.getBoolean(ALLOW_RUN)) {
+            java.time.Duration limit = java.time.Duration.ofSeconds(Math.max(1,
+                    config.getInt(TIMEOUT, ScriptManager.DEFAULT_TIMEOUT_SECONDS)));
+            tools.addAll(ToolBeans.callbacks(new ScriptRunTools(scripts.toolCaller(), () -> limit)));
         }
         return tools;
     }

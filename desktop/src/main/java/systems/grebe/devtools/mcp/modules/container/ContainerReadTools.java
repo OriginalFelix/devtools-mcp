@@ -12,8 +12,10 @@ import tools.jackson.databind.JsonNode;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.ToolHints;
 
 /** Lesende Container-Tools. */
+@ToolHints(readOnly = true, openWorld = false)
 public class ContainerReadTools {
 
     static final String RUNTIME = "Container-Laufzeit (z.B. docker, podman). Leer = Standard-Laufzeit.";

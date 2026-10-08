@@ -12,8 +12,10 @@ import systems.grebe.devtools.mcp.modules.java.JavaEnvironment;
 import systems.grebe.devtools.mcp.modules.java.JvmTarget;
 import systems.grebe.devtools.mcp.modules.java.LocalJvms;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.ToolHints;
 
 /** Lesende JVM-Diagnose. */
+@ToolHints(readOnly = true, openWorld = false)
 public class JvmTools {
 
     static final String TARGET = "Ziel-JVM: PID, eindeutiger Teil des Hauptklassen-/Jar-Namens, container:<name>[:<pid>] "

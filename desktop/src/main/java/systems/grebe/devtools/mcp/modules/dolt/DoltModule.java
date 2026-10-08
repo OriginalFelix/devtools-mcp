@@ -91,6 +91,12 @@ public class DoltModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Datenbank-Branches verknüpfter Dolt-Datenbanken stellt DevTools beim Git-Branch-Wechsel "
+                + "selbst um – nicht selbst umschalten; dolt_status zeigt den Stand.";
+    }
+
+    @Override
     public int order() {
         return 173;
     }

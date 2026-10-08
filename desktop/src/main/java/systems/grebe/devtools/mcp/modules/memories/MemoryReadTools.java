@@ -7,8 +7,10 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.api.MediaTypes;
 import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.ToolHints;
 
 /** Lesende Memory-Tools: suchen und laden. */
+@ToolHints(readOnly = true, openWorld = false)
 public class MemoryReadTools {
 
     static final String ID = "Nummer der Memory, z.B. 12 für #12";
