@@ -5,7 +5,6 @@ import java.awt.GraphicsEnvironment;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -34,6 +33,7 @@ import systems.grebe.devtools.mcp.core.ToolHints;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.core.UserConfirmation;
+import systems.grebe.devtools.mcp.core.ConfigChange;
 
 /**
  * E-Mail über IMAP (Angus Mail): Konten ganz oder nur einzelne Ordner (Postfächer) freigeben, Mails suchen und lesen,
@@ -263,11 +263,8 @@ public class MailModule implements ToolModule {
     @Override
     public List<ToolCallback> createTools(ModuleConfig config, ToolScope scope) {
         ScopeState state = scope.state(STATE, ScopeState::new);
-        synchronized (state) {
-            if (!config.rawValues().equals(state.lastValues)) {
-                state.sessions.close();
-                state.lastValues = config.rawValues();
-            }
+        if (state.config.changed(config)) {
+            state.sessions.close();
         }
         MailEnvironment env = new MailEnvironment(config, state.sessions, watcher, confirmation);
         int maxWait = Math.max(0, config.getInt(MAX_WAIT, 900));
@@ -292,7 +289,7 @@ public class MailModule implements ToolModule {
 
     private static final class ScopeState implements AutoCloseable {
         final MailEnvironment.Sessions sessions = new MailEnvironment.Sessions();
-        Map<String, String> lastValues;
+        final ConfigChange config = new ConfigChange();
 
         @Override
         public void close() {
