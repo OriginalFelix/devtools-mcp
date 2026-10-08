@@ -18,7 +18,7 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Unveränderliche Sicht auf die Konfigurationswerte eines Moduls, inkl. Defaults aus dem Schema. */
-public final class ModuleConfig {
+public final class ModuleConfig implements ConfigValues {
 
     private static final JsonMapper JSON = JsonMapper.shared();
 
@@ -35,6 +35,7 @@ public final class ModuleConfig {
     }
 
     /** Wert oder Default; leere Werte gelten als nicht gesetzt. */
+    @Override
     public Optional<String> get(String key) {
         String v = values.get(key);
         if (v != null && !v.isBlank()) {
@@ -47,32 +48,11 @@ public final class ModuleConfig {
         return Optional.empty();
     }
 
-    public String getString(String key, String fallback) {
-        return get(key).orElse(fallback);
-    }
-
     /** Pflichtwert; wirft mit einer für das LLM verständlichen Meldung, wenn er fehlt. */
     public String require(String key) {
         return get(key).orElseThrow(() -> new IllegalStateException(
                 "Konfiguration unvollständig: '" + label(key) + "' ist nicht gesetzt. "
                         + "Bitte in der DevTools-MCP-App unter Module konfigurieren."));
-    }
-
-    public boolean getBoolean(String key) {
-        return get(key).map(Boolean::parseBoolean).orElse(false);
-    }
-
-    public int getInt(String key, int fallback) {
-        try {
-            return get(key).map(Integer::parseInt).orElse(fallback);
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
-    }
-
-    /** Mehrzeiliger Wert als Liste (eine Zeile je Eintrag, leere Zeilen ignoriert). */
-    public List<String> getList(String key) {
-        return get(key).map(ModuleConfig::splitLines).orElse(List.of());
     }
 
     /**
