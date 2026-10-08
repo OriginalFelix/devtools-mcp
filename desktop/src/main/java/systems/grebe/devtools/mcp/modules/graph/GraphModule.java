@@ -100,7 +100,7 @@ public class GraphModule implements ToolModule {
                 `lines='von-bis'` – statt ganzer Dateien. Große Typen/Dateien kommen als Gliederung.
                 - `graph_explain`: alles zu einem Knoten; `graph_neighbors` (direction=in, relations=[calls]): wer ruft das \
                 auf (statt `grep` nach Aufrufstellen); `graph_path`: wie hängen zwei Stellen zusammen. Aufrufe über \
-                Interfaces und Oberklassen führen als INFERRED-Kanten bis in die Implementierungen. Aufrufe über \n                Interfaces und Oberklassen führen als INFERRED-Kanten bis in die Implementierungen.
+                Interfaces und Oberklassen führen als INFERRED-Kanten bis in die Implementierungen.
                 - Gibt es für das Projekt noch keinen Graphen (ausgecheckter Branch), bauen die Abfrage-Tools ihn beim ersten \
                 Aufruf automatisch und suchen dann – vorher kein `graph_build` nötig.
                 - `graph_build`: nach größeren Änderungen; baut nur neu, wenn sich Quelldateien geändert haben.
@@ -109,6 +109,13 @@ public class GraphModule implements ToolModule {
                 - `graph_cypher`: lesendes OpenCypher für alles, was die übrigen Tools nicht abdecken (nur Datenbank-Ablage).
                 Kanten sind als EXTRACTED (steht im Code), INFERRED (abgeleitet) oder AMBIGUOUS (mehrere Ziele) markiert – \
                 bei INFERRED/AMBIGUOUS die angegebene Zeile im Quelltext prüfen, bevor darauf eine Aussage beruht.""";
+    }
+
+    @Override
+    public String briefInstructions() {
+        return "In freigegebenen Java-Projekten IMMER zuerst den Code-Graphen (graph_files, graph_query, "
+                + "graph_find), dann mit graph_read nur die nötige Stelle lesen; grep, find oder ganze Dateien "
+                + "erst, wenn der Graph nichts liefert.";
     }
 
     @Override

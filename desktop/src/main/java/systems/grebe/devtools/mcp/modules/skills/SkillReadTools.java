@@ -7,8 +7,10 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.api.MediaTypes;
 import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.ToolHints;
 
 /** Lesende Skill-Tools: auflisten/suchen, laden, Historie. */
+@ToolHints(readOnly = true, openWorld = false)
 public class SkillReadTools {
 
     static final String NAME = "Skill-Name, z.B. 'ticket-review'";

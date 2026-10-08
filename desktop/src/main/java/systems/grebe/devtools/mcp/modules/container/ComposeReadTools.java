@@ -11,8 +11,10 @@ import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.Workspaces;
+import systems.grebe.devtools.mcp.core.ToolHints;
 
 /** Lesender Zugriff auf Compose-Projekte in freigegebenen Verzeichnissen. */
+@ToolHints(readOnly = true, openWorld = false)
 public class ComposeReadTools {
 
     static final String PROJECT = "Compose-Projekt (Ordnername aus compose_projects). Leer = einziges Projekt.";

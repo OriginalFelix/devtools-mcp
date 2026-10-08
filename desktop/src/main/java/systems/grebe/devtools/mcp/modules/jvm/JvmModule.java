@@ -53,6 +53,12 @@ public class JvmModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "jvm_processes zuerst (PIDs ändern sich nach jedem Neustart), dann jvm_info, jvm_threads, "
+                + "jvm_heap.";
+    }
+
+    @Override
     public int order() {
         return 210;
     }

@@ -91,6 +91,13 @@ public class MemoriesModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Vor Aufgaben zu Ticket, PR, Fehler oder bekanntem Thema memories_search; nach einer "
+                + "abgeschlossenen Aktion memories_save. Nennt der Server „Frühere Aktionen …“, diese Memory "
+                + "laden statt neu zu recherchieren.";
+    }
+
+    @Override
     public boolean enabledByDefault() {
         return true;
     }

@@ -70,6 +70,11 @@ public final class PluginToolModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return withLoader(delegate::briefInstructions);
+    }
+
+    @Override
     public List<ConfigField> configSchema() {
         return withLoader(delegate::configSchema);
     }

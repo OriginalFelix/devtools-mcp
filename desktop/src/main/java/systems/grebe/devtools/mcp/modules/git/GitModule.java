@@ -99,6 +99,13 @@ public class GitModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Alle Git-Aufgaben über git_* – auch kurze Fragen und wenn der Nutzer einen git-Befehl nennt; "
+                + "git_overview für den Einstieg. Unklares Repository: git_list_repositories, Name als "
+                + "repository übergeben.";
+    }
+
+    @Override
     public boolean enabledByDefault() {
         return true;
     }

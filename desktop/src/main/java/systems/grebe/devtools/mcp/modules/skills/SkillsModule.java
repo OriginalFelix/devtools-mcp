@@ -92,6 +92,13 @@ public class SkillsModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Vor jeder nicht trivialen Aufgabe skills_list mit 1–3 Stichworten und den passenden Skill "
+                + "laden und befolgen; nennt der Server einen Skill, ihn laden. Korrektur des Nutzers oder "
+                + "neuer Workaround → skills_patch.";
+    }
+
+    @Override
     public boolean enabledByDefault() {
         return true;
     }

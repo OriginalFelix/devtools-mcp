@@ -68,6 +68,12 @@ public class PermissionsModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Fehlt ein Tool oder meldet eines „nicht freigegeben“: permissions_check, dann bei Bedarf "
+                + "permissions_request – nie per Shell umgehen.";
+    }
+
+    @Override
     public boolean enabledByDefault() {
         return true;
     }

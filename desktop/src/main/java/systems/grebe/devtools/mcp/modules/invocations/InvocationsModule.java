@@ -59,6 +59,13 @@ public class InvocationsModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Auf lang laufende Aktionen per Rückruf warten statt zu pollen: "
+                + "memories_save(type=INVOCATION) und die ID als invocation übergeben; das Ergebnis kommt als "
+                + "<channel>-Nachricht.";
+    }
+
+    @Override
     public boolean enabledByDefault() {
         return true;
     }

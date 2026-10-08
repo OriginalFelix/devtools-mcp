@@ -172,6 +172,12 @@ public class JdbcModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Datenbanken über jdbc_*: vor dem SQL jdbc_describe, Werte als ?-Platzhalter mit params; "
+                + "ändern nur auf ausdrückliche Anweisung, nie nach Passwörtern fragen.";
+    }
+
+    @Override
     public int order() {
         return 172;
     }

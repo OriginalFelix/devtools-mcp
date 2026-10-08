@@ -95,6 +95,12 @@ public class PrModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Pull/Merge Requests über pr_* (Server und Repository aus dem Git-Remote); Schreiben und "
+                + "Mergen nur auf Anweisung, Ergebnis mit Link melden.";
+    }
+
+    @Override
     public int order() {
         return 165;
     }

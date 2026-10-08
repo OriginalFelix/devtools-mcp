@@ -26,6 +26,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import systems.grebe.devtools.mcp.core.TokenStats;
 import systems.grebe.devtools.mcp.core.ToolInvocation;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 
@@ -64,9 +65,11 @@ public class InvocationLogView extends BorderPane {
         table.getColumns().forEach(c -> c.setReorderable(false));
         table.getColumns().add(column("Tool", 200, ToolInvocation::toolName));
         table.getColumns().add(column("Dauer", 80, i -> i.duration().toMillis() + " ms"));
+        table.getColumns().add(column("≈Tokens", 110, InvocationLogView::tokens));
         table.getColumns().add(column("Argumente", 500, i -> oneLine(i.arguments())));
         table.getColumns().getFirst().setMaxWidth(90);
         table.getColumns().get(3).setMaxWidth(100);
+        table.getColumns().get(4).setMaxWidth(140);
 
         TextArea args = detailArea();
         TextArea result = detailArea();
@@ -95,8 +98,22 @@ public class InvocationLogView extends BorderPane {
         toolbar.setPadding(new Insets(10, 12, 10, 12));
         HBox.setHgrow(filter, Priority.SOMETIMES);
 
-        SplitPane details = new SplitPane(labeled("Argumente", args), labeled("Ergebnis", result));
-        details.setDividerPositions(0.35);
+        TableView<TokenStats.Entry> stats = statsTable();
+        Label total = new Label();
+        total.getStyleClass().add("section-title");
+        Runnable refreshStats = () -> {
+            stats.getItems().setAll(log.stats().snapshot());
+            TokenStats.Entry t = log.stats().total();
+            total.setText("Tokens je Tool – ≈" + fmt(t.sentTokens()) + " gesendet, ≈" + fmt(t.savedTokens())
+                    + " gespart");
+        };
+        refreshStats.run();
+        VBox statsBox = new VBox(4, total, stats);
+        statsBox.setPadding(new Insets(6, 8, 8, 8));
+        VBox.setVgrow(stats, Priority.ALWAYS);
+
+        SplitPane details = new SplitPane(labeled("Argumente", args), labeled("Ergebnis", result), statsBox);
+        details.setDividerPositions(0.3, 0.68);
         SplitPane main = new SplitPane(table, details);
         main.setOrientation(Orientation.VERTICAL);
         main.setDividerPositions(0.5);
@@ -109,8 +126,46 @@ public class InvocationLogView extends BorderPane {
             if (items.size() > MAX_ROWS) {
                 items.remove(MAX_ROWS, items.size());
             }
+            refreshStats.run();
         }));
-        log.addClearListener(() -> Platform.runLater(items::clear));
+        log.addClearListener(() -> Platform.runLater(() -> {
+            items.clear();
+            refreshStats.run();
+        }));
+    }
+
+    /** Summen je Tool, teuerste zuerst – woran sich Kürzen und Aufräumen lohnen. */
+    private static TableView<TokenStats.Entry> statsTable() {
+        TableView<TokenStats.Entry> t = new TableView<>();
+        t.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        t.setPlaceholder(new Label("Noch keine Aufrufe."));
+        t.getColumns().add(statColumn("Tool", 160, TokenStats.Entry::tool));
+        t.getColumns().add(statColumn("Aufrufe", 60, e -> fmt(e.calls())));
+        t.getColumns().add(statColumn("≈Tokens", 80, e -> fmt(e.sentTokens())));
+        t.getColumns().add(statColumn("Ø", 60, e -> fmt(e.sentTokens() / Math.max(1, e.calls()))));
+        t.getColumns().add(statColumn("gespart", 80, e -> fmt(e.savedTokens())));
+        return t;
+    }
+
+    private static TableColumn<TokenStats.Entry, String> statColumn(String title, double width,
+                                                                   java.util.function.Function<TokenStats.Entry, String> value) {
+        TableColumn<TokenStats.Entry, String> c = new TableColumn<>(title);
+        c.setPrefWidth(width);
+        c.setCellValueFactory(cd -> new ReadOnlyStringWrapper(value.apply(cd.getValue())));
+        c.setSortable(false);
+        c.setReorderable(false);
+        return c;
+    }
+
+    /** Gesendete Tokens, bei gekürzten Ergebnissen mit der ursprünglichen Größe. */
+    private static String tokens(ToolInvocation i) {
+        int sent = i.resultTokens();
+        int raw = TokenStats.estimate(i.rawChars());
+        return raw > sent + 10 ? fmt(sent) + " (von " + fmt(raw) + ")" : fmt(sent);
+    }
+
+    private static String fmt(long n) {
+        return String.format(java.util.Locale.GERMANY, "%,d", n);
     }
 
     private static TableColumn<ToolInvocation, String> column(String title, double width,

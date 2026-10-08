@@ -26,13 +26,29 @@ public class ToolInvocationLog {
     private final List<Consumer<ToolInvocation>> listeners = new CopyOnWriteArrayList<>();
     private final List<Runnable> clearListeners = new CopyOnWriteArrayList<>();
     private final AtomicLong ids = new AtomicLong();
+    private final TokenStats stats = new TokenStats();
 
     public ToolInvocation record(String moduleId, String tool, String args, String result,
                                  Duration duration, boolean success) {
+        int len = result == null ? 0 : result.length();
+        return record(moduleId, tool, args, result, len, duration, success, true);
+    }
+
+    /**
+     * @param rawChars Länge des Ergebnisses, wie das Tool es geliefert hat (vor Kürzen und Hinweisen)
+     * @param counted  ob das Ergebnis an das LLM ging und in die {@link #stats()} zählt – nicht bei Aufrufen aus
+     *                 einem anderen Tool heraus (Skripte, {@code context_call}), deren Ergebnis das äußere Tool liefert
+     */
+    public ToolInvocation record(String moduleId, String tool, String args, String result, int rawChars,
+                                 Duration duration, boolean success, boolean counted) {
         ToolScope scope = ToolScope.current();
+        int sent = result == null ? 0 : result.length();
         ToolInvocation inv = new ToolInvocation(ids.incrementAndGet(), Instant.now(), moduleId, tool,
                 truncate(args), truncate(result), duration, success, scope.userId().orElse(null),
-                scope.userName().orElse("lokal"));
+                scope.userName().orElse("lokal"), rawChars, sent);
+        if (counted) {
+            stats.add(tool, rawChars, sent);
+        }
         synchronized (entries) {
             entries.addFirst(inv);
             while (entries.size() > CAPACITY) {
@@ -57,10 +73,16 @@ public class ToolInvocationLog {
         }
     }
 
+    /** Tokens je Tool seit dem Start bzw. dem letzten {@link #clear()}. */
+    public TokenStats stats() {
+        return stats;
+    }
+
     public void clear() {
         synchronized (entries) {
             entries.clear();
         }
+        stats.clear();
         clearListeners.forEach(Runnable::run);
     }
 
