@@ -35,7 +35,7 @@ public final class GitCli {
         CommandRunner.Result res;
         try {
             res = CommandRunner.run(cmd, timeout, StandardCharsets.UTF_8, dir, NON_INTERACTIVE);
-        } catch (IllegalStateException e) {
+        } catch (CommandRunner.NotStartable e) {
             throw new IllegalStateException(what + ": git ist nicht installiert oder nicht im PATH – für Netzwerk-"
                     + "Operationen wird das installierte git benötigt. " + e.getMessage(), e);
         }

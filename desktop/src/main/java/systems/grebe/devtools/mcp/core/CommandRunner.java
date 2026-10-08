@@ -80,7 +80,7 @@ public final class CommandRunner {
         try {
             p = pb.start();
         } catch (IOException e) {
-            throw new IllegalStateException("Programm nicht startbar: " + command.getFirst() + " (" + e.getMessage() + ")", e);
+            throw new NotStartable("Programm nicht startbar: " + command.getFirst() + " (" + e.getMessage() + ")", e);
         }
         if (input != null || !env.isEmpty()) {
             try (var stdin = p.getOutputStream()) {
@@ -96,8 +96,7 @@ public final class CommandRunner {
         try {
             boolean finished = p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (!finished) {
-                p.descendants().forEach(ProcessHandle::destroyForcibly);
-                p.destroyForcibly();
+                kill(p);
                 p.waitFor(5, TimeUnit.SECONDS);
             }
             reader.join(Duration.ofSeconds(5));
@@ -107,10 +106,27 @@ public final class CommandRunner {
             }
             return new Result(command, finished ? p.exitValue() : -1, !finished, text);
         } catch (InterruptedException e) {
-            p.destroyForcibly();
+            kill(p);
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Abgebrochen", e);
         }
+    }
+
+    /**
+     * Das Programm ließ sich nicht starten (nicht installiert, nicht im PATH, keine Berechtigung). Unterscheidet sich
+     * damit vom Abbruch per Interrupt, der als gewöhnliche {@link IllegalStateException} ("Abgebrochen") ankommt –
+     * Aufrufer dürfen Letzteren nicht als "nicht installiert" melden.
+     */
+    public static final class NotStartable extends IllegalStateException {
+        NotStartable(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    /** Beendet den Prozess samt Kindern: Unter Windows laufen git/podman oft über Wrapper, deren Kinder sonst bleiben. */
+    private static void kill(Process p) {
+        p.descendants().forEach(ProcessHandle::destroyForcibly);
+        p.destroyForcibly();
     }
 
     public static Result runUtf8(List<String> command, Duration timeout) {
