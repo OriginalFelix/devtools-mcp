@@ -14,12 +14,16 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import systems.grebe.devtools.mcp.backend.memories.Memory;
 import systems.grebe.devtools.mcp.backend.skills.Skill;
 import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
 import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 import systems.grebe.devtools.mcp.modules.share.ShareMessages.FileItem;
+import systems.grebe.devtools.mcp.modules.share.ShareMessages.MemoryFile;
 import systems.grebe.devtools.mcp.modules.share.ShareMessages.MemoryItem;
 import systems.grebe.devtools.mcp.modules.share.ShareMessages.Offer;
 import systems.grebe.devtools.mcp.modules.share.ShareMessages.SkillFile;
@@ -35,6 +39,8 @@ import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 final class ShareTransfer {
 
     static final String TAG = "geteilt";
+    /** Nummer der gespeicherten Memory in der Antwort von {@code memories.save} („Memory #12 … gespeichert.“). */
+    private static final Pattern SAVED_ID = Pattern.compile("Memory #(\\d+)");
     private static final int MEMORY_MAX = Memory.CONTENT_COLUMN;
     private static final int SKILL_MAX = Skill.CONTENT_COLUMN;
 
@@ -69,7 +75,12 @@ final class ShareTransfer {
         for (Long id : distinct(memoryIds)) {
             MemoryViews.Entry e = memories.details(id).orElseThrow(() -> new IllegalArgumentException(
                     "Memory #" + id + " nicht gefunden – memories_search zeigt die Nummern."));
-            ms.add(new MemoryItem(e.title(), e.content(), e.project(), e.skill(), e.reference(), e.tags()));
+            List<MemoryFile> files = new ArrayList<>();
+            for (MemoryViews.File f : e.files()) {
+                files.add(new MemoryFile(f.path(), f.mediaType(), f.size(), base64("Datei '" + f.path()
+                        + "' von Memory #" + id, f.size(), s, tmp -> memories.exportFile(id, f.path(), tmp))));
+            }
+            ms.add(new MemoryItem(e.title(), e.content(), e.project(), e.skill(), e.reference(), e.tags(), files));
         }
         List<SkillItem> ks = new ArrayList<>();
         for (String name : distinct(skillNames)) {
@@ -79,7 +90,8 @@ final class ShareTransfer {
             List<SkillFile> files = new ArrayList<>();
             for (SkillViews.File f : d.files()) {
                 files.add(f.inline() ? new SkillFile(f.path(), f.content())
-                        : new SkillFile(f.path(), null, attachment(k.name(), f, s), f.mediaType()));
+                        : new SkillFile(f.path(), null, base64("Anhang '" + f.path() + "' von Skill '" + k.name()
+                        + "'", f.size(), s, tmp -> skills.exportFile(k.name(), f.path(), tmp)), f.mediaType()));
             }
             ks.add(new SkillItem(k.name(), k.description(), d.content(), k.category(), k.tags(), k.triggers(),
                     files));
@@ -111,19 +123,23 @@ final class ShareTransfer {
                 n, ms, ks, fs);
     }
 
-    /** Anhang eines Skills Base64-kodiert (die Größe des ganzen Angebots prüft der Broker beim Senden). */
-    private String attachment(String skill, SkillViews.File f, ShareBroker.Settings s) {
-        if (f.size() > s.maxBytes()) {
-            throw new IllegalArgumentException("Anhang '" + f.path() + "' von Skill '" + skill + "' ist zu groß ("
-                    + f.size() / 1024 + " KB, höchstens " + s.maxBytes() / 1024 + " KB je Angebot).");
+    /**
+     * Anhang aus der Dateiablage Base64-kodiert (die Größe des ganzen Angebots prüft der Broker beim Senden).
+     *
+     * @param export schreibt den Inhalt in die übergebene temporäre Datei
+     */
+    private static String base64(String what, long size, ShareBroker.Settings s, Consumer<Path> export) {
+        if (size > s.maxBytes()) {
+            throw new IllegalArgumentException(what + " ist zu groß (" + size / 1024 + " KB, höchstens "
+                    + s.maxBytes() / 1024 + " KB je Angebot).");
         }
         Path tmp = null;
         try {
             tmp = Files.createTempFile("devtools-share-", ".tmp");
-            skills.exportFile(skill, f.path(), tmp);
+            export.accept(tmp);
             return Base64.getEncoder().encodeToString(Files.readAllBytes(tmp));
         } catch (IOException e) {
-            throw new IllegalStateException("Anhang '" + f.path() + "' nicht lesbar: " + e.getMessage(), e);
+            throw new IllegalStateException(what + " nicht lesbar: " + e.getMessage(), e);
         } finally {
             deleteQuietly(tmp);
         }
@@ -209,7 +225,8 @@ final class ShareTransfer {
             sb.append("Notiz: ").append(shorten(o.note(), 600)).append('\n');
         }
         for (MemoryItem m : o.memories()) {
-            sb.append("Memory: ").append(m.title()).append('\n');
+            sb.append("Memory: ").append(m.title()).append(m.files().isEmpty() ? "" : " (+" + m.files().size()
+                    + " Dateien)").append('\n');
         }
         for (SkillItem k : o.skills()) {
             sb.append("Skill: ").append(k.name()).append(k.files().isEmpty() ? "" : " (+" + k.files().size()
@@ -236,9 +253,7 @@ final class ShareTransfer {
             if (!tags.contains(TAG)) {
                 tags.add(TAG);
             }
-            out.add(attempt("Memory „" + m.title() + "“", () -> memories.save(m.title(),
-                    fit(m.content() == null ? "" : m.content(), footer, MEMORY_MAX), MemoryViews.Type.TEMPORARY,
-                    m.project(), m.skill(), m.reference(), tags, MEMORY_MAX)));
+            out.add(attempt("Memory „" + m.title() + "“", () -> importMemory(m, footer, tags)));
         }
         for (SkillItem k : o.skills()) {
             out.add(attempt("Skill „" + k.name() + "“", () -> importSkill(o, k)));
@@ -247,6 +262,35 @@ final class ShareTransfer {
             out.add(attempt("Dateien", () -> importFiles(o)));
         }
         return String.join("\n", out);
+    }
+
+    private String importMemory(MemoryItem m, String footer, List<String> tags) throws IOException {
+        String result = memories.save(m.title(), fit(m.content() == null ? "" : m.content(), footer, MEMORY_MAX),
+                MemoryViews.Type.TEMPORARY, m.project(), m.skill(), m.reference(), tags, MEMORY_MAX);
+        if (m.files().isEmpty()) {
+            return result;
+        }
+        Matcher id = SAVED_ID.matcher(result);
+        if (!id.find()) {
+            return result + " Dateien nicht angehängt – Nummer der Memory unbekannt.";
+        }
+        long memory = Long.parseLong(id.group(1));
+        StringBuilder sb = new StringBuilder(result);
+        int attached = 0;
+        for (MemoryFile f : m.files()) {
+            Path tmp = Files.createTempFile("devtools-share-", ".tmp");
+            try {
+                Files.write(tmp, f.data() == null ? new byte[0] : Base64.getDecoder().decode(f.data()));
+                // die Memory ist temporär – dafür braucht es keine Freigabe für dauerhafte Memories
+                memories.attachFile(memory, f.path(), tmp, f.mediaType(), true);
+                attached++;
+            } catch (RuntimeException e) {
+                sb.append(" Datei '").append(f.path()).append("' FEHLER – ").append(e.getMessage());
+            } finally {
+                deleteQuietly(tmp);
+            }
+        }
+        return sb.append(attached > 0 ? " + " + attached + " Datei(en) angehängt." : "").toString();
     }
 
     private String importSkill(Offer o, SkillItem k) {

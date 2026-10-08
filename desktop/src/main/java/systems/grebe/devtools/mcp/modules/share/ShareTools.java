@@ -191,7 +191,10 @@ public class ShareTools {
             if (m.reference() != null) {
                 sb.append("Bezug: ").append(m.reference()).append('\n');
             }
-            sb.append(m.content()).append("\n\n");
+            sb.append(m.content()).append('\n');
+            m.files().forEach(f -> sb.append("Datei: ").append(f.path()).append(" (")
+                    .append(ShareTransfer.size(f.size())).append(")\n"));
+            sb.append('\n');
         }
         for (SkillItem k : o.skills()) {
             sb.append("## Skill: ").append(k.name()).append(" – ").append(k.description()).append('\n')

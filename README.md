@@ -1349,7 +1349,8 @@ im eingebetteten Backend](#mqtt-broker-für-die-kooperation)), alternativ einen 
 und nur mit **Zustimmung beider Nutzer**:
 
 1. **Nutzer 1 sendet.** `share_send(to, title, note, memories, skills, files, invocation)` packt eine Notiz (Stand,
-   Ergebnisse, offene Punkte), Memories (Nummern), Skills (mit Zusatzdateien) und Dateien zu einem Angebot. Bevor
+   Ergebnisse, offene Punkte), Memories (Nummern, mit angehängten Dateien), Skills (mit Zusatzdateien und Anhängen)
+   und Dateien zu einem Angebot; Anhänge zählen zur „Max. Größe je Angebot“. Bevor
    etwas den Rechner verlässt, bestätigt Nutzer 1 es selbst – im MCP-Client (Elicitation) oder per Dialog der App
    (*Rückfrage beim Senden und Annehmen*, `auto`/`client`/`app`). Mit `invocation` kommt die Antwort als Rückruf.
 2. **Die App von Nutzer 2 meldet es.** Das Angebot landet im Eingang (`share_inbox`, `share_view`) und geht als Rückruf
@@ -1357,7 +1358,7 @@ und nur mit **Zustimmung beider Nutzer**:
 3. **Nutzer 2 nimmt an.** `share_accept` fragt ihn ebenfalls selbst; alternativ in der App unter *Module → Kooperation
    → Aktionen → Annehmen/Ablehnen* (der Klick ist die Zustimmung). Übernommen wird so:
    * Notiz und Memories → **temporäre Memories** (Tag `geteilt`, mit Herkunftsvermerk) – dauerhaft macht sie der
-     Empfänger bei Bedarf selbst,
+     Empfänger bei Bedarf selbst; angehängte Dateien hängen wieder an der neuen Memory,
    * Skills → eigene Skills; gibt es den Namen schon, als `<name>-<absender>` – nie überschrieben,
    * Dateien → je Angebot ein eigener Ordner unter *Empfangene Dateien ablegen in* (Standard
      `~/.devtools-mcp/share-received`), nichts wird überschrieben.
