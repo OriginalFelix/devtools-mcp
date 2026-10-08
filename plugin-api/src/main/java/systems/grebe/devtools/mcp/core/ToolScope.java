@@ -31,7 +31,7 @@ public final class ToolScope implements AutoCloseable {
     /** Einzelplatz: der Benutzer am Rechner, Einstellungen aus {@code settings.json}. */
     public static final ToolScope LOCAL = new ToolScope("local", null, null, null, null, true);
 
-    private static final ThreadLocal<ToolScope> CURRENT = new ThreadLocal<>();
+    private static final ScopedValue<ToolScope> CURRENT = ScopedValue.newInstance();
 
     private final String id;
     private final String userId;
@@ -149,23 +149,12 @@ public final class ToolScope implements AutoCloseable {
 
     /** Scope des laufenden Tool-Aufrufs, außerhalb eines Aufrufs (UI, Aktionen) {@link #LOCAL}. */
     public static ToolScope current() {
-        ToolScope s = CURRENT.get();
-        return s == null ? LOCAL : s;
+        return CURRENT.orElse(LOCAL);
     }
 
     /** Führt {@code body} mit {@code scope} als {@link #current()} aus. */
     public static <T> T callIn(ToolScope scope, Supplier<T> body) {
-        ToolScope previous = CURRENT.get();
-        CURRENT.set(scope);
-        try {
-            return body.get();
-        } finally {
-            if (previous == null) {
-                CURRENT.remove();
-            } else {
-                CURRENT.set(previous);
-            }
-        }
+        return ScopedValue.where(CURRENT, scope).call(body::get);
     }
 
     @Override

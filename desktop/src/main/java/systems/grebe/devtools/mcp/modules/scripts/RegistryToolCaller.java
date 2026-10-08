@@ -27,7 +27,7 @@ final class RegistryToolCaller implements ToolCaller {
     static final int MAX_DEPTH = 5;
 
     private static final JsonMapper JSON = JsonMapper.shared();
-    private static final ThreadLocal<Integer> DEPTH = new ThreadLocal<>();
+    private static final ScopedValue<Integer> DEPTH = ScopedValue.newInstance();
 
     private final Supplier<ToolRegistry> registry;
 
@@ -49,21 +49,12 @@ final class RegistryToolCaller implements ToolCaller {
         ToolCallback tool = registry.get().activeTool(name).orElseThrow(() -> new IllegalArgumentException(
                 "Tool '" + name + "' gibt es nicht oder es ist abgeschaltet (Modul- oder Tool-Schalter in der App)."));
         String input = JSON.writeValueAsString(convert(name, tool.getToolDefinition().inputSchema(), args));
-        int depth = DEPTH.get() == null ? 0 : DEPTH.get();
+        int depth = DEPTH.orElse(0);
         if (depth >= MAX_DEPTH) {
             throw new IllegalStateException("Skripte rufen sich mehr als " + MAX_DEPTH + " Ebenen tief gegenseitig "
                     + "auf – ein Kreislauf? Zuletzt: " + name);
         }
-        DEPTH.set(depth + 1);
-        try {
-            return tool.call(input);
-        } finally {
-            if (depth == 0) {
-                DEPTH.remove();
-            } else {
-                DEPTH.set(depth);
-            }
-        }
+        return ScopedValue.where(DEPTH, depth + 1).call(() -> tool.call(input));
     }
 
     /** Text-Werte nach dem JSON-Schema des Tools in Zahl, Wahrheitswert, Liste oder Objekt umwandeln. */
