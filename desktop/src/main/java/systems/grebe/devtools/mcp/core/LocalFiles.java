@@ -3,10 +3,10 @@ package systems.grebe.devtools.mcp.core;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
 
 /**
  * Lokale Dateien, die ein Tool lesen oder schreiben darf: innerhalb der freigegebenen Verzeichnisse (Verzeichnisliste
@@ -104,11 +104,19 @@ public final class LocalFiles {
                 + " – weitere unter " + where + " oder mit permissions_request(path).");
     }
 
-    /** Der echte Pfad des nächsten vorhandenen Vorfahren muss in der Freigabe liegen (kein Ausweg über Symlinks). */
-    private static boolean realPathInside(Path target, Path root) {
+    /**
+     * Liegt {@code target} wirklich in {@code root}? Geprüft wird der echte Pfad (Symlinks, Junctions) des nächsten
+     * vorhandenen Vorfahren von {@code target} - ein Link in der Freigabe darf nicht aus ihr herausführen. Ein ins
+     * Leere zeigender Link zählt als vorhanden und scheitert, damit nichts außerhalb angelegt wird. Existiert die
+     * Freigabe selbst nicht, kann in ihr auch kein Link liegen.
+     */
+    public static boolean realPathInside(Path target, Path root) {
+        if (!Files.exists(root)) {
+            return true;
+        }
         try {
             Path existing = target;
-            while (existing != null && !Files.exists(existing)) {
+            while (existing != null && !Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
                 existing = existing.getParent();
             }
             return existing != null && existing.toRealPath().startsWith(root.toRealPath());
@@ -117,7 +125,16 @@ public final class LocalFiles {
         }
     }
 
+    /** {@code ~}, {@code ~/…} und {@code ~\…} stehen für das Benutzerverzeichnis; der Text wird getrimmt. */
+    public static String expandHome(String path) {
+        String p = path.trim();
+        if (p.equals("~") || p.startsWith("~/") || p.startsWith("~\\")) {
+            return System.getProperty("user.home") + p.substring(1);
+        }
+        return p;
+    }
+
     private static Path expand(String path) {
-        return Path.of(path.replaceFirst("^~(?=[/\\\\]|$)", Matcher.quoteReplacement(System.getProperty("user.home"))));
+        return Path.of(expandHome(path));
     }
 }

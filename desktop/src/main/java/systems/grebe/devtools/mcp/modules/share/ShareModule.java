@@ -22,6 +22,7 @@ import systems.grebe.devtools.mcp.core.UserConfirmation;
 import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
 import systems.grebe.devtools.mcp.modules.share.ShareState.Received;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
+import systems.grebe.devtools.mcp.core.LocalFiles;
 
 /**
  * Kooperation zwischen Claude-Instanzen auf verschiedenen Rechnern: Ein Nutzer bietet Kontext (Notiz), Memories,
@@ -183,9 +184,7 @@ public class ShareModule implements ToolModule {
             return Optional.empty();
         }
         try {
-            String s = raw.strip().replaceFirst("^~(?=[/\\\\]|$)",
-                    java.util.regex.Matcher.quoteReplacement(System.getProperty("user.home")));
-            return Optional.of(Path.of(s).toAbsolutePath().normalize());
+            return Optional.of(Path.of(LocalFiles.expandHome(raw)).toAbsolutePath().normalize());
         } catch (InvalidPathException e) {
             return Optional.empty();
         }

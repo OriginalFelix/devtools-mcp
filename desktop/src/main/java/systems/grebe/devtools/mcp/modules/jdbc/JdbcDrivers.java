@@ -23,6 +23,7 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import systems.grebe.devtools.mcp.core.ToolProgress;
+import systems.grebe.devtools.mcp.core.LocalFiles;
 
 /**
  * Lädt JDBC-Treiber – so, dass ohne Zutun des Nutzers fast jede Datenbank funktioniert:
@@ -142,7 +143,7 @@ final class JdbcDrivers {
             }
             Path p;
             try {
-                p = Path.of(raw.startsWith("~") ? System.getProperty("user.home") + raw.substring(1) : raw);
+                p = Path.of(LocalFiles.expandHome(raw));
             } catch (InvalidPathException e) {
                 throw new IllegalStateException("Verbindung '" + c.name() + "': ungültiger Treiber-Pfad " + raw);
             }

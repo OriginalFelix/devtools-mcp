@@ -31,6 +31,7 @@ import systems.grebe.devtools.mcp.modules.share.ShareMessages.SkillItem;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 import systems.grebe.devtools.mcp.core.Text;
+import systems.grebe.devtools.mcp.core.LocalFiles;
 
 /**
  * Packt Memories, Skills und Dateien dieser Instanz in ein Angebot und übernimmt ein angenommenes Angebot: Notiz und
@@ -167,8 +168,7 @@ final class ShareTransfer {
         }
         Path p;
         try {
-            p = Path.of(path.strip().replaceFirst("^~(?=[/\\\\]|$)",
-                    java.util.regex.Matcher.quoteReplacement(System.getProperty("user.home"))));
+            p = Path.of(LocalFiles.expandHome(path));
         } catch (InvalidPathException e) {
             throw new IllegalArgumentException("Ungültiger Pfad: " + path);
         }
@@ -181,20 +181,12 @@ final class ShareTransfer {
         }
         Path target = p.toAbsolutePath().normalize();
         for (Path root : sendRoots) {
-            if (target.startsWith(root) && realPathInside(target, root)) {
+            if (target.startsWith(root) && LocalFiles.realPathInside(target, root)) {
                 return target;
             }
         }
         throw new IllegalArgumentException("Datei " + target + " liegt nicht in einem freigegebenen Verzeichnis: "
                 + sendRoots);
-    }
-
-    private static boolean realPathInside(Path target, Path root) {
-        try {
-            return !Files.exists(target) || target.toRealPath().startsWith(root.toRealPath());
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     // ------------------------------------------------------------------ Rückfragen

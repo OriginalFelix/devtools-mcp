@@ -24,6 +24,7 @@ import com.jcraft.jsch.UIKeyboardInteractive;
 import com.jcraft.jsch.UserInfo;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolProgress;
+import systems.grebe.devtools.mcp.core.LocalFiles;
 
 /** Ausgewertete Konfiguration des SSH-Moduls: Verbindungen, Host-Key-Prüfung, Grenzen – und die Ausführung selbst. */
 final class SshEnvironment {
@@ -69,7 +70,7 @@ final class SshEnvironment {
         this.shellIdleMillis = Math.max(1, c.getInt(SshModule.SHELL_IDLE_MINUTES, 30)) * 60_000L;
         for (String dir : c.getList(SshModule.LOCAL_DIRS)) {
             try {
-                Path root = Path.of(expandHome(dir)).toAbsolutePath().normalize();
+                Path root = Path.of(LocalFiles.expandHome(dir)).toAbsolutePath().normalize();
                 if (Files.isDirectory(root)) {
                     localRoots.add(root);
                 }
@@ -88,7 +89,7 @@ final class SshEnvironment {
             }
         }
         String file = c.getString(SshModule.KNOWN_HOSTS, "");
-        this.knownHosts = file.isBlank() ? defaultKnownHosts : Path.of(expandHome(file));
+        this.knownHosts = file.isBlank() ? defaultKnownHosts : Path.of(LocalFiles.expandHome(file));
         this.acceptNewHostKeys = !"strict".equals(c.getString(SshModule.HOST_KEY_POLICY, "accept-new"));
         this.connectTimeout = Duration.ofSeconds(Math.max(3, c.getInt(SshModule.CONNECT_TIMEOUT, 15)));
         this.maxExecSeconds = Math.max(1, c.getInt(SshModule.MAX_EXEC_SECONDS, 300));
@@ -183,7 +184,7 @@ final class SshEnvironment {
         }
         Path p;
         try {
-            p = Path.of(expandHome(path));
+            p = Path.of(LocalFiles.expandHome(path));
         } catch (java.nio.file.InvalidPathException e) {
             throw new IllegalArgumentException("Ungültiger lokaler Pfad: " + path);
         }
@@ -196,23 +197,11 @@ final class SshEnvironment {
         }
         Path target = p.toAbsolutePath().normalize();
         for (Path root : localRoots) {
-            if (target.startsWith(root) && realPathInside(target, root)) {
+            if (target.startsWith(root) && LocalFiles.realPathInside(target, root)) {
                 return target;
             }
         }
         throw new IllegalArgumentException("Lokaler Pfad " + target + " ist nicht freigegeben. Freigegeben: " + localRoots);
-    }
-
-    private static boolean realPathInside(Path target, Path root) {
-        try {
-            Path existing = target;
-            while (existing != null && !Files.exists(existing)) {
-                existing = existing.getParent();
-            }
-            return existing != null && existing.toRealPath().startsWith(root.toRealPath());
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     int maxShells() {
@@ -236,7 +225,7 @@ final class SshEnvironment {
         JSch jsch = new JSch();
         jsch.setHostKeyRepository(new TofuHostKeys(hostKeyStores.open(knownHosts), acceptNewHostKeys));
         if (c.privateKey() != null) {
-            String keyFile = expandHome(c.privateKey());
+            String keyFile = LocalFiles.expandHome(c.privateKey());
             if (!Files.isRegularFile(Path.of(keyFile))) {
                 throw new IllegalStateException("Verbindung '" + c.name() + "': Schlüsseldatei nicht gefunden: " + keyFile);
             }
@@ -426,14 +415,6 @@ final class SshEnvironment {
 
     private static String suffix(String msg) {
         return msg.isBlank() ? "." : ": " + msg;
-    }
-
-    static String expandHome(String path) {
-        String p = path.trim();
-        if (p.equals("~") || p.startsWith("~/") || p.startsWith("~\\")) {
-            return System.getProperty("user.home") + p.substring(1);
-        }
-        return p;
     }
 
     // ------------------------------------------------------------------ intern
