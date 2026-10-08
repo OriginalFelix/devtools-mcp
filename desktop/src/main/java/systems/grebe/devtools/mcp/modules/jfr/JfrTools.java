@@ -45,7 +45,11 @@ public class JfrTools {
         try {
             Thread.sleep(secs * 1000L);
         } catch (InterruptedException ex) {
+            // Das Flag ist jetzt gelöscht – nur so lässt sich die Aufzeichnung noch stoppen (mit gesetztem Flag bricht
+            // jcmd sofort ab) und läuft nicht ohne Ende in der Ziel-JVM weiter.
+            safeStop(t, name);
             Thread.currentThread().interrupt();
+            throw new IllegalStateException("Abgebrochen – Aufzeichnung " + name + " wurde gestoppt.");
         }
         Path file;
         try {
