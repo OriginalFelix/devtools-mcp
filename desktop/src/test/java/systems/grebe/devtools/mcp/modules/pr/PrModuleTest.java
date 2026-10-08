@@ -114,6 +114,31 @@ class PrModuleTest {
     }
 
     @Test
+    void fullKeyWithoutProviderBeatsTheLocalRepositories() throws Exception {
+        Path a = repo("a", "git@github.com:octo/app.git");
+        Path b = repo("b", "https://felix@git.example.com/gitlab/grp/app.git");
+        String repos = String.join("\n", a.toString(), b.toString());
+
+        // mehrere Repositories ohne Standard, nur GitHub aktiv: der Schlüssel genügt
+        PrEnvironment gh = env(Map.of("github.enabled", "true", "repositories", repos));
+        assertThat(gh.target(null, null, null, "octo/app#12")).extracting(PrEnvironment.Target::providerId,
+                PrEnvironment.Target::project).containsExactly("github", "octo/app");
+        assertThat(gh.target(null, null, null, "octo/app#12").local()).isNull();
+        // kurze Schlüssel brauchen weiter ein Repository
+        assertThatThrownBy(() -> gh.target(null, null, null, "12")).hasMessageContaining("Mehrere");
+        // ausdrücklich genanntes Repository bleibt maßgeblich
+        assertThat(gh.target(null, "a", null, "12").project()).isEqualTo("octo/app");
+
+        // GitHub und GitLab aktiv: der Schlüssel gehört dem Server, der ihn lesen kann
+        PrEnvironment both = env(Map.of("github.enabled", "true", "gitlab.enabled", "true",
+                "gitlab.baseUrl", "https://git.example.com/gitlab", "repositories", repos));
+        assertThat(both.target(null, null, null, "grp/app!4")).extracting(PrEnvironment.Target::providerId,
+                PrEnvironment.Target::project).containsExactly("gitlab", "grp/app");
+        // owner/repo#12 versteht GitLab auch: uneindeutig, es bleibt beim bisherigen Verhalten
+        assertThatThrownBy(() -> both.target(null, null, null, "octo/app#12")).hasMessageContaining("Mehrere");
+    }
+
+    @Test
     void writeProjectsRestrictByRepositoryFromKey() {
         PrEnvironment env = env(Map.of("github.enabled", "true", "writeProjects", "github:octo/*\nother/one"));
         assertThat(env.writeAllowed("github", "octo/app")).isTrue();

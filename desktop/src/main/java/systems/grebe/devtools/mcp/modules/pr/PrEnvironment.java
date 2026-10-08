@@ -123,6 +123,14 @@ public final class PrEnvironment {
                 return new Target(entry, fromKey, null);
             }
         }
+        if (entry == null && !blank(pr) && blank(repository) && !pr.trim().matches("(?i)https?://.*")) {
+            // voller Schlüssel (owner/repo#12, gruppe/projekt!12) ohne provider: gehört er genau einem aktiven Server,
+            // entscheidet er – nicht das lokale Standard-Repository, dessen Remote zu einem anderen Server gehören kann
+            List<Entry> parsers = entries.values().stream().filter(e -> projectFromKey(e, pr) != null).toList();
+            if (parsers.size() == 1) {
+                return new Target(parsers.getFirst(), projectFromKey(parsers.getFirst(), pr), null);
+            }
+        }
         if (!blank(repository) || !repositories.isEmpty()) {
             LocalRepo local = local(repository);
             if (local.remoteUrl() == null) {
