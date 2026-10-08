@@ -2,7 +2,10 @@ package systems.grebe.devtools.mcp.modules.skills;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import systems.grebe.devtools.mcp.api.MediaTypes;
 
@@ -80,5 +83,37 @@ public final class SkillViews {
     /** Vollständiger Skill für die Detailansicht. */
     public record Details(Summary summary, String content, Instant createdAt, List<File> files,
                           List<Revision> revisions) {
+    }
+
+    // ------------------------------------------------------------------ Prüfer (vom Backend und der App gemeinsam genutzt)
+
+    public static final Pattern NAME = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
+    /** Verzeichnisse für Zusatzdateien eines Skills. */
+    public static final List<String> FILE_DIRS = List.of("references/", "templates/", "scripts/", "assets/");
+
+    /** Gültiger Skill-Name oder {@link IllegalArgumentException} - die App prüft vor einem Upload, nicht erst danach. */
+    public static String requireName(String name) {
+        String n = name == null ? "" : name.trim();
+        if (!NAME.matcher(n).matches()) {
+            throw new IllegalArgumentException("Ungültiger Skill-Name '" + n + "': Kleinbuchstaben, Ziffern, "
+                    + "'.', '_' und '-', beginnend mit Buchstabe/Ziffer, max. 64 Zeichen (z.B. 'wildfly-heap-leak').");
+        }
+        return n;
+    }
+
+    /** Relativer Pfad einer Zusatzdatei unter {@link #FILE_DIRS} ohne {@code ..}, höchstens 200 Zeichen. */
+    public static String normalizePath(String path) {
+        String p = path == null ? "" : path.trim().replace('\\', '/');
+        List<String> segments = new ArrayList<>(Arrays.asList(p.split("/")));
+        boolean valid = FILE_DIRS.stream().anyMatch(p::startsWith)
+                && segments.size() >= 2
+                && segments.stream().noneMatch(x -> x.isEmpty() || x.equals(".") || x.equals(".."))
+                && p.length() <= 200
+                && p.matches("[A-Za-z0-9._/-]+");
+        if (!valid) {
+            throw new IllegalArgumentException("Ungültiger Dateipfad '" + path + "': relativ, beginnend mit "
+                    + String.join(", ", FILE_DIRS) + " ohne '..' (z.B. 'references/api.md').");
+        }
+        return p;
     }
 }

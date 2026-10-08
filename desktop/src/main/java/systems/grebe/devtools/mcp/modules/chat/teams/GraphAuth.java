@@ -8,6 +8,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatVault;
@@ -38,6 +40,8 @@ final class GraphAuth {
     private String tenantId;
     private String pendingPrompt;
     private String lastError;
+    /** Die laufende Anmeldung (Device-Code-Flow), solange {@link #pendingPrompt} gilt; sonst {@code null}. */
+    private CompletableFuture<Void> running;
 
     GraphAuth(GraphHttp http, ChatVault vault, String authority, String tenant, String clientId) {
         this.http = http;
@@ -106,12 +110,24 @@ final class GraphAuth {
     /**
      * Device-Code-Flow: Code anfordern, Anweisung über {@code prompt} melden, dann im vorgegebenen Abstand abfragen,
      * bis der Nutzer im Browser bestätigt hat. Blockiert; ein Interrupt bricht ab. Die Sperre wird dabei nicht
-     * gehalten – andere Aufrufe laufen weiter.
+     * gehalten – andere Aufrufe laufen weiter. Läuft schon eine Anmeldung, schließt sich ein weiterer Aufruf ihr an
+     * (gleiche Adresse und gleicher Code, kein zweiter Abfrage-Zyklus) und endet mit ihr.
      */
     void login(Consumer<String> prompt) {
         if (clientId == null || clientId.isBlank()) {
             throw new IllegalStateException("Teams: 'Client-ID' fehlt – App-Registrierung in Entra ID anlegen und die "
                     + "Anwendungs-ID unter Module → Chat → Teams eintragen.");
+        }
+        CompletableFuture<Void> existing;
+        String existingPrompt;
+        synchronized (this) {
+            existing = running != null && !running.isDone() && pendingPrompt != null ? running : null;
+            existingPrompt = pendingPrompt;
+        }
+        if (existing != null) {
+            prompt.accept(existingPrompt);
+            awaitFlow(existing);
+            return;
         }
         JsonNode code;
         try {
@@ -128,14 +144,17 @@ final class GraphAuth {
         Instant deadline = Instant.now().plusSeconds(expiresIn);
         String text = "Im Browser " + uri + " öffnen und den Code " + userCode + " eingeben (gültig bis "
                 + LocalTime.ofInstant(deadline, ZoneId.systemDefault()).format(HHMM) + ").";
+        CompletableFuture<Void> mine = new CompletableFuture<>();
         synchronized (this) {
             pendingPrompt = text;
             lastError = null;
+            running = mine;
         }
-        prompt.accept(text);
         Map<String, String> form = Map.of("client_id", clientId, "grant_type", DEVICE_CODE_GRANT,
                 "device_code", code.path("device_code").asString(""));
+        RuntimeException failure = null;
         try {
+            prompt.accept(text);
             while (true) {
                 GraphHttp.sleep(interval * 1000);
                 if (Instant.now().isAfter(deadline)) {
@@ -160,14 +179,35 @@ final class GraphAuth {
                 }
             }
         } catch (RuntimeException e) {
+            failure = e;
             synchronized (this) {
                 lastError = e.getMessage();
             }
             throw e;
         } finally {
             synchronized (this) {
-                pendingPrompt = null;
+                if (running == mine) { // eine neuere Anmeldung hat den Zustand ggf. schon übernommen
+                    running = null;
+                    pendingPrompt = null;
+                }
             }
+            if (failure == null) {
+                mine.complete(null);
+            } else {
+                mine.completeExceptionally(failure);
+            }
+        }
+    }
+
+    /** Wartet auf eine laufende Anmeldung eines anderen Aufrufs und übernimmt ihr Ergebnis. */
+    private static void awaitFlow(CompletableFuture<Void> flow) {
+        try {
+            flow.get();
+        } catch (ExecutionException e) {
+            throw e.getCause() instanceof RuntimeException r ? r : new IllegalStateException(e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Abgebrochen", e);
         }
     }
 

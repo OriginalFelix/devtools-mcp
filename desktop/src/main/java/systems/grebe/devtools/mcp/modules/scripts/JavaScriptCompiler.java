@@ -192,6 +192,8 @@ public final class JavaScriptCompiler {
             main = loader.loadClass(mainName);
         } catch (ClassNotFoundException e) {
             throw new IllegalArgumentException("Klasse " + mainName + " nicht gefunden.");
+        } catch (LinkageError e) {
+            throw new IllegalArgumentException("Java-Skript '" + scriptName + "': " + describe(e, fileName));
         }
         if (!ToolModule.class.isAssignableFrom(main) || Modifier.isAbstract(main.getModifiers())) {
             throw new IllegalArgumentException("Die Klasse " + simpleName + " muss ToolModule implementieren "
@@ -210,16 +212,21 @@ public final class JavaScriptCompiler {
                     : describe(e, fileName)));
         }
         Compiled compiled = new Compiled(module, loader, scriptName, fileName);
-        String description;
         try {
-            description = compiled.description();
+            String description;
+            try {
+                description = compiled.description();
+            } catch (RuntimeException e) {
+                throw new IllegalArgumentException("Java-Skript '" + scriptName + "': description() wirft – "
+                        + describe(e, fileName));
+            }
+            if (description == null || description.isBlank()) {
+                throw new IllegalArgumentException("Java-Skript '" + scriptName + "': description() muss eine "
+                        + "Beschreibung liefern – sie erscheint in der Modulliste und beim LLM.");
+            }
         } catch (RuntimeException e) {
-            throw new IllegalArgumentException("Java-Skript '" + scriptName + "': description() wirft – "
-                    + describe(e, fileName));
-        }
-        if (description == null || description.isBlank()) {
-            throw new IllegalArgumentException("Java-Skript '" + scriptName + "': description() muss eine "
-                    + "Beschreibung liefern – sie erscheint in der Modulliste und beim LLM.");
+            compiled.close(); // das Modul ist schon gebaut und kann Threads oder Clients halten
+            throw e;
         }
         return compiled;
     }

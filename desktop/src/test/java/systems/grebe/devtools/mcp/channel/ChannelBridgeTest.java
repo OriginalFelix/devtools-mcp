@@ -230,6 +230,136 @@ class ChannelBridgeTest {
         }
     }
 
+    /**
+     * Scheitert die Erneuerung der Sitzung nach einem Neustart der App einmal, bleibt der Proxy nicht dauerhaft kaputt:
+     * Die nächste Anfrage löst mit der veralteten Sitzung wieder ein 404 aus und meldet sich neu an.
+     */
+    @Test
+    void proxyRecoversWhenTheSessionRenewalFailedOnce() throws Exception {
+        List<String> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.Set<String> valid = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        java.util.concurrent.atomic.AtomicInteger sessions = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicBoolean failNextInit = new java.util.concurrent.atomic.AtomicBoolean();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/mcp", ex -> {
+            String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String sid = ex.getRequestHeaders().getFirst("Mcp-Session-Id");
+            if ("GET".equals(ex.getRequestMethod()) || "DELETE".equals(ex.getRequestMethod())) {
+                ex.sendResponseHeaders(405, -1); // kein eigener Meldungsstrom
+                ex.close();
+                return;
+            }
+            JsonNode msg = JSON.readTree(body);
+            String method = msg.path("method").asString("");
+            seen.add(method + "@" + sid);
+            if (method.equals("initialize")) {
+                if (failNextInit.compareAndSet(true, false)) {
+                    ex.sendResponseHeaders(500, -1); // App startet noch
+                    ex.close();
+                    return;
+                }
+                String newSid = "s" + sessions.incrementAndGet();
+                valid.add(newSid);
+                ex.getResponseHeaders().add("Mcp-Session-Id", newSid);
+                json(ex, "{\"jsonrpc\":\"2.0\",\"id\":" + JSON.writeValueAsString(msg.get("id"))
+                        + ",\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},"
+                        + "\"serverInfo\":{\"name\":\"devtools-mcp\",\"version\":\"1\"}}}");
+            } else if (sid == null || !valid.contains(sid)) {
+                ex.sendResponseHeaders(sid == null ? 400 : 404, -1);
+                ex.close();
+            } else if (!msg.has("id")) {
+                ex.sendResponseHeaders(202, -1);
+                ex.close();
+            } else {
+                json(ex, "{\"jsonrpc\":\"2.0\",\"id\":" + JSON.writeValueAsString(msg.get("id"))
+                        + ",\"result\":{\"tools\":[{\"name\":\"git_status\"}]}}");
+            }
+        });
+        server.start();
+        PipedOutputStream stdinWriter = new PipedOutputStream();
+        BufferedReader stdin = new BufferedReader(new InputStreamReader(new PipedInputStream(stdinWriter),
+                StandardCharsets.UTF_8));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ChannelBridge bridge = new ChannelBridge(stdin, new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(OutputStream.nullOutputStream()),
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "", ChannelBridge.Mode.PROXY);
+        Thread t = Thread.ofVirtual().start(bridge::run);
+        try {
+            write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":"
+                    + "\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"cc\",\"version\":\"2\"}}}");
+            await(out, n -> n.path("id").asInt() == 1 && n.has("result"));
+            write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
+            write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
+            await(out, n -> n.path("id").asInt() == 2 && n.has("result"));
+
+            valid.clear(); // App neu gestartet, und die erste Anmeldung danach scheitert
+            failNextInit.set(true);
+            write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}");
+            JsonNode failed = await(out, n -> n.path("id").asInt() == 3);
+            assertThat(failed.path("error").path("message").asString()).contains("HTTP 500");
+
+            // früher blieb der Proxy hier ohne Sitzung kaputt (HTTP 400 für jede weitere Anfrage)
+            write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/list\"}");
+            JsonNode ok = await(out, n -> n.path("id").asInt() == 4);
+            assertThat(ok.path("result").path("tools").get(0).path("name").asString()).isEqualTo("git_status");
+            assertThat(seen).containsSubsequence("tools/list@s1", "initialize@null", "tools/list@s1", "initialize@null",
+                    "notifications/initialized@s2", "tools/list@s2");
+        } finally {
+            stdinWriter.close();
+            t.join(5000);
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void initializeAnswersWithAnErrorForWrongTokenAndForForeignServices() throws Exception {
+        for (int status : new int[]{401, 200}) {
+            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/mcp", ex -> {
+                ex.getRequestBody().readAllBytes();
+                if (status == 401) {
+                    byte[] b = "{\"error\":\"Unauthorized\"}".getBytes(StandardCharsets.UTF_8);
+                    ex.getResponseHeaders().add("Content-Type", "application/json");
+                    ex.sendResponseHeaders(401, b.length);
+                    try (OutputStream o = ex.getResponseBody()) {
+                        o.write(b);
+                    }
+                } else {
+                    byte[] b = "<html>Fehlerseite eines Proxys</html>".getBytes(StandardCharsets.UTF_8);
+                    ex.getResponseHeaders().add("Content-Type", "application/json");
+                    ex.sendResponseHeaders(200, b.length);
+                    try (OutputStream o = ex.getResponseBody()) {
+                        o.write(b);
+                    }
+                }
+            });
+            server.start();
+            PipedOutputStream stdinWriter = new PipedOutputStream();
+            BufferedReader stdin = new BufferedReader(new InputStreamReader(new PipedInputStream(stdinWriter),
+                    StandardCharsets.UTF_8));
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ChannelBridge bridge = new ChannelBridge(stdin, new PrintStream(out, true, StandardCharsets.UTF_8),
+                    new PrintStream(OutputStream.nullOutputStream()),
+                    URI.create("http://127.0.0.1:" + server.getAddress().getPort()), "falsch", ChannelBridge.Mode.PROXY);
+            Thread t = Thread.ofVirtual().start(bridge::run);
+            try {
+                write(stdinWriter, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
+                JsonNode reply = await(out, n -> n.path("id").asInt() == 1);
+                String message = reply.path("error").path("message").asString();
+                if (status == 401) {
+                    assertThat(message).contains("HTTP 401", "Zugriffstoken falsch");
+                } else {
+                    assertThat(message).contains("unerwartete Antwort auf initialize");
+                }
+                assertThat(t.isAlive()).isTrue(); // der Prozess läuft weiter, statt an der Ausnahme zu enden
+            } finally {
+                stdinWriter.close();
+                t.join(5000);
+                server.stop(0);
+            }
+        }
+    }
+
     private static void json(com.sun.net.httpserver.HttpExchange ex, String body) throws java.io.IOException {
         byte[] b = body.getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().add("Content-Type", "application/json");

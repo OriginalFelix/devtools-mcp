@@ -130,7 +130,9 @@ public class BackendMemories implements MemoryBackend {
     /** Inhalt über {@code /blobs} hochladen, dann per GraphQL anhängen. */
     @Override
     public String attachFile(long id, String filePath, Path source, String mediaType, boolean temporaryOnly) {
-        String path = filePath == null || filePath.isBlank() ? fileName(source) : filePath;
+        // Pfad vor dem Upload prüfen und wie im Backend aus dem Dateinamen ableiten (inkl. Kürzung auf 200 Zeichen)
+        String path = filePath == null || filePath.isBlank() ? MemoryViews.fileName(source)
+                : MemoryViews.normalizeFilePath(filePath);
         String blob = files.upload(source);
         return text("""
                 mutation($id: Int!, $file: String!, $blob: String!, $type: String, $tempOnly: Boolean) { \
@@ -166,13 +168,6 @@ public class BackendMemories implements MemoryBackend {
         files.download(f.blob(), target);
         return "'" + f.path() + "' aus Memory #" + id + " gespeichert: " + target + " (" + f.mediaType() + ", "
                 + MediaTypes.size(f.size()) + ").";
-    }
-
-    /** Dateiname als Pfad in der Memory (wie im Backend); unzulässige Zeichen werden zu {@code _}. */
-    static String fileName(Path source) {
-        String n = source.getFileName() == null ? "" : source.getFileName().toString();
-        n = n.replaceAll("[^A-Za-z0-9._-]", "_");
-        return n.isEmpty() || n.chars().allMatch(c -> c == '.') ? "datei" : n;
     }
 
     private static String name(MemoryViews.Type type) {

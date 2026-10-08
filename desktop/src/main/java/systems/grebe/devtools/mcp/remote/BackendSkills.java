@@ -143,6 +143,9 @@ public class BackendSkills implements SkillBackend {
     /** Inhalt über {@code /blobs} hochladen, dann per GraphQL anhängen. */
     @Override
     public String attachFile(String name, String filePath, Path source, String mediaType, String note) {
+        // Name und Pfad vor dem Upload prüfen: Sonst läge ein großer Inhalt nach der Ablehnung bis zum BlobJanitor herum
+        SkillViews.requireName(name);
+        SkillViews.normalizePath(filePath);
         String blob = files.upload(source);
         return text("""
                 mutation($name: String!, $file: String!, $blob: String!, $type: String, $note: String) { \

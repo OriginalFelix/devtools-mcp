@@ -113,7 +113,7 @@ public final class ChannelBridge {
         this.out = out;
         this.log = log;
         String b = base.toString().replaceAll("/+$", "");
-        this.mcp = URI.create(b + "/mcp");
+        this.mcp = URI.create(b + ServerSettings.MCP_PATH);
         this.events = URI.create(b + ChannelEventsController.PATH);
         this.token = token == null ? "" : token;
         this.mode = mode;
@@ -133,11 +133,11 @@ public final class ChannelBridge {
         if (url == null || token == null) {
             try {
                 ServerSettings s = new SettingsStore(SettingsStore.defaultHome()).server();
-                url = url == null ? "http://127.0.0.1:" + s.port() : url;
+                url = url == null ? ServerSettings.localUrl(s.port()) : url;
                 token = token == null ? s.authToken() : token;
             } catch (RuntimeException e) {
                 System.err.println("DevTools-Einstellungen nicht lesbar (" + e.getMessage() + ") – --url/--token angeben.");
-                url = url == null ? "http://127.0.0.1:" + ServerSettings.DEFAULT_PORT : url;
+                url = url == null ? ServerSettings.localUrl(ServerSettings.DEFAULT_PORT) : url;
             }
         }
         BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
@@ -304,15 +304,23 @@ public final class ChannelBridge {
         req.put("id", "devtools-proxy-init-" + internalIds.incrementAndGet());
         req.put("method", "initialize");
         req.set("params", params);
-        sessionId = null;
-        HttpResponse<Stream<String>> res = post(req);
+        // Die alte Sitzungs-ID bleibt gemerkt (nur initialize geht ohne sie hinaus): Scheitert die Erneuerung, löst die
+        // nächste Anfrage mit der veralteten ID wieder ein 404 und damit einen neuen Versuch aus.
+        HttpResponse<Stream<String>> res = post(req, false);
+        if (res.statusCode() >= 400) {
+            throw new ProxyException(-32603, httpError(res.statusCode(), text(res)));
+        }
         String sid = res.headers().firstValue("Mcp-Session-Id").orElse(null);
         JsonNode[] answer = new JsonNode[1];
-        consume(res, m -> {
-            if (m.has("result") || m.has("error")) {
-                answer[0] = m;
-            }
-        });
+        try {
+            consume(res, m -> {
+                if (m.has("result") || m.has("error")) {
+                    answer[0] = m;
+                }
+            });
+        } catch (RuntimeException e) { // z.B. HTML einer Fehlerseite oder ein fremder Dienst auf dem Port
+            throw new ProxyException(-32603, "DevTools-App: unerwartete Antwort auf initialize (" + mcp + ").");
+        }
         if (answer[0] == null) {
             throw new ProxyException(-32603, "DevTools-App: keine Antwort auf initialize.");
         }
@@ -360,17 +368,16 @@ public final class ChannelBridge {
             String sid = sessionId;
             try {
                 HttpResponse<Stream<String>> res = post(msg);
-                if (res.statusCode() == 404 && sid != null && attempt == 0) {
-                    discard(res);
+                if (attempt == 0 && (res.statusCode() == 404 && sid != null
+                        || sid == null && initParams != null && (res.statusCode() == 404 || res.statusCode() == 400))) {
+                    discard(res); // Sitzung unbekannt (App neu gestartet) oder nach gescheiterter Erneuerung ohne Sitzung
                     renewSession(sid);
                     continue;
                 }
                 if (res.statusCode() >= 400) {
                     String body = text(res);
                     if (request) {
-                        send(error(id, -32603, "DevTools-App: HTTP " + res.statusCode()
-                                + (res.statusCode() == 401 ? " – Zugriffstoken falsch (--token bzw. Einstellungen)" : "")
-                                + (body.isBlank() ? "" : " – " + body)));
+                        send(error(id, -32603, httpError(res.statusCode(), body)));
                     } else {
                         log.println("DevTools-App lehnt " + msg.path("method").asString("Antwort") + " ab: HTTP "
                                 + res.statusCode());
@@ -408,7 +415,21 @@ public final class ChannelBridge {
         while (!stopped) {
             String sid = sessionId;
             if (sid == null) {
-                sleep(500);
+                if (initParams != null) { // Erneuerung war gescheitert: mit Backoff weiter versuchen
+                    try {
+                        renewSession(null);
+                        backoff = 1000;
+                        continue;
+                    } catch (IOException | RuntimeException e) {
+                        if (!stopped) {
+                            log.println("Neue Sitzung bei der DevTools-App gescheitert: " + describe(e));
+                        }
+                    }
+                    sleep(backoff);
+                    backoff = Math.min(MAX_BACKOFF.toMillis(), backoff * 2);
+                } else {
+                    sleep(500);
+                }
                 continue;
             }
             try {
@@ -473,7 +494,12 @@ public final class ChannelBridge {
     }
 
     private HttpResponse<Stream<String>> post(JsonNode msg) throws IOException {
-        HttpRequest req = request(mcp).header("Content-Type", "application/json")
+        return post(msg, true);
+    }
+
+    /** @param withSession {@code false} für {@code initialize}: eine neue Sitzung beginnt ohne die alte ID */
+    private HttpResponse<Stream<String>> post(JsonNode msg, boolean withSession) throws IOException {
+        HttpRequest req = request(mcp, withSession).header("Content-Type", "application/json")
                 .header("Accept", "application/json, text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(msg), StandardCharsets.UTF_8))
                 .build();
@@ -486,11 +512,15 @@ public final class ChannelBridge {
     }
 
     private HttpRequest.Builder request(URI uri) {
+        return request(uri, true);
+    }
+
+    private HttpRequest.Builder request(URI uri, boolean withSession) {
         HttpRequest.Builder b = HttpRequest.newBuilder(uri);
         if (!token.isBlank()) {
             b.header("Authorization", "Bearer " + token);
         }
-        String sid = sessionId;
+        String sid = withSession ? sessionId : null;
         if (sid != null) {
             b.header("Mcp-Session-Id", sid);
         }
@@ -527,6 +557,13 @@ public final class ChannelBridge {
 
     private static void discard(HttpResponse<Stream<String>> res) {
         res.body().close();
+    }
+
+    /** Meldung für einen HTTP-Fehler der App (mit Hinweis bei falschem Zugriffstoken). */
+    private static String httpError(int status, String body) {
+        return "DevTools-App: HTTP " + status
+                + (status == 401 ? " – Zugriffstoken falsch (--token bzw. Einstellungen)" : "")
+                + (body.isBlank() ? "" : " – " + body);
     }
 
     private static String text(HttpResponse<Stream<String>> res) {

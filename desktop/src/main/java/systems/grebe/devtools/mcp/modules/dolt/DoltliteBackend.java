@@ -110,7 +110,7 @@ final class DoltliteBackend implements DoltBackend {
         try {
             r = CommandRunner.run(List.of(program, "-bail", "-json", file.toString()), timeout, StandardCharsets.UTF_8,
                     null, Map.of(), sql + ";\n");
-        } catch (IllegalStateException e) {
+        } catch (CommandRunner.NotStartable e) {
             throw new IllegalStateException("Datenbank '" + db.name() + "': Programm '" + program + "' nicht startbar – "
                     + "doltlite installieren (github.com/dolthub/doltlite/releases) und im Modul den Pfad eintragen "
                     + "oder in den PATH legen.", e);

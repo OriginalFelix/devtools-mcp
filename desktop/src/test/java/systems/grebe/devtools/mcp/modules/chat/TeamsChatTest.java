@@ -164,6 +164,27 @@ class TeamsChatTest {
     }
 
     @Test
+    void receiveFollowsNextLinksAndReportsWhatDidNotFit() {
+        AtomicInteger pages = new AtomicInteger();
+        String base = hs.url() + "/v1.0/chats/" + enc(CHAT) + "/messages";
+        hs.on(CHAT_PATH + "/messages", r -> {
+            int page = Integer.parseInt(r.query().getOrDefault("page", "1"));
+            pages.incrementAndGet();
+            String m = message("179000000010" + page, "2026-10-04T10:00:0" + (page + 1) + "Z", "anna-id", "Anna",
+                    "Nachricht " + page);
+            return HttpStub.Reply.json("{\"value\":[" + m + "],\"@odata.nextLink\":\"" + base + "?page=" + (page + 1)
+                    + "\"}");
+        });
+        preview.set("2026-10-04T10:00:09Z");
+
+        String out = tools(values()).receive(null, null, null, null);
+
+        assertThat(pages).hasValue(4); // MAX_MESSAGE_PAGES, dann Schluss
+        assertThat(out).contains("Nachricht 1", "Nachricht 4", "kamen mehr Nachrichten als ein Abruf fasst",
+                "chat_history").doesNotContain("Nachricht 5");
+    }
+
+    @Test
     void ownMessagesAreRecognizedByIdAndTypedOnesCountAsUser() {
         ChatTools t = tools(values());
         t.receive(null, null, null, null); // Startpunkt
@@ -236,6 +257,32 @@ class TeamsChatTest {
         assertThat(hs.last(TOKEN).form()).containsEntry("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
                 .containsEntry("device_code", "dc");
         assertThat(new ChatTools(env).conversations(null)).contains("Felix Grebe <felix@firma.de>", CHAT, "„Build“");
+    }
+
+    @Test
+    void repeatedLoginJoinsTheRunningDeviceCodeFlow() throws Exception {
+        state.vault().put("teams|" + hs.url() + "|organizations|client-1", null);
+        hs.on("/organizations/oauth2/v2.0/devicecode", "{\"device_code\":\"dc\",\"user_code\":\"ABCD-EFGH\","
+                + "\"verification_uri\":\"https://microsoft.com/devicelogin\",\"expires_in\":900,\"interval\":1}");
+        AtomicInteger polls = new AtomicInteger();
+        hs.on(TOKEN, r -> polls.incrementAndGet() < 3
+                ? new HttpStub.Reply(400, "{\"error\":\"authorization_pending\",\"error_description\":\"warte\"}")
+                : HttpStub.Reply.json("{\"access_token\":\"at9\",\"refresh_token\":\"rt9\",\"expires_in\":3600}"));
+        ChatEnvironment env = env(values());
+
+        String first = new ChatModule.LoginTools(env).login(null);
+        // der LLM ruft chat_login erneut auf (oder der Nutzer klickt „Anmelden“): dieselbe Anmeldung, kein neuer Code
+        String second = new ChatModule.LoginTools(env).login(null);
+
+        assertThat(second).contains("ABCD-EFGH");
+        assertThat(first).contains("ABCD-EFGH");
+        assertThat(hs.all("/organizations/oauth2/v2.0/devicecode")).hasSize(1);
+        for (int i = 0; i < 80 && state.vault().get("teams|" + hs.url() + "|organizations|client-1").isEmpty(); i++) {
+            Thread.sleep(100);
+        }
+        assertThat(state.vault().get("teams|" + hs.url() + "|organizations|client-1")).contains("rt9");
+        Thread.sleep(1500); // ein zweiter Abfrage-Zyklus hätte inzwischen weitere Token-Anfragen gestellt
+        assertThat(polls.get()).isEqualTo(3);
     }
 
     @Test

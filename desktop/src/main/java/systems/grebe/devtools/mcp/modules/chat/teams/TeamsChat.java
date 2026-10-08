@@ -38,6 +38,8 @@ final class TeamsChat implements ChatSystem {
     static final int MAX_CONTENT = 28_000;
     static final int MIN_POLL_SECONDS = 10;
     static final int MAX_CHAT_PAGES = 4;
+    /** Seiten à 50 geänderter Nachrichten je Chat und Abruf; was darüber hinausgeht, meldet der Abruf als fehlend. */
+    static final int MAX_MESSAGE_PAGES = 4;
 
     private final ChatSettings settings;
     private final GraphHttp http;
@@ -366,16 +368,17 @@ final class TeamsChat implements ChatSystem {
         Cursor current = Cursor.parse(cursor);
         while (true) {
             List<Message> messages = new ArrayList<>();
-            current = pollOnce(current, messages);
+            List<String> notices = new ArrayList<>();
+            current = pollOnce(current, messages, notices);
             long left = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
-            if (!messages.isEmpty() || pollSeconds <= 0 || left <= 0) {
-                return new Poll(messages, List.of(), current.format());
+            if (!messages.isEmpty() || !notices.isEmpty() || pollSeconds <= 0 || left <= 0) {
+                return new Poll(messages, notices, current.format());
             }
             GraphHttp.sleep(Math.min(left, pollSeconds * 1000L));
         }
     }
 
-    private Cursor pollOnce(Cursor cursor, List<Message> out) {
+    private Cursor pollOnce(Cursor cursor, List<Message> out, List<String> notices) {
         String myId = me().path("id").asString("");
         JsonNode res = get("/me/chats?$expand=lastMessagePreview&$top=50"
                 + "&$orderby=" + enc("lastMessagePreview/createdDateTime desc"));
@@ -404,10 +407,14 @@ final class TeamsChat implements ChatSystem {
                 }
             }
             if (last.isAfter(since)) {
-                List<Message> fresh = messagesSince(chatId, since, myId);
-                out.addAll(fresh);
-                Instant newest = fresh.stream().map(m -> Instant.ofEpochMilli(m.timestamp())).max(Comparator.naturalOrder())
-                        .orElse(since);
+                Fresh fresh = messagesSince(chatId, since, myId);
+                out.addAll(fresh.messages());
+                if (fresh.truncated()) { // wie bei Matrix (timeline.limited): nicht still verwerfen
+                    notices.add("In " + label(chatId) + " kamen mehr Nachrichten als ein Abruf fasst – ältere fehlen "
+                            + "hier, siehe chat_history.");
+                }
+                Instant newest = fresh.messages().stream().map(m -> Instant.ofEpochMilli(m.timestamp()))
+                        .max(Comparator.naturalOrder()).orElse(since);
                 since = newest.isAfter(since) ? newest : last;
             }
             seen.put(chatId, since);
@@ -415,25 +422,41 @@ final class TeamsChat implements ChatSystem {
         return new Cursor(cursor == null && newWatermark.equals(Instant.EPOCH) ? Instant.now() : newWatermark, seen);
     }
 
-    /** Neue Nachrichten eines Chats nach {@code since}, älteste zuerst. */
-    private List<Message> messagesSince(String chatId, Instant since, String myId) {
-        JsonNode res = get("/chats/" + enc(chatId) + "/messages?$top=50"
+    /** @param truncated es gab noch mehr geänderte Nachrichten als die {@value #MAX_MESSAGE_PAGES} Seiten fassen */
+    private record Fresh(List<Message> messages, boolean truncated) {
+    }
+
+    /**
+     * Neue Nachrichten eines Chats nach {@code since}, älteste zuerst. Die neuesten zuerst, über {@code @odata.nextLink}
+     * höchstens {@value #MAX_MESSAGE_PAGES} Seiten; bleibt danach noch ein Link, fehlen ältere Nachrichten.
+     */
+    private Fresh messagesSince(String chatId, Instant since, String myId) {
+        String next = graph + "/chats/" + enc(chatId) + "/messages?$top=50"
                 + "&$orderby=" + enc("lastModifiedDateTime desc")
-                + "&$filter=" + enc("lastModifiedDateTime gt " + since));
+                + "&$filter=" + enc("lastModifiedDateTime gt " + since);
         List<Message> out = new ArrayList<>();
-        for (JsonNode m : res.path("value")) {
-            Instant created = instant(m.path("createdDateTime").asString(null));
-            // geänderte (bearbeitet, Reaktion) ältere Nachrichten sind nicht neu
-            if (created == null || !created.isAfter(since)) {
-                continue;
+        boolean truncated = false;
+        for (int page = 0; next != null; page++) {
+            if (page >= MAX_MESSAGE_PAGES) {
+                truncated = true;
+                break;
             }
-            Message msg = message(chatId, m, myId);
-            if (msg != null) {
-                out.add(msg);
+            JsonNode res = http.graph("GET", next, null, auth::accessToken, auth::invalidate);
+            for (JsonNode m : res.path("value")) {
+                Instant created = instant(m.path("createdDateTime").asString(null));
+                // geänderte (bearbeitet, Reaktion) ältere Nachrichten sind nicht neu
+                if (created == null || !created.isAfter(since)) {
+                    continue;
+                }
+                Message msg = message(chatId, m, myId);
+                if (msg != null) {
+                    out.add(msg);
+                }
             }
+            next = res.path("@odata.nextLink").asString(null);
         }
         out.sort(Comparator.comparingLong(Message::timestamp));
-        return out;
+        return new Fresh(out, truncated);
     }
 
     @Override

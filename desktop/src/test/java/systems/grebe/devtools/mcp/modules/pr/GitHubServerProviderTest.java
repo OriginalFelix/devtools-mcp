@@ -55,6 +55,21 @@ class GitHubServerProviderTest {
     }
 
     @Test
+    void authorMeNeedsATokenAndTheLoginIsFetchedOnlyOnce() {
+        gh.on("/user", "{\"login\":\"anna\"}");
+        gh.on("/repos/octo/app/pulls", "[" + pr(1, "open", null, "a") + "]");
+        PrTools tools = new PrTools(env(Map.of()));
+
+        assertThat(tools.list("open", "me", null, null, null, null, "octo/app", null)).contains("octo/app#1");
+        tools.list("open", "me", null, null, null, null, "octo/app", null);
+        assertThat(gh.requests).filteredOn(r -> r.path().equals("/user")).hasSize(1);
+
+        // ohne Token: klare Meldung statt einer stillen Liste mit 0 Treffern
+        assertThatThrownBy(() -> new PrTools(env(Map.of("github.token", ""))).list("open", "me", null, null, null, null,
+                "octo/app", null)).hasMessageContaining("author=me braucht ein Token");
+    }
+
+    @Test
     void getShowsReviewsMergeStateAndChecks() {
         gh.on("/repos/octo/app/pulls/7", """
                 {"number":7,"title":"Export","state":"open","draft":false,"user":{"login":"anna"},"body":"Beschreibung",

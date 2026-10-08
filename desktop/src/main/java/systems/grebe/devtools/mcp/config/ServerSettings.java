@@ -11,6 +11,13 @@ package systems.grebe.devtools.mcp.config;
 public record ServerSettings(int port, String authToken, boolean closeToTray, boolean startMinimized) {
 
     public static final int DEFAULT_PORT = 8765;
+    /** Pfad des MCP-Endpunkts; muss zu {@code spring.ai.mcp.server.streamable-http.mcp-endpoint} passen. */
+    public static final String MCP_PATH = "/mcp";
+
+    /** Basisadresse des lokalen Servers auf diesem Rechner. */
+    public static String localUrl(int port) {
+        return "http://127.0.0.1:" + port;
+    }
 
     public static ServerSettings defaults() {
         return new ServerSettings(DEFAULT_PORT, "", true, false);

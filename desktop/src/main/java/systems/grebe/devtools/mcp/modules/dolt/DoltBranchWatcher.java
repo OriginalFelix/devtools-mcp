@@ -55,6 +55,11 @@ public class DoltBranchWatcher implements ToolCallListener {
     static final Duration REPORT_MAX_AGE = Duration.ofMinutes(2);
     private static final long DEBOUNCE_MILLIS = 50;
 
+    @FunctionalInterface
+    interface WatchServiceFactory {
+        WatchService create() throws IOException;
+    }
+
     /** Eingetragene Datenbanken bei eingeschaltetem Modul. */
     record Snapshot(List<DoltDatabase> databases, DoltBranches.Settings settings) {
         static final Snapshot EMPTY = new Snapshot(List.of(), new DoltBranches.Settings(5, ""));
@@ -65,7 +70,11 @@ public class DoltBranchWatcher implements ToolCallListener {
     private final ThreadPoolExecutor syncs;
     private volatile Snapshot current = Snapshot.EMPTY;
     private final Map<Path, WatchKey> watched = new HashMap<>();
-    private WatchService watch;
+    private volatile WatchService watch;
+    /** Erzeugt den WatchService; für Tests austauschbar. */
+    WatchServiceFactory watchServices = () -> FileSystems.getDefault().newWatchService();
+    /** Weckt die Schleife, wenn der WatchService erst nach ihrem Start entsteht (statt bis zur nächsten Abfrage zu schlafen). */
+    private final java.util.concurrent.Semaphore watchCreated = new java.util.concurrent.Semaphore(0);
     private Thread loop;
     private volatile boolean stopped;
 
@@ -188,7 +197,8 @@ public class DoltBranchWatcher implements ToolCallListener {
         }
         try {
             if (watch == null) {
-                watch = FileSystems.getDefault().newWatchService();
+                watch = watchServices.create();
+                watchCreated.release();
             }
             for (Path dir : dirs) {
                 if (!watched.containsKey(dir)) {
@@ -201,17 +211,19 @@ public class DoltBranchWatcher implements ToolCallListener {
                     POLL.toSeconds(), e.getMessage());
         }
         if (loop == null) {
-            WatchService ws = watch;
-            loop = Thread.ofPlatform().daemon().name("dolt-branch-watch").start(() -> run(ws));
+            loop = Thread.ofPlatform().daemon().name("dolt-branch-watch").start(this::run);
         }
     }
 
-    private void run(WatchService ws) {
+    private void run() {
         while (!stopped) {
             try {
+                // jedes Mal neu lesen: Scheiterte der WatchService beim ersten Start, entsteht er bei einer späteren
+                // Konfiguration - und soll dann auch abgefragt werden, nicht nur die 10-s-Abfrage laufen
+                WatchService ws = watch;
                 WatchKey key = ws == null ? null : ws.poll(POLL.toMillis(), TimeUnit.MILLISECONDS);
                 if (ws == null) {
-                    Thread.sleep(POLL.toMillis());
+                    watchCreated.tryAcquire(POLL.toMillis(), TimeUnit.MILLISECONDS);
                 }
                 if (key != null) {
                     // git schreibt HEAD.lock, benennt um, aktualisiert Index und Reflog – zusammenfassen

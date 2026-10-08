@@ -78,8 +78,6 @@ public class MemoryService implements MemoryBackend {
     static final int INLINE_MAX = 4_000;
     /** Angehängte Textdateien bis zu dieser Größe (Bytes) zeigt memories_view direkt. */
     public static final int VIEW_MAX = 200_000;
-    static final Pattern FILE_PATH = Pattern.compile("[A-Za-z0-9._/-]+");
-    static final int MAX_FILE_PATH = 200;
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
             .withZone(ZoneId.systemDefault());
@@ -466,25 +464,12 @@ public class MemoryService implements MemoryBackend {
 
     /** Relativer Pfad ohne {@code ..}, z.B. {@code screenshot.png} oder {@code logs/server.log}. */
     static String normalizeFilePath(String path) {
-        String p = path == null ? "" : path.strip().replace('\\', '/');
-        boolean valid = !p.isEmpty() && p.length() <= MAX_FILE_PATH && FILE_PATH.matcher(p).matches()
-                && Arrays.stream(p.split("/", -1)).noneMatch(x -> x.isEmpty() || x.equals(".")
-                || x.equals(".."));
-        if (!valid) {
-            throw new IllegalArgumentException("Ungültiger Dateipfad '" + path + "': relativ, nur Buchstaben, Ziffern, "
-                    + "'.', '_', '-' und '/', ohne '..', max. " + MAX_FILE_PATH + " Zeichen (z.B. 'screenshot.png').");
-        }
-        return p;
+        return MemoryViews.normalizeFilePath(path);
     }
 
     /** Dateiname der Quelle als Pfad in der Memory; unzulässige Zeichen werden zu {@code _}. */
     static String fileName(Path source) {
-        String n = source.getFileName() == null ? "" : source.getFileName().toString();
-        n = n.replaceAll("[^A-Za-z0-9._-]", "_");
-        if (n.isEmpty() || n.chars().allMatch(c -> c == '.')) {
-            n = "datei";
-        }
-        return n.length() > MAX_FILE_PATH ? n.substring(n.length() - MAX_FILE_PATH) : n;
+        return MemoryViews.fileName(source);
     }
 
     // ------------------------------------------------------------------ Suche

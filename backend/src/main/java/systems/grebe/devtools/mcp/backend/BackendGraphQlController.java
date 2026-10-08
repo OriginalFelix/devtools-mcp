@@ -24,6 +24,7 @@ import systems.grebe.devtools.mcp.backend.catalog.ModuleCatalog;
 import systems.grebe.devtools.mcp.backend.memories.Memory;
 import systems.grebe.devtools.mcp.backend.memories.MemoryService;
 import systems.grebe.devtools.mcp.backend.scripts.ScriptService;
+import systems.grebe.devtools.mcp.backend.skills.Skill;
 import systems.grebe.devtools.mcp.backend.skills.SkillService;
 import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
@@ -42,7 +43,6 @@ import systems.grebe.devtools.mcp.backend.project.ProjectService;
 public class BackendGraphQlController {
 
     private static final int DEFAULT_MAX_CONTENT = 100_000;
-    private static final int LIMIT_MAX_CONTENT = 1_000_000;
     private static final int DEFAULT_MAX_MEMORY = 20_000;
     private static final int OVERVIEW_LIMIT = 200;
 
@@ -218,7 +218,7 @@ public class BackendGraphQlController {
                               @Argument List<String> triggers, @Argument Integer maxContentChars) {
         return asTool(user, "skills", "skills_create",
                 () -> skills.create(name, description, content, category, tags, triggers,
-                        max(maxContentChars)));
+                        clamp(maxContentChars, DEFAULT_MAX_CONTENT, Skill.CONTENT_COLUMN)));
     }
 
     @MutationMapping
@@ -229,7 +229,7 @@ public class BackendGraphQlController {
                               @Argument Integer expectedRevision, @Argument Integer maxContentChars) {
         return asTool(user, "skills", "skills_update",
                 () -> skills.update(name, description, content, category, tags, triggers, note,
-                        expectedRevision, max(maxContentChars)));
+                        expectedRevision, clamp(maxContentChars, DEFAULT_MAX_CONTENT, Skill.CONTENT_COLUMN)));
     }
 
     @MutationMapping
@@ -239,7 +239,7 @@ public class BackendGraphQlController {
                              @Argument Integer expectedRevision, @Argument Integer maxContentChars) {
         return asTool(user, "skills", "skills_patch",
                 () -> skills.patch(name, oldString, newString, replaceAll, filePath, note, expectedRevision,
-                        max(maxContentChars)));
+                        clamp(maxContentChars, DEFAULT_MAX_CONTENT, Skill.CONTENT_COLUMN)));
     }
 
     @MutationMapping
@@ -247,7 +247,7 @@ public class BackendGraphQlController {
                                  @Argument String name, @Argument String filePath, @Argument String content,
                                  @Argument String note, @Argument Integer maxContentChars) {
         return asTool(user, "skills", "skills_write_file",
-                () -> skills.writeFile(name, filePath, content, note, max(maxContentChars)));
+                () -> skills.writeFile(name, filePath, content, note, clamp(maxContentChars, DEFAULT_MAX_CONTENT, Skill.CONTENT_COLUMN)));
     }
 
     @MutationMapping
@@ -347,7 +347,7 @@ public class BackendGraphQlController {
                              @Argument String skill, @Argument String reference, @Argument List<String> tags,
                              @Argument MemoryViews.Type type, @Argument Integer maxContentChars) {
         Supplier<String> save = () -> memories.save(title, content, type, project, skill, reference, tags,
-                maxMemory(maxContentChars));
+                clamp(maxContentChars, DEFAULT_MAX_MEMORY, Memory.CONTENT_COLUMN));
         // temporäre Memories und Rückrufe ohne Recht auf das Tool
         return type != null && type.ephemeral() ? as(user, save) : asTool(user, "memories", "memories_save", save);
     }
@@ -361,7 +361,7 @@ public class BackendGraphQlController {
                                @Argument Integer maxContentChars) {
         return asToolOrTemporary(user, "memories_update", id, Boolean.TRUE.equals(temporaryOnly),
                 tempOnly -> memories.update(id, title, content, append, type, project, skill, reference, tags,
-                        tempOnly, maxMemory(maxContentChars)));
+                        tempOnly, clamp(maxContentChars, DEFAULT_MAX_MEMORY, Memory.CONTENT_COLUMN)));
     }
 
     @MutationMapping
@@ -404,11 +404,6 @@ public class BackendGraphQlController {
             }
             return body.apply(true);
         });
-    }
-
-    private static int maxMemory(Integer requested) {
-        return requested == null ? DEFAULT_MAX_MEMORY
-                : Math.min(requested, Memory.CONTENT_COLUMN);
     }
 
     // ---------------------------------------------------------------- Skripte (Groovy, Java)
@@ -460,8 +455,12 @@ public class BackendGraphQlController {
         return SkillCaller.as(GraphQlAuth.requireTool(user, moduleId, tool), body);
     }
 
-    private static int max(Integer requested) {
-        return requested == null ? DEFAULT_MAX_CONTENT : Math.min(requested, LIMIT_MAX_CONTENT);
+    /**
+     * Längengrenze für Inhalte: das, was der Client verlangt, aber höchstens die Spalte der Datenbank - sonst scheiterte
+     * zu langer Inhalt erst beim Speichern mit einem Fehler ohne Meldung.
+     */
+    private static int clamp(Integer requested, int fallback, int column) {
+        return requested == null ? fallback : Math.min(requested, column);
     }
 
     // ---------------------------------------------------------------- Subscriptions

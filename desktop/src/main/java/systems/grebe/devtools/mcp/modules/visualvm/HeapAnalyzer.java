@@ -180,23 +180,79 @@ public final class HeapAnalyzer {
         return sb.toString();
     }
 
-    private static String stringValue(Instance i) {
+    private static final int MAX_STRING_CHARS = 80;
+
+    private String stringValue(Instance i) {
         if (!i.getJavaClass().getName().equals("java.lang.String")) {
             return "";
         }
         try {
             Object v = i.getValueOfField("value");
-            if (v instanceof Instance arr && arr.getJavaClass().getName().equals("byte[]")) {
+            if (v instanceof Instance arr) {
                 List<?> vals = ((org.graalvm.visualvm.lib.jfluid.heap.PrimitiveArrayInstance) arr).getValues();
-                StringBuilder s = new StringBuilder();
-                for (Object o : vals.subList(0, Math.min(80, vals.size()))) {
-                    s.append((char) Byte.parseByte(o.toString()));
+                String type = arr.getJavaClass().getName();
+                if (type.equals("byte[]")) {
+                    return decodeString(coderOf(i), vals, littleEndian());
                 }
-                return " \"" + s + (vals.size() > 80 ? "…" : "") + "\"";
+                if (type.equals("char[]")) { // JDK 8: ein Zeichen je Wert
+                    StringBuilder s = new StringBuilder();
+                    for (Object o : vals.subList(0, Math.min(MAX_STRING_CHARS, vals.size()))) {
+                        String c = o.toString();
+                        s.append(c.isEmpty() ? '?' : c.charAt(0));
+                    }
+                    return quote(s, vals.size());
+                }
             }
         } catch (RuntimeException ignored) {
             // anderes Layout
         }
         return "";
+    }
+
+    /** {@code coder} des Strings: 0 = LATIN1, 1 = UTF16; fehlt das Feld (JDK 8), gilt LATIN1. */
+    private static int coderOf(Instance string) {
+        try {
+            Object c = string.getValueOfField("coder");
+            return c == null ? 0 : Integer.parseInt(c.toString().trim());
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /** UTF16-Strings liegen in der Byte-Reihenfolge der Maschine, die den Dump geschrieben hat (Standard: little endian). */
+    private boolean littleEndian() {
+        try {
+            String endian = heap.getSystemProperties() == null ? null : heap.getSystemProperties().getProperty("sun.cpu.endian");
+            return !"big".equalsIgnoreCase(endian);
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
+    /**
+     * Zeichen eines {@code String} aus dem {@code byte[]}: LATIN1 ein Byte je Zeichen (vorzeichenlos - sonst wird aus
+     * "ä" U+FFE4), UTF16 zwei Bytes je Zeichen in der angegebenen Reihenfolge.
+     */
+    static String decodeString(int coder, List<?> bytes, boolean littleEndian) {
+        StringBuilder s = new StringBuilder();
+        int chars;
+        if (coder == 0) {
+            chars = bytes.size();
+            for (int k = 0; k < Math.min(MAX_STRING_CHARS, chars); k++) {
+                s.append((char) (Integer.parseInt(bytes.get(k).toString().trim()) & 0xFF));
+            }
+        } else {
+            chars = bytes.size() / 2;
+            for (int k = 0; k < Math.min(MAX_STRING_CHARS, chars); k++) {
+                int first = Integer.parseInt(bytes.get(2 * k).toString().trim()) & 0xFF;
+                int second = Integer.parseInt(bytes.get(2 * k + 1).toString().trim()) & 0xFF;
+                s.append((char) (littleEndian ? second << 8 | first : first << 8 | second));
+            }
+        }
+        return quote(s, chars);
+    }
+
+    private static String quote(CharSequence text, int totalChars) {
+        return " \"" + text + (totalChars > MAX_STRING_CHARS ? "…" : "") + "\"";
     }
 }

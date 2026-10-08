@@ -8,11 +8,13 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 
 /**
@@ -25,14 +27,21 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 public class BearerTokenFilter extends OncePerRequestFilter {
 
     private final SettingsStore store;
+    private final String endpoint;
 
-    public BearerTokenFilter(SettingsStore store) {
+    public BearerTokenFilter(SettingsStore store,
+                             @Value("${spring.ai.mcp.server.streamable-http.mcp-endpoint:" + ServerSettings.MCP_PATH
+                                     + "}") String endpoint) {
         this.store = store;
+        this.endpoint = endpoint;
     }
 
+    /** Geschützt ist der konfigurierte Endpunkt samt allem darunter ({@code /mcp}, {@code /mcp/…}), nicht {@code /mcpfoo}. */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().startsWith(request.getContextPath() + "/mcp");
+        String path = request.getContextPath() + endpoint;
+        String uri = request.getRequestURI();
+        return !(uri.equals(path) || uri.startsWith(path + "/"));
     }
 
     @Override
