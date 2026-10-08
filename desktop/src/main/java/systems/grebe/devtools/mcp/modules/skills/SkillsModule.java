@@ -1,14 +1,18 @@
 package systems.grebe.devtools.mcp.modules.skills;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.backend.skills.Skill;
+import systems.grebe.devtools.mcp.config.DataHome;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
+import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 
@@ -35,15 +39,18 @@ public class SkillsModule implements ToolModule {
     static final String ALLOW_DELETE = "allowDelete";
     static final String MAX_CONTENT = "maxContentChars";
     static final String REVIEW_INTERVAL = "reviewNudgeInterval";
+    static final String FILE_DIRS = "fileDirectories";
 
     private final SkillBackend skills;
     private final SkillReview review;
     private final SkillReviewTracker tracker;
+    private final DataHome home;
 
-    public SkillsModule(SkillBackend skills, SkillReview review, SkillReviewTracker tracker) {
+    public SkillsModule(SkillBackend skills, SkillReview review, SkillReviewTracker tracker, DataHome home) {
         this.skills = skills;
         this.review = review;
         this.tracker = tracker;
+        this.home = home;
     }
 
     @Override
@@ -59,7 +66,8 @@ public class SkillsModule implements ToolModule {
     @Override
     public String description() {
         return "Registrierte Abläufe (Skills) für Aufgabentypen wie „Ticket-Review“: suchen, laden und nach gelösten "
-                + "Aufgaben selbst anlegen oder verbessern – mit Zusatzdateien und Änderungshistorie. Gespeichert im "
+                + "Aufgaben selbst anlegen oder verbessern – mit Zusatzdateien (Text oder beliebige Dateien ohne "
+                + "Größengrenze) und Änderungshistorie. Gespeichert im "
                 + "Backend (eingebettet oder Team-Server) je Benutzerkonto, plus schreibgeschützte globale Vorlagen.";
     }
 
@@ -78,7 +86,9 @@ public class SkillsModule implements ToolModule {
                 `skills_review`; Hinweise „[DevTools-Skills] …“ erst nach der laufenden Aufgabe abarbeiten.
                 - `*` in `skills_list` = globale Vorlage; Änderungen legen automatisch eine persönliche Kopie an.
                 - Inhalt: Regel + Begründung, konkrete Tool-Aufrufe; keine Einzelfall-Details (→ Memory), keine \
-                Geheimnisse. `skills_delete` nur auf Wunsch.""";
+                Geheimnisse. `skills_delete` nur auf Wunsch.
+                - Vorlagen, Bilder, PDFs u.ä. mit `skills_write_file` anhängen (`source_path` für lokale Dateien, \
+                beliebig groß); `skills_view` mit `file_path` liefert Text bzw. speichert Binäres lokal.""";
     }
 
     @Override
@@ -95,10 +105,16 @@ public class SkillsModule implements ToolModule {
     public List<ConfigField> configSchema() {
         return List.of(
                 ConfigField.of(ALLOW_WRITE, "Anlegen und Bearbeiten erlauben", FieldType.BOOLEAN).withDefault("true")
-                        .withHelp("create, patch, update, write_file, remove_file."),
+                        .withHelp("create, patch, update, write_file (auch Dateien anhängen), remove_file."),
                 ConfigField.of(ALLOW_DELETE, "Löschen erlauben", FieldType.BOOLEAN).withDefault("false"),
                 ConfigField.of(MAX_CONTENT, "Max. Zeichen je Inhalt", FieldType.INT).withDefault("100000")
-                        .withHelp("Obergrenze für Skill-Inhalt und Zusatzdateien."),
+                        .withHelp("Obergrenze für den Skill-Inhalt und Zusatzdateien als Text (mit skills_patch "
+                                + "änderbar). Längere und binäre Dateien werden ohne Grenze als Anhang gespeichert."),
+                ConfigField.of(FILE_DIRS, "Dateien anhängen aus und speichern in", FieldType.DIRECTORY_LIST)
+                        .withHelp("Aus diesen Verzeichnissen (inkl. Unterverzeichnissen) darf das LLM Dateien an "
+                                + "Skills hängen (source_path) und Zusatzdateien hineinspeichern (target_path); dazu "
+                                + "die globalen „Freigaben“. Ohne target_path landen binäre Zusatzdateien in "
+                                + "„attachments“ im Datenordner der App."),
                 ConfigField.of(REVIEW_INTERVAL, "Review-Erinnerung nach N Tool-Aufrufen", FieldType.INT)
                         .withDefault(String.valueOf(SkillReviewTracker.DEFAULT_INTERVAL))
                         .withHelp("Wie Hermes' creation_nudge_interval: nach so vielen Aufrufen ohne Skill-Pflege "
@@ -108,10 +124,18 @@ public class SkillsModule implements ToolModule {
     }
 
     @Override
+    public Set<String> sharedDirectoryFields() {
+        return Set.of(FILE_DIRS);
+    }
+
+    @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(new SkillReadTools(skills))));
+        LocalFiles files = new LocalFiles(config.getList(FILE_DIRS),
+                "Module → Skills → „Dateien anhängen aus und speichern in“ oder global unter „Freigaben“");
+        List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(
+                new SkillReadTools(skills, files, attachments(home)))));
         if (config.getBoolean(ALLOW_WRITE)) {
-            tools.addAll(List.of(ToolCallbacks.from(new SkillWriteTools(skills, maxContent(config)))));
+            tools.addAll(List.of(ToolCallbacks.from(new SkillWriteTools(skills, maxContent(config), files))));
             // Review nur, wenn das LLM das Gelernte auch speichern darf
             tools.addAll(List.of(ToolCallbacks.from(new SkillReviewTools(skills, review, tracker))));
         }
@@ -119,6 +143,11 @@ public class SkillsModule implements ToolModule {
             tools.addAll(List.of(ToolCallbacks.from(new SkillDeleteTools(skills))));
         }
         return tools;
+    }
+
+    /** Ablage für gelesene Anhänge (Skills und Memories) im Datenordner der App. */
+    public static Path attachments(DataHome home) {
+        return home.dir().resolve("attachments");
     }
 
     private static int maxContent(ModuleConfig config) {

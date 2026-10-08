@@ -30,7 +30,7 @@ public class SkillRevision {
     @Column(nullable = false)
     private int revision;
 
-    /** create, update, patch, write_file, remove_file, adopt, publish */
+    /** create, update, patch, write_file, attach_file, remove_file, adopt, publish */
     @Column(nullable = false, length = 20)
     private String action;
 

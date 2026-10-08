@@ -319,6 +319,48 @@ class ShareModuleTest {
     }
 
     @Test
+    void attachmentsOfMemoriesAndSkillsTravelAlong() throws Exception {
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0, 0, 0, 13};
+        Path screenshot = Files.write(dir.resolve("fehler.png"), png);
+        long memory = id(felix.memories.save("Fehlerbild ABC-7", "Siehe Screenshot.", null, null, null, "ABC-7",
+                List.of(), 10_000));
+        felix.memories.attachFile(memory, null, screenshot, null, false);
+        felix.memories.attachFile(memory, "logs/app.log", Files.writeString(dir.resolve("app.log"), "ERROR"),
+                null, false);
+        felix.skills.create("ui-check", "Oberfläche prüfen", "Vergleich mit assets/soll.png", null, null, 10_000);
+        felix.skills.attachFile("ui-check", "assets/soll.png", screenshot, null, null);
+
+        felix.tools().sendOffer(ANNA, "Fehlerbild", null, List.of(memory), List.of("ui-check"), null, null, null);
+        assertThat(felix.questions).singleElement().asString()
+                .contains("Memory: Fehlerbild ABC-7 (+2 Dateien)", "Skill: ui-check (+1 Dateien)");
+
+        await(() -> !anna.broker.state().pending().isEmpty());
+        String offer = anna.broker.state().pending().getFirst().offer().id();
+        assertThat(anna.tools().view(offer)).contains("Datei: fehler.png (8 B)", "Datei: logs/app.log");
+
+        assertThat(anna.tools().accept(offer, null, null)).contains("+ 2 Datei(en) angehängt");
+        MemoryViews.Entry received = anna.memories.overview("ABC-7", null, null, 5).getFirst();
+        assertThat(received.temporary()).isTrue();
+        assertThat(received.files()).extracting(MemoryViews.File::path).containsExactly("fehler.png", "logs/app.log");
+        Path out = dir.resolve("anna.png");
+        anna.memories.exportFile(received.id(), "fehler.png", out);
+        assertThat(out).hasBinaryContent(png);
+        assertThat(anna.memories.viewFile(received.id(), "logs/app.log")).contains("ERROR");
+        anna.skills.exportFile("ui-check", "assets/soll.png", dir.resolve("soll.png"));
+        assertThat(dir.resolve("soll.png")).hasBinaryContent(png);
+        assertThat(anna.skills.file("ui-check", "assets/soll.png").orElseThrow().inline()).isFalse();
+    }
+
+    @Test
+    void attachmentsCountTowardsTheLimit() throws Exception {
+        felix.reconnect(Map.of(ShareModule.MAX_KB, "1"));
+        long memory = id(felix.memories.save("Großer Dump", "x", null, null, null, null, List.of(), 10_000));
+        felix.memories.attachFile(memory, null, Files.write(dir.resolve("dump.bin"), new byte[4096]), null, false);
+        assertThatThrownBy(() -> felix.tools().sendOffer(ANNA, "Dump", null, List.of(memory), null, null, null,
+                null)).hasMessageContaining("Datei 'dump.bin' von Memory #" + memory + " ist zu groß");
+    }
+
+    @Test
     void filesOnlyFromReleasedDirectoriesAndWithinLimit() throws Exception {
         Path outside = Files.writeString(dir.resolve("geheim.txt"), "x");
         assertThatThrownBy(() -> felix.tools().sendOffer(ANNA, "Datei", null, null, null,

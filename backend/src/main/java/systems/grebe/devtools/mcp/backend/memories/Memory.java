@@ -1,16 +1,22 @@
 package systems.grebe.devtools.mcp.backend.memories;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.BatchSize;
 import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
 import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 
@@ -78,6 +84,11 @@ public class Memory {
     @Version
     private long version;
 
+    @OneToMany(mappedBy = "memory", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("path")
+    @BatchSize(size = 50) // Übersicht und Suche laden viele Memories – Dateien gesammelt nachladen
+    private List<MemoryFile> files = new ArrayList<>();
+
     protected Memory() {
         // JPA
     }
@@ -102,6 +113,22 @@ public class Memory {
 
     void touch(Instant now) {
         updatedAt = now;
+    }
+
+    Optional<MemoryFile> file(String path) {
+        return files.stream().filter(f -> f.getPath().equals(path)).findFirst();
+    }
+
+    void addFile(MemoryFile file) {
+        files.add(file);
+    }
+
+    void removeFile(MemoryFile file) {
+        files.remove(file);
+    }
+
+    public List<MemoryFile> getFiles() {
+        return files;
     }
 
     public Long getId() {

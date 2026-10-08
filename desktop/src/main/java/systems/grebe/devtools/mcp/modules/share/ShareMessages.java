@@ -92,8 +92,22 @@ final class ShareMessages {
         }
     }
 
+    /** @param files angehängte Dateien (ältere Instanzen kennen sie nicht und übergehen sie) */
     record MemoryItem(String title, String content, String project, String skill, String reference,
-                      List<String> tags) {
+                      List<String> tags, List<MemoryFile> files) {
+
+        MemoryItem {
+            files = files == null ? List.of() : List.copyOf(files);
+        }
+
+        MemoryItem(String title, String content, String project, String skill, String reference,
+                   List<String> tags) {
+            this(title, content, project, skill, reference, tags, List.of());
+        }
+    }
+
+    /** An eine Memory angehängte Datei; @param data Inhalt Base64-kodiert */
+    record MemoryFile(String path, String mediaType, long size, String data) {
     }
 
     record SkillItem(String name, String description, String content, String category, List<String> tags,
@@ -104,7 +118,15 @@ final class ShareMessages {
         }
     }
 
-    record SkillFile(String path, String content) {
+    /**
+     * Zusatzdatei eines Skills: Text in {@code content} oder – bei einem Anhang – Inhalt Base64-kodiert in {@code data}
+     * (ältere Instanzen kennen nur Text und übergehen {@code data}).
+     */
+    record SkillFile(String path, String content, String data, String mediaType) {
+
+        SkillFile(String path, String content) {
+            this(path, content, null, null);
+        }
     }
 
     /** @param data Inhalt Base64-kodiert */

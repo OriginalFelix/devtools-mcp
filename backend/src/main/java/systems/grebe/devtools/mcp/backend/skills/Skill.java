@@ -119,7 +119,7 @@ public class Skill {
         Skill copy = new Skill(newOwner, name, description, content, category, tags, now);
         copy.triggers = triggers;
         copy.templateRevision = revision;
-        files.forEach(f -> copy.addFile(new SkillFile(copy, f.getPath(), f.getContent(), now)));
+        files.forEach(f -> copy.addFile(f.copyTo(copy, now)));
         return copy;
     }
 
@@ -130,8 +130,12 @@ public class Skill {
         category = source.category;
         tags = source.tags;
         triggers = source.triggers;
-        files.clear();
-        source.files.forEach(f -> addFile(new SkillFile(this, f.getPath(), f.getContent(), now)));
+        // Dateien gleichen Pfads in place ändern: Hibernate fügt neue Zeilen vor dem Löschen der alten ein – ein
+        // Leeren und Neuanlegen verletzte sonst uk_skill_file_path
+        files.removeIf(f -> source.file(f.getPath()).isEmpty());
+        for (SkillFile f : source.files) {
+            file(f.getPath()).ifPresentOrElse(mine -> mine.replaceWith(f, now), () -> addFile(f.copyTo(this, now)));
+        }
     }
 
     /** Macht aus einem persönlichen Skill eine globale Vorlage (Historie bleibt erhalten). */

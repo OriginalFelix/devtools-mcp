@@ -38,6 +38,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import systems.grebe.devtools.mcp.api.MediaTypes;
 import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
@@ -88,6 +89,7 @@ public class SkillsView extends BorderPane {
     private final TextArea fileContent = monoArea();
     private final TableView<SkillViews.Revision> revisionTable = new TableView<>();
     private final TextArea revisionContent = monoArea();
+    private final Button saveFile = new Button("Speichern unter…");
     private final Tab filesTab = new Tab("Dateien");
     private final Tab historyTab = new Tab("Historie");
     private final VBox detail;
@@ -187,13 +189,20 @@ public class SkillsView extends BorderPane {
             @Override
             protected void updateItem(SkillViews.File f, boolean empty) {
                 super.updateItem(f, empty);
-                setText(empty || f == null ? null : f.path());
+                setText(empty || f == null ? null
+                        : f.inline() ? f.path() : f.path() + "  (" + MediaTypes.size(f.size()) + ")");
             }
         });
-        fileList.getSelectionModel().selectedItemProperty().addListener((o, a, f) ->
-                fileContent.setText(f == null ? "" : f.content()));
-        fileList.setPrefWidth(220);
-        SplitPane files = new SplitPane(fileList, fileContent);
+        fileList.getSelectionModel().selectedItemProperty().addListener((o, a, f) -> {
+            fileContent.setText(f == null ? "" : f.inline() ? f.content() : attachmentText(f));
+            saveFile.setDisable(f == null);
+        });
+        saveFile.setDisable(true);
+        saveFile.setOnAction(e -> saveSelectedFile());
+        VBox.setVgrow(fileList, Priority.ALWAYS);
+        VBox fileBox = new VBox(6, fileList, saveFile);
+        fileBox.setPrefWidth(220);
+        SplitPane files = new SplitPane(fileBox, fileContent);
         files.setDividerPositions(0.3);
         filesTab.setContent(files);
 
@@ -366,6 +375,27 @@ public class SkillsView extends BorderPane {
             sb.append(", zuletzt ").append(TIME.format(s.lastUsedAt()));
         }
         return sb.toString();
+    }
+
+    private static String attachmentText(SkillViews.File f) {
+        return "Anhang in der Dateiablage des Backends\n\nTyp: " + f.mediaType() + "\nGröße: "
+                + MediaTypes.size(f.size()) + "\nSHA-256: " + f.blob() + "\n\nDas LLM lädt ihn mit skills_view "
+                + "(file_path); hier mit „Speichern unter…“ als Datei ablegen.";
+    }
+
+    private void saveSelectedFile() {
+        SkillViews.File f = fileList.getSelectionModel().getSelectedItem();
+        String skill = title.getText();
+        if (f == null || skill == null || skill.isBlank()) {
+            return;
+        }
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle("Zusatzdatei speichern");
+        chooser.setInitialFileName(f.path().substring(f.path().lastIndexOf('/') + 1));
+        java.io.File target = chooser.showSaveDialog(getScene() == null ? null : getScene().getWindow());
+        if (target != null) {
+            background(() -> service.exportFile(skill, f.path(), target.toPath()), msg -> { });
+        }
     }
 
     private void confirmDelete(SkillViews.Summary s) {

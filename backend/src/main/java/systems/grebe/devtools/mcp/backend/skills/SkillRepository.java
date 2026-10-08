@@ -45,6 +45,14 @@ public interface SkillRepository extends JpaRepository<Skill, Long> {
      * Zählt eine Nutzung per Bulk-Update: berührt die {@code @Version} nicht, damit Lesen nie mit einer gleichzeitigen
      * Änderung kollidiert – auch nicht bei globalen Vorlagen, die viele Benutzer gleichzeitig laden.
      */
+    /** Wie oft Zusatzdateien von Skills des Eigentümers auf diesen Inhalt der Dateiablage verweisen. */
+    @Query("select count(f) from SkillFile f where f.skill.owner = :owner and f.blob = :blob")
+    long countFileReferences(@Param("owner") String owner, @Param("blob") String blob);
+
+    /** Alle verwendeten Inhalte der Dateiablage als Paare (Eigentümer, SHA-256). */
+    @Query("select f.skill.owner, f.blob from SkillFile f where f.blob is not null")
+    List<Object[]> fileReferences();
+
     @Modifying
     @Query("update Skill k set k.useCount = k.useCount + 1, k.lastUsedAt = :now where k.id = :id")
     int markUsed(@Param("id") Long id, @Param("now") Instant now);
