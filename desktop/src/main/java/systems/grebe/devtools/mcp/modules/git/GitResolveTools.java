@@ -1,10 +1,20 @@
 package systems.grebe.devtools.mcp.modules.git;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 
 import org.eclipse.jgit.api.CommitCommand;
+import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.RebaseCommand;
 import org.eclipse.jgit.api.ResetCommand;
+import org.eclipse.jgit.api.Status;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.CommitConfig;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
@@ -41,6 +51,7 @@ public class GitResolveTools {
             if (state == RepositoryState.SAFE) {
                 return "Es läuft kein Merge, Rebase, Cherry-Pick oder Revert.";
             }
+            requireResumable(state);
             if (state.isRebasing()) {
                 return GitSupport.describe(g.rebase().setOperation(RebaseCommand.Operation.CONTINUE).call(), repo.getBranch(), null);
             }
@@ -80,17 +91,78 @@ public class GitResolveTools {
             if (state == RepositoryState.SAFE) {
                 return "Es läuft kein Merge, Rebase, Cherry-Pick oder Revert.";
             }
+            requireResumable(state);
             if (state.isRebasing()) {
                 g.rebase().setOperation(RebaseCommand.Operation.ABORT).call();
                 return "Rebase abgebrochen – " + repo.getBranch() + " ist auf dem Stand davor.";
             }
-            g.reset().setMode(ResetCommand.ResetType.HARD).setRef(Constants.HEAD).call();
-            repo.writeMergeHeads(null);
-            repo.writeCherryPickHead(null);
-            repo.writeRevertHead(null);
-            repo.writeMergeCommitMsg(null);
+            // Wie git's „--abort“ (reset --merge): nicht gestagte Änderungen an Dateien, die die Operation nicht
+            // angefasst hat, bleiben erhalten – ein harter Reset würde sie still verwerfen.
+            Map<String, byte[]> kept = unstagedChanges(g, root);
+            try {
+                g.reset().setMode(ResetCommand.ResetType.HARD).setRef(Constants.HEAD).call();
+                repo.writeMergeHeads(null);
+                repo.writeCherryPickHead(null);
+                repo.writeRevertHead(null);
+                repo.writeMergeCommitMsg(null);
+            } finally {
+                restore(root, kept);
+            }
             return GitSupport.describe(state).replaceAll(" mit Konflikten| \\(.*", "") + " abgebrochen – " + repo.getBranch() + " ist auf dem Stand davor ("
-                    + GitSupport.shortId(repo.resolve(Constants.HEAD)) + ").";
+                    + GitSupport.shortId(repo.resolve(Constants.HEAD)) + ")."
+                    + (kept.isEmpty() ? "" : " Nicht gestagte Änderungen an " + kept.size() + " Datei(en) beibehalten.");
         });
+    }
+
+    /** Nur Merge, Cherry-Pick, Revert und Rebase lassen sich hier fortsetzen/abbrechen – Bisect und {@code git am} nicht. */
+    private static void requireResumable(RepositoryState state) {
+        boolean ok = switch (state) {
+            case MERGING, MERGING_RESOLVED, CHERRY_PICKING, CHERRY_PICKING_RESOLVED, REVERTING, REVERTING_RESOLVED,
+                 REBASING, REBASING_REBASING, REBASING_MERGE, REBASING_INTERACTIVE -> true;
+            default -> false;
+        };
+        if (!ok) {
+            throw new IllegalStateException("Es läuft: " + GitSupport.describe(state)
+                    + " – nicht über git_continue/git_abort; in der Shell beenden (git bisect reset bzw. git am --abort).");
+        }
+    }
+
+    /**
+     * Nicht gestagte Änderungen (geändert/gelöscht) an Dateien ohne Konflikt und ohne Merge-Ergebnis im Index:
+     * Dort entspricht HEAD dem Index vor der Operation, der Inhalt (null = gelöscht) lässt sich also nach dem Reset
+     * unverändert zurückschreiben.
+     */
+    private static Map<String, byte[]> unstagedChanges(Git g, Path root) throws GitAPIException, IOException {
+        Status st = g.status().call();
+        Set<String> keep = new TreeSet<>(st.getModified());
+        keep.addAll(st.getMissing());
+        keep.removeAll(st.getConflicting());
+        keep.removeAll(st.getChanged());
+        keep.removeAll(st.getAdded());
+        keep.removeAll(st.getRemoved());
+        Map<String, byte[]> saved = new LinkedHashMap<>();
+        for (String path : keep) {
+            Path file = root.resolve(path);
+            if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+                saved.put(path, null);
+            } else if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+                saved.put(path, Files.readAllBytes(file));
+            } else {
+                throw new IllegalStateException("Abbruch würde nicht gestagte Änderungen an '" + path
+                        + "' (Link/Ordner) verwerfen – erst sichern oder git_stage/git_commit.");
+            }
+        }
+        return saved;
+    }
+
+    private static void restore(Path root, Map<String, byte[]> saved) throws IOException {
+        for (Map.Entry<String, byte[]> e : saved.entrySet()) {
+            Path file = root.resolve(e.getKey());
+            if (e.getValue() == null) {
+                Files.deleteIfExists(file);
+            } else {
+                Files.write(file, e.getValue());
+            }
+        }
     }
 }
