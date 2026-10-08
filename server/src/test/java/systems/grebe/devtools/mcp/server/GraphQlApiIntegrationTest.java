@@ -387,6 +387,29 @@ class GraphQlApiIntegrationTest {
     }
 
     @Test
+    void overridesAreCheckedForTheirFieldType() {
+        UserAccount u = newUser();
+        String jwt = token(u);
+        ClientGraphQlResponse bad = client(jwt).document("""
+                mutation($in: OverlayInput!) { saveOverrides(level: USER, moduleId: "sonar", input: $in) { profileId } }""")
+                .variable("in", Map.of("values", List.of(Map.of("key", "timeoutSeconds", "value", "abc"))))
+                .executeSync();
+        assertThat(errorType(bad)).isEqualTo("BAD_REQUEST");
+        assertThat(bad.getErrors().getFirst().getMessage()).contains("Timeout", "ganze Zahl");
+        assertThat(settings(jwt).module("sonar").valueMap()).doesNotContainKey("timeoutSeconds");
+
+        // leere Werte (Überschreibung mit „nicht gesetzt“) und gültige Zahlen bleiben möglich
+        profiles.saveOverrides(u.id(), Overrides.Level.USER, u.id(), "sonar",
+                new Overrides(null, Map.of(), Map.of("timeoutSeconds", "15", "organization", "")));
+        assertThat(settings(jwt).module("sonar").valueMap()).containsEntry("timeoutSeconds", "15");
+
+        // auch die globalen Vorgaben werden geprüft
+        assertThatThrownBy(() -> profiles.saveGlobal("sonar",
+                new Overrides(null, Map.of(), Map.of("timeoutSeconds", "1x"))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ganze Zahl");
+    }
+
+    @Test
     void globalOnlyForAdminsAndLocksWin() {
         UserAccount u = newUser();
         String jwt = token(u);
