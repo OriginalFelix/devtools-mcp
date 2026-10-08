@@ -1,5 +1,12 @@
 package systems.grebe.devtools.mcp.backend.skills;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -23,6 +30,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import systems.grebe.devtools.mcp.api.MediaTypes;
+import systems.grebe.devtools.mcp.backend.blobs.BlobReferences;
+import systems.grebe.devtools.mcp.backend.blobs.BlobStore;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 
@@ -36,6 +46,11 @@ import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
  * beschränkt. Ein eigener Skill verdeckt die Vorlage gleichen Namens. Globale Vorlagen sind schreibgeschützt: Ändert
  * das LLM eine, entsteht in derselben Transaktion zuerst eine persönliche Kopie ({@code adopt}), auf die die Änderung
  * wirkt. Veröffentlichen und Zurückziehen von Vorlagen gibt es nur in der App und nur mit Admin-Schalter.
+ *
+ * <p><b>Zusatzdateien:</b> Text liegt im Skill und lässt sich patchen; beliebige Dateien (auch binär, ohne
+ * Größengrenze) liegen als Anhang in der {@link BlobStore Dateiablage} im Verzeichnis des Eigentümers – beim Übernehmen
+ * einer Vorlage bzw. beim Veröffentlichen wird der Inhalt mitkopiert, nicht mehr verwendete Inhalte gibt
+ * {@link BlobReferences} frei.
  *
  * <p>Die Inhaltsgrenze kommt als Parameter, weil sie in der UI zur Laufzeit geändert werden kann, der Service aber
  * ein Singleton ist.
@@ -56,6 +71,8 @@ public class SkillService implements SkillBackend {
     static final int LIST_DESCRIPTION = 160;
     /** Bis zu dieser Länge liefert skills_list bei genau einem Treffer den Inhalt gleich mit. */
     static final int INLINE_MAX = 6_000;
+    /** Anhänge mit Text bis zu dieser Größe (Bytes) zeigt skills_view direkt. */
+    public static final int VIEW_MAX = 200_000;
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
             .withZone(ZoneId.systemDefault());
@@ -64,12 +81,17 @@ public class SkillService implements SkillBackend {
     private final SkillRepository skills;
     private final SkillRevisionRepository revisions;
     private final SkillOwner users;
+    private final BlobStore blobs;
+    private final BlobReferences references;
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
-    public SkillService(SkillRepository skills, SkillRevisionRepository revisions, SkillOwner users) {
+    public SkillService(SkillRepository skills, SkillRevisionRepository revisions, SkillOwner users, BlobStore blobs,
+                        BlobReferences references) {
         this.skills = skills;
         this.revisions = revisions;
         this.users = users;
+        this.blobs = blobs;
+        this.references = references;
     }
 
     // ------------------------------------------------------------------ Oberfläche
@@ -95,11 +117,15 @@ public class SkillService implements SkillBackend {
     public Optional<SkillViews.Details> details(String name) {
         return resolve(users.email(), name).map(k -> new SkillViews.Details(summary(k, templateRevisions()),
                 k.getContent(), k.getCreatedAt(),
-                k.getFiles().stream().map(f -> new SkillViews.File(f.getPath(), f.getContent(), f.getUpdatedAt()))
-                        .toList(),
+                k.getFiles().stream().map(SkillService::view).toList(),
                 revisions.findBySkillOrderByRevisionDesc(k).stream().map(r -> new SkillViews.Revision(r.getRevision(),
                         r.getAction(), r.getNote(), r.getChangedBy(), r.getChangedAt(), r.getDescription(),
                         r.getContent())).toList()));
+    }
+
+    private static SkillViews.File view(SkillFile f) {
+        return new SkillViews.File(f.getPath(), f.inline() ? f.getContent() : null, f.getUpdatedAt(), f.getSize(),
+                f.getMediaType(), f.getBlob());
     }
 
     private static SkillViews.Summary summary(Skill k, Map<String, Integer> templates) {
@@ -133,10 +159,14 @@ public class SkillService implements SkillBackend {
                 "Nur eigene Skills können veröffentlicht werden – '" + n + "' gehört nicht " + user + "."));
         Instant now = Instant.now();
         Optional<Skill> existing = skills.findByOwnerAndName(SkillOwner.GLOBAL, n);
+        copyBlobs(own, user, SkillOwner.GLOBAL);
         Skill template;
         if (existing.isPresent()) {
             template = existing.get();
+            List<String> before = blobsOf(template);
             template.replaceWith(own, now);
+            skills.flush();
+            references.release(SkillOwner.GLOBAL, before);
             template.recordRevision("publish", "aktualisiert aus dem Skill von " + user, user, now);
         } else {
             template = own.copyFor(SkillOwner.GLOBAL, now);
@@ -156,7 +186,10 @@ public class SkillService implements SkillBackend {
         String n = requireName(name);
         Skill template = skills.findByOwnerAndName(SkillOwner.GLOBAL, n).orElseThrow(() ->
                 new IllegalArgumentException("Es gibt keine globale Vorlage '" + n + "'."));
+        List<String> files = blobsOf(template);
         skills.delete(template);
+        skills.flush();
+        references.release(SkillOwner.GLOBAL, files);
         changed();
         return "Globale Vorlage '" + n + "' zurückgezogen. Persönliche Kopien bleiben erhalten.";
     }
@@ -244,7 +277,15 @@ public class SkillService implements SkillBackend {
         if (path != null) {
             SkillFile f = k.file(path).orElseThrow(() -> new IllegalArgumentException(
                     "Skill '" + n + "' hat keine Datei '" + path + "'. Vorhanden: " + filePaths(k)));
-            return "# " + n + " / " + path + "\n\n" + f.getContent();
+            if (f.inline()) {
+                return "# " + n + " / " + path + "\n\n" + f.getContent();
+            }
+            String head = "# " + n + " / " + path + " · Anhang (" + f.getMediaType() + ", "
+                    + MediaTypes.size(f.getSize()) + ")";
+            if (MediaTypes.textual(f.getMediaType()) && f.getSize() <= VIEW_MAX) {
+                return head + "\n\n" + readText(k.getOwner(), f.getBlob());
+            }
+            return head + "\n\nNicht als Text anzeigbar – skills_view mit file_path speichert ihn als lokale Datei.";
         }
         skills.markUsed(k.getId(), Instant.now());
         return render(k);
@@ -263,7 +304,7 @@ public class SkillService implements SkillBackend {
         }
         sb.append("\n\n").append(k.getContent().strip());
         if (!k.getFiles().isEmpty()) {
-            sb.append("\n\nZusatzdateien (skills_view mit file_path): ").append(filePaths(k));
+            sb.append("\n\nZusatzdateien (skills_view mit file_path): ").append(fileList(k));
         }
         return sb.toString();
     }
@@ -405,6 +446,10 @@ public class SkillService implements SkillBackend {
         Skill k = w.skill();
         SkillFile file = path == null ? null : k.file(path).orElseThrow(() -> new IllegalArgumentException(
                 "Skill '" + n + "' hat keine Datei '" + path + "'. Vorhanden: " + filePaths(k)));
+        if (file != null && !file.inline()) {
+            throw new IllegalArgumentException("'" + path + "' ist ein Anhang (" + file.getMediaType() + ") und lässt "
+                    + "sich nicht patchen – mit skills_write_file ersetzen.");
+        }
         String before = file == null ? k.getContent() : file.getContent();
         int count = occurrences(before, oldString);
         if (count == 0) {
@@ -438,12 +483,84 @@ public class SkillService implements SkillBackend {
         Writable w = writable(user, find(user, n));
         Skill k = w.skill();
         Instant now = Instant.now();
-        boolean exists = k.file(p).isPresent();
-        k.file(p).ifPresentOrElse(f -> f.update(body, now), () -> k.addFile(new SkillFile(k, p, body, now)));
+        Optional<SkillFile> existing = k.file(p);
+        String replaced = existing.map(SkillFile::getBlob).orElse(null);
+        existing.ifPresentOrElse(f -> f.update(body, now), () -> k.addFile(new SkillFile(k, p, body, now)));
         k.recordRevision("write_file", noteOr(note, p), user, now);
+        releaseReplaced(user, replaced);
         changed();
-        return w.prefix() + "Datei '" + p + "' in Skill '" + n + "' " + (exists ? "überschrieben" : "angelegt")
-                + " (Revision " + k.getRevision() + ").";
+        return w.prefix() + "Datei '" + p + "' in Skill '" + n + "' " + (existing.isPresent() ? "überschrieben"
+                : "angelegt") + " (Revision " + k.getRevision() + ").";
+    }
+
+    /** Legt die lokale Datei in der Dateiablage ab und hängt sie an (siehe {@link #attachBlob}). */
+    @Override
+    public String attachFile(String name, String filePath, Path source, String mediaType, String note) {
+        requireName(name);
+        normalizePath(filePath);
+        BlobStore.Blob blob;
+        try (InputStream in = Files.newInputStream(source)) {
+            blob = blobs.put(users.email(), in);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Datei " + source + " nicht lesbar: " + e.getMessage(), e);
+        }
+        return attachBlob(name, filePath, blob.sha(), mediaType, note);
+    }
+
+    /**
+     * Hängt einen bereits in der Dateiablage des Benutzers liegenden Inhalt (Upload über {@code /blobs}) als
+     * Zusatzdatei an bzw. ersetzt die Datei gleichen Pfads – auch eine Textdatei.
+     */
+    public String attachBlob(String name, String filePath, String blob, String mediaType, String note) {
+        String n = requireName(name);
+        String p = normalizePath(filePath);
+        String type = MediaTypes.orGuess(mediaType, p);
+        String user = users.email();
+        BlobStore.Blob b = blobs.describe(user, BlobStore.requireSha(blob));
+        Writable w = writable(user, find(user, n));
+        Skill k = w.skill();
+        Instant now = Instant.now();
+        Optional<SkillFile> existing = k.file(p);
+        String replaced = existing.map(SkillFile::getBlob).orElse(null);
+        existing.ifPresentOrElse(f -> f.attach(b, type, now), () -> k.addFile(new SkillFile(k, p, b, type, now)));
+        k.recordRevision("attach_file", noteOr(note, p), user, now);
+        if (!b.sha().equals(replaced)) {
+            releaseReplaced(user, replaced);
+        }
+        changed();
+        return w.prefix() + "Anhang '" + p + "' (" + type + ", " + MediaTypes.size(b.size()) + ") in Skill '" + n
+                + "' " + (existing.isPresent() ? "ersetzt" : "angelegt") + " (Revision " + k.getRevision() + ").";
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<SkillViews.File> file(String name, String filePath) {
+        String p = normalizePath(filePath);
+        return resolve(users.email(), requireName(name)).flatMap(k -> k.file(p)).map(SkillService::view);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String exportFile(String name, String filePath, Path target) {
+        String n = requireName(name);
+        String p = normalizePath(filePath);
+        Skill k = find(users.email(), n);
+        SkillFile f = k.file(p).orElseThrow(() -> new IllegalArgumentException(
+                "Skill '" + n + "' hat keine Datei '" + p + "'. Vorhanden: " + filePaths(k)));
+        try {
+            if (target.getParent() != null) {
+                Files.createDirectories(target.getParent());
+            }
+            if (f.inline()) {
+                Files.writeString(target, f.getContent(), StandardCharsets.UTF_8);
+            } else {
+                Files.copy(blobs.require(k.getOwner(), f.getBlob()), target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Datei " + target + " nicht schreibbar: " + e.getMessage(), e);
+        }
+        return "'" + p + "' aus Skill '" + n + "' gespeichert: " + target + " (" + f.getMediaType() + ", "
+                + MediaTypes.size(f.getSize()) + ").";
     }
 
     public String removeFile(String name, String filePath, String note) {
@@ -457,8 +574,10 @@ public class SkillService implements SkillBackend {
         }
         Writable w = writable(user, current);
         Skill k = w.skill();
-        k.removeFile(k.file(p).orElseThrow());
+        SkillFile removed = k.file(p).orElseThrow();
+        k.removeFile(removed);
         k.recordRevision("remove_file", noteOr(note, p), user, Instant.now());
+        releaseReplaced(user, removed.getBlob());
         changed();
         return w.prefix() + "Datei '" + p + "' aus Skill '" + n + "' entfernt (Revision " + k.getRevision() + ").";
     }
@@ -477,7 +596,10 @@ public class SkillService implements SkillBackend {
             throw notFound(n);
         }
         int files = own.get().getFiles().size();
+        List<String> attached = blobsOf(own.get());
         skills.delete(own.get());
+        skills.flush();
+        references.release(user, attached);
         changed();
         return "Skill '" + n + "' samt " + files + " Datei(en) und Historie gelöscht."
                 + (template ? " Die globale Vorlage '" + n + "' ist wieder sichtbar." : "");
@@ -519,6 +641,7 @@ public class SkillService implements SkillBackend {
             return new Writable(visible, "");
         }
         Instant now = Instant.now();
+        copyBlobs(visible, SkillOwner.GLOBAL, user);
         Skill copy = visible.copyFor(user, now);
         copy.recordRevision("adopt", "Kopie der globalen Vorlage (Revision " + visible.getRevision() + ")", user, now);
         skills.save(copy);
@@ -540,6 +663,38 @@ public class SkillService implements SkillBackend {
     private static String filePaths(Skill k) {
         return k.getFiles().isEmpty() ? "keine"
                 : k.getFiles().stream().map(SkillFile::getPath).collect(Collectors.joining(", "));
+    }
+
+    /** Pfade, Anhänge mit Medientyp und Größe. */
+    private static String fileList(Skill k) {
+        return k.getFiles().stream().map(f -> f.inline() ? f.getPath()
+                : f.getPath() + " (Anhang, " + f.getMediaType() + ", " + MediaTypes.size(f.getSize()) + ")")
+                .collect(Collectors.joining(", "));
+    }
+
+    private static List<String> blobsOf(Skill k) {
+        return k.getFiles().stream().map(SkillFile::getBlob).filter(Objects::nonNull).toList();
+    }
+
+    /** Anhänge eines Skills in die Dateiablage eines anderen Eigentümers kopieren (Vorlage übernehmen/veröffentlichen). */
+    private void copyBlobs(Skill k, String from, String to) {
+        blobsOf(k).stream().distinct().forEach(sha -> blobs.copy(from, to, sha));
+    }
+
+    /** Gibt den Inhalt einer ersetzten oder entfernten Datei frei, falls nichts anderes ihn verwendet. */
+    private void releaseReplaced(String owner, String blob) {
+        if (blob != null) {
+            skills.flush();
+            references.release(owner, List.of(blob));
+        }
+    }
+
+    private String readText(String owner, String blob) {
+        try {
+            return new String(Files.readAllBytes(blobs.require(owner, blob)), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Anhang nicht lesbar: " + e.getMessage(), e);
+        }
     }
 
     static int occurrences(String text, String part) {

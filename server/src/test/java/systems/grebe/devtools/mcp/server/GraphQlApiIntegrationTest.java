@@ -455,6 +455,53 @@ class GraphQlApiIntegrationTest {
     }
 
     @Test
+    void blobsAreUploadedInPartsAndOnlyVisibleToTheirOwner() throws Exception {
+        String ja = token(newUser());
+        String jb = token(newUser());
+        java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
+        java.util.function.BiFunction<String, String, java.net.http.HttpRequest.Builder> req = (path, jwt) -> {
+            var b = java.net.http.HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/blobs" + path));
+            return jwt == null ? b : b.header("Authorization", "Bearer " + jwt);
+        };
+        var string = java.net.http.HttpResponse.BodyHandlers.ofString();
+        var noBody = java.net.http.HttpRequest.BodyPublishers.noBody();
+
+        var start = http.send(req.apply("/uploads", ja).POST(noBody).build(), string);
+        assertThat(start.statusCode()).isEqualTo(200);
+        String id = start.body().replaceAll(".*\"upload\"\\s*:\\s*\"([0-9a-f]+)\".*", "$1");
+        assertThat(http.send(req.apply("/uploads/" + id + "?offset=0", ja)
+                .PUT(java.net.http.HttpRequest.BodyPublishers.ofString("Teil 1|")).build(), string).body())
+                .contains("\"size\":7");
+        http.send(req.apply("/uploads/" + id + "?offset=7", ja)
+                .PUT(java.net.http.HttpRequest.BodyPublishers.ofString("Teil 2")).build(), string);
+        var done = http.send(req.apply("/uploads/" + id + "/complete", ja).POST(noBody).build(), string);
+        String blob = done.body().replaceAll(".*\"blob\"\\s*:\\s*\"([0-9a-f]{64})\".*", "$1");
+        assertThat(blob).hasSize(64);
+
+        mutation(ja, """
+                mutation($n: String!, $d: String!, $c: String!) { createSkill(name: $n, description: $d, content: $c) }""",
+                Map.of("n", "mit-datei", "d", "Mit Datei", "c", "siehe assets/teile.txt"), "createSkill");
+        assertThat(mutation(ja, """
+                mutation($n: String!, $f: String!, $b: String!) { attachSkillFile(name: $n, filePath: $f, blob: $b) }""",
+                Map.of("n", "mit-datei", "f", "assets/teile.bin", "b", blob), "attachSkillFile"))
+                .contains("Anhang 'assets/teile.bin'", "13 B");
+        assertThat(client(ja).document("{ skillFile(name: \"mit-datei\", filePath: \"assets/teile.bin\") { blob } }")
+                .retrieveSync("skillFile.blob").toEntity(String.class)).isEqualTo(blob);
+
+        assertThat(http.send(req.apply("/" + blob, ja).GET().build(), string).body()).isEqualTo("Teil 1|Teil 2");
+        assertThat(http.send(req.apply("/" + blob, jb).GET().build(), string).statusCode()).isEqualTo(400);
+        // ohne Token: 401 statt Umleitung auf die Anmeldeseite der Web-UI
+        assertThat(http.send(req.apply("/" + blob, null).GET().build(), string).statusCode()).isEqualTo(401);
+        // fremder Inhalt lässt sich nicht anhängen
+        ClientGraphQlResponse foreign = client(jb).document("""
+                mutation { createSkill(name: "b", description: "d", content: "c") }""").executeSync();
+        assertThat(foreign.getErrors()).isEmpty();
+        assertThat(client(jb).document("mutation($b: String!) { attachSkillFile(name: \"b\", filePath: "
+                + "\"assets/x\", blob: $b) }").variable("b", blob).executeSync().getErrors().getFirst().getMessage())
+                .contains("erneut hochladen");
+    }
+
+    @Test
     void skillsBelongToTheTokenUser() {
         String ja = token(newUser());
         String jb = token(newUser());

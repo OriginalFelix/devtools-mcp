@@ -76,8 +76,13 @@ final class ShareTransfer {
             SkillViews.Details d = skills.details(name.strip()).orElseThrow(() -> new IllegalArgumentException(
                     "Skill '" + name + "' nicht gefunden – skills_list zeigt die Namen."));
             SkillViews.Summary k = d.summary();
+            List<SkillFile> files = new ArrayList<>();
+            for (SkillViews.File f : d.files()) {
+                files.add(f.inline() ? new SkillFile(f.path(), f.content())
+                        : new SkillFile(f.path(), null, attachment(k.name(), f, s), f.mediaType()));
+            }
             ks.add(new SkillItem(k.name(), k.description(), d.content(), k.category(), k.tags(), k.triggers(),
-                    d.files().stream().map(f -> new SkillFile(f.path(), f.content())).toList()));
+                    files));
         }
         List<FileItem> fs = new ArrayList<>();
         for (String raw : distinct(filePaths)) {
@@ -104,6 +109,34 @@ final class ShareTransfer {
         return new Offer(ShareMessages.VERSION, UUID.randomUUID().toString().replace("-", "").substring(0, 12),
                 s.address(), s.name(), instance, ShareMessages.address(to), Instant.now().toString(), oneLine(title),
                 n, ms, ks, fs);
+    }
+
+    /** Anhang eines Skills Base64-kodiert (die Größe des ganzen Angebots prüft der Broker beim Senden). */
+    private String attachment(String skill, SkillViews.File f, ShareBroker.Settings s) {
+        if (f.size() > s.maxBytes()) {
+            throw new IllegalArgumentException("Anhang '" + f.path() + "' von Skill '" + skill + "' ist zu groß ("
+                    + f.size() / 1024 + " KB, höchstens " + s.maxBytes() / 1024 + " KB je Angebot).");
+        }
+        Path tmp = null;
+        try {
+            tmp = Files.createTempFile("devtools-share-", ".tmp");
+            skills.exportFile(skill, f.path(), tmp);
+            return Base64.getEncoder().encodeToString(Files.readAllBytes(tmp));
+        } catch (IOException e) {
+            throw new IllegalStateException("Anhang '" + f.path() + "' nicht lesbar: " + e.getMessage(), e);
+        } finally {
+            deleteQuietly(tmp);
+        }
+    }
+
+    private static void deleteQuietly(Path p) {
+        if (p != null) {
+            try {
+                Files.deleteIfExists(p);
+            } catch (IOException ignored) {
+                // temporäre Datei bleibt liegen
+            }
+        }
     }
 
     /**
@@ -227,12 +260,26 @@ final class ShareTransfer {
         }
         for (SkillFile f : k.files()) {
             try {
-                skills.writeFile(name, f.path(), f.content(), note, SKILL_MAX);
-            } catch (RuntimeException e) {
+                if (f.data() != null) {
+                    importAttachment(name, f, note);
+                } else {
+                    skills.writeFile(name, f.path(), f.content(), note, SKILL_MAX);
+                }
+            } catch (RuntimeException | IOException e) {
                 sb.append(" Datei '").append(f.path()).append("' FEHLER – ").append(e.getMessage());
             }
         }
         return sb.toString();
+    }
+
+    private void importAttachment(String skill, SkillFile f, String note) throws IOException {
+        Path tmp = Files.createTempFile("devtools-share-", ".tmp");
+        try {
+            Files.write(tmp, Base64.getDecoder().decode(f.data()));
+            skills.attachFile(skill, f.path(), tmp, f.mediaType(), note);
+        } finally {
+            deleteQuietly(tmp);
+        }
     }
 
     /** Freier Skill-Name: der ursprüngliche, sonst {@code <name>-<absender>}, sonst mit Zähler. */

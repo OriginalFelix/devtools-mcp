@@ -46,9 +46,20 @@ public final class MemoryViews {
      * @param skill     Name des Skills (Skill-Registrierung), nach dem gearbeitet wurde, oder leer
      * @param reference Bezug wie Ticket-Key, PR, Commit oder leer
      * @param type      Lebensdauer; {@code null} gilt als {@link Type#PERMANENT}
+     * @param files     angehängte Dateien
      */
     public record Entry(long id, String title, String content, String project, String skill, String reference,
-                        List<String> tags, Type type, Instant createdAt, Instant updatedAt) {
+                        List<String> tags, Type type, Instant createdAt, Instant updatedAt, List<File> files) {
+
+        public Entry {
+            files = files == null ? List.of() : List.copyOf(files);
+        }
+
+        /** Ohne Dateien. */
+        public Entry(long id, String title, String content, String project, String skill, String reference,
+                     List<String> tags, Type type, Instant createdAt, Instant updatedAt) {
+            this(id, title, content, project, skill, reference, tags, type, createdAt, updatedAt, List.of());
+        }
 
         public boolean temporary() {
             return type == Type.TEMPORARY;
@@ -62,5 +73,15 @@ public final class MemoryViews {
         public boolean ephemeral() {
             return type != null && type.ephemeral();
         }
+    }
+
+    /**
+     * An eine Memory angehängte Datei mit beliebigem Inhalt (Screenshot, Log, Export …), gespeichert in der Dateiablage
+     * des Backends.
+     *
+     * @param size Größe in Bytes
+     * @param blob SHA-256 des Inhalts
+     */
+    public record File(String path, long size, String mediaType, String blob, Instant updatedAt) {
     }
 }

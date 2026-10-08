@@ -30,6 +30,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
+import systems.grebe.devtools.mcp.api.MediaTypes;
 import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
 import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 
@@ -56,6 +57,9 @@ public class MemoriesView extends BorderPane {
     private final Label title = new Label();
     private final Label meta = new Label();
     private final TextArea content = new TextArea();
+    private final javafx.scene.control.ListView<MemoryViews.File> files = new javafx.scene.control.ListView<>();
+    private final Button saveFile = new Button("Datei speichern unter…");
+    private final HBox fileBox = new HBox(8);
     private final VBox detail;
 
     public MemoriesView(MemoryBackend service) {
@@ -126,7 +130,21 @@ public class MemoriesView extends BorderPane {
         content.setWrapText(true);
         content.getStyleClass().add("mono");
         VBox.setVgrow(content, Priority.ALWAYS);
-        VBox box = new VBox(6, title, meta, content);
+        files.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override
+            protected void updateItem(MemoryViews.File f, boolean empty) {
+                super.updateItem(f, empty);
+                setText(empty || f == null ? null
+                        : f.path() + "  (" + f.mediaType() + ", " + MediaTypes.size(f.size()) + ")");
+            }
+        });
+        files.setPrefHeight(90);
+        files.getSelectionModel().selectedItemProperty().addListener((o, a, f) -> saveFile.setDisable(f == null));
+        saveFile.setOnAction(e -> saveSelectedFile());
+        HBox.setHgrow(files, Priority.ALWAYS);
+        fileBox.getChildren().setAll(files, saveFile);
+        fileBox.managedProperty().bind(fileBox.visibleProperty());
+        VBox box = new VBox(6, title, meta, content, fileBox);
         box.setPadding(new Insets(14, 16, 12, 16));
         return box;
     }
@@ -160,7 +178,26 @@ public class MemoriesView extends BorderPane {
         meta.setText(metaLine(m));
         content.setText(m.content());
         content.positionCaret(0);
+        files.getItems().setAll(m.files());
+        saveFile.setDisable(true);
+        fileBox.setVisible(!m.files().isEmpty());
         detailHolder.getChildren().setAll(detail);
+    }
+
+    private void saveSelectedFile() {
+        MemoryViews.File f = files.getSelectionModel().getSelectedItem();
+        Optional<MemoryViews.Entry> m = selected();
+        if (f == null || m.isEmpty()) {
+            return;
+        }
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle("Angehängte Datei speichern");
+        chooser.setInitialFileName(f.path().substring(f.path().lastIndexOf('/') + 1));
+        java.io.File target = chooser.showSaveDialog(getScene() == null ? null : getScene().getWindow());
+        if (target != null) {
+            long id = m.get().id();
+            background(() -> service.exportFile(id, f.path(), target.toPath()), msg -> { });
+        }
     }
 
     static String metaLine(MemoryViews.Entry m) {

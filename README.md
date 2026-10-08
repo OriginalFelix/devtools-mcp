@@ -29,7 +29,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
 | **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
-| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` · Typ dauerhaft, temporär oder **Rückruf** (`INVOCATION`) |
+| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update`, `memories_attach_file`, `memories_remove_file` · Schalter (Standard aus): `memories_delete` · Typ dauerhaft, temporär oder **Rückruf** (`INVOCATION`) |
 | **Rückrufe** (Invocations) | lang laufende Aktion fertig → das LLM bekommt Ergebnis und hinterlegte Memory (Typ `INVOCATION`) per Channel, auch in einer später gestarteten Sitzung; danach wird die Memory gelöscht: `invocations_list`, `invocations_cancel` (siehe [Rückrufe](#rückrufe--ergebnis-lang-laufender-aktionen-an-das-llm)) |
 | **Kooperation** (MQTT 5, z.B. HiveMQ) | Austausch zwischen Claude-Instanzen auf verschiedenen Rechnern – anderer Nutzer oder eigenes weiteres Gerät: `share_peers`, `share_send` (Notiz, Memories, Skills, Dateien; Rückfrage bei Nutzer 1), `share_inbox`, `share_view`, `share_accept` (Rückfrage bei Nutzer 2), `share_decline` – über den Broker des Backends (HiveMQ CE im Team-Server bzw. eingebetteten Backend, Anmeldung mit dem Benutzerkonto, Absender geprüft) oder einen eigenen, optional Ende-zu-Ende verschlüsselt, neue Angebote und Antworten als Rückruf per Channel (siehe [Kooperation](#kooperation-zwischen-instanzen-und-geräten)) (Modul Standard: aus) |
 | **Skripte** (Groovy 5 oder Java per `javac`) | `scripts_list`, `scripts_view` (Quelltext, Historie, ohne Namen die Referenz) · je Schalter (Standard aus): `scripts_save`, `scripts_delete` – jedes Skript wird zur Laufzeit ein eigenes Modul mit Tools `<skript>_*`, gespeichert im Backend (siehe [Skripte](#skripte--eigene-tools-zur-laufzeit)) |
@@ -1188,6 +1188,14 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
 
 * **Aufbau** wie ein `SKILL.md`: Name (`a-z0-9._-`), ein Satz `description` („wann greift der Skill“), Kategorie,
   Tags, Markdown-Inhalt, dazu Zusatzdateien unter `references/`, `templates/`, `scripts/`, `assets/`.
+* **Zusatzdateien beliebigen Inhalts:** `skills_write_file` nimmt genau eines von `file_content` (Text),
+  `content_base64` (kleine Binärdateien) oder `source_path` (lokale Datei, beliebig groß). Text bis „Max. Zeichen je
+  Inhalt“ bleibt im Skill und mit `skills_patch` änderbar; alles andere (Bilder, PDFs, Office, Archive, große Texte)
+  wird ohne Größengrenze als **Anhang** in der [Dateiablage](#dateiablage-für-anhänge) gespeichert und lässt sich nur
+  ersetzen. `skills_view` mit `file_path` zeigt Text direkt und speichert Binäres als lokale Datei (ohne
+  `target_path` unter `attachments/` im Datenordner der App), deren Pfad das LLM mit eigenen Werkzeugen öffnen kann.
+  `source_path` und `target_path` müssen in „Dateien anhängen aus und speichern in“ (Modul Skills) oder in den
+  globalen „Freigaben“ liegen – außer die Beschränkung ist dort aufgehoben.
 * **Registrierung (`triggers`):** Tool-Namen oder Präfixe (`ticket_get`, `pr_*`), für die der Skill gilt. Ruft das LLM
   ein solches Tool auf, hängt der Server einmal je Session eine Zeile an das Ergebnis: „[DevTools] Registrierter Skill
   für ticket_get: ticket-review – … (per skills_view ladbar)“. Ein bereits geladener Skill wird nicht mehr genannt.
@@ -1272,10 +1280,38 @@ Entscheidungen, Datum.
   Skill; Treffer werden nach Anzahl getroffener Begriffe gewichtet (Titel und Bezug doppelt), dann nach Datum. Filter:
   `project`, `skill` (z.B. alle früheren Ticket-Reviews), `tag`, `days`, `limit` (Standard 5, max. 50). Ohne Suchtext
   kommen die neuesten. `memories_view` lädt eine Memory vollständig.
+* **Dateien:** `memories_attach_file` hängt Belege wie Screenshots, Logs oder Exporte an (beliebiger Inhalt, ohne
+  Größengrenze; `source_path`, `content_base64` oder `file_content`, gleicher `file_path` ersetzt),
+  `memories_remove_file` entfernt sie. `memories_view` mit `file_path` zeigt Text bzw. speichert Binäres lokal (wie
+  bei den Skills; Freigabe im Modul Memories unter „Dateien anhängen aus und speichern in“). Anhängen und Entfernen
+  gelten als Änderung der Memory – temporäre gehen ohne Freigabe.
 * **Ablage:** im Backend neben den Skills (Tabelle `memory` in derselben Datenbank, Spring Data JPA mit
   `MemoryRepository`/`MemoryService`), je Benutzerkonto (E-Mail) – andere Benutzer sehen sie nicht, globale Memories
-  gibt es nicht. GraphQL: `memories`, `memory`, `memorySearch`, `memoryView`, `saveMemory`, `updateMemory`,
-  `deleteMemory`, Subscription `memoriesChanged`.
+  gibt es nicht. GraphQL: `memories`, `memory`, `memorySearch`, `memoryView`, `memoryFile`, `memoryFileView`,
+  `saveMemory`, `updateMemory`, `attachMemoryFile`, `removeMemoryFile`, `deleteMemory`, Subscription
+  `memoriesChanged`.
+
+#### Dateiablage für Anhänge
+
+Inhalte von Skill-Anhängen und Memory-Dateien liegen nicht in der Datenbank, sondern als Dateien im Datenverzeichnis
+des Backends (eingebettet: Datenordner der App; Server: `devtools.server.home`):
+
+```
+blobs/<e-mail>/<sha256>   Dateien des Benutzers (Skills und Memories)
+blobs/GLOBAL/<sha256>     Anhänge globaler Skill-Vorlagen
+```
+
+Die Datenbank hält nur Pfad, Größe, Medientyp und Hash; gleicher Inhalt liegt je Eigentümer nur einmal. Beim
+Übernehmen einer Vorlage bzw. beim Veröffentlichen wird der Inhalt in das andere Verzeichnis kopiert (Hardlink, wo
+möglich). Nicht mehr verwendete Inhalte löscht das Backend nach dem Commit; abgebrochene Uploads und verwaiste Inhalte
+räumt es kurz nach dem Start und dann täglich auf (ab einem Tag Alter). **Backup:** `blobs/` gehört zur Datenbank dazu.
+
+Übertragen wird über HTTP statt GraphQL (`Authorization: Bearer <Token>` wie bei `/graphql`): `POST /blobs/uploads`,
+dann Teile zu 4 MB per `PUT /blobs/uploads/<id>?offset=<n>`, abgeschlossen mit `POST /blobs/uploads/<id>/complete`
+(liefert den SHA-256); angehängt wird anschließend per GraphQL (`attachSkillFile`, `attachMemoryFile`). `GET
+/blobs/<sha256>` liefert den Inhalt – eigene Dateien und die der globalen Vorlagen, fremde nicht. Durch die Teile
+greift keine Grenze je Anfrage (WildFly `max-post-size`, Reverse-Proxy); ein Proxy muss Anfragen bis 4 MB durchlassen
+(nginx z.B. `client_max_body_size 8m;`).
 * **Schalter:** „Anlegen und Nachtragen erlauben“ (Standard an), „Löschen erlauben“ (Standard aus, nur für das LLM –
   im Tab **Memories** der App geht Löschen immer), „Max. Zeichen je Memory“ (Standard 20 000).
 * **Sparsam ausgeliefert:** Standard 5 Treffer mit einer Zeile plus kurzem Ausschnitt; bei genau einem Treffer kommt

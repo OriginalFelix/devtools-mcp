@@ -1,9 +1,13 @@
 package systems.grebe.devtools.mcp.modules.skills;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import systems.grebe.devtools.mcp.api.MediaTypes;
+import systems.grebe.devtools.mcp.core.FileSource;
+import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ShellHints;
 
 /** Schreibende Skill-Tools (nur registriert, wenn in der Konfiguration erlaubt). */
@@ -16,10 +20,13 @@ public class SkillWriteTools {
 
     private final SkillBackend service;
     private final int maxContentChars;
+    private final LocalFiles files;
 
-    SkillWriteTools(SkillBackend service, int maxContentChars) {
+    /** @param files woher {@code source_path} lesen darf */
+    SkillWriteTools(SkillBackend service, int maxContentChars, LocalFiles files) {
         this.service = service;
         this.maxContentChars = maxContentChars;
+        this.files = files;
     }
 
     @Tool(name = "create", description = "Speichert neu Gelerntes dauerhaft als Skill (Ablauf, Fix). Registriert "
@@ -67,14 +74,40 @@ public class SkillWriteTools {
     }
 
     @Tool(name = "write_file", description = "Legt eine Zusatzdatei eines Skills an oder überschreibt sie (unter "
-            + "references/, templates/, scripts/ oder assets/) – für lange Details; im Inhalt darauf verweisen."
-            + ShellHints.SKILLS)
+            + "references/, templates/, scripts/ oder assets/) – lange Details, Vorlagen oder beliebige Dateien "
+            + "(Bilder, PDFs, Office, Archive …) ohne Größengrenze; im Inhalt darauf verweisen. Genau eines: "
+            + "file_content (Text), content_base64 (kleine Binärdatei) oder source_path (lokale Datei, beliebig "
+            + "groß). Text bleibt mit skills_patch änderbar, Binäres wird als Anhang gespeichert." + ShellHints.SKILLS)
     public String writeFile(
             @ToolParam(description = SkillReadTools.NAME) String name,
-            @ToolParam(description = "Pfad, z.B. 'references/jdbc-urls.md'") String file_path,
-            @ToolParam(description = "Dateiinhalt") String file_content,
+            @ToolParam(required = false, description = "Pfad, z.B. 'references/jdbc-urls.md' oder "
+                    + "'assets/logo.png'; leer bei source_path = assets/<Dateiname>") String file_path,
+            @ToolParam(required = false, description = "Dateiinhalt als Text") String file_content,
+            @ToolParam(required = false, description = "Lokale Datei (absolut, aus freigegebenem Verzeichnis)")
+            String source_path,
+            @ToolParam(required = false, description = "Dateiinhalt als Base64") String content_base64,
+            @ToolParam(required = false, description = "Medientyp, z.B. 'image/png'; leer = aus dem Pfad raten")
+            String media_type,
             @ToolParam(required = false, description = NOTE) String note) {
-        return service.writeFile(name, file_path, file_content, note, maxContentChars);
+        boolean textOnly = (source_path == null || source_path.isBlank())
+                && (content_base64 == null || content_base64.isBlank());
+        if (textOnly && file_content != null && file_content.length() <= maxContentChars
+                && (media_type == null || media_type.isBlank())) {
+            return service.writeFile(name, file_path, file_content, note, maxContentChars);
+        }
+        try (FileSource source = FileSource.of(file_content, content_base64, source_path, files)) {
+            String path = file_path == null || file_path.isBlank() ? defaultPath(source.name()) : file_path;
+            String type = MediaTypes.orGuess(media_type, path);
+            Optional<String> text = source.text(type, maxContentChars);
+            return text.isPresent() ? service.writeFile(name, path, text.get(), note, maxContentChars)
+                    : service.attachFile(name, path, source.path(), type, note);
+        }
+    }
+
+    private static String defaultPath(Optional<String> fileName) {
+        String n = fileName.orElseThrow(() -> new IllegalArgumentException("'file_path' fehlt, z.B. "
+                + "'references/api.md' oder 'assets/logo.png'."));
+        return "assets/" + n.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
     @Tool(name = "remove_file", description = "Entfernt eine Zusatzdatei aus einem Skill." + ShellHints.SKILLS)

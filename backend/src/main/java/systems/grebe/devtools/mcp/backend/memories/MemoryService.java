@@ -1,10 +1,18 @@
 package systems.grebe.devtools.mcp.backend.memories;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -27,6 +35,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import systems.grebe.devtools.mcp.api.MediaTypes;
+import systems.grebe.devtools.mcp.backend.blobs.BlobReferences;
+import systems.grebe.devtools.mcp.backend.blobs.BlobStore;
 import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
 import systems.grebe.devtools.mcp.backend.skills.SkillService;
 import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
@@ -44,6 +55,10 @@ import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
  * <p><b>Typ:</b> Memories sind dauerhaft, außer sie werden ausdrücklich als temporär angelegt. Mit
  * {@code temporaryOnly} (Aufrufer ohne Freigabe für dauerhafte Memories) lassen sich nur temporäre ändern und
  * löschen; dauerhaft machen lässt sich eine temporäre Memory so nicht.
+ *
+ * <p><b>Dateien:</b> An eine Memory lassen sich beliebige Dateien hängen (auch binär, ohne Größengrenze); der Inhalt
+ * liegt in der {@link BlobStore Dateiablage} im Verzeichnis des Benutzers. Anhängen und Entfernen zählen als Änderung
+ * der Memory ({@code temporaryOnly} gilt wie bei {@link #update}).
  */
 @Service
 @Transactional
@@ -61,6 +76,10 @@ public class MemoryService implements MemoryBackend {
     private static final int SNIPPET = 120;
     /** Bis zu dieser Länge liefert memories_search bei genau einem Treffer den Inhalt gleich mit. */
     static final int INLINE_MAX = 4_000;
+    /** Angehängte Textdateien bis zu dieser Größe (Bytes) zeigt memories_view direkt. */
+    public static final int VIEW_MAX = 200_000;
+    static final Pattern FILE_PATH = Pattern.compile("[A-Za-z0-9._/-]+");
+    static final int MAX_FILE_PATH = 200;
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
             .withZone(ZoneId.systemDefault());
@@ -70,11 +89,15 @@ public class MemoryService implements MemoryBackend {
 
     private final MemoryRepository memories;
     private final SkillOwner users;
+    private final BlobStore blobs;
+    private final BlobReferences references;
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
-    public MemoryService(MemoryRepository memories, SkillOwner users) {
+    public MemoryService(MemoryRepository memories, SkillOwner users, BlobStore blobs, BlobReferences references) {
         this.memories = memories;
         this.users = users;
+        this.blobs = blobs;
+        this.references = references;
     }
 
     /** Wird nach jeder erfolgreich committeten Änderung aufgerufen – nicht bei Rollback. */
@@ -148,7 +171,12 @@ public class MemoryService implements MemoryBackend {
 
     private static MemoryViews.Entry entry(Memory m) {
         return new MemoryViews.Entry(m.getId(), m.getTitle(), m.getContent(), m.getProject(), m.getSkill(),
-                m.getReference(), m.tagList(), m.getType(), m.getCreatedAt(), m.getUpdatedAt());
+                m.getReference(), m.tagList(), m.getType(), m.getCreatedAt(), m.getUpdatedAt(),
+                m.getFiles().stream().map(MemoryService::view).toList());
+    }
+
+    private static MemoryViews.File view(MemoryFile f) {
+        return new MemoryViews.File(f.getPath(), f.getSize(), f.getMediaType(), f.getBlob(), f.getUpdatedAt());
     }
 
     // ------------------------------------------------------------------ Lesen
@@ -218,7 +246,13 @@ public class MemoryService implements MemoryBackend {
         }
         parts.add(DATE.format(m.getCreatedAt())
                 + (m.getUpdatedAt().equals(m.getCreatedAt()) ? "" : ", geändert " + DATE.format(m.getUpdatedAt())));
-        return sb.append(String.join(" · ", parts)).append("\n\n").append(m.getContent().strip()).toString();
+        sb.append(String.join(" · ", parts)).append("\n\n").append(m.getContent().strip());
+        if (!m.getFiles().isEmpty()) {
+            sb.append("\n\nDateien (memories_view mit file_path): ").append(m.getFiles().stream()
+                    .map(f -> f.getPath() + " (" + f.getMediaType() + ", " + MediaTypes.size(f.getSize()) + ")")
+                    .collect(Collectors.joining(", ")));
+        }
+        return sb.toString();
     }
 
     // ------------------------------------------------------------------ Schreiben
@@ -314,9 +348,143 @@ public class MemoryService implements MemoryBackend {
         if (temporaryOnly) {
             requireTemporary(m, "gelöscht");
         }
+        List<String> attached = m.getFiles().stream().map(MemoryFile::getBlob).toList();
         memories.delete(m);
+        memories.flush();
+        references.release(m.getOwner(), attached);
         changed();
-        return "Memory #" + id + " („" + m.getTitle() + "“) gelöscht.";
+        return "Memory #" + id + " („" + m.getTitle() + "“) gelöscht"
+                + (attached.isEmpty() ? "" : " samt " + attached.size() + " Datei(en)") + ".";
+    }
+
+    // ------------------------------------------------------------------ Dateien
+
+    @Override
+    public String attachFile(long id, String filePath, Path source, String mediaType, boolean temporaryOnly) {
+        String p = filePath == null || filePath.isBlank() ? fileName(source) : normalizeFilePath(filePath);
+        Memory m = find(users.email(), id);
+        if (temporaryOnly) {
+            requireTemporary(m, "geändert");
+        }
+        BlobStore.Blob blob;
+        try (InputStream in = Files.newInputStream(source)) {
+            blob = blobs.put(m.getOwner(), in);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Datei " + source + " nicht lesbar: " + e.getMessage(), e);
+        }
+        return attachBlob(id, p, blob.sha(), mediaType, temporaryOnly);
+    }
+
+    /**
+     * Hängt einen bereits in der Dateiablage des Benutzers liegenden Inhalt (Upload über {@code /blobs}) an bzw.
+     * ersetzt die Datei gleichen Pfads.
+     */
+    public String attachBlob(long id, String filePath, String blob, String mediaType, boolean temporaryOnly) {
+        String p = normalizeFilePath(filePath);
+        String type = MediaTypes.orGuess(mediaType, p);
+        Memory m = find(users.email(), id);
+        if (temporaryOnly) {
+            requireTemporary(m, "geändert");
+        }
+        BlobStore.Blob b = blobs.describe(m.getOwner(), BlobStore.requireSha(blob));
+        Instant now = Instant.now();
+        Optional<MemoryFile> existing = m.file(p);
+        String replaced = existing.map(MemoryFile::getBlob).orElse(null);
+        existing.ifPresentOrElse(f -> f.replace(b, type, now), () -> m.addFile(new MemoryFile(m, p, b, type, now)));
+        m.touch(now);
+        if (replaced != null && !replaced.equals(b.sha())) {
+            memories.flush();
+            references.release(m.getOwner(), List.of(replaced));
+        }
+        changed();
+        return "Datei '" + p + "' (" + type + ", " + MediaTypes.size(b.size()) + ") an Memory #" + id + " "
+                + (existing.isPresent() ? "ersetzt" : "angehängt") + ".";
+    }
+
+    @Override
+    public String removeFile(long id, String filePath, boolean temporaryOnly) {
+        String p = normalizeFilePath(filePath);
+        Memory m = find(users.email(), id);
+        if (temporaryOnly) {
+            requireTemporary(m, "geändert");
+        }
+        MemoryFile f = requireFile(m, p);
+        m.removeFile(f);
+        m.touch(Instant.now());
+        memories.flush();
+        references.release(m.getOwner(), List.of(f.getBlob()));
+        changed();
+        return "Datei '" + p + "' von Memory #" + id + " entfernt.";
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<MemoryViews.File> file(long id, String filePath) {
+        String p = normalizeFilePath(filePath);
+        return memories.findByIdAndOwner(id, users.email()).flatMap(m -> m.file(p)).map(MemoryService::view);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String viewFile(long id, String filePath) {
+        Memory m = find(users.email(), id);
+        MemoryFile f = requireFile(m, normalizeFilePath(filePath));
+        String head = "# #" + id + " / " + f.getPath() + " · " + f.getMediaType() + ", " + MediaTypes.size(f.getSize());
+        if (!MediaTypes.textual(f.getMediaType()) || f.getSize() > VIEW_MAX) {
+            return head + "\n\nNicht als Text anzeigbar – memories_view mit file_path speichert sie als lokale Datei.";
+        }
+        try {
+            return head + "\n\n" + new String(Files.readAllBytes(blobs.require(m.getOwner(), f.getBlob())),
+                    StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Datei nicht lesbar: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String exportFile(long id, String filePath, Path target) {
+        Memory m = find(users.email(), id);
+        MemoryFile f = requireFile(m, normalizeFilePath(filePath));
+        try {
+            if (target.getParent() != null) {
+                Files.createDirectories(target.getParent());
+            }
+            Files.copy(blobs.require(m.getOwner(), f.getBlob()), target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Datei " + target + " nicht schreibbar: " + e.getMessage(), e);
+        }
+        return "'" + f.getPath() + "' aus Memory #" + id + " gespeichert: " + target + " (" + f.getMediaType() + ", "
+                + MediaTypes.size(f.getSize()) + ").";
+    }
+
+    private static MemoryFile requireFile(Memory m, String path) {
+        return m.file(path).orElseThrow(() -> new IllegalArgumentException("Memory #" + m.getId() + " hat keine Datei '"
+                + path + "'. Vorhanden: " + (m.getFiles().isEmpty() ? "keine"
+                : m.getFiles().stream().map(MemoryFile::getPath).collect(Collectors.joining(", ")))));
+    }
+
+    /** Relativer Pfad ohne {@code ..}, z.B. {@code screenshot.png} oder {@code logs/server.log}. */
+    static String normalizeFilePath(String path) {
+        String p = path == null ? "" : path.strip().replace('\\', '/');
+        boolean valid = !p.isEmpty() && p.length() <= MAX_FILE_PATH && FILE_PATH.matcher(p).matches()
+                && Arrays.stream(p.split("/", -1)).noneMatch(x -> x.isEmpty() || x.equals(".")
+                || x.equals(".."));
+        if (!valid) {
+            throw new IllegalArgumentException("Ungültiger Dateipfad '" + path + "': relativ, nur Buchstaben, Ziffern, "
+                    + "'.', '_', '-' und '/', ohne '..', max. " + MAX_FILE_PATH + " Zeichen (z.B. 'screenshot.png').");
+        }
+        return p;
+    }
+
+    /** Dateiname der Quelle als Pfad in der Memory; unzulässige Zeichen werden zu {@code _}. */
+    static String fileName(Path source) {
+        String n = source.getFileName() == null ? "" : source.getFileName().toString();
+        n = n.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (n.isEmpty() || n.chars().allMatch(c -> c == '.')) {
+            n = "datei";
+        }
+        return n.length() > MAX_FILE_PATH ? n.substring(n.length() - MAX_FILE_PATH) : n;
     }
 
     // ------------------------------------------------------------------ Suche

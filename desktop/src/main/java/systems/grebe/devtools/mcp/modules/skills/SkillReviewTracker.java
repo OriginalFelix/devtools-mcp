@@ -36,7 +36,7 @@ public class SkillReviewTracker implements ToolCallListener {
     /** Tools, die als Skill-Pflege zählen und den Zähler zurücksetzen. */
     static final Set<String> MAINTENANCE = Set.of("skills_create", "skills_patch", "skills_update",
             "skills_write_file", "skills_remove_file", "skills_delete", "skills_review", "memories_save",
-            "memories_update");
+            "memories_update", "memories_attach_file");
     static final Set<String> WRITES = Set.of("skills_create", "skills_patch", "skills_update",
             "skills_write_file", "skills_remove_file", "skills_delete");
     static final String NO_SESSION = "_";

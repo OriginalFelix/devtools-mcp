@@ -1,7 +1,10 @@
 package systems.grebe.devtools.mcp.modules.skills;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
+
+import systems.grebe.devtools.mcp.api.MediaTypes;
 
 /** Lesemodell für die Oberfläche – unabhängig von JPA-Entities und Lazy Loading. */
 public final class SkillViews {
@@ -49,8 +52,24 @@ public final class SkillViews {
         }
     }
 
-    /** Zusatzdatei. */
-    public record File(String path, String content, Instant updatedAt) {
+    /**
+     * Zusatzdatei: Text direkt im Skill ({@code content}, mit {@code skills_patch} änderbar) oder ein Anhang mit
+     * beliebigem Inhalt in der Dateiablage des Backends ({@code blob} = SHA-256, {@code content} leer).
+     *
+     * @param size Größe in Bytes
+     */
+    public record File(String path, String content, Instant updatedAt, long size, String mediaType, String blob) {
+
+        /** Textdatei im Skill. */
+        public File(String path, String content, Instant updatedAt) {
+            this(path, content, updatedAt, content == null ? 0 : content.getBytes(StandardCharsets.UTF_8).length,
+                    MediaTypes.guess(path), null);
+        }
+
+        /** Text im Skill statt Anhang in der Dateiablage. */
+        public boolean inline() {
+            return blob == null;
+        }
     }
 
     /** Eintrag der Änderungshistorie. */

@@ -28,6 +28,8 @@ type Query {
     skillList(query: String, category: String): String!
     skillView(name: String!, filePath: String): String!
     skillHistory(name: String!, revision: Int): String!
+    "Metadaten einer Zusatzdatei (Text oder Anhang) des sichtbaren Skills."
+    skillFile(name: String!, filePath: String!): SkillFile
 
     "Memories des Benutzers (frühere Aktionen), beste Treffer bzw. neueste zuerst."
     memories(query: String, project: String, skill: String, limit: Int): [MemoryEntry!]!
@@ -37,6 +39,9 @@ type Query {
     memorySearch(query: String, project: String, skill: String, tag: String, type: MemoryType, days: Int,
                  limit: Int): String!
     memoryView(id: Int!): String!
+    "Metadaten bzw. Text (für das LLM) einer an eine Memory angehängten Datei."
+    memoryFile(id: Int!, filePath: String!): MemoryFile
+    memoryFileView(id: Int!, filePath: String!): String!
     "Bezüge aller Memories (klein geschrieben) – die App erkennt damit Ticket-Keys o.ä. in Tool-Aufrufen."
     memoryReferences: [String!]!
     "Neueste Memories mit einem der Bezüge oder zu einem Skill (ohne Inhalt)."
@@ -88,6 +93,8 @@ type Mutation {
     patchSkill(name: String!, oldString: String!, newString: String!, replaceAll: Boolean, filePath: String,
                note: String, expectedRevision: Int, maxContentChars: Int): String!
     writeSkillFile(name: String!, filePath: String!, content: String!, note: String, maxContentChars: Int): String!
+    "Hängt einen über /blobs hochgeladenen Inhalt (blob = SHA-256) als Zusatzdatei an bzw. ersetzt sie; Recht wie writeSkillFile."
+    attachSkillFile(name: String!, filePath: String!, blob: String!, mediaType: String, note: String): String!
     removeSkillFile(name: String!, filePath: String!, note: String): String!
     deleteSkill(name: String!): String!
     publishSkill(name: String!): String!
@@ -102,6 +109,9 @@ type Mutation {
                  maxContentChars: Int): String!
     "Temporäre Memories auch ohne Recht auf das Tool memories_delete; temporaryOnly lehnt dauerhafte ab."
     deleteMemory(id: Int!, temporaryOnly: Boolean): String!
+    "Hängt einen über /blobs hochgeladenen Inhalt (blob = SHA-256) an eine Memory an bzw. ersetzt die Datei gleichen Pfads; Recht wie updateMemory."
+    attachMemoryFile(id: Int!, filePath: String!, blob: String!, mediaType: String, temporaryOnly: Boolean): String!
+    removeMemoryFile(id: Int!, filePath: String!, temporaryOnly: Boolean): String!
 
     "Legt ein eigenes Skript an oder ändert es. Das Backend prüft die Syntax (ohne Ausführung); ohne description gilt der feste Text aus dem Quelltext, ohne language die bisherige Sprache (neu: GROOVY)."
     saveScript(name: String!, language: ScriptLanguage, description: String, content: String!, note: String,
@@ -311,10 +321,16 @@ type SkillSummary {
     triggers: [String!]!
 }
 
+"Zusatzdatei: Text im Skill (content) oder Anhang in der Dateiablage (blob = SHA-256, Inhalt über GET /blobs/<blob>)."
 type SkillFile {
     path: String!
+    "Leer bei Anhängen."
     content: String
     updatedAt: String
+    "Bytes."
+    size: Float!
+    mediaType: String!
+    blob: String
 }
 
 type SkillRevision {
@@ -377,6 +393,17 @@ type MemoryEntry {
     tags: [String!]!
     type: MemoryType!
     createdAt: String
+    updatedAt: String
+    files: [MemoryFile!]!
+}
+
+"An eine Memory angehängte Datei; Inhalt über GET /blobs/<blob>."
+type MemoryFile {
+    path: String!
+    "Bytes."
+    size: Float!
+    mediaType: String!
+    blob: String!
     updatedAt: String
 }
 

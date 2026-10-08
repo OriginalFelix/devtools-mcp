@@ -104,7 +104,15 @@ final class ShareMessages {
         }
     }
 
-    record SkillFile(String path, String content) {
+    /**
+     * Zusatzdatei eines Skills: Text in {@code content} oder – bei einem Anhang – Inhalt Base64-kodiert in {@code data}
+     * (ältere Instanzen kennen nur Text und übergehen {@code data}).
+     */
+    record SkillFile(String path, String content, String data, String mediaType) {
+
+        SkillFile(String path, String content) {
+            this(path, content, null, null);
+        }
     }
 
     /** @param data Inhalt Base64-kodiert */

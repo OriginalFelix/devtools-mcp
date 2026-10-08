@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.modules.skills;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
@@ -54,6 +55,21 @@ public interface SkillBackend {
                  Integer expectedRevision, int maxContentChars);
 
     String writeFile(String name, String filePath, String content, String note, int maxContentChars);
+
+    /**
+     * Legt eine Zusatzdatei mit beliebigem Inhalt (auch binär, ohne Größengrenze) als Anhang in der Dateiablage des
+     * Backends an oder ersetzt sie. Anhänge lassen sich nicht patchen, nur ersetzen.
+     *
+     * @param source    lokale Datei mit dem Inhalt
+     * @param mediaType z.B. {@code image/png}; {@code null} = aus dem Pfad raten
+     */
+    String attachFile(String name, String filePath, Path source, String mediaType, String note);
+
+    /** Metadaten einer Zusatzdatei (Text oder Anhang); leer, wenn es Skill oder Datei nicht gibt. */
+    Optional<SkillViews.File> file(String name, String filePath);
+
+    /** Schreibt den Inhalt einer Zusatzdatei (Text oder Anhang) nach {@code target}; vorhandene wird ersetzt. */
+    String exportFile(String name, String filePath, Path target);
 
     String removeFile(String name, String filePath, String note);
 

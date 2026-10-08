@@ -206,6 +206,12 @@ public class BackendGraphQlController {
         return as(user, () -> skills.history(name, revision));
     }
 
+    @QueryMapping
+    public SkillViews.File skillFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                     @Argument String name, @Argument String filePath) {
+        return as(user, () -> skills.file(name, filePath).orElse(null));
+    }
+
     @MutationMapping
     public String createSkill(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                               @Argument String name, @Argument String description, @Argument String content,
@@ -243,6 +249,14 @@ public class BackendGraphQlController {
                                  @Argument String note, @Argument Integer maxContentChars) {
         return asTool(user, "skills", "skills_write_file",
                 () -> skills.writeFile(name, filePath, content, note, max(maxContentChars)));
+    }
+
+    @MutationMapping
+    public String attachSkillFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                  @Argument String name, @Argument String filePath, @Argument String blob,
+                                  @Argument String mediaType, @Argument String note) {
+        return asTool(user, "skills", "skills_write_file",
+                () -> skills.attachBlob(name, filePath, blob, mediaType, note));
     }
 
     @MutationMapping
@@ -305,6 +319,18 @@ public class BackendGraphQlController {
     }
 
     @QueryMapping
+    public MemoryViews.File memoryFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                       @Argument long id, @Argument String filePath) {
+        return as(user, () -> memories.file(id, filePath).orElse(null));
+    }
+
+    @QueryMapping
+    public String memoryFileView(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                 @Argument long id, @Argument String filePath) {
+        return as(user, () -> memories.viewFile(id, filePath));
+    }
+
+    @QueryMapping
     public List<String> memoryReferences(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
         return as(user, () -> List.copyOf(memories.references()));
     }
@@ -344,6 +370,22 @@ public class BackendGraphQlController {
                                @Argument long id, @Argument Boolean temporaryOnly) {
         return asToolOrTemporary(user, "memories_delete", id, Boolean.TRUE.equals(temporaryOnly),
                 tempOnly -> memories.delete(id, tempOnly));
+    }
+
+    /** Anhängen und Entfernen von Dateien ändern die Memory – gleiches Recht wie {@code updateMemory}. */
+    @MutationMapping
+    public String attachMemoryFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                   @Argument long id, @Argument String filePath, @Argument String blob,
+                                   @Argument String mediaType, @Argument Boolean temporaryOnly) {
+        return asToolOrTemporary(user, "memories_update", id, Boolean.TRUE.equals(temporaryOnly),
+                tempOnly -> memories.attachBlob(id, filePath, blob, mediaType, tempOnly));
+    }
+
+    @MutationMapping
+    public String removeMemoryFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                   @Argument long id, @Argument String filePath, @Argument Boolean temporaryOnly) {
+        return asToolOrTemporary(user, "memories_update", id, Boolean.TRUE.equals(temporaryOnly),
+                tempOnly -> memories.removeFile(id, filePath, tempOnly));
     }
 
     /**
