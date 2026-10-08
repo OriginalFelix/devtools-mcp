@@ -184,9 +184,13 @@ final class Permissions {
             }
             ModuleConfig cfg = registry.config(m.id());
             for (ConfigField f : switches(m)) {
-                if (!cfg.getBoolean(f.key()) && switchTools(m, f.key(), false).contains(tool)) {
+                if (cfg.getBoolean(f.key())) {
+                    continue;
+                }
+                Set<String> unlocks = switchTools(m, f.key(), false);
+                if (unlocks.contains(tool)) {
                     List<Change> changes = new ArrayList<>();
-                    changes.add(switchOn(m, f, switchTools(m, f.key(), false)));
+                    changes.add(switchOn(m, f, unlocks));
                     return new ToolStatus(tool, Optional.of(m), false, enable(m, tool, changes));
                 }
             }

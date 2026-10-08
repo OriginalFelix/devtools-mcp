@@ -43,6 +43,8 @@ public class ToolRegistry {
     private final McpRuntime local;
     private final SettingsStore store;
     private final Map<String, ModuleState> states = new LinkedHashMap<>();
+    /** Ergebnisse von {@link #probeTools}; fallen bei jedem Neuaufbau weg. */
+    private final Map<ProbeKey, Set<String>> probes = java.util.Collections.synchronizedMap(BoundedMap.lru(64));
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
     private final ObjectProvider<ToolCallListener> callListenerProvider;
     private volatile List<ToolCallListener> callListeners;
@@ -234,16 +236,26 @@ public class ToolRegistry {
         Map<String, String> values = new LinkedHashMap<>(toolSettings(s).values());
         values.putAll(overrides);
         ModuleConfig cfg = ModuleConfig.of(s.module.configSchema(), values);
+        ProbeKey key = new ProbeKey(moduleId, Map.copyOf(values), local.scope().admin(), local.scope().unrestricted());
+        Set<String> cached = probes.get(key);
+        if (cached != null) {
+            return cached;
+        }
         ToolScope probe = new ToolScope("probe:" + moduleId, null, null, null, null, local.scope().admin());
         probe.setUnrestricted(local.scope().unrestricted());
         try (probe) {
-            return ToolScope.callIn(probe, () -> s.module.createTools(cfg, probe)).stream()
+            Set<String> names = ToolScope.callIn(probe, () -> s.module.createTools(cfg, probe)).stream()
                     .map(cb -> ManagedToolCallback.prefixed(moduleId, cb.getToolDefinition().name()))
                     .collect(Collectors.toCollection(LinkedHashSet::new));
+            probes.put(key, names);
+            return names;
         } catch (RuntimeException e) {
             LOG.debug("Tools von {} mit {} nicht ermittelbar", moduleId, overrides.keySet(), e);
             return Set.of();
         }
+    }
+
+    private record ProbeKey(String moduleId, Map<String, String> values, boolean admin, boolean unrestricted) {
     }
 
     /** Fehler beim Erzeugen der Tools, falls vorhanden. */
@@ -392,6 +404,7 @@ public class ToolRegistry {
     /** Erzeugt die Tools des Moduls neu und gleicht die Registrierung am MCP-Server ab. */
     private void rebuild(String moduleId) {
         ModuleState s = state(moduleId);
+        probes.clear();
         synchronized (states) {
             if (states.get(moduleId) != s) {
                 return; // inzwischen entfernt (Plugin deaktiviert) – keine Tools eines alten Moduls registrieren
