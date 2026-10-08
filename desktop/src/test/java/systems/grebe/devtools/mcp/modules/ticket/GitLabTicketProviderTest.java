@@ -67,6 +67,20 @@ class GitLabTicketProviderTest {
     }
 
     @Test
+    void installationUnderASubPathKeepsTheContextPathOutOfTheProject() {
+        gl.on("/gitlab/api/v4/projects/grp%2Fapp/issues/12", "{\"iid\":12,\"title\":\"Issue 12\",\"state\":\"opened\","
+                + "\"labels\":[],\"assignees\":[],\"issue_type\":\"issue\",\"severity\":\"UNKNOWN\","
+                + "\"updated_at\":\"2026-09-28T10:00:00Z\",\"web_url\":\"" + gl.url() + "/gitlab/grp/app/-/issues/12\"}");
+        TicketTools t = tools(Map.of("gitlab.baseUrl", gl.url() + "/gitlab"));
+
+        // Schlüssel als Web-URL der Installation: Projekt ist grp/app, nicht gitlab/grp/app
+        assertThat(t.get(gl.url() + "/gitlab/grp/app/-/issues/12", null, 0, null)).contains("grp/app#12", "Issue 12");
+        assertThat(gl.requests).extracting(StubServer.Request::path)
+                .contains("/gitlab/api/v4/projects/grp%2Fapp/issues/12")
+                .noneMatch(p -> p.contains("gitlab%2Fgrp"));
+    }
+
+    @Test
     void groupPathIsDetectedAfterProjectLookupFails() {
         gl.on("/api/v4/groups/grp/issues", "[" + issue(3, "closed", List.of(), null) + "]");
         String out = tools(Map.of()).search("grp", null, "closed", "none", null, null, null, null, null);

@@ -103,6 +103,8 @@ public class GitLabTicketProvider implements TicketProvider {
 
         private final HttpJson http;
         private final String webBase;
+        /** Pfad einer Installation unter einem Unterpfad (https://firma.de/gitlab → "gitlab"), sonst leer. */
+        private final String contextPath;
         private final boolean authenticated;
         /** Pfad → "projects" oder "groups". */
         private final Map<String, String> kinds = new ConcurrentHashMap<>();
@@ -110,6 +112,7 @@ public class GitLabTicketProvider implements TicketProvider {
         GitLab(HttpJson http, String webBase, boolean authenticated) {
             this.http = http;
             this.webBase = webBase;
+            this.contextPath = contextPathOf(webBase);
             this.authenticated = authenticated;
         }
 
@@ -144,14 +147,31 @@ public class GitLabTicketProvider implements TicketProvider {
             }
         }
 
-        static Ref ref(String key, String project) {
+        private static String contextPathOf(String webBase) {
+            try {
+                String path = URI.create(webBase).getPath();
+                return path == null ? "" : path.replaceAll("^/+|/+$", "");
+            } catch (IllegalArgumentException e) {
+                return "";
+            }
+        }
+
+        /** Projektpfad aus dem Pfad einer Web-URL dieser Installation – ohne deren Kontextpfad. */
+        private String projectInContext(String url, String path) {
+            if (!contextPath.isEmpty() && url.startsWith(webBase + "/") && path.startsWith(contextPath + "/")) {
+                return path.substring(contextPath.length() + 1);
+            }
+            return path;
+        }
+
+        Ref ref(String key, String project) {
             if (key == null || key.isBlank()) {
                 throw new IllegalArgumentException("GitLab: kein Ticket angegeben (z.B. gruppe/projekt#12).");
             }
             String k = key.trim();
             Matcher m = URL_KEY.matcher(k);
             if (m.matches()) {
-                return new Ref(m.group(1), Integer.parseInt(m.group(2)));
+                return new Ref(projectInContext(k, m.group(1)), Integer.parseInt(m.group(2)));
             }
             m = FULL_KEY.matcher(k);
             if (m.matches()) {
@@ -465,7 +485,7 @@ public class GitLabTicketProvider implements TicketProvider {
             };
         }
 
-        private static String linkedKey(JsonNode link) {
+        private String linkedKey(JsonNode link) {
             return HttpJson.first(text(link.path("references").path("full")),
                     projectFromUrl(text(link.path("web_url"))) + "#" + text(link.path("iid")));
         }
@@ -853,13 +873,13 @@ public class GitLabTicketProvider implements TicketProvider {
                     text(i.path("web_url")));
         }
 
-        private static String projectFromUrl(String webUrl) {
+        private String projectFromUrl(String webUrl) {
             if (webUrl == null) {
                 return "?";
             }
             Matcher m = URL_KEY.matcher(webUrl);
             if (m.matches()) {
-                return m.group(1);
+                return projectInContext(webUrl, m.group(1));
             }
             try {
                 return URI.create(webUrl).getPath();
