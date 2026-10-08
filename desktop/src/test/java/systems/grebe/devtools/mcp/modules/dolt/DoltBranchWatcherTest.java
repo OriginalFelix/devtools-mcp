@@ -56,6 +56,28 @@ class DoltBranchWatcherTest {
     }
 
     @Test
+    void watchServiceCreatedAfterAFailedFirstAttemptIsPolled() throws Exception {
+        watcher.watchServices = () -> {
+            throw new java.io.IOException("inotify-Grenze erreicht");
+        };
+        DoltBranchWatcher.Snapshot snapshot = new DoltBranchWatcher.Snapshot(List.of(db),
+                new DoltBranches.Settings(5, ""));
+        watcher.apply(snapshot);
+        await(() -> server.opened > 0); // Abgleich beim Einschalten, die Schleife läuft ohne WatchService
+
+        watcher.watchServices = () -> java.nio.file.FileSystems.getDefault().newWatchService();
+        watcher.apply(new DoltBranchWatcher.Snapshot(List.of(db), new DoltBranches.Settings(6, ""))); // Neukonfiguration
+        Thread.sleep(200);
+
+        long start = System.nanoTime();
+        git.checkout().setCreateBranch(true).setName("feature/spaeter").call();
+        await(() -> "feature/spaeter".equals(server.defaultBranch));
+        long millis = (System.nanoTime() - start) / 1_000_000;
+        // bis zu einer Abfrage-Runde (10 s) wartete die alte Schleife, weil sie den neuen WatchService nie sah
+        assertThat(millis).as("Reaktionszeit in ms").isLessThan(DoltBranchWatcher.POLL.toMillis() / 2);
+    }
+
+    @Test
     void reportsTheSwitchInTheResultOfGitTools() throws Exception {
         watcher.apply(new DoltBranchWatcher.Snapshot(List.of(db), new DoltBranches.Settings(5, "")));
         await(() -> server.opened > 0);
