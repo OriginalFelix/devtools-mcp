@@ -1,18 +1,9 @@
 package systems.grebe.devtools.mcp.modules.mail;
 
-import java.awt.Desktop;
-import java.awt.GraphicsEnvironment;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import jakarta.mail.Folder;
 import jakarta.mail.Store;
@@ -34,6 +25,7 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.core.UserConfirmation;
 import systems.grebe.devtools.mcp.core.ConfigChange;
+import systems.grebe.devtools.mcp.core.BrowserLogin;
 
 /**
  * E-Mail über IMAP (Angus Mail): Konten ganz oder nur einzelne Ordner (Postfächer) freigeben, Mails suchen und lesen,
@@ -414,31 +406,13 @@ public class MailModule implements ToolModule {
             }
             return ActionResult.ok(watcher.oauth().login(a, prompt -> {
                 progress.update(prompt, -1);
-                openBrowser(prompt);
+                BrowserLogin.open(prompt);
             }));
         }
 
         private Optional<MailAccount> account(ModuleConfig config, String name) {
             return MailEnvironment.accounts(config).stream()
                     .filter(a -> a.microsoft() && a.name().equalsIgnoreCase(name)).findFirst();
-        }
-    }
-
-    private static final Pattern URL = Pattern.compile("https://\\S+[^\\s.,;)]");
-
-    /** Öffnet die Adresse der Anweisung im Browser, wenn das geht (nicht im Headless-Betrieb). */
-    private static void openBrowser(String prompt) {
-        Matcher m = URL.matcher(prompt);
-        if (!m.find() || GraphicsEnvironment.isHeadless()) {
-            return;
-        }
-        try {
-            if (Desktop.isDesktopSupported()
-                    && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                Desktop.getDesktop().browse(URI.create(m.group()));
-            }
-        } catch (Exception ignored) {
-            // Adresse steht in der Anzeige
         }
     }
 
@@ -467,25 +441,9 @@ public class MailModule implements ToolModule {
                 a = env.resolve(account);
             }
             MailOAuth oauth = env.watcher().oauth();
-            CompletableFuture<String> prompt = new CompletableFuture<>();
-            Thread.ofVirtual().name("mail-login-" + a.name()).start(() -> {
-                try {
-                    prompt.complete(oauth.login(a, prompt::complete));
-                } catch (RuntimeException ex) {
-                    prompt.completeExceptionally(ex);
-                }
-            });
-            try {
-                return prompt.get(60, TimeUnit.SECONDS) + "\nDem Nutzer Adresse und Code nennen. Nach der Anmeldung "
-                        + "stehen die mail_*-Tools sofort zur Verfügung (Stand: mail_accounts).";
-            } catch (ExecutionException ex) {
-                throw ex.getCause() instanceof RuntimeException r ? r : new IllegalStateException(ex.getCause());
-            } catch (TimeoutException ex) {
-                throw new IllegalStateException("Anmeldung konnte nicht gestartet werden (keine Antwort in 60 s).");
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Abgebrochen", ex);
-            }
+            return BrowserLogin.start("mail-login-" + a.name(), prompt -> oauth.login(a, prompt))
+                    + "\nDem Nutzer Adresse und Code nennen. Nach der Anmeldung stehen die mail_*-Tools sofort zur "
+                    + "Verfügung (Stand: mail_accounts).";
         }
     }
 }
