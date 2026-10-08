@@ -3,7 +3,6 @@ package systems.grebe.devtools.mcp.modules.jvm;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -11,6 +10,7 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /** JVM-Diagnose über jcmd bzw. die DiagnosticCommand-MBean (lokal, Container, JMX). */
 @Component
@@ -74,8 +74,8 @@ public class JvmModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(new JvmTools(env))));
-        tools.addAll(List.of(ToolCallbacks.from(new JvmInvasiveTools(env, config.getList(ALLOWED_COMMANDS)))));
+        List<ToolCallback> tools = new ArrayList<>(ToolBeans.callbacks(new JvmTools(env)));
+        tools.addAll(ToolBeans.callbacks(new JvmInvasiveTools(env, config.getList(ALLOWED_COMMANDS))));
         return tools;
     }
 }

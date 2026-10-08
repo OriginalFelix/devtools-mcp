@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Set;
 
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
@@ -19,6 +18,7 @@ import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.skills.SkillsModule;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * Episodisches Gedächtnis für das LLM: Memories halten fest, was bei früheren Aufgaben konkret passiert ist (Ticket
@@ -128,18 +128,18 @@ public class MemoriesModule implements ToolModule {
     public List<ToolCallback> createTools(ModuleConfig config) {
         LocalFiles files = new LocalFiles(config.getList(FILE_DIRS),
                 "Module → Memories → „Dateien anhängen aus und speichern in“ oder global unter „Freigaben“");
-        List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(
-                new MemoryReadTools(memories, files, SkillsModule.attachments(home)))));
+        List<ToolCallback> tools = new ArrayList<>(ToolBeans.callbacks(
+                new MemoryReadTools(memories, files, SkillsModule.attachments(home))));
         boolean write = config.getBoolean(ALLOW_WRITE);
         boolean delete = config.getBoolean(ALLOW_DELETE);
         // ohne Schalter nur temporäre Memories – die brauchen keine Freigabe
-        noted(tools, ToolCallbacks.from(new MemoryWriteTools(memories, maxContent(config), !write, files)), write,
+        noted(tools, ToolBeans.callbacks(new MemoryWriteTools(memories, maxContent(config), !write, files)), write,
                 ALLOW_WRITE);
-        noted(tools, ToolCallbacks.from(new MemoryDeleteTools(memories, !delete)), delete, ALLOW_DELETE);
+        noted(tools, ToolBeans.callbacks(new MemoryDeleteTools(memories, !delete)), delete, ALLOW_DELETE);
         return tools;
     }
 
-    private static void noted(List<ToolCallback> tools, ToolCallback[] callbacks, boolean permitted, String setting) {
+    private static void noted(List<ToolCallback> tools, List<ToolCallback> callbacks, boolean permitted, String setting) {
         for (ToolCallback cb : callbacks) {
             tools.add(permitted ? cb : new TemporaryOnly(cb, " NUR temporäre Memories und Rückrufe – dauerhafte sind "
                     + "nicht freigegeben (permissions_request mit module='memories', setting='" + setting + "')."));

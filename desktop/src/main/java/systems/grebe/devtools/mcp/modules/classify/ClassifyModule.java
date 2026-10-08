@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.modules.classify;
 
 import java.util.List;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -10,6 +9,7 @@ import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * Modellwahl: Pre-Classifier, der die Komplexität einer Aufgabe mit Claude Opus 5.5 einschätzt und das Modell für die
@@ -106,7 +106,7 @@ public class ClassifyModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new ClassifyTools(new TaskClassifier(settings(config)))));
+        return ToolBeans.callbacks(new ClassifyTools(new TaskClassifier(settings(config))));
     }
 
     @Override

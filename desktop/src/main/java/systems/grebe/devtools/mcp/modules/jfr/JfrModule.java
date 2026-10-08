@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.modules.jfr;
 
 import java.util.List;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -10,6 +9,7 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /** Java Flight Recorder: Aufzeichnen (lokal, Container, JMX), Auswerten, Flame Graphs. */
 @Component
@@ -70,7 +70,7 @@ public class JfrModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new JfrTools(env, config.getString(SETTINGS, "profile"),
-                Math.max(5, config.getInt(MAX_SECONDS, 300)))));
+        return ToolBeans.callbacks(new JfrTools(env, config.getString(SETTINGS, "profile"),
+                Math.max(5, config.getInt(MAX_SECONDS, 300))));
     }
 }

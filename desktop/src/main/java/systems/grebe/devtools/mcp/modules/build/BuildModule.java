@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
-import org.springframework.ai.support.ToolCallbacks;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -83,7 +83,7 @@ public class BuildModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new BuildTools(new BuildRunner(config))));
+        return ToolBeans.callbacks(new BuildTools(new BuildRunner(config)));
     }
 
     @Override

@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +22,7 @@ import systems.grebe.devtools.mcp.modules.classify.TaskClassifier;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 import systems.grebe.devtools.mcp.core.ProviderSchema;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * Ticket-Systeme über austauschbare Provider ({@link TicketProvider}, per ServiceLoader): Boards, Suche, Ticket lesen;
@@ -226,7 +226,7 @@ public class TicketModule implements ToolModule {
         if (config.getBoolean(ALLOW_CLASSIFY)) {
             beans.add(new TicketClassifyTools(env, () -> new TaskClassifier(classifier.get())));
         }
-        return List.of(ToolCallbacks.from(beans.toArray()));
+        return ToolBeans.callbacks(beans.toArray());
     }
 
     @Override

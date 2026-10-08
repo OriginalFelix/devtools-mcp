@@ -2,12 +2,14 @@ package systems.grebe.devtools.mcp.core;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
@@ -68,8 +70,14 @@ public final class ToolBeans {
     /** Callbacks aller {@code @Tool}-Methoden der Objekte, mit Hinweisen aus {@link ToolHints}. */
     public static List<ToolCallback> callbacks(Object... beans) {
         List<ToolCallback> out = new ArrayList<>();
+        Set<String> names = new HashSet<>();
         for (Object bean : beans) {
             for (Template t : TEMPLATES.get(bean.getClass())) {
+                if (beans.length > 1 && !names.add(t.definition.name())) {
+                    throw new IllegalArgumentException("Multiple tools with the same name (" + t.definition.name()
+                            + ") found in sources: " + Arrays.stream(beans).map(b -> b.getClass().getName())
+                            .collect(Collectors.joining(", ")));
+                }
                 ToolCallback cb = new MethodToolCallback(t.definition, t.metadata, t.method, bean, t.converter);
                 out.add(t.hints == null ? cb : new Hinted(cb, t.hints));
             }

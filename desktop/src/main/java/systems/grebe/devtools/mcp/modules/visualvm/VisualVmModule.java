@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.modules.visualvm;
 
 import java.util.List;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -11,6 +10,7 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * VisualVM: eingebettete Engines (Heap-Analyse, CPU-Sampler über JMX) als Tools für das LLM sowie die
@@ -82,7 +82,7 @@ public class VisualVmModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new VisualVmTools(env, config)));
+        return ToolBeans.callbacks(new VisualVmTools(env, config));
     }
 
     /** Für die UI: Datei in der VisualVM-Oberfläche öffnen (mit der gespeicherten Modulkonfiguration). */

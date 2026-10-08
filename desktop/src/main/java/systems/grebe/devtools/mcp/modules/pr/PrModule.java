@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -19,6 +18,7 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
 import systems.grebe.devtools.mcp.core.ProviderSchema;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * Pull/Merge Requests auf Git-Servern über austauschbare Provider ({@link GitServerProvider}, per ServiceLoader):
@@ -164,7 +164,7 @@ public class PrModule implements ToolModule {
         if (config.getBoolean(ALLOW_PUSH)) {
             beans.add(new PrPushTools(env));
         }
-        return List.of(ToolCallbacks.from(beans.toArray()));
+        return ToolBeans.callbacks(beans.toArray());
     }
 
     @Override

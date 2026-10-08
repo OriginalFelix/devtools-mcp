@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +16,7 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.api.Errors;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * Code-Graph für Java-Projekte, angelehnt an den AST-Durchlauf von graphify: tree-sitter liest Klassen, Methoden,
@@ -150,7 +150,7 @@ public class GraphModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new GraphTools(service(config))));
+        return ToolBeans.callbacks(new GraphTools(service(config)));
     }
 
     @Override

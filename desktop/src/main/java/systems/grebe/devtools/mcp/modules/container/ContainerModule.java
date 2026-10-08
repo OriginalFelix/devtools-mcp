@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -20,6 +19,7 @@ import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
 import systems.grebe.devtools.mcp.core.ProviderSchema;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * OCI-Container über austauschbare Laufzeiten ({@link ContainerRuntimeProvider}, per ServiceLoader).
@@ -171,7 +171,7 @@ public class ContainerModule implements ToolModule {
         if (config.getBoolean(ALLOW_COMPOSE) && compose) {
             beans.add(new ComposeWriteTools(env));
         }
-        return List.of(ToolCallbacks.from(beans.toArray()));
+        return ToolBeans.callbacks(beans.toArray());
     }
 
     @Override

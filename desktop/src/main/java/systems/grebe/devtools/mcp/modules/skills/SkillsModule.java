@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.backend.skills.Skill;
@@ -15,6 +14,7 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * Skill-Speicher für das LLM, angelehnt an das Skill-Management von Hermes: Ein Skill ist die Registrierung eines
@@ -132,15 +132,15 @@ public class SkillsModule implements ToolModule {
     public List<ToolCallback> createTools(ModuleConfig config) {
         LocalFiles files = new LocalFiles(config.getList(FILE_DIRS),
                 "Module → Skills → „Dateien anhängen aus und speichern in“ oder global unter „Freigaben“");
-        List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(
-                new SkillReadTools(skills, files, attachments(home)))));
+        List<ToolCallback> tools = new ArrayList<>(ToolBeans.callbacks(
+                new SkillReadTools(skills, files, attachments(home))));
         if (config.getBoolean(ALLOW_WRITE)) {
-            tools.addAll(List.of(ToolCallbacks.from(new SkillWriteTools(skills, maxContent(config), files))));
+            tools.addAll(ToolBeans.callbacks(new SkillWriteTools(skills, maxContent(config), files)));
             // Review nur, wenn das LLM das Gelernte auch speichern darf
-            tools.addAll(List.of(ToolCallbacks.from(new SkillReviewTools(skills, review, tracker))));
+            tools.addAll(ToolBeans.callbacks(new SkillReviewTools(skills, review, tracker)));
         }
         if (config.getBoolean(ALLOW_DELETE)) {
-            tools.addAll(List.of(ToolCallbacks.from(new SkillDeleteTools(skills))));
+            tools.addAll(ToolBeans.callbacks(new SkillDeleteTools(skills)));
         }
         return tools;
     }
