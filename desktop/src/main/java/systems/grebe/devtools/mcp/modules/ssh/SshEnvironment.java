@@ -52,9 +52,17 @@ final class SshEnvironment {
     private final int maxShells;
     private final long shellIdleMillis;
     private final List<Path> localRoots = new ArrayList<>();
-    private TofuHostKeys hostKeys;
+    private final KnownHostsProvider hostKeyStores;
 
-    SshEnvironment(ModuleConfig c, SshSessions sessions, SshShells shells, Path defaultKnownHosts) {
+    /** Liefert den gemeinsamen {@link KnownHostsStore} zu einer known_hosts-Datei. */
+    @FunctionalInterface
+    interface KnownHostsProvider {
+        KnownHostsStore open(Path file) throws JSchException;
+    }
+
+    SshEnvironment(ModuleConfig c, SshSessions sessions, SshShells shells, Path defaultKnownHosts,
+                   KnownHostsProvider hostKeyStores) {
+        this.hostKeyStores = hostKeyStores;
         this.sessions = sessions;
         this.shells = shells;
         this.maxShells = Math.max(1, c.getInt(SshModule.MAX_SHELLS, 5));
@@ -226,7 +234,7 @@ final class SshEnvironment {
             throw new IllegalStateException("Verbindung '" + c.name() + "': weder Passwort noch Schlüsseldatei gesetzt.");
         }
         JSch jsch = new JSch();
-        jsch.setHostKeyRepository(hostKeys());
+        jsch.setHostKeyRepository(new TofuHostKeys(hostKeyStores.open(knownHosts), acceptNewHostKeys));
         if (c.privateKey() != null) {
             String keyFile = expandHome(c.privateKey());
             if (!Files.isRegularFile(Path.of(keyFile))) {
@@ -250,23 +258,6 @@ final class SshEnvironment {
             throw new IllegalStateException(describe(c, e), e);
         }
         return s;
-    }
-
-    private synchronized TofuHostKeys hostKeys() throws JSchException {
-        if (hostKeys == null) {
-            try {
-                Files.createDirectories(knownHosts.toAbsolutePath().getParent());
-                if (!Files.exists(knownHosts)) {
-                    Files.createFile(knownHosts);
-                }
-            } catch (IOException e) {
-                throw new UncheckedIOException("known_hosts-Datei nicht anlegbar: " + knownHosts, e);
-            }
-            JSch loader = new JSch();
-            loader.setKnownHosts(knownHosts.toString());
-            hostKeys = new TofuHostKeys(loader.getHostKeyRepository(), acceptNewHostKeys);
-        }
-        return hostKeys;
     }
 
     /**
