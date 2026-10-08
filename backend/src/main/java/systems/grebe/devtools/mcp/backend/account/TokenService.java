@@ -27,10 +27,12 @@ import com.nimbusds.jwt.SignedJWT;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.config.SecretCipher;
+import systems.grebe.devtools.mcp.backend.BackendChanged;
 import systems.grebe.devtools.mcp.backend.BackendHome;
 
 /**
@@ -62,18 +64,20 @@ public class TokenService {
     }
 
     private final AccountRepository repo;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
     private final byte[] key;
     private final Map<String, Checked> cache = new ConcurrentHashMap<>();
     private final Map<String, Instant> touched = new ConcurrentHashMap<>();
 
     @Autowired
-    public TokenService(AccountRepository repo, BackendHome home) {
-        this(repo, Clock.systemUTC(), loadOrCreateKey(home.resolve("jwt.key")));
+    public TokenService(AccountRepository repo, BackendHome home, ApplicationEventPublisher events) {
+        this(repo, events, Clock.systemUTC(), loadOrCreateKey(home.resolve("jwt.key")));
     }
 
-    TokenService(AccountRepository repo, Clock clock, byte[] key) {
+    TokenService(AccountRepository repo, ApplicationEventPublisher events, Clock clock, byte[] key) {
         this.repo = repo;
+        this.events = events;
         this.clock = clock;
         this.key = key.clone();
     }
@@ -143,17 +147,27 @@ public class TokenService {
                 .orElseThrow(() -> new IllegalArgumentException("Unbekanntes Token"));
         repo.revokeToken(t.id(), clock.instant());
         cache.remove(t.id());
+        closeStreams(userId);
     }
 
     /** Beendet eine Anmeldung (Abmelden der Desktop-App): Token widerrufen und entfernen. */
     public void end(String tokenId) {
-        repo.token(tokenId).ifPresent(t -> {
+        Optional<ApiToken> found = repo.token(tokenId);
+        found.ifPresent(t -> {
             repo.revokeToken(t.id(), clock.instant());
             if (t.kind() == ApiToken.Kind.SESSION) {
                 repo.deleteToken(t.id());
             }
         });
         cache.remove(tokenId);
+        found.ifPresent(t -> closeStreams(t.userId()));
+    }
+
+    /** Weckt die offenen Subscriptions des Benutzers: Sie prüfen ihr Token neu und enden, wenn es widerrufen wurde. */
+    private void closeStreams(long userId) {
+        for (BackendChanged.Topic topic : BackendChanged.Topic.values()) {
+            events.publishEvent(BackendChanged.of(topic, userId));
+        }
     }
 
     /** Entfernt ein widerrufenes oder abgelaufenes Token aus der Liste. */
@@ -184,10 +198,21 @@ public class TokenService {
                 || claims.getExpirationTime() != null && !now.isBefore(claims.getExpirationTime().toInstant())) {
             return Optional.empty();
         }
-        String id = claims.getJWTID();
+        return checked(claims.getJWTID(), claims.getSubject(), now);
+    }
+
+    /**
+     * Prüft ein früher angenommenes Token erneut (offene WebSocket-Sitzung): leer, wenn es inzwischen widerrufen,
+     * abgelaufen oder der Benutzer gesperrt/gelöscht ist; sonst mit dem aktuellen {@link UserAccount} (Rollen, Rechte).
+     */
+    public Optional<TokenUser> recheck(TokenUser presented) {
+        return checked(presented.tokenId(), Long.toString(presented.user().id()), clock.instant());
+    }
+
+    private Optional<TokenUser> checked(String id, String subject, Instant now) {
         Checked c = cache.get(id);
         if (c == null || now.isAfter(c.until())) {
-            c = new Checked(lookup(id, claims.getSubject(), now), now.plus(CACHE));
+            c = new Checked(lookup(id, subject, now), now.plus(CACHE));
             cache.put(id, c);
         }
         if (c.user() != null) {

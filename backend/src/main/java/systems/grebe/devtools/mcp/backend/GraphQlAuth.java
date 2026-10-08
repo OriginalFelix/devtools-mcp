@@ -38,8 +38,10 @@ public class GraphQlAuth implements WebSocketGraphQlInterceptor {
 
     @Override
     public Mono<WebGraphQlResponse> intercept(WebGraphQlRequest request, Chain chain) {
+        // Über WebSocket gilt das Token von connection_init nur, solange es noch gültig ist (Widerruf, Sperre, Rechte).
         Optional<TokenService.TokenUser> user = request instanceof WebSocketGraphQlRequest ws
                 ? Optional.ofNullable((TokenService.TokenUser) ws.getSessionInfo().getAttributes().get(TOKEN))
+                        .flatMap(tokens::recheck)
                 : verify(request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
         user.ifPresent(u -> request.configureExecutionInput((input, builder) ->
                 builder.graphQLContext(Map.of(USER, u.user(), TOKEN, u)).build()));
@@ -83,6 +85,12 @@ public class GraphQlAuth implements WebSocketGraphQlInterceptor {
             throw new GraphQlErrors.Forbidden("Bitte zuerst das Passwort ändern.");
         }
         return user;
+    }
+
+    /** Wie {@link #require(UserAccount)} für ein vorgelegtes Token (Subscriptions); gibt es zurück. */
+    public static TokenService.TokenUser require(TokenService.TokenUser token) {
+        require(token == null ? null : token.user());
+        return token;
     }
 
     /** Angemeldet, arbeitsfähig und mit dem Systemrecht. */

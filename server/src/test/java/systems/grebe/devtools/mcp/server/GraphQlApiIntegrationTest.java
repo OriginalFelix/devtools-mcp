@@ -581,11 +581,8 @@ class GraphQlApiIntegrationTest {
                 .isEqualTo("BAD_REQUEST"); // nur Administratoren
     }
 
-    @Test
-    void subscriptionDeliversCurrentStateAndChanges() {
-        UserAccount u = newUser();
-        String jwt = token(u);
-        WebSocketGraphQlClient ws = WebSocketGraphQlClient.builder(URI.create("ws://127.0.0.1:" + port + "/graphql"),
+    private WebSocketGraphQlClient webSocket(String jwt) {
+        return WebSocketGraphQlClient.builder(URI.create("ws://127.0.0.1:" + port + "/graphql"),
                         new StandardWebSocketClient())
                 .interceptor(new WebSocketGraphQlClientInterceptor() {
                     @Override
@@ -593,6 +590,12 @@ class GraphQlApiIntegrationTest {
                         return Mono.just(Map.of("Authorization", "Bearer " + jwt));
                     }
                 }).build();
+    }
+
+    @Test
+    void subscriptionDeliversCurrentStateAndChanges() {
+        UserAccount u = newUser();
+        WebSocketGraphQlClient ws = webSocket(token(u));
         try {
             StepVerifier.create(ws.document("subscription { settingsChanged { profileId profileName modules { moduleId "
                                     + "values { key value } } revision } }")
@@ -603,6 +606,57 @@ class GraphQlApiIntegrationTest {
                     .assertNext(s -> assertThat(s.module("sonar").valueMap()).containsEntry("organization", "live"))
                     .thenCancel()
                     .verify(Duration.ofSeconds(20));
+        } finally {
+            ws.stop().block(Duration.ofSeconds(5));
+        }
+    }
+
+    @Test
+    void subscriptionEndsWhenTheUserIsDisabled() {
+        UserAccount u = newUser();
+        WebSocketGraphQlClient ws = webSocket(token(u));
+        try {
+            StepVerifier.create(ws.document("subscription { settingsChanged { profileId profileName modules { moduleId values { key value } } revision } }")
+                            .retrieveSubscription("settingsChanged").toEntity(SettingsSnapshot.class))
+                    .assertNext(s -> assertThat(s.profileId()).isPositive())
+                    .then(() -> {
+                        accounts.update(u.id(), null, null, null, false); // gesperrt
+                        profiles.saveGlobal("sonar", new Overrides(null, Map.of(), Map.of("organization", "geheim")));
+                    })
+                    .expectErrorSatisfies(e -> assertThat(e).hasMessageContaining("Nicht angemeldet"))
+                    .verify(Duration.ofSeconds(20));
+        } finally {
+            ws.stop().block(Duration.ofSeconds(5));
+        }
+    }
+
+    @Test
+    void subscriptionEndsWhenTheTokenIsRevoked() {
+        UserAccount u = newUser();
+        TokenService.IssuedToken issued = tokens.issue(u, "Test", null);
+        WebSocketGraphQlClient ws = webSocket(issued.jwt());
+        try {
+            StepVerifier.create(ws.document("subscription { skillsChanged }").retrieveSubscription("skillsChanged")
+                            .toEntity(Integer.class))
+                    .assertNext(n -> assertThat(n).isNotNegative())
+                    .then(() -> tokens.revoke(u.id(), issued.token().id()))
+                    .expectErrorSatisfies(e -> assertThat(e).hasMessageContaining("Nicht angemeldet"))
+                    .verify(Duration.ofSeconds(20));
+        } finally {
+            ws.stop().block(Duration.ofSeconds(5));
+        }
+    }
+
+    @Test
+    void queryOverAnOpenSocketIsUnauthorizedAfterTheUserIsDisabled() {
+        UserAccount u = newUser();
+        WebSocketGraphQlClient ws = webSocket(token(u));
+        try {
+            ClientGraphQlResponse before = ws.document("{ me { id } }").execute().block(Duration.ofSeconds(20));
+            assertThat(before.getErrors()).isEmpty();
+            accounts.update(u.id(), null, null, null, false); // gesperrt
+            ClientGraphQlResponse after = ws.document("{ me { id } }").execute().block(Duration.ofSeconds(20));
+            assertThat(errorType(after)).isEqualTo("UNAUTHORIZED");
         } finally {
             ws.stop().block(Duration.ofSeconds(5));
         }
