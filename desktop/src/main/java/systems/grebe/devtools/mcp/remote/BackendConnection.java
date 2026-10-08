@@ -67,6 +67,7 @@ import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import tools.jackson.databind.json.JsonMapper;
 import systems.grebe.devtools.mcp.api.Errors;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Verbindung der Desktop-App zu ihrem Backend über GraphQL – eingebettet ({@link EmbeddedBackend}) oder auf einem
@@ -1095,7 +1096,7 @@ public class BackendConnection {
         try {
             CacheFile c = new CacheFile(st, st.me().username(), s.personal() ? null : verifier,
                     s.personal() ? s.token() : null);
-            Files.writeString(cacheFile, store.encrypt(json.writeValueAsString(c)));
+            AtomicFiles.writeString(cacheFile, store.encrypt(json.writeValueAsString(c)));
         } catch (IOException | RuntimeException e) {
             LOG.warn("Cache {} nicht schreibbar", cacheFile, e);
         }
