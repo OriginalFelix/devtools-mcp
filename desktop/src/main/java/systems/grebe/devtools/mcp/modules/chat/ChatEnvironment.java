@@ -14,6 +14,7 @@ import systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider;
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatSettings;
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatSystem;
 import systems.grebe.devtools.mcp.api.Sha256;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
 
 /**
  * Ausgewertete Konfiguration des Chat-Moduls: aktive Systeme mit Standard-Unterhaltung, Auswahl von System und
@@ -98,13 +99,13 @@ final class ChatEnvironment {
         this.defaultProvider = config.getString(ChatModule.DEFAULT_PROVIDER, "auto");
         Duration timeout = Duration.ofSeconds(Math.max(5, config.getInt(ChatModule.TIMEOUT, 30)));
         for (ChatProvider p : providers.providers()) {
-            if (!config.getBoolean(ChatModule.enabledKey(p.id()))) {
+            if (!ProviderSchema.enabled(config, p.id(), false)) {
                 continue;
             }
-            ChatSettings settings = new ChatSettings(k -> config.get(ChatModule.key(p.id(), k)), timeout, chatState.vault());
+            ChatSettings settings = new ChatSettings(ProviderSchema.settings(config, p.id()), timeout, chatState.vault());
             Holder holder = state.holder(p.id(), fingerprint(p, config, timeout), () -> p.create(settings));
             entries.put(p.id(), new Entry(p, holder,
-                    config.get(ChatModule.key(p.id(), ChatModule.DEFAULT_CONVERSATION)).orElse(null), chatState));
+                    config.get(ProviderSchema.key(p.id(), ChatModule.DEFAULT_CONVERSATION)).orElse(null), chatState));
         }
     }
 
@@ -112,7 +113,7 @@ final class ChatEnvironment {
     private static String fingerprint(ChatProvider p, ModuleConfig config, Duration timeout) {
         StringBuilder sb = new StringBuilder(timeout.toString());
         for (ConfigField f : p.configFields()) {
-            sb.append('\n').append(f.key()).append('=').append(config.getString(ChatModule.key(p.id(), f.key()), ""));
+            sb.append('\n').append(f.key()).append('=').append(config.getString(ProviderSchema.key(p.id(), f.key()), ""));
         }
         return Sha256.hex(sb.toString());
     }

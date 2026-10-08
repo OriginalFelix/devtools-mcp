@@ -20,6 +20,7 @@ import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.ProviderSettings;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
 
 /**
  * Ausgewertete Konfiguration des Moduls Pull Requests: aktive Git-Server, lokale Repositories und die Zuordnung eines
@@ -67,10 +68,10 @@ public final class PrEnvironment {
     public PrEnvironment(GitServerProviders providers, ModuleConfig c) {
         Duration timeout = Duration.ofSeconds(Math.max(5, c.getInt(PrModule.TIMEOUT, 30)));
         for (GitServerProvider p : providers.providers()) {
-            if (!c.getBoolean(PrModule.enabledKey(p.id()))) {
+            if (!ProviderSchema.enabled(c, p.id(), false)) {
                 continue;
             }
-            ProviderSettings ps = new ProviderSettings(k -> c.get(PrModule.key(p.id(), k)), timeout);
+            ProviderSettings ps = new ProviderSettings(ProviderSchema.settings(c, p.id()), timeout);
             entries.put(p.id(), new Entry(p, p.create(ps)));
         }
         this.defaultProvider = c.getString(PrModule.DEFAULT_PROVIDER, "auto");

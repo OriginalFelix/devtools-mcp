@@ -10,6 +10,7 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.modules.ticket.spi.ProviderSettings;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
 
 /** Ausgewertete Konfiguration des Ticket-Moduls: aktive Systeme, Standardprojekte und Auswahl des Systems je Aufruf. */
 public final class TicketEnvironment {
@@ -41,12 +42,12 @@ public final class TicketEnvironment {
         this.ownership = ownership;
         Duration timeout = Duration.ofSeconds(Math.max(5, c.getInt(TicketModule.TIMEOUT, 30)));
         for (TicketProvider p : providers.providers()) {
-            if (!c.getBoolean(TicketModule.enabledKey(p.id()))) {
+            if (!ProviderSchema.enabled(c, p.id(), false)) {
                 continue;
             }
-            ProviderSettings ps = new ProviderSettings(k -> c.get(TicketModule.key(p.id(), k)), timeout);
+            ProviderSettings ps = new ProviderSettings(ProviderSchema.settings(c, p.id()), timeout);
             entries.put(p.id(), new Entry(p, p.create(ps),
-                    c.get(TicketModule.key(p.id(), TicketModule.DEFAULT_PROJECT)).orElse(null)));
+                    c.get(ProviderSchema.key(p.id(), TicketModule.DEFAULT_PROJECT)).orElse(null)));
         }
         this.defaultProvider = c.getString(TicketModule.DEFAULT_PROVIDER, "auto");
         this.maxDescription = Math.max(500, c.getInt(TicketModule.MAX_DESCRIPTION, 8000));

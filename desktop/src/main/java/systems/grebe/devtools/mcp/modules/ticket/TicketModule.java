@@ -22,6 +22,7 @@ import systems.grebe.devtools.mcp.modules.classify.ClassifyModule;
 import systems.grebe.devtools.mcp.modules.classify.TaskClassifier;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
 
 /**
  * Ticket-Systeme über austauschbare Provider ({@link TicketProvider}, per ServiceLoader): Boards, Suche, Ticket lesen;
@@ -142,22 +143,11 @@ public class TicketModule implements ToolModule {
         return 160;
     }
 
-    static String key(String providerId, String field) {
-        return providerId + "." + field;
-    }
-
-    static String enabledKey(String providerId) {
-        return key(providerId, "enabled");
-    }
-
     @Override
     public List<ConfigField> configSchema() {
-        List<String> options = new ArrayList<>(List.of("auto"));
-        providers.providers().forEach(p -> options.add(p.id()));
         List<ConfigField> fields = new ArrayList<>();
-        fields.add(ConfigField.of(DEFAULT_PROVIDER, "Standard-System", FieldType.ENUM).withDefault("auto")
-                .withOptions(options.toArray(String[]::new))
-                .withHelp("Für Aufrufe ohne 'provider', deren Schlüssel keinem System eindeutig gehört. "
+        fields.add(ProviderSchema.defaultProviderField(DEFAULT_PROVIDER, "Standard-System", providers.providers(),
+                "Für Aufrufe ohne 'provider', deren Schlüssel keinem System eindeutig gehört. "
                         + "'auto' = das einzige aktive System."));
         for (TicketProvider p : providers.providers()) {
             List<ConfigField> own = new ArrayList<>(p.configFields());

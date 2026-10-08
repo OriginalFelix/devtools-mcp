@@ -27,6 +27,7 @@ import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider;
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatSystem;
 import systems.grebe.devtools.mcp.core.BrowserLogin;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
 
 /**
  * Chat-Systeme über austauschbare Provider ({@link ChatProvider}, per ServiceLoader): Nachrichten senden, Fragen stellen
@@ -119,22 +120,11 @@ public class ChatModule implements ToolModule {
         return 175;
     }
 
-    static String key(String providerId, String field) {
-        return providerId + "." + field;
-    }
-
-    static String enabledKey(String providerId) {
-        return key(providerId, "enabled");
-    }
-
     @Override
     public List<ConfigField> configSchema() {
-        List<String> options = new ArrayList<>(List.of("auto"));
-        providers.providers().forEach(p -> options.add(p.id()));
         List<ConfigField> fields = new ArrayList<>();
-        fields.add(ConfigField.of(DEFAULT_PROVIDER, "Standard-System", FieldType.ENUM).withDefault("auto")
-                .withOptions(options.toArray(String[]::new))
-                .withHelp("Für Aufrufe ohne 'provider', deren Unterhaltung keinem System eindeutig gehört. "
+        fields.add(ProviderSchema.defaultProviderField(DEFAULT_PROVIDER, "Standard-System", providers.providers(),
+                "Für Aufrufe ohne 'provider', deren Unterhaltung keinem System eindeutig gehört. "
                         + "'auto' = das einzige aktive System."));
         for (ChatProvider p : providers.providers()) {
             List<ConfigField> own = new ArrayList<>(p.configFields());
@@ -170,14 +160,14 @@ public class ChatModule implements ToolModule {
         }
         Map<String, String> out = new LinkedHashMap<>();
         for (String k : List.of("homeserverUrl", "accessToken", "user", "password", "rooms", "trustedSenders", "autoJoin")) {
-            copy(old, k, out, key("matrix", k));
+            copy(old, k, out, ProviderSchema.key("matrix", k));
         }
-        copy(old, "defaultRoom", out, key("matrix", DEFAULT_CONVERSATION));
+        copy(old, "defaultRoom", out, ProviderSchema.key("matrix", DEFAULT_CONVERSATION));
         for (String k : List.of(PREFIX, READ_RECEIPTS, ASK_WAIT, MAX_WAIT, TIMEOUT, MAX_LINES)) {
             copy(old, k, out, k);
         }
-        if (out.containsKey(key("matrix", "homeserverUrl"))) {
-            out.put(enabledKey("matrix"), "true");
+        if (out.containsKey(ProviderSchema.key("matrix", "homeserverUrl"))) {
+            out.put(ProviderSchema.enabledKey("matrix"), "true");
         }
         return out;
     }
@@ -266,7 +256,7 @@ public class ChatModule implements ToolModule {
 
         @Override
         public List<String> targets(ModuleConfig config) {
-            return config.getBoolean(enabledKey(provider.id())) ? List.of(provider.displayName()) : List.of();
+            return config.getBoolean(ProviderSchema.enabledKey(provider.id())) ? List.of(provider.displayName()) : List.of();
         }
 
         @Override

@@ -19,6 +19,7 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
 
 /**
  * OCI-Container über austauschbare Laufzeiten ({@link ContainerRuntimeProvider}, per ServiceLoader).
@@ -102,15 +103,6 @@ public class ContainerModule implements ToolModule {
         return 150;
     }
 
-    /** Schlüssel eines Laufzeit-Feldes in der Modulkonfiguration. */
-    static String key(String providerId, String field) {
-        return providerId + "." + field;
-    }
-
-    static String enabledKey(String providerId) {
-        return key(providerId, "enabled");
-    }
-
     @Override
     public Set<String> sharedDirectoryFields() {
         return Set.of(COMPOSE_PROJECTS);
@@ -118,13 +110,9 @@ public class ContainerModule implements ToolModule {
 
     @Override
     public List<ConfigField> configSchema() {
-        List<String> runtimeOptions = new ArrayList<>(List.of("auto"));
-        runtimes.providers().forEach(p -> runtimeOptions.add(p.id()));
-
         List<ConfigField> fields = new ArrayList<>();
-        fields.add(ConfigField.of(DEFAULT_RUNTIME, "Standard-Laufzeit", FieldType.ENUM).withDefault("auto")
-                .withOptions(runtimeOptions.toArray(String[]::new))
-                .withHelp("Wird verwendet, wenn ein Tool ohne 'runtime' aufgerufen wird. 'auto' = erste erreichbare."));
+        fields.add(ProviderSchema.defaultProviderField(DEFAULT_RUNTIME, "Standard-Laufzeit", runtimes.providers(),
+                "Wird verwendet, wenn ein Tool ohne 'runtime' aufgerufen wird. 'auto' = erste erreichbare."));
         for (ContainerRuntimeProvider p : runtimes.providers()) {
             fields.addAll(new ConfigGroup(p.id(), p.displayName()).fields(true, p.configFields()));
         }
@@ -234,7 +222,7 @@ public class ContainerModule implements ToolModule {
         String cli = java.get("containerCli");
         if (cli != null) {
             if ("aus".equals(cli)) {
-                runtimes.providers().forEach(p -> out.put(enabledKey(p.id()), "false"));
+                runtimes.providers().forEach(p -> out.put(ProviderSchema.enabledKey(p.id()), "false"));
             } else if (runtimes.provider(cli) != null) {
                 out.put(DEFAULT_RUNTIME, cli);
             }

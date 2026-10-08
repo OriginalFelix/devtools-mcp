@@ -24,6 +24,7 @@ import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
 import systems.grebe.devtools.mcp.modules.container.spi.RuntimeSettings;
 import systems.grebe.devtools.mcp.core.LocalFiles;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
 
 /**
  * Ausgewertete Konfiguration des Container-Moduls: aktive Laufzeiten, Freigaben und Sicherheitsprüfungen.
@@ -68,10 +69,10 @@ public final class ContainerEnvironment {
 
     public ContainerEnvironment(ContainerRuntimes runtimes, ModuleConfig c) {
         for (ContainerRuntimeProvider p : runtimes.providers()) {
-            if (!c.get(ContainerModule.enabledKey(p.id())).map(Boolean::parseBoolean).orElse(true)) {
+            if (!ProviderSchema.enabled(c, p.id(), true)) {
                 continue;
             }
-            RuntimeSettings rs = new RuntimeSettings(k -> c.get(ContainerModule.key(p.id(), k)));
+            RuntimeSettings rs = new RuntimeSettings(ProviderSchema.settings(c, p.id()));
             entries.put(p.id(), new Entry(p, p.create(rs)));
         }
         this.defaultRuntime = c.getString(ContainerModule.DEFAULT_RUNTIME, "auto");
