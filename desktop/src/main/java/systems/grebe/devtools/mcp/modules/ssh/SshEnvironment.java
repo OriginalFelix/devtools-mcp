@@ -255,20 +255,23 @@ final class SshEnvironment {
      */
     <T> T withSession(SshConnection c, SessionAction<T> action) {
         for (int attempt = 0; ; attempt++) {
-            Session s;
+            SshSessions.Lease lease;
             try {
-                s = sessions.get(c, this::open);
+                lease = sessions.lease(c, this::open);
             } catch (JSchException e) {
                 throw new IllegalStateException(describe(c, e), e);
             }
-            try {
-                return action.run(s);
-            } catch (JSchException e) {
-                sessions.evict(c.name());
-                if (attempt == 0 && !s.isConnected()) {
-                    continue;
+            Session s = lease.session();
+            try (lease) { // gibt die Sitzung zurück; eine als fehlerhaft gemeldete wird danach getrennt
+                try {
+                    return action.run(s);
+                } catch (JSchException e) {
+                    lease.fail();
+                    if (attempt == 0 && !s.isConnected()) {
+                        continue;
+                    }
+                    throw new IllegalStateException(describe(c, e), e);
                 }
-                throw new IllegalStateException(describe(c, e), e);
             }
         }
     }
