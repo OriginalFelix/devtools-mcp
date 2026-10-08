@@ -46,6 +46,7 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ChannelEvents;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.core.BoundedMap;
 
 /**
  * Überwacht die eingetragenen Ordner im Hintergrund und meldet neue Mails – sofort per IMAP IDLE, wo der Server es
@@ -324,12 +325,7 @@ public class MailWatcher implements AutoCloseable {
 
     // ------------------------------------------------------------------ Gesendet (Schleifen vermeiden, Grenze)
 
-    private final Set<String> sentIds = Collections.newSetFromMap(new LinkedHashMap<>() {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
-            return size() > 500;
-        }
-    });
+    private final Set<String> sentIds = BoundedMap.fifoSet(500);
     private final Deque<Long> sendTimes = new ArrayDeque<>();
 
     /**

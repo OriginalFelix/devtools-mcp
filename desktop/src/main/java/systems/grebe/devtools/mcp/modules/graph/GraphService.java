@@ -7,7 +7,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -22,6 +21,7 @@ import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.GraphFile;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Key;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Stored;
+import systems.grebe.devtools.mcp.core.BoundedMap;
 
 /**
  * Projektauflösung, Branch-Ermittlung, Aufbau (mit Änderungserkennung per SHA-256) und Zugriff auf die Graphen – in
@@ -167,12 +167,7 @@ final class GraphService {
      * Ergebnis, nur langsamer).
      */
     private static final int MAX_SESSIONS = 4;
-    private static final Map<Path, SoftReference<Session>> SESSIONS = new LinkedHashMap<>(8, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<Path, SoftReference<Session>> eldest) {
-            return size() > MAX_SESSIONS;
-        }
-    };
+    private static final Map<Path, SoftReference<Session>> SESSIONS = BoundedMap.lru(MAX_SESSIONS);
 
     private static Session session(Path root) {
         synchronized (SESSIONS) {

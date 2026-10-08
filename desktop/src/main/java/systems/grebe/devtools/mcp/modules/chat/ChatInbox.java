@@ -1,7 +1,6 @@
 package systems.grebe.devtools.mcp.modules.chat;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -10,6 +9,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatSystem;
+import systems.grebe.devtools.mcp.core.BoundedMap;
 
 /**
  * Eingang eines Kontos: holt über {@link ChatSystem#poll} neue Nachrichten und hält sie bereit, bis ein Tool sie
@@ -48,9 +48,9 @@ final class ChatInbox {
     private long seq;
     private final List<Received> pending = new ArrayList<>();
     /** Eigene Nachrichten → Position im Eingang. */
-    private final Map<String, Long> ownMessages = bounded(1000);
+    private final Map<String, Long> ownMessages = BoundedMap.fifo(1000);
     /** Bekannte Nachrichten → Unterhaltung, damit Antworten und Reaktionen ohne Angabe auskommen. */
-    private final Map<String, String> conversations = bounded(5000);
+    private final Map<String, String> conversations = BoundedMap.fifo(5000);
     private final List<String> notices = new ArrayList<>();
     private int ignored;
     private int dropped;
@@ -282,14 +282,5 @@ final class ChatInbox {
     /** Unterhaltung einer bekannten Nachricht oder {@code null}. */
     synchronized String conversationOf(String messageId) {
         return conversations.get(messageId);
-    }
-
-    private static <K, V> Map<K, V> bounded(int max) {
-        return new LinkedHashMap<>() {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
-                return size() > max;
-            }
-        };
     }
 }

@@ -12,7 +12,6 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -32,6 +31,7 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
 import systems.grebe.devtools.mcp.config.AtomicFiles;
+import systems.grebe.devtools.mcp.core.BoundedMap;
 
 /**
  * Liest und schreibt {@code devtools-fileinfo.graph} im Projektwurzelverzeichnis.
@@ -62,13 +62,7 @@ final class GraphStore {
      * (eGECKO, ~10.800 Dateien: ~280 MB), deshalb nicht jedes jemals abgefragte Projekt im Speicher halten.
      */
     private static final int MAX_CACHED = 2;
-    private static final Map<Path, Cached> CACHE = Collections.synchronizedMap(
-            new LinkedHashMap<>(4, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<Path, Cached> eldest) {
-                    return size() > MAX_CACHED;
-                }
-            });
+    private static final Map<Path, Cached> CACHE = Collections.synchronizedMap(BoundedMap.lru(MAX_CACHED));
 
     private GraphStore() {
     }
