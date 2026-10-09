@@ -8,9 +8,11 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer;
+import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.Annotation;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.Check;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.Comment;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.FileChange;
+import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.Insight;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.PrDetails;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.PrQuery;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.PullRequest;
@@ -189,13 +191,14 @@ public class PrTools {
     }
 
     @Tool(name = "comments", description = "Alle Kommentare eines Pull/Merge Requests als Threads: allgemeine Kommentare, "
-            + "Code-Kommentare mit Datei und Zeile samt Antworten, Reviews. Je Thread ID (für pr_reply/pr_resolve) und "
-            + "Status offen/erledigt. Mit unresolved=true nur offene Threads – Ausgangspunkt zum Abarbeiten von "
+            + "Code-Kommentare mit Datei und Zeile, Datei-Kommentare (ganze Datei) samt Antworten, Reviews. Je Thread ID "
+            + "(für pr_reply/pr_resolve) und Status offen/erledigt; Kommentare von Integrationen (Apps, Bots) sind "
+            + "gekennzeichnet. Mit unresolved=true nur offene Threads – Ausgangspunkt zum Abarbeiten von "
             + "Review-Anmerkungen." + ShellHints.PR)
     public String comments(
             @ToolParam(required = false, description = PR + ". Leer = zum aktuellen Branch.") String pr,
             @ToolParam(required = false, description = "true = nur offene (nicht erledigte) Threads") Boolean unresolved,
-            @ToolParam(required = false, description = "Nur Code-Kommentare zu Dateien, deren Pfad dies enthält") String path,
+            @ToolParam(required = false, description = "Nur Code- und Datei-Kommentare zu Dateien, deren Pfad dies enthält") String path,
             @ToolParam(required = false, description = REPOSITORY) String repository,
             @ToolParam(required = false, description = PROJECT) String project,
             @ToolParam(required = false, description = PROVIDER) String provider) {
@@ -226,14 +229,79 @@ public class PrTools {
             }
             sb.append('\n');
             for (Comment c : th.comments()) {
-                sb.append("- ").append(Text.orDash(c.author())).append(", ").append(Text.orDash(c.created()))
-                        .append(" (").append(c.id()).append("):\n");
+                sb.append("- ").append(Text.orDash(c.author())).append(c.integration() ? " [Integration]" : "")
+                        .append(", ").append(Text.orDash(c.created())).append(" (").append(c.id()).append("):\n");
                 String body = c.body() == null ? "" : c.body().strip();
                 body.lines().forEach(l -> sb.append("  ").append(l).append('\n'));
             }
         }
         if (threads.isEmpty()) {
             sb.append(Boolean.TRUE.equals(unresolved) ? "(keine offenen Threads)" : "(keine Kommentare)");
+        }
+        return Text.limitLines(sb.toString().strip(), env.maxLines());
+    }
+
+    @Tool(name = "insights", description = "Berichte von Integrationen zum letzten Commit eines Pull/Merge Requests: "
+            + "Code-Analyse (z.B. SonarQube), Tests, Sicherheits-Scans – je Bericht Ergebnis, Kennzahlen und Befunde mit "
+            + "Datei, Zeile, Schwere und Meldung (Bitbucket Code Insights, GitHub Check-Runs, GitLab Testberichte). "
+            + "Ergänzt die CI-Checks aus pr_get um die Details." + ShellHints.PR)
+    public String insights(
+            @ToolParam(required = false, description = PR + ". Leer = zum aktuellen Branch.") String pr,
+            @ToolParam(required = false, description = "Nur Befunde zu Dateien, deren Pfad dies enthält") String path,
+            @ToolParam(required = false, description = REPOSITORY) String repository,
+            @ToolParam(required = false, description = PROJECT) String project,
+            @ToolParam(required = false, description = PROVIDER) String provider) {
+        PrEnvironment.Target t = env.target(provider, repository, project, pr);
+        String ref = refOrCurrent(t, pr);
+        List<Insight> insights = t.server().insights(ref, t.project());
+        String filter = path == null || path.isBlank() ? null : path.trim().replace('\\', '/');
+        int findings = insights.stream().mapToInt(Insight::annotationCount).sum();
+        StringBuilder sb = new StringBuilder(ref + " (" + t.providerId() + "): " + insights.size()
+                + " Bericht(e) von Integrationen, " + findings + " Befund(e)\n");
+        for (Insight in : insights) {
+            sb.append("\n### ").append(Text.orDash(in.title()));
+            if (in.result() != null) {
+                sb.append("  ").append(in.result());
+            }
+            sb.append('\n');
+            if (in.source() != null && !in.source().equals(in.title())) {
+                sb.append("Quelle: ").append(in.source()).append('\n');
+            }
+            if (in.url() != null) {
+                sb.append(in.url()).append('\n');
+            }
+            if (in.summary() != null && !in.summary().isBlank()) {
+                in.summary().strip().lines().forEach(l -> sb.append(l).append('\n'));
+            }
+            in.data().forEach((k, v) -> sb.append("- ").append(k).append(": ").append(Text.orDash(v)).append('\n'));
+            List<Annotation> shown = in.annotations().stream()
+                    .filter(a -> filter == null || a.path() != null && a.path().contains(filter)).toList();
+            if (!shown.isEmpty() || in.annotationCount() > 0) {
+                sb.append("Befunde (").append(filter == null ? "" : shown.size() + " von ").append(in.annotationCount())
+                        .append("):\n");
+            }
+            for (Annotation a : shown) {
+                sb.append("- ").append(a.path() == null ? "(allgemein)" : a.path() + (a.line() == null ? "" : ":" + a.line()));
+                if (a.severity() != null) {
+                    sb.append("  ").append(a.severity());
+                }
+                if (a.type() != null) {
+                    sb.append(' ').append(a.type());
+                }
+                String msg = a.message() == null ? "" : a.message().strip();
+                sb.append("  ").append(msg.lines().findFirst().orElse(""));
+                msg.lines().skip(1).forEach(l -> sb.append("\n    ").append(l));
+                if (a.url() != null) {
+                    sb.append("  ").append(a.url());
+                }
+                sb.append('\n');
+            }
+            if (filter == null && in.annotationCount() > in.annotations().size()) {
+                sb.append("  … ").append(in.annotationCount() - in.annotations().size()).append(" weitere beim Server\n");
+            }
+        }
+        if (insights.isEmpty()) {
+            sb.append("(keine Berichte – keine Integration hat zum letzten Commit berichtet)");
         }
         return Text.limitLines(sb.toString().strip(), env.maxLines());
     }

@@ -99,6 +99,34 @@ class GitLabServerProviderTest {
     }
 
     @Test
+    void fileCommentsBotsAndTestReport() {
+        gl.on(MR + "/discussions", r -> StubServer.Reply.json(r.method().equals("POST")
+                ? "{\"id\":\"d8\",\"notes\":[{\"id\":60}]}"
+                : """
+                [{"id":"d5","notes":[{"id":5,"body":"Datei passt nicht hierher","author":{"username":"project_5_bot_ab12"},
+                   "created_at":"2026-09-29T01:00:00Z","resolvable":true,"resolved":false,
+                   "position":{"position_type":"file","new_path":"src/C.java","old_path":"src/C.java","new_line":null}}]}]"""));
+        PrEnvironment env = env();
+        assertThat(new PrTools(env).comments("grp/app!12", null, null, null, null, null))
+                .contains("### [d5] Datei  src/C.java  OFFEN", "- project_5_bot_ab12 [Integration], ");
+
+        gl.on(MR, """
+                {"iid":12,"diff_refs":{"base_sha":"b","head_sha":"h","start_sha":"s"},
+                 "head_pipeline":{"id":99,"project_id":5,"status":"failed","web_url":"https://gl/p/99"}}""");
+        assertThat(new PrCommentTools(env).comment("Bitte verschieben", "grp/app!12", "src/C.java", null, null, null, null))
+                .contains("Datei-Kommentar an src/C.java hinzugefügt (Thread d8)");
+        assertThat(gl.last(MR + "/discussions").body()).contains("\"position_type\":\"file\"", "\"new_path\":\"src/C.java\"")
+                .doesNotContain("new_line");
+
+        gl.on("/api/v4/projects/5/pipelines/99/test_report_summary", """
+                {"total":{"time":4.5,"count":10,"success":8,"failed":2,"skipped":0,"error":0},
+                 "test_suites":[{"name":"unit","total_count":10,"failed_count":2,"error_count":0}]}""");
+        assertThat(new PrTools(env).insights("grp/app!12", null, null, null, null)).contains("1 Bericht(e) von Integrationen",
+                "### Testbericht Pipeline #99  failed", "Quelle: GitLab CI", "https://gl/p/99/test_report",
+                "- Tests: 10", "- Fehlgeschlagen: 2", "Befunde (1):", "(allgemein)  failed  Suite unit: 2 von 10 fehlgeschlagen");
+    }
+
+    @Test
     void createMarksDraftResolvesReviewersAndDefaultBranch() {
         gl.on("/api/v4/projects/grp%2Fapp", "{\"default_branch\":\"main\"}");
         gl.on("/api/v4/users", r -> StubServer.Reply.json(r.decodedQuery().contains("anna") ? "[{\"id\":3}]" : "[]"));

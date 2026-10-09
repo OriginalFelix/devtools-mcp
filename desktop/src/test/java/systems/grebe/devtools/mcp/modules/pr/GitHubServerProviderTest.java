@@ -120,6 +120,55 @@ class GitHubServerProviderTest {
     }
 
     @Test
+    void fileCommentsAndBotAuthors() {
+        gh.on("/repos/octo/app/issues/7/comments", """
+                [{"id":13,"user":{"login":"dependabot[bot]","type":"Bot"},"created_at":"2026-09-29T01:00:00Z","body":"Bump"},
+                 {"id":14,"user":{"login":"anna","type":"User"},"created_at":"2026-09-29T01:30:00Z","body":"Danke"}]""");
+        gh.on("/repos/octo/app/pulls/7/reviews", "[]");
+        gh.on("/graphql", """
+                {"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[
+                 {"id":"PRRT_f","isResolved":false,"isOutdated":false,"path":"src/C.java","line":null,"originalLine":null,
+                  "subjectType":"FILE","comments":{"nodes":[{"databaseId":31,"author":{"__typename":"Bot","login":"sonar"},
+                  "createdAt":"2026-09-29T02:00:00Z","body":"Datei zu lang"}]}}]}}}}}""");
+        String out = new PrTools(env(Map.of())).comments("octo/app#7", null, null, null, null, null);
+        assertThat(out).contains("- dependabot[bot] [Integration], ", "- anna, ", "### [PRRT_f] Datei  src/C.java  OFFEN",
+                "- sonar [Integration], ");
+        assertThat(gh.last("/graphql").body()).contains("subjectType", "__typename");
+
+        gh.on("/repos/octo/app/pulls/7", pr(7, "open", null, "feature/x"));
+        gh.on("/repos/octo/app/pulls/7/comments", "{\"id\":6,\"html_url\":\"https://github.com/c/6\"}");
+        assertThat(new PrCommentTools(env(Map.of())).comment("Bitte aufteilen", "octo/app#7", "src/C.java", null, null,
+                null, null)).contains("Datei-Kommentar an src/C.java hinzugefügt", "[ID c6]");
+        assertThat(gh.last("/repos/octo/app/pulls/7/comments").body())
+                .contains("\"subject_type\":\"file\"", "\"path\":\"src/C.java\"").doesNotContain("\"line\"", "\"side\"");
+        assertThatThrownBy(() -> new PrCommentTools(env(Map.of())).comment("x", "octo/app#7", null, 3, null, null, null))
+                .hasMessageContaining("'line' braucht 'path'");
+    }
+
+    @Test
+    void insightsFromCheckRunsWithOutputAndAnnotations() {
+        gh.on("/repos/octo/app/pulls/7", pr(7, "open", null, "feature/x"));
+        gh.on("/repos/octo/app/commits/abc123/check-runs", """
+                {"check_runs":[
+                 {"id":1,"name":"build","status":"completed","conclusion":"success","output":{"annotations_count":0}},
+                 {"id":2,"name":"SonarCloud Code Analysis","status":"completed","conclusion":"failure",
+                  "html_url":"https://github.com/octo/app/runs/2","app":{"name":"SonarCloud"},
+                  "output":{"title":"Quality Gate failed","summary":"2 Bugs","annotations_count":2}}]}""");
+        gh.on("/repos/octo/app/check-runs/2/annotations", """
+                [{"path":"src/A.java","start_line":12,"end_line":12,"annotation_level":"failure","title":"Bug","message":"NPE möglich",
+                  "blob_href":"https://github.com/octo/app/blob/abc123/src/A.java"},
+                 {"path":"src/B.java","start_line":3,"annotation_level":"warning","message":"Unbenutzt"}]""");
+        PrTools tools = new PrTools(env(Map.of()));
+        String out = tools.insights("octo/app#7", null, null, null, null);
+        assertThat(out).contains("octo/app#7 (github): 1 Bericht(e) von Integrationen, 2 Befund(e)",
+                "### SonarCloud Code Analysis  failure", "Quelle: SonarCloud", "Quality Gate failed\n2 Bugs",
+                "Befunde (2):", "- src/A.java:12  failure  Bug: NPE möglich  https://github.com/octo/app/blob/abc123/src/A.java",
+                "- src/B.java:3  warning  Unbenutzt").doesNotContain("### build");
+        assertThat(tools.insights("octo/app#7", "B.java", null, null, null)).contains("Befunde (1 von 2):", "src/B.java:3")
+                .doesNotContain("src/A.java");
+    }
+
+    @Test
     void createUsesDefaultBranchAndRequestsReviewers() {
         gh.on("/repos/octo/app", "{\"default_branch\":\"develop\"}");
         gh.on("/repos/octo/app/pulls", r -> new StubServer.Reply(201,

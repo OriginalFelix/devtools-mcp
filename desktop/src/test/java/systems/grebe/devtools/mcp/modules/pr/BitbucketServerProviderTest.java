@@ -100,6 +100,30 @@ class BitbucketServerProviderTest {
                 .hasMessageContaining("keine Kommentar-ID");
     }
 
+    @Test
+    void cloudFileCommentsAppUsersAndCodeInsights() {
+        bb.on(CLOUD_PR + "/comments", r -> StubServer.Reply.json(r.method().equals("POST")
+                ? "{\"id\":8,\"links\":{\"html\":{\"href\":\"https://bitbucket.org/c/8\"}}}"
+                : """
+                {"values":[{"id":1,"content":{"raw":"Datei zu groß"},"user":{"nickname":"scanner","type":"app_user"},
+                  "created_on":"2026-09-29T01:00:00Z","inline":{"path":"src/C.java"}}]}"""));
+        PrEnvironment env = env("cloud", Map.of());
+        assertThat(new PrTools(env).comments("team/web#5", null, null, null, null, null))
+                .contains("### [1] Datei  src/C.java  OFFEN", "- scanner [Integration], ");
+
+        new PrCommentTools(env).comment("Aufteilen", "team/web#5", "src/C.java", null, null, null, null);
+        assertThat(bb.last(CLOUD_PR + "/comments").body()).contains("\"inline\":{\"path\":\"src/C.java\"}");
+
+        bb.on(CLOUD_PR, "{\"id\":5,\"source\":{\"commit\":{\"hash\":\"abc\"}}}");
+        bb.on("/repositories/team/web/commit/abc/reports", """
+                {"values":[{"uuid":"{r1}","title":"SonarQube","reporter":"SonarQube","result":"FAILED","details":"Quality Gate",
+                  "data":[{"title":"Abdeckung","type":"PERCENTAGE","value":81.5},{"title":"Neu","type":"BOOLEAN","value":true}]}]}""");
+        bb.on("/repositories/team/web/commit/abc/reports/%7Br1%7D/annotations", """
+                {"values":[{"path":"src/A.java","line":4,"severity":"HIGH","annotation_type":"BUG","summary":"NPE"}]}""");
+        assertThat(new PrTools(env).insights("team/web#5", null, null, null, null)).contains("### SonarQube  FAILED",
+                "Quality Gate", "- Abdeckung: 81.5 %", "- Neu: ja", "- src/A.java:4  HIGH BUG  NPE");
+    }
+
     // ------------------------------------------------------------------ Data Center
 
     @Test
@@ -164,6 +188,37 @@ class BitbucketServerProviderTest {
         new PrResolveTools(env).resolve("40", true, "PROJ/app#5", null, null, null);
         StubServer.Request put = bb.requests.reversed().stream().filter(r -> r.method().equals("PUT")).findFirst().orElseThrow();
         assertThat(put.body()).contains("\"version\":4", "\"threadResolved\":true");
+    }
+
+    @Test
+    void dataCenterFileCommentsServiceUsersAndCodeInsights() {
+        bb.on(DC_PR + "/activities", """
+                {"isLastPage":true,"values":[
+                 {"action":"COMMENTED","commentAction":"ADDED","commentAnchor":{"path":"src/C.java"},
+                  "comment":{"id":70,"text":"Lizenzkopf fehlt","author":{"name":"ci-bot","type":"SERVICE"},
+                   "createdDate":1759190400000,"threadResolved":false}}]}""");
+        bb.on(DC_PR + "/comments", "{\"id\":71,\"version\":0}");
+        PrEnvironment env = env("datacenter", Map.of());
+        assertThat(new PrTools(env).comments("PROJ/app#5", null, null, null, null, null))
+                .contains("### [70] Datei  src/C.java  OFFEN", "- ci-bot [Integration], ");
+
+        new PrCommentTools(env).comment("Ergänzt", "PROJ/app#5", "src/C.java", null, null, null, null);
+        assertThat(bb.last(DC_PR + "/comments").body()).contains("\"anchor\":{\"path\":\"src/C.java\",\"diffType\":\"EFFECTIVE\"}");
+        assertThat(bb.requests).noneMatch(r -> r.path().startsWith(DC_PR + "/diff"));
+
+        String insights = "/rest/insights/1.0/projects/PROJ/repos/app/commits/c0ffee/reports";
+        bb.on(DC_PR, "{\"id\":5,\"fromRef\":{\"latestCommit\":\"c0ffee\"}}");
+        bb.on(insights, """
+                {"isLastPage":true,"values":[{"key":"sonar","title":"SonarQube","reporter":"SonarQube","result":"FAIL",
+                  "link":"https://sonar/p","data":[{"title":"Laufzeit","type":"DURATION","value":90000},
+                  {"title":"Bericht","type":"LINK","value":{"linktext":"öffnen","href":"https://sonar/r"}}]}]}""");
+        bb.on(insights + "/sonar/annotations", """
+                {"totalCount":3,"annotations":[{"path":"src/A.java","line":0,"severity":"MEDIUM","type":"CODE_SMELL","message":"Zu lang"},
+                 {"path":"src/B.java","line":9,"severity":"HIGH","type":"VULNERABILITY","message":"SQL-Injection"}]}""");
+        assertThat(new PrTools(env).insights("PROJ/app#5", null, null, null, null)).contains(
+                "1 Bericht(e) von Integrationen, 3 Befund(e)", "### SonarQube  FAIL", "https://sonar/p", "- Laufzeit: 1m30s",
+                "- Bericht: öffnen https://sonar/r", "Befunde (3):", "- src/A.java  MEDIUM CODE_SMELL  Zu lang",
+                "- src/B.java:9  HIGH VULNERABILITY  SQL-Injection", "… 1 weitere beim Server");
     }
 
     @Test

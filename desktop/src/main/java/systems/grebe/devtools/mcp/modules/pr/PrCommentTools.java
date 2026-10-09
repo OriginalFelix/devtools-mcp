@@ -20,14 +20,15 @@ public class PrCommentTools {
         this.env = env;
     }
 
-    @Tool(name = "comment", description = "Neuer Kommentar an einem Pull/Merge Request (Markdown): allgemein oder – mit "
-            + "path und line – an einer Zeile der neuen Fassung (nur Zeilen im Diff). Für Antworten auf bestehende "
-            + "Threads pr_reply verwenden. Nur auf Anweisung des Nutzers." + ShellHints.PR)
+    @Tool(name = "comment", description = "Neuer Kommentar an einem Pull/Merge Request (Markdown): allgemein, mit path "
+            + "und line an einer Zeile der neuen Fassung (nur Zeilen im Diff) oder mit path ohne line an der geänderten "
+            + "Datei als Ganzes. Für Antworten auf bestehende Threads pr_reply verwenden. Nur auf Anweisung des Nutzers."
+            + ShellHints.PR)
     public String comment(
             @ToolParam(description = "Kommentartext") String body,
             @ToolParam(required = false, description = PR + ". Leer = zum aktuellen Branch.") String pr,
-            @ToolParam(required = false, description = "Datei für einen Code-Kommentar (Pfad wie in pr_diff)") String path,
-            @ToolParam(required = false, description = "Zeile in der neuen Fassung der Datei") Integer line,
+            @ToolParam(required = false, description = "Datei für einen Code- oder Datei-Kommentar (Pfad wie in pr_diff)") String path,
+            @ToolParam(required = false, description = "Zeile in der neuen Fassung der Datei; leer = Kommentar zur ganzen Datei") Integer line,
             @ToolParam(required = false, description = REPOSITORY) String repository,
             @ToolParam(required = false, description = PROJECT) String project,
             @ToolParam(required = false, description = PROVIDER) String provider) {
@@ -35,6 +36,9 @@ public class PrCommentTools {
         String ref = PrTools.refOrCurrent(t, pr);
         env.checkWrite(t, ref, "Kommentieren");
         String p = blankToNull(path);
+        if (p == null && line != null) {
+            throw new IllegalArgumentException("'line' braucht 'path' (Datei wie in pr_diff).");
+        }
         return PrTools.written(t.server().comment(ref, t.project(), new GitServer.NewComment(env.commentBody(body),
                 p == null ? null : p.replace('\\', '/'), line)));
     }
