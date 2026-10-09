@@ -11,11 +11,14 @@ import java.util.TreeMap;
  *                     ohne Fenster ({@code --headless}); mit Fenster meldet sich jeder beim Start an
  * @param username     zuletzt angemeldeter Benutzer (Vorbelegung des Anmeldedialogs)
  * @param projectPaths lokales Verzeichnis je Server-Projekt (Projekt-ID → Pfad)
+ * @param advertise    Advertise-Endpunkt: das eingebettete Backend im lokalen Netzwerk erreichbar machen und auf
+ *                     Discovery-Anfragen anderer Desktop-Apps antworten (Standard aus, wirksam nach Neustart)
  */
-public record TeamSettings(String url, String token, String username, Map<Long, String> projectPaths) {
+public record TeamSettings(String url, String token, String username, Map<Long, String> projectPaths,
+                           boolean advertise) {
 
     public static TeamSettings none() {
-        return new TeamSettings("", "", "", Map.of());
+        return new TeamSettings("", "", "", Map.of(), false);
     }
 
     public TeamSettings {
@@ -31,11 +34,15 @@ public record TeamSettings(String url, String token, String username, Map<Long, 
     }
 
     public TeamSettings withServer(String value) {
-        return new TeamSettings(value, value == null || value.isBlank() ? "" : token, username, projectPaths);
+        return new TeamSettings(value, value == null || value.isBlank() ? "" : token, username, projectPaths, advertise);
+    }
+
+    public TeamSettings withAdvertise(boolean value) {
+        return new TeamSettings(url, token, username, projectPaths, value);
     }
 
     public TeamSettings withUsername(String value) {
-        return new TeamSettings(url, token, value, projectPaths);
+        return new TeamSettings(url, token, value, projectPaths, advertise);
     }
 
     public TeamSettings withProjectPath(long projectId, String path) {
@@ -45,6 +52,6 @@ public record TeamSettings(String url, String token, String username, Map<Long, 
         } else {
             paths.put(projectId, path.strip());
         }
-        return new TeamSettings(url, token, username, paths);
+        return new TeamSettings(url, token, username, paths, advertise);
     }
 }

@@ -57,6 +57,15 @@ class SettingsStoreTest {
     }
 
     @Test
+    void advertiseIsOffByDefaultAndSurvivesServerChanges() {
+        SettingsStore store = new SettingsStore(home);
+        assertThat(store.team().advertise()).isFalse();
+        store.saveTeam(store.team().withAdvertise(true));
+        store.saveTeam(store.team().withServer("https://devtools.example.com").withUsername("felix"));
+        assertThat(new SettingsStore(home).team().advertise()).isTrue();
+    }
+
+    @Test
     void brokenFileFallsBackToDefaults() throws Exception {
         Files.writeString(home.resolve("settings.json"), "{ kaputt");
         SettingsStore store = new SettingsStore(home);

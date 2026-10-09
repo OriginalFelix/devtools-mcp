@@ -831,6 +831,21 @@ HTTP, Subscriptions über WebSocket).
   ändern…* bzw. im Tab *Backend* die Server-Adresse eintragen; gilt nach einem Neustart der App (dann läuft kein
   eingebettetes Backend, keine lokalen Datenbanken), angemeldet wird mit dem Konto des Servers. *Eingebettet
   verwenden* stellt zurück.
+* **Im Netzwerk suchen (Advertise-Endpunkt):** Statt die Adresse abzutippen, findet *Im Netzwerk suchen…* (Tab
+  *Backend* und Anmeldefenster) Backends im lokalen Netzwerk: Die App fragt per UDP an Port `47913` – Multicast an
+  `239.255.47.13` über jede Netzwerkschnittstelle, Broadcast und Loopback – und listet nach 1,5 s alle Antworten
+  (Name, Team-Server oder Desktop-App, Adresse); die gewählte Adresse wird wie von Hand eingetragen. Antworten tut
+  nur ein Backend mit eingeschaltetem **Advertise-Endpunkt** (Standard aus):
+  * Team-Server: `devtools.discovery.advertise=true`; hinter einem Reverse-Proxy `devtools.discovery.url` auf die
+    öffentliche Adresse setzen, sonst meldet er Schema und `server.port` und der Suchende nimmt die Absenderadresse.
+    Optional `devtools.discovery.name` (Standard Rechnername) und `devtools.discovery.port` (UDP).
+  * Desktop-App mit eingebettetem Backend: Tab *Backend* → *Advertise-Endpunkt aktivieren* (wirksam nach Neustart).
+    Die App lauscht dann auf allen Adressen statt nur `127.0.0.1`, damit andere Desktop-Apps ihr Backend nutzen
+    können; von anderen Rechnern erreichbar sind nur `/graphql` und `/blobs` (eigene Anmeldung mit einem Konto
+    dieser App), MCP-Endpunkt und Channel bleiben lokal (`LocalOnlyFilter`). Ohne TLS – nur in vertrauenswürdigen
+    Netzen einschalten.
+
+  Firewalls müssen UDP `47913` (eingehend beim Backend) durchlassen.
 
 ```bash
 java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL unter /graphql

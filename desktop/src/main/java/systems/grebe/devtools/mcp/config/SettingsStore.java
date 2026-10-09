@@ -154,7 +154,7 @@ public class SettingsStore implements DataHome {
                     }
                 });
                 team = new TeamSettings(t.path("url").asString(""), cipher.decrypt(t.path("token").asString("")),
-                        t.path("username").asString(""), paths);
+                        t.path("username").asString(""), paths, t.path("advertise").asBoolean(false));
             }
             JsonNode g = root.path("graph");
             if (g.isObject()) {
@@ -199,6 +199,7 @@ public class SettingsStore implements DataHome {
         t.put("url", team.url());
         t.put("token", cipher.encrypt(team.token()));
         t.put("username", team.username());
+        t.put("advertise", team.advertise());
         ObjectNode paths = t.putObject("projectPaths");
         team.projectPaths().forEach((id, path) -> paths.put(Long.toString(id), path));
         ObjectNode g = root.putObject("graph");
