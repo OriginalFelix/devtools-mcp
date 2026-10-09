@@ -16,11 +16,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import systems.grebe.devtools.mcp.backend.graph.ArcadeGraphReader;
 import systems.grebe.devtools.mcp.backend.graph.GraphStorage;
+import systems.grebe.devtools.mcp.core.CommandRunner;
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Datenbank-Ablage: die Graph-Storage des Backends (eingebettete ArcadeDB) wie im Local-Mode, direkt als
@@ -316,6 +318,76 @@ class DatabaseGraphStorageTest {
         disabled.poll();
         commit("leer");
         assertThat(disabled.poll()).isEmpty();
+    }
+
+    @Test
+    void worktreesAreBuiltFromTheirOwnDirectoryAndBranch() throws Exception {
+        assumeTrue(gitInstalled(), "git nicht installiert");
+        GraphTools t = tools(GraphModule.STORAGE_DATABASE);
+        t.build(null, false);
+
+        // Worktree im Haupt-Repository (wie .claude/worktrees) auf eigenem Branch, mit zusätzlicher Klasse
+        Path wt = project.resolve(".claude/worktrees/wt1");
+        gitCli(project, "worktree", "add", "-b", "release/43.1", wt.toString());
+        GraphToolsTestFixture.writeSource(wt, "com/acme/shop/Extra.java",
+                "package com.acme.shop;\nclass Extra { void x() { new Money().add(2); } }\n");
+
+        String built = t.build(wt.toString(), false);
+        assertThat(built).startsWith("Graph gebaut").contains("Branch release/43.1");
+        assertThat(t.branches(wt.toString())).contains(
+                "Projekt " + project.getFileName() + " (" + wt.toRealPath() + ")",
+                "ausgecheckt: release/43.1", "- release/43.1 *", "- main @ "); // dasselbe Projekt
+        assertThat(t.find(wt.resolve("src/main/java").toString(), "Extra", "class", null, null))
+                .contains("com.acme.shop.Extra");
+        assertThat(t.find(project.getFileName() + "/wt1", "Extra", "class", null, null))
+                .contains("com.acme.shop.Extra");
+        assertThat(t.find(null, "Extra", "class", null, null)).startsWith("Keine Treffer"); // Haupt-Repository: main
+        assertThat(t.branches(null)).contains("ausgecheckt: main", "- release/43.1 @ ");
+
+        // Worktree außerhalb des Projekts: trotzdem freigegeben, als Worktree des Projekts
+        Path outside = data.resolve("wt-outside");
+        gitCli(project, "worktree", "add", "-b", "feature/aussen", outside.toString());
+        assertThat(t.build(outside.toString(), false)).contains("Branch feature/aussen")
+                .contains("Übernommen von Branch main");
+
+        // Auto-Indexer beobachtet auch Worktrees: Commit im Worktree → Graph seines Branches
+        ModuleConfig cfg = config(project, GraphModule.STORAGE_DATABASE);
+        GraphAutoIndexer indexer = new GraphAutoIndexer(() -> cfg, c -> new GraphService(c, () -> storage),
+                java.time.Duration.ofSeconds(1));
+        assertThat(indexer.poll()).isEmpty();
+        GraphToolsTestFixture.writeSource(wt, "com/acme/shop/Extra.java",
+                "package com.acme.shop;\nclass Extra { void y() { } }\n");
+        gitCli(wt, "add", ".");
+        gitCli(wt, "-c", "user.name=Test", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false",
+                "commit", "-m", "extra");
+        assertThat(indexer.poll()).singleElement().asString().contains("(Branch release/43.1)");
+        assertThat(t.find(wt.toString(), "Extra#y", null, null, null)).contains("Extra#y()");
+        assertThat(t.find(null, "Extra#y", null, null, "release/43.1")).contains("Extra#y()");
+
+        // Worktree entfernt (Branch bleibt): Graph seines Branches wird gelöscht, die übrigen bleiben
+        gitCli(project, "worktree", "remove", "--force", wt.toString());
+        assertThat(indexer.poll()).singleElement().asString()
+                .contains("(Branch release/43.1): Graph gelöscht", "Worktree", "entfernt");
+        assertThat(t.branches(null)).doesNotContain("release/43.1").contains("- main ", "- feature/aussen ");
+        assertThat(indexer.poll()).isEmpty();
+        // ausgecheckter Branch (hier main im Haupt-Repository) bleibt immer
+        assertThat(service(GraphModule.STORAGE_DATABASE).removeWorktreeGraph(project, "main")).isEmpty();
+        assertThat(t.branches(null)).contains("- main ");
+    }
+
+    private static void gitCli(Path dir, String... args) {
+        List<String> cmd = new java.util.ArrayList<>(List.of("git"));
+        cmd.addAll(List.of(args));
+        CommandRunner.run(cmd, java.time.Duration.ofSeconds(30), java.nio.charset.StandardCharsets.UTF_8, dir)
+                .orThrow(String.join(" ", cmd));
+    }
+
+    private static boolean gitInstalled() {
+        try {
+            return CommandRunner.run(List.of("git", "--version"), java.time.Duration.ofSeconds(10)).ok();
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private void commit(String message) throws Exception {

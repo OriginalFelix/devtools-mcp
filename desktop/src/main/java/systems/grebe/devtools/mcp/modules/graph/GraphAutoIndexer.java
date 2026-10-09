@@ -21,13 +21,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import systems.grebe.devtools.mcp.core.GitWorktrees;
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 
 /**
- * Indiziert die Graph-Projekte automatisch: beobachtet je Projekt den ausgecheckten Branch, seinen Commit und die
- * lokalen Branches (alle paar Sekunden, egal ob der Commit aus DevTools, der IDE oder der Shell kommt) und
+ * Indiziert die Graph-Projekte automatisch: beobachtet je Projekt und je Worktree eines Projekts den ausgecheckten
+ * Branch, seinen Commit und die lokalen Branches (alle paar Sekunden, egal ob der Commit aus DevTools, der IDE oder der
+ * Shell kommt) und
  * <ul>
  *   <li>baut bei einem neuen Commit oder Branch-Wechsel den Graphen des ausgecheckten Branches – inkrementell
  *       ({@link GraphService#build}: nur geänderte Dateien lesen, nur den Unterschied speichern; ein Branch mit gleichem
@@ -37,6 +39,10 @@ import systems.grebe.devtools.mcp.core.ToolRegistry;
  * </ul>
  * Nur bei eingeschaltetem Modul „Code-Graph“ und Einstellung „Automatisch indizieren“. Beim Start wird nur der Stand
  * gemerkt, gebaut wird erst bei einer Änderung.
+ *
+ * <p>Unabhängig von „Automatisch indizieren“ (nur bei eingeschaltetem Modul): Verschwindet ein Worktree, wird der
+ * Graph seines Branches gelöscht ({@link GraphService#removeWorktreeGraph}). Wird ein Worktree entfernt, während die
+ * App nicht läuft, bleibt sein Graph bis zum Löschen des Branches.
  */
 @Component
 public class GraphAutoIndexer {
@@ -47,6 +53,8 @@ public class GraphAutoIndexer {
     private final Function<ModuleConfig, GraphService> services;
     private final Duration interval;
     private final Map<Path, GitState.Heads> seen = new HashMap<>();
+    /** Bekannte Worktrees (Verzeichnis) mit Haupt-Repository und zuletzt ausgechecktem Branch. */
+    private Map<Path, Tracked> worktrees = new HashMap<>();
     private volatile Thread worker;
 
     @Autowired
@@ -100,15 +108,23 @@ public class GraphAutoIndexer {
     /** Ein Durchgang: Änderungen erkennen und die betroffenen Projekte indizieren. Liefert die Meldungen. */
     synchronized List<String> poll() {
         ModuleConfig cfg = config.get();
-        if (cfg == null || !cfg.getBoolean(GraphModule.AUTO_INDEX)) {
-            seen.clear(); // nach dem Wiedereinschalten neu beginnen statt alles Verpasste zu bauen
+        if (cfg == null) {
+            seen.clear();
+            worktrees.clear();
             return List.of();
         }
         GraphService service = services.apply(cfg);
+        List<GitWorktrees.Worktree> currentWorktrees = service.worktrees();
+        List<String> out = new ArrayList<>(removedWorktrees(service, currentWorktrees));
+        if (!cfg.getBoolean(GraphModule.AUTO_INDEX)) {
+            seen.clear(); // nach dem Wiedereinschalten neu beginnen statt alles Verpasste zu bauen
+            out.forEach(m -> LOG.info("Code-Graph automatisch: {}", m));
+            return out;
+        }
         Set<Path> roots = new LinkedHashSet<>();
         service.projects().all().values().forEach(p -> roots.add(p.toAbsolutePath().normalize()));
+        currentWorktrees.forEach(w -> roots.add(w.dir())); // eigener Branch je Worktree
         seen.keySet().retainAll(roots);
-        List<String> out = new ArrayList<>();
         for (Path root : roots) {
             if (Thread.currentThread().isInterrupted()) {
                 break;
@@ -143,6 +159,38 @@ public class GraphAutoIndexer {
             }
         }
         out.forEach(m -> LOG.info("Code-Graph automatisch: {}", m));
+        return out;
+    }
+
+    private record Tracked(Path main, String branch) {
+    }
+
+    /** Worktrees merken; für verschwundene den Graphen ihres Branches löschen. Liefert die Meldungen. */
+    private List<String> removedWorktrees(GraphService service, List<GitWorktrees.Worktree> current) {
+        Map<Path, Tracked> now = new HashMap<>();
+        for (GitWorktrees.Worktree w : current) {
+            GitState.Heads h = GitState.Heads.of(w.dir());
+            Tracked before = worktrees.get(w.dir());
+            String branch = h != null && h.branch() != null ? h.branch() : before == null ? null : before.branch();
+            now.put(w.dir(), new Tracked(w.main(), branch)); // losgelöster HEAD: letzten Branch behalten
+        }
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<Path, Tracked> e : worktrees.entrySet()) {
+            if (now.containsKey(e.getKey())) {
+                continue;
+            }
+            try {
+                for (String b : service.removeWorktreeGraph(e.getValue().main(), e.getValue().branch())) {
+                    out.add(e.getValue().main().getFileName() + " (Branch " + b + "): Graph gelöscht, Worktree "
+                            + e.getKey() + " entfernt");
+                }
+            } catch (RuntimeException ex) {
+                now.put(e.getKey(), e.getValue()); // z.B. Backend nicht erreichbar: beim nächsten Durchgang erneut
+                LOG.warn("Graph des entfernten Worktrees {} nicht gelöscht: {}", e.getKey(),
+                        GraphModule.rootMessage(ex));
+            }
+        }
+        worktrees = now;
         return out;
     }
 

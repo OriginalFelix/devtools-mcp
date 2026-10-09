@@ -106,6 +106,9 @@ public class GraphModule implements ToolModule {
                 - `graph_build`: nach größeren Änderungen; baut nur neu, wenn sich Quelldateien geändert haben.
                 - Graphen gibt es je Git-Branch: ohne `branch` gilt der ausgecheckte; `graph_branches` listet die \
                 gespeicherten, mit `branch` lassen sich andere abfragen (z.B. Vergleich mit master).
+                - Worktrees (`git worktree add`): als `project` den Pfad des Worktrees (oder einen darin) bzw. \
+                `<projekt>/<ordner>` übergeben – gebaut wird aus dem Worktree und unter seinem Branch gespeichert, als \
+                Graph desselben Projekts.
                 - `graph_cypher`: lesendes OpenCypher für alles, was die übrigen Tools nicht abdecken (nur Datenbank-Ablage).
                 Kanten sind als EXTRACTED (steht im Code), INFERRED (abgeleitet) oder AMBIGUOUS (mehrere Ziele) markiert – \
                 bei INFERRED/AMBIGUOUS die angegebene Zeile im Quelltext prüfen, bevor darauf eine Aussage beruht.""";

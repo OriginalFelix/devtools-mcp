@@ -22,7 +22,8 @@ import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Stored;
 @ToolHints(readOnly = true, openWorld = false)
 public class GraphTools {
 
-    private static final String PROJECT_PARAM = "Projektname (Ordnername) oder Pfad; leer = Standardprojekt";
+    private static final String PROJECT_PARAM = "Projektname (Ordnername) oder Pfad; Worktree als <projekt>/<ordner> "
+            + "oder Pfad darin (eigener Branch); leer = Standardprojekt";
     private static final String BRANCH_PARAM = "Git-Branch; leer = ausgecheckter Branch. Andere Branches nur, wenn "
             + "ihr Graph gespeichert ist (graph_branches)";
     private static final String NODE_PARAM = "Knoten: Typ ('OrderService' oder FQN), Member ('OrderService#save', "
