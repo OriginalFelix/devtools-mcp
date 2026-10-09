@@ -10,6 +10,7 @@ import java.util.function.Function;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
+import systems.grebe.container4j.ContainerRuntime;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
@@ -17,7 +18,6 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.Workspaces;
-import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
 
 /**

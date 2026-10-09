@@ -5,9 +5,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+import systems.grebe.container4j.ContainerRuntime;
 import systems.grebe.devtools.mcp.core.CommandRunner;
 import systems.grebe.devtools.mcp.modules.container.ContainerEnvironment;
-import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 
 /**
  * Container-Zugriff für die Java-Diagnosemodule ({@code container:}-Ziele). Nutzt die Laufzeiten und

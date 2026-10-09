@@ -1,0 +1,3 @@
+[submodule "container4j"]
+	path = container4j
+	url = https://github.com/OriginalFelix/Container4J.git

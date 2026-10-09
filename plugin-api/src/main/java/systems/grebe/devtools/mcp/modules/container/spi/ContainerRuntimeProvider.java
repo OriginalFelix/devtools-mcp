@@ -2,11 +2,13 @@ package systems.grebe.devtools.mcp.modules.container.spi;
 
 import java.util.List;
 
+import systems.grebe.container4j.ContainerRuntime;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ServiceProvider;
 
 /**
- * Service-Provider-Schnittstelle für Container-Laufzeiten (Docker, Podman, …).
+ * Service-Provider-Schnittstelle für Container-Laufzeiten (Docker, Podman, …). Die Laufzeit selbst
+ * ({@link ContainerRuntime}) kommt aus der Bibliothek Container4J; der Provider macht sie in der App konfigurierbar.
  *
  * <p>Implementierungen werden über {@link java.util.ServiceLoader} gefunden – in der App und in Plugin-Jars (siehe
  * {@link ServiceProvider}). Eine neue Laufzeit benötigt nur
