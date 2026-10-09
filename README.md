@@ -606,8 +606,9 @@ verbinden. Die App läuft danach im Tray weiter und ist für alle Clients auf di
 
 ### Bauen
 
-[Container4J](https://github.com/OriginalFelix/Container4J) ist als Git-Submodule unter `container4j` eingebunden –
-beim Klonen `git clone --recurse-submodules …`, in einem bestehenden Klon einmal `git submodule update --init`.
+[Container4J](https://github.com/OriginalFelix/Container4J) ist als Git-Submodule unter `container4j` eingebunden. Fehlt
+es (Klon ohne `--recurse-submodules`), führt Gradle beim ersten Aufruf selbst `git submodule update --init container4j`
+aus.
 
 ```bash
 ./gradlew :desktop:bootJar          # desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar
