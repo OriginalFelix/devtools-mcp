@@ -349,15 +349,14 @@ public class GitHubServerProvider implements GitServerProvider {
             Ref r = ref(key, project);
             List<Thread> out = new ArrayList<>();
             for (JsonNode c : pages("/repos/" + r.repo() + "/issues/" + r.number() + "/comments" + query("per_page", 100), 500)) {
-                out.add(new Thread("c" + text(c.path("id")), "Kommentar", null, null, null, false,
-                        List.of(comment(c.path("id"), c.path("user").path("login"), c.path("created_at"), c.path("body")))));
+                out.add(new Thread("c" + text(c.path("id")), "Kommentar", null, null, null, false, List.of(restComment(c))));
             }
             for (JsonNode rv : pages(r.path() + "/reviews" + query("per_page", 100), 300)) {
                 String body = text(rv.path("body"));
                 if (body != null) {
                     out.add(new Thread("r" + text(rv.path("id")), "Review " + text(rv.path("state")), null, null, null,
-                            false, List.of(comment(rv.path("id"), rv.path("user").path("login"),
-                                    rv.path("submitted_at"), rv.path("body")))));
+                            false, List.of(new Comment(text(rv.path("id")), text(rv.path("user").path("login")),
+                                    text(rv.path("submitted_at")), body, integration(rv)))));
                 }
             }
             out.addAll(authenticated ? reviewThreads(r) : restReviewThreads(r));
@@ -365,15 +364,22 @@ public class GitHubServerProvider implements GitServerProvider {
             return out;
         }
 
-        private static Comment comment(JsonNode id, JsonNode author, JsonNode created, JsonNode body) {
-            return new Comment(text(id), text(author), text(created), text(body));
+        /** Issue- oder Review-Kommentar aus der REST-API. */
+        private static Comment restComment(JsonNode c) {
+            return new Comment(text(c.path("id")), text(c.path("user").path("login")), text(c.path("created_at")),
+                    text(c.path("body")), integration(c));
+        }
+
+        /** Von einer GitHub App oder einem Bot-Konto (z.B. {@code dependabot[bot]}) geschrieben. */
+        static boolean integration(JsonNode item) {
+            return "Bot".equals(text(item.path("user").path("type"))) || item.path("performed_via_github_app").isObject();
         }
 
         private static final String THREADS_QUERY = """
                 query($owner:String!,$name:String!,$number:Int!,$after:String){repository(owner:$owner,name:$name){
                   pullRequest(number:$number){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}
-                    nodes{id isResolved isOutdated path line originalLine
-                      comments(first:100){nodes{databaseId author{login} createdAt body}}}}}}}""";
+                    nodes{id isResolved isOutdated path line originalLine subjectType
+                      comments(first:100){nodes{databaseId author{__typename login} createdAt body}}}}}}}""";
 
         /** Code-Threads über GraphQL – nur dort gibt es Thread-ID und Erledigt-Status. */
         private List<Thread> reviewThreads(Ref r) {
@@ -390,11 +396,13 @@ public class GitHubServerProvider implements GitServerProvider {
                 JsonNode threads = graphql(THREADS_QUERY, vars).path("repository").path("pullRequest").path("reviewThreads");
                 for (JsonNode t : threads.path("nodes")) {
                     List<Comment> comments = new ArrayList<>();
-                    t.path("comments").path("nodes").forEach(c -> comments.add(comment(c.path("databaseId"),
-                            c.path("author").path("login"), c.path("createdAt"), c.path("body"))));
+                    t.path("comments").path("nodes").forEach(c -> comments.add(new Comment(text(c.path("databaseId")),
+                            text(c.path("author").path("login")), text(c.path("createdAt")), text(c.path("body")),
+                            "Bot".equals(text(c.path("author").path("__typename"))))));
+                    boolean file = "FILE".equals(text(t.path("subjectType")));
                     JsonNode line = t.path("line").isNull() || t.path("line").isMissingNode() ? t.path("originalLine") : t.path("line");
-                    out.add(new Thread(text(t.path("id")), "Code", t.path("isResolved").asBoolean(false),
-                            text(t.path("path")), line.isNumber() ? line.asInt() : null,
+                    out.add(new Thread(text(t.path("id")), file ? "Datei" : "Code", t.path("isResolved").asBoolean(false),
+                            text(t.path("path")), !file && line.isNumber() ? line.asInt() : null,
                             t.path("isOutdated").asBoolean(false), comments));
                 }
                 if (!threads.path("pageInfo").path("hasNextPage").asBoolean(false)) {
@@ -415,12 +423,51 @@ public class GitHubServerProvider implements GitServerProvider {
             List<Thread> out = new ArrayList<>();
             byRoot.forEach((id, list) -> {
                 JsonNode first = list.getFirst();
+                boolean file = "file".equals(text(first.path("subject_type")));
                 JsonNode line = first.path("line").isNumber() ? first.path("line") : first.path("original_line");
-                out.add(new Thread("c" + id, "Code", null, text(first.path("path")),
-                        line.isNumber() ? line.asInt() : null, !first.path("line").isNumber(),
-                        list.stream().map(c -> comment(c.path("id"), c.path("user").path("login"), c.path("created_at"),
-                                c.path("body"))).toList()));
+                out.add(new Thread("c" + id, file ? "Datei" : "Code", null, text(first.path("path")),
+                        !file && line.isNumber() ? line.asInt() : null, !file && !first.path("line").isNumber(),
+                        list.stream().map(GitHub::restComment).toList()));
             });
+            return out;
+        }
+
+        /** Check-Runs des letzten Commits mit Ausgabe (Titel, Zusammenfassung, Annotations) – Berichte von GitHub Apps. */
+        @Override
+        public List<Insight> insights(String key, String project) {
+            Ref r = ref(key, project);
+            String head = text(http.getJson(r.path()).path("head").path("sha"));
+            List<Insight> out = new ArrayList<>();
+            if (head == null) {
+                return out;
+            }
+            for (JsonNode c : http.getJson("/repos/" + r.repo() + "/commits/" + head + "/check-runs"
+                    + query("per_page", 100)).path("check_runs")) {
+                JsonNode output = c.path("output");
+                int count = output.path("annotations_count").asInt(0);
+                String title = text(output.path("title"));
+                String summary = text(output.path("summary"));
+                if (count == 0 && title == null && summary == null) {
+                    continue;
+                }
+                List<Annotation> annotations = new ArrayList<>();
+                if (count > 0) {
+                    for (JsonNode a : pages("/repos/" + r.repo() + "/check-runs/" + text(c.path("id")) + "/annotations"
+                            + query("per_page", 100), 300)) {
+                        String msg = text(a.path("message"));
+                        String heading = text(a.path("title"));
+                        JsonNode line = a.path("start_line");
+                        annotations.add(new Annotation(text(a.path("path")), line.isNumber() && line.asInt() > 0
+                                ? line.asInt() : null, text(a.path("annotation_level")), null,
+                                heading == null || heading.equals(msg) ? msg : heading + ": " + msg, text(a.path("blob_href"))));
+                    }
+                }
+                String description = title == null ? summary : summary == null ? title : title + "\n" + summary;
+                out.add(new Insight(text(c.path("id")), text(c.path("name")), text(c.path("app").path("name")),
+                        HttpJson.first(text(c.path("conclusion")), text(c.path("status"))), description,
+                        text(c.path("html_url")), HttpJson.first(text(c.path("completed_at")), text(c.path("started_at"))),
+                        null, annotations, count));
+            }
             return out;
         }
 
@@ -519,15 +566,20 @@ public class GitHubServerProvider implements GitServerProvider {
                 JsonNode n = http.post("/repos/" + r.repo() + "/issues/" + r.number() + "/comments", body).body();
                 return new WriteResult(r.key(), "Kommentar hinzugefügt", text(n.path("html_url")), "c" + text(n.path("id")));
             }
-            if (c.line() == null || c.line() < 1) {
-                throw new IllegalArgumentException("GitHub: Code-Kommentar braucht 'line' (Zeile der neuen Fassung).");
+            if (c.line() != null && c.line() < 1) {
+                throw new IllegalArgumentException("GitHub: 'line' muss ≥ 1 sein (Zeile der neuen Fassung).");
             }
             body.put("commit_id", text(http.getJson(r.path()).path("head").path("sha")));
             body.put("path", c.path());
-            body.put("line", c.line());
-            body.put("side", "RIGHT");
+            if (c.fileLevel()) {
+                body.put("subject_type", "file");
+            } else {
+                body.put("line", c.line());
+                body.put("side", "RIGHT");
+            }
             JsonNode n = http.post(r.path() + "/comments", body).body();
-            return new WriteResult(r.key(), "Code-Kommentar an " + c.path() + ":" + c.line() + " hinzugefügt",
+            return new WriteResult(r.key(), (c.fileLevel() ? "Datei-Kommentar an " + c.path()
+                    : "Code-Kommentar an " + c.path() + ":" + c.line()) + " hinzugefügt",
                     text(n.path("html_url")), "c" + text(n.path("id")));
         }
 

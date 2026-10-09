@@ -264,16 +264,18 @@ final class BitbucketCloud implements GitServer {
             List<Comment> comments = list.stream().filter(c -> !c.path("deleted").asBoolean(false))
                     .sorted(Comparator.comparing(c -> String.valueOf(text(c.path("created_on")))))
                     .map(c -> new Comment(text(c.path("id")), user(c.path("user")), text(c.path("created_on")),
-                            text(c.path("content").path("raw")))).toList();
+                            text(c.path("content").path("raw")), CodeInsights.integration(c.path("user")))).toList();
             if (comments.isEmpty()) {
                 return;
             }
             boolean code = inline.isObject();
             JsonNode line = inline.path("to").isNumber() ? inline.path("to") : inline.path("from");
-            // nur Code-Kommentare lassen sich auflösen
-            out.add(new Thread(rootId, code ? "Code" : "Kommentar", code ? root.path("resolution").isObject() : null,
-                    code ? text(inline.path("path")) : null, code && line.isNumber() ? line.asInt() : null,
-                    code && inline.path("outdated").asBoolean(false), comments));
+            // inline ohne to/from = Kommentar zur ganzen Datei; nur Code- und Datei-Kommentare lassen sich auflösen
+            boolean file = code && !line.isNumber();
+            out.add(new Thread(rootId, file ? "Datei" : code ? "Code" : "Kommentar",
+                    code ? root.path("resolution").isObject() : null, code ? text(inline.path("path")) : null,
+                    code && line.isNumber() ? line.asInt() : null, code && inline.path("outdated").asBoolean(false),
+                    comments));
         });
         out.sort(Comparator.comparing(t -> String.valueOf(t.comments().getFirst().created())));
         return out;
@@ -289,6 +291,36 @@ final class BitbucketCloud implements GitServer {
             cur = byId.get(parent);
         }
         return text(cur.path("id"));
+    }
+
+    /** Code-Insights-Berichte zum letzten Commit des Quell-Branches samt Annotations. */
+    @Override
+    public List<Insight> insights(String key, String project) {
+        Ref r = ref(key, project);
+        String head = text(http.getJson(r.path()).path("source").path("commit").path("hash"));
+        List<Insight> out = new ArrayList<>();
+        if (head == null) {
+            return out;
+        }
+        String base = "/repositories/" + r.repo() + "/commit/" + head + "/reports";
+        for (JsonNode rep : pages(base + query("pagelen", 100), 100)) {
+            String id = HttpJson.first(text(rep.path("uuid")), text(rep.path("external_id")));
+            List<Annotation> annotations = new ArrayList<>();
+            for (JsonNode a : pages(base + "/" + HttpJson.enc(id) + "/annotations" + query("pagelen", 100), 300)) {
+                JsonNode line = a.path("line");
+                String summary = text(a.path("summary"));
+                String details = text(a.path("details"));
+                annotations.add(new Annotation(text(a.path("path")), line.isNumber() ? line.asInt() : null,
+                        text(a.path("severity")), text(a.path("annotation_type")),
+                        details == null || details.equals(summary) ? summary : summary + "\n" + details,
+                        text(a.path("link"))));
+            }
+            out.add(new Insight(id, text(rep.path("title")), text(rep.path("reporter")), text(rep.path("result")),
+                    text(rep.path("details")), text(rep.path("link")), text(rep.path("created_on")),
+                    CodeInsights.data(rep.path("data")), annotations,
+                    annotations.size()));
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ Schreiben
@@ -362,16 +394,20 @@ final class BitbucketCloud implements GitServer {
         ObjectNode body = HttpJson.object();
         body.putObject("content").put("raw", c.body());
         if (c.inline()) {
-            if (c.line() == null || c.line() < 1) {
-                throw new IllegalArgumentException("Bitbucket: Code-Kommentar braucht 'line' (Zeile der neuen Fassung).");
+            if (c.line() != null && c.line() < 1) {
+                throw new IllegalArgumentException("Bitbucket: 'line' muss ≥ 1 sein (Zeile der neuen Fassung).");
             }
+            // ohne Zeile: Kommentar zur ganzen Datei
             ObjectNode inline = body.putObject("inline");
             inline.put("path", c.path());
-            inline.put("to", c.line());
+            if (!c.fileLevel()) {
+                inline.put("to", c.line());
+            }
         }
         JsonNode n = http.post(r.path() + "/comments", body).body();
-        return new WriteResult(r.key(), c.inline() ? "Code-Kommentar an " + c.path() + ":" + c.line() + " hinzugefügt"
-                : "Kommentar hinzugefügt", text(n.path("links").path("html").path("href")), text(n.path("id")));
+        return new WriteResult(r.key(), (c.fileLevel() ? "Datei-Kommentar an " + c.path()
+                : c.inline() ? "Code-Kommentar an " + c.path() + ":" + c.line() : "Kommentar") + " hinzugefügt",
+                text(n.path("links").path("html").path("href")), text(n.path("id")));
     }
 
     @Override

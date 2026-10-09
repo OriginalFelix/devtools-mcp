@@ -382,7 +382,7 @@ public class GitLabServerProvider implements GitServerProvider {
                         continue;
                     }
                     comments.add(new Comment(text(note.path("id")), text(note.path("author").path("username")),
-                            text(note.path("created_at")), text(note.path("body"))));
+                            text(note.path("created_at")), text(note.path("body")), integration(note.path("author"))));
                     if (position == null && note.path("position").isObject()) {
                         position = note.path("position");
                     }
@@ -397,11 +397,119 @@ public class GitLabServerProvider implements GitServerProvider {
                         text(position.path("old_path")));
                 JsonNode line = position == null ? null
                         : position.path("new_line").isNumber() ? position.path("new_line") : position.path("old_line");
-                out.add(new Thread(text(d.path("id")), path == null ? "Kommentar" : "Code", resolved, path,
-                        line != null && line.isNumber() ? line.asInt() : null, false, comments));
+                Integer lineNo = line != null && line.isNumber() ? line.asInt() : null;
+                out.add(new Thread(text(d.path("id")), path == null ? "Kommentar" : lineNo == null ? "Datei" : "Code",
+                        resolved, path, lineNo, false, comments));
             }
             out.sort(Comparator.comparing(t -> String.valueOf(t.comments().getFirst().created())));
             return out;
+        }
+
+        private static final Pattern BOT_USER = Pattern.compile("(?:project|group)_\\d+_bot.*|service_account_.*|.*\\[bot]");
+
+        /** Projekt-/Gruppen-Bot (Access Token), Dienstkonto oder ein als Bot markierter Benutzer. */
+        static boolean integration(JsonNode author) {
+            String user = text(author.path("username"));
+            return author.path("bot").asBoolean(false) || user != null && BOT_USER.matcher(user).matches();
+        }
+
+        /** Testbericht und Code Quality (Premium) der Pipeline sowie externe Status-Checks (Ultimate). */
+        @Override
+        public List<Insight> insights(String key, String project) {
+            Ref r = ref(key, project);
+            List<Insight> out = new ArrayList<>();
+            JsonNode pipeline = http.getJson(r.path()).path("head_pipeline");
+            if (pipeline.isObject()) {
+                try {
+                    Insight tests = testReport(http.getJson("/projects/" + text(pipeline.path("project_id"))
+                            + "/pipelines/" + text(pipeline.path("id")) + "/test_report_summary"), pipeline);
+                    if (tests != null) {
+                        out.add(tests);
+                    }
+                } catch (HttpJson.StatusException e) {
+                    // kein Testbericht (ältere Versionen, Pipeline ohne JUnit-Artefakte)
+                }
+                Insight quality = codeQuality(r, pipeline);
+                if (quality != null) {
+                    out.add(quality);
+                }
+            }
+            try {
+                for (JsonNode c : http.getJson(r.path() + "/status_checks")) {
+                    out.add(new Insight(text(c.path("id")), text(c.path("name")), "Externer Status-Check",
+                            text(c.path("status")), null, text(c.path("external_url")), null, null, null, 0));
+                }
+            } catch (HttpJson.StatusException e) {
+                // nur GitLab Ultimate
+            }
+            return out;
+        }
+
+        private static final String CODE_QUALITY_QUERY = """
+                query($project:ID!,$iid:String!){project(fullPath:$project){mergeRequest(iid:$iid){headPipeline{
+                  codeQualityReports(first:100){nodes{description line path severity}}}}}}""";
+
+        /**
+         * Befunde des Code-Quality-Berichts – nur über GraphQL lesbar; {@code null} ohne Bericht, ohne Premium oder bei
+         * Servern ohne das Feld.
+         */
+        private Insight codeQuality(Ref r, JsonNode pipeline) {
+            JsonNode nodes;
+            try {
+                ObjectNode body = HttpJson.object();
+                body.put("query", CODE_QUALITY_QUERY);
+                ObjectNode vars = body.putObject("variables");
+                vars.put("project", r.project());
+                vars.put("iid", String.valueOf(r.iid()));
+                JsonNode res = http.post(webBase + "/api/graphql", body).body();
+                if (res.path("errors").isArray() && !res.path("errors").isEmpty()) {
+                    return null;
+                }
+                nodes = res.path("data").path("project").path("mergeRequest").path("headPipeline")
+                        .path("codeQualityReports").path("nodes");
+            } catch (RuntimeException e) {
+                return null;
+            }
+            if (!nodes.isArray() || nodes.isEmpty()) {
+                return null;
+            }
+            List<Annotation> annotations = new ArrayList<>();
+            for (JsonNode n : nodes) {
+                JsonNode line = n.path("line");
+                annotations.add(new Annotation(text(n.path("path")), line.isNumber() && line.asInt() > 0 ? line.asInt()
+                        : null, text(n.path("severity")), null, text(n.path("description")), null));
+            }
+            // Code Quality kennt kein Urteil, nur Befunde
+            return new Insight("codequality-" + text(pipeline.path("id")), "Code Quality", "GitLab CI", null, null,
+                    text(pipeline.path("web_url")) + "/codequality_report",
+                    text(pipeline.path("updated_at")), null, annotations, annotations.size());
+        }
+
+        private static Insight testReport(JsonNode summary, JsonNode pipeline) {
+            JsonNode total = summary.path("total");
+            if (total.path("count").asInt(0) == 0) {
+                return null;
+            }
+            Map<String, String> data = new LinkedHashMap<>();
+            data.put("Tests", text(total.path("count")));
+            data.put("Erfolgreich", text(total.path("success")));
+            data.put("Fehlgeschlagen", text(total.path("failed")));
+            data.put("Fehler", text(total.path("error")));
+            data.put("Übersprungen", text(total.path("skipped")));
+            data.put("Dauer", text(total.path("time")) + " s");
+            List<Annotation> failed = new ArrayList<>();
+            for (JsonNode suite : summary.path("test_suites")) {
+                int bad = suite.path("failed_count").asInt(0) + suite.path("error_count").asInt(0);
+                if (bad > 0) {
+                    failed.add(new Annotation(null, null, "failed", null, "Suite " + text(suite.path("name")) + ": "
+                            + bad + " von " + text(suite.path("total_count")) + " fehlgeschlagen", null));
+                }
+            }
+            boolean ok = total.path("failed").asInt(0) + total.path("error").asInt(0) == 0;
+            return new Insight("tests-" + text(pipeline.path("id")), "Testbericht Pipeline #" + text(pipeline.path("id")),
+                    "GitLab CI", ok ? "success" : "failed", null, text(pipeline.path("web_url")) + "/test_report",
+                    text(pipeline.path("updated_at")), data,
+                    failed, failed.size());
         }
 
         // ------------------------------------------------------------------ Schreiben
@@ -486,21 +594,25 @@ public class GitLabServerProvider implements GitServerProvider {
                 JsonNode n = http.post(r.path() + "/notes", body).body();
                 return new WriteResult(r.key(), "Kommentar hinzugefügt", noteUrl(r, n), text(n.path("id")));
             }
-            if (c.line() == null || c.line() < 1) {
-                throw new IllegalArgumentException("GitLab: Code-Kommentar braucht 'line' (Zeile der neuen Fassung).");
+            if (c.line() != null && c.line() < 1) {
+                throw new IllegalArgumentException("GitLab: 'line' muss ≥ 1 sein (Zeile der neuen Fassung).");
             }
             JsonNode refs = http.getJson(r.path()).path("diff_refs");
             ObjectNode pos = body.putObject("position");
-            pos.put("position_type", "text");
+            // position_type=file (ab GitLab 16.4) verankert den Kommentar an der Datei statt an einer Zeile
+            pos.put("position_type", c.fileLevel() ? "file" : "text");
             pos.put("base_sha", text(refs.path("base_sha")));
             pos.put("head_sha", text(refs.path("head_sha")));
             pos.put("start_sha", text(refs.path("start_sha")));
             pos.put("new_path", c.path());
             pos.put("old_path", c.path());
-            pos.put("new_line", c.line());
+            if (!c.fileLevel()) {
+                pos.put("new_line", c.line());
+            }
             JsonNode d = http.post(r.path() + "/discussions", body).body();
             JsonNode note = d.path("notes").path(0);
-            return new WriteResult(r.key(), "Code-Kommentar an " + c.path() + ":" + c.line() + " hinzugefügt (Thread "
+            return new WriteResult(r.key(), (c.fileLevel() ? "Datei-Kommentar an " + c.path()
+                    : "Code-Kommentar an " + c.path() + ":" + c.line()) + " hinzugefügt (Thread "
                     + text(d.path("id")) + ")", noteUrl(r, note), text(d.path("id")));
         }
 

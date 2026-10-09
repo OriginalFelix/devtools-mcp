@@ -1,16 +1,23 @@
 package systems.grebe.devtools.mcp.modules.pr;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer;
+import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.Annotation;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.Check;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.Comment;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.FileChange;
+import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.Insight;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.PrDetails;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.PrQuery;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer.PullRequest;
@@ -112,7 +119,8 @@ public class PrTools {
     }
 
     @Tool(name = "get", description = "Liest einen Pull/Merge Request: Titel, Status, Autor, Branches, Reviewer, Freigaben, "
-            + "Merge-Status (Konflikte, fehlende Freigaben), CI-Checks des letzten Commits und Beschreibung. Ohne 'pr': "
+            + "Merge-Status (Konflikte, fehlende Freigaben), CI-Checks des letzten Commits, Kurzfassung der Berichte von "
+            + "Integrationen und Beschreibung. Ohne 'pr': "
             + "der offene Pull Request zum aktuellen Branch des lokalen Repositories." + ShellHints.PR)
     public String get(
             @ToolParam(required = false, description = PR + ". Leer = zum aktuellen Branch.") String pr,
@@ -131,6 +139,7 @@ public class PrTools {
         row(sb, "Reviewer", d.reviewers().isEmpty() ? null : String.join(", ", d.reviewers()));
         row(sb, "Freigaben", d.approvedBy().isEmpty() ? "keine" : String.join(", ", d.approvedBy()));
         row(sb, "Merge", d.mergeStatus());
+        row(sb, "Integrationen", integrations(t.server(), ref, t.project()));
         for (Map.Entry<String, String> f : d.fields().entrySet()) {
             row(sb, f.getKey(), f.getValue());
         }
@@ -189,13 +198,14 @@ public class PrTools {
     }
 
     @Tool(name = "comments", description = "Alle Kommentare eines Pull/Merge Requests als Threads: allgemeine Kommentare, "
-            + "Code-Kommentare mit Datei und Zeile samt Antworten, Reviews. Je Thread ID (für pr_reply/pr_resolve) und "
-            + "Status offen/erledigt. Mit unresolved=true nur offene Threads – Ausgangspunkt zum Abarbeiten von "
+            + "Code-Kommentare mit Datei und Zeile, Datei-Kommentare (ganze Datei) samt Antworten, Reviews. Je Thread ID "
+            + "(für pr_reply/pr_resolve) und Status offen/erledigt; Kommentare von Integrationen (Apps, Bots) sind "
+            + "gekennzeichnet. Mit unresolved=true nur offene Threads – Ausgangspunkt zum Abarbeiten von "
             + "Review-Anmerkungen." + ShellHints.PR)
     public String comments(
             @ToolParam(required = false, description = PR + ". Leer = zum aktuellen Branch.") String pr,
             @ToolParam(required = false, description = "true = nur offene (nicht erledigte) Threads") Boolean unresolved,
-            @ToolParam(required = false, description = "Nur Code-Kommentare zu Dateien, deren Pfad dies enthält") String path,
+            @ToolParam(required = false, description = "Nur Code- und Datei-Kommentare zu Dateien, deren Pfad dies enthält") String path,
             @ToolParam(required = false, description = REPOSITORY) String repository,
             @ToolParam(required = false, description = PROJECT) String project,
             @ToolParam(required = false, description = PROVIDER) String provider) {
@@ -226,8 +236,8 @@ public class PrTools {
             }
             sb.append('\n');
             for (Comment c : th.comments()) {
-                sb.append("- ").append(Text.orDash(c.author())).append(", ").append(Text.orDash(c.created()))
-                        .append(" (").append(c.id()).append("):\n");
+                sb.append("- ").append(Text.orDash(c.author())).append(c.integration() ? " [Integration]" : "")
+                        .append(", ").append(Text.orDash(c.created())).append(" (").append(c.id()).append("):\n");
                 String body = c.body() == null ? "" : c.body().strip();
                 body.lines().forEach(l -> sb.append("  ").append(l).append('\n'));
             }
@@ -238,7 +248,122 @@ public class PrTools {
         return Text.limitLines(sb.toString().strip(), env.maxLines());
     }
 
+    @Tool(name = "insights", description = "Berichte von Integrationen zum letzten Commit eines Pull/Merge Requests: "
+            + "Code-Analyse (z.B. SonarQube), Tests, Sicherheits-Scans – je Bericht Ergebnis, Kennzahlen und Befunde mit "
+            + "Datei, Zeile, Schwere und Meldung (Bitbucket Code Insights, GitHub Check-Runs, GitLab Testberichte). "
+            + "Ergänzt die CI-Checks aus pr_get um die Details." + ShellHints.PR)
+    public String insights(
+            @ToolParam(required = false, description = PR + ". Leer = zum aktuellen Branch.") String pr,
+            @ToolParam(required = false, description = "Nur Befunde zu Dateien, deren Pfad dies enthält") String path,
+            @ToolParam(required = false, description = REPOSITORY) String repository,
+            @ToolParam(required = false, description = PROJECT) String project,
+            @ToolParam(required = false, description = PROVIDER) String provider) {
+        PrEnvironment.Target t = env.target(provider, repository, project, pr);
+        String ref = refOrCurrent(t, pr);
+        List<Insight> insights = t.server().insights(ref, t.project());
+        String filter = path == null || path.isBlank() ? null : path.trim().replace('\\', '/');
+        int findings = insights.stream().mapToInt(Insight::annotationCount).sum();
+        StringBuilder sb = new StringBuilder(ref + " (" + t.providerId() + "): " + insights.size()
+                + " Bericht(e) von Integrationen, " + findings + " Befund(e)\n");
+        for (Insight in : insights) {
+            sb.append("\n### ").append(Text.orDash(in.title()));
+            if (in.result() != null) {
+                sb.append("  ").append(in.result());
+            }
+            sb.append('\n');
+            List<String> meta = new ArrayList<>();
+            if (in.id() != null) {
+                meta.add("Schlüssel " + in.id());
+            }
+            if (in.source() != null && !in.source().equals(in.title())) {
+                meta.add("Quelle " + in.source());
+            }
+            if (in.created() != null) {
+                meta.add("erstellt " + in.created());
+            }
+            if (!meta.isEmpty()) {
+                sb.append(String.join(" · ", meta)).append('\n');
+            }
+            if (in.url() != null) {
+                sb.append(in.url()).append('\n');
+            }
+            if (in.summary() != null && !in.summary().isBlank()) {
+                in.summary().strip().lines().forEach(l -> sb.append(l).append('\n'));
+            }
+            in.data().forEach((k, v) -> sb.append("- ").append(k).append(": ").append(Text.orDash(v)).append('\n'));
+            List<Annotation> shown = in.annotations().stream()
+                    .filter(a -> filter == null || a.path() != null && a.path().contains(filter))
+                    .sorted(Comparator.comparingInt(a -> Annotation.severityRank(a.severity()))).toList();
+            if (!shown.isEmpty() || in.annotationCount() > 0) {
+                String bySeverity = severities(in.annotations());
+                sb.append("Befunde (").append(filter == null ? "" : shown.size() + " von ").append(in.annotationCount())
+                        .append(bySeverity.isEmpty() ? "" : ": " + bySeverity).append("):\n");
+            }
+            for (Annotation a : shown) {
+                sb.append("- ").append(a.path() == null ? "(allgemein)" : a.path() + (a.line() == null ? "" : ":" + a.line()));
+                if (a.severity() != null) {
+                    sb.append("  ").append(a.severity());
+                }
+                if (a.type() != null) {
+                    sb.append(' ').append(a.type());
+                }
+                String msg = a.message() == null ? "" : a.message().strip();
+                sb.append("  ").append(msg.lines().findFirst().orElse(""));
+                msg.lines().skip(1).forEach(l -> sb.append("\n    ").append(l));
+                if (a.url() != null) {
+                    sb.append("  ").append(a.url());
+                }
+                sb.append('\n');
+            }
+            if (filter == null && in.annotationCount() > in.annotations().size()) {
+                sb.append("  … ").append(in.annotationCount() - in.annotations().size()).append(" weitere beim Server\n");
+            }
+        }
+        if (insights.isEmpty()) {
+            sb.append("(keine Berichte – keine Integration hat zum letzten Commit berichtet)");
+        }
+        return Text.limitLines(sb.toString().strip(), env.maxLines());
+    }
+
     // ------------------------------------------------------------------ Hilfen
+
+    private static final Set<String> FAILED = Set.of("fail", "failed", "failure", "error", "timed_out",
+            "action_required", "cancelled", "canceled");
+
+    /**
+     * Kurzfassung der Berichte für pr_get, z.B. „4 Bericht(e), 1 fehlgeschlagen: API-Scanner (6 Befunde: 1 HIGH, 5 LOW)
+     * – Details mit pr_insights“; {@code null}, wenn keine Integration berichtet hat oder der Server es nicht kann.
+     */
+    static String integrations(GitServer server, String ref, String project) {
+        List<Insight> insights;
+        try {
+            insights = server.insights(ref, project);
+        } catch (RuntimeException e) {
+            // Zusatzinfo – fehlende Code-Insights-Rechte oder ältere Server sollen pr_get nicht verhindern
+            return null;
+        }
+        if (insights.isEmpty()) {
+            return null;
+        }
+        List<String> failed = insights.stream()
+                .filter(in -> in.result() != null && FAILED.contains(in.result().toLowerCase(Locale.ROOT)))
+                .map(in -> {
+                    String bySeverity = severities(in.annotations());
+                    return Text.orDash(in.title()) + (in.annotationCount() == 0 ? "" : " (" + in.annotationCount()
+                            + " Befund(e)" + (bySeverity.isEmpty() ? "" : ": " + bySeverity) + ")");
+                })
+                .toList();
+        return insights.size() + " Bericht(e)" + (failed.isEmpty() ? ", keiner fehlgeschlagen"
+                : ", " + failed.size() + " fehlgeschlagen: " + String.join(", ", failed)) + " – Details mit pr_insights";
+    }
+
+    /** Befunde je Schwere, schwerste zuerst, z.B. „1 HIGH, 5 LOW“. */
+    static String severities(List<Annotation> annotations) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        annotations.stream().sorted(Comparator.comparingInt(a -> Annotation.severityRank(a.severity())))
+                .forEach(a -> counts.merge(a.severity() == null ? "ohne Schwere" : a.severity(), 1, Integer::sum));
+        return String.join(", ", counts.entrySet().stream().map(e -> e.getValue() + " " + e.getKey()).toList());
+    }
 
     /**
      * Pull-Request-Angabe oder – ohne Angabe – der offene Pull Request zum aktuellen Branch des lokalen Repositories.
