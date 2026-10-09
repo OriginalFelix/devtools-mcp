@@ -10,6 +10,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
+import systems.grebe.devtools.mcp.backend.blobs.BlobController;
 import systems.grebe.devtools.mcp.web.LoginView;
 import systems.grebe.devtools.mcp.web.SessionRefreshFilter;
 
@@ -17,8 +18,9 @@ import systems.grebe.devtools.mcp.web.SessionRefreshFilter;
  * Zwei Filterketten:
  *
  * <ol>
- *   <li>{@code /graphql}: GraphQL-API für die Desktop-Apps – zustandslos, ohne CSRF und Session; angemeldet wird per
- *       Token im GraphQL-Interceptor ({@link systems.grebe.devtools.mcp.backend.GraphQlAuth}).</li>
+ *   <li>{@code /graphql} und {@code /blobs}: GraphQL-API und Dateiablage für die Desktop-Apps – zustandslos, ohne CSRF
+ *       und Session; angemeldet wird per Token im GraphQL-Interceptor ({@link
+ *       systems.grebe.devtools.mcp.backend.GraphQlAuth}) bzw. im {@link BlobController}.</li>
  *   <li>alles andere: Vaadin-Web-UI mit Formular-Anmeldung gegen die Benutzerkonten ({@link
  *       systems.grebe.devtools.mcp.web.WebLogin}); Zugriff je View per {@code @PermitAll} bzw.
  *       {@code @RolesAllowed} mit dem Namen eines Systemrechts (z.B. {@code USERS_MANAGE}). Rechte und Status liest
@@ -32,7 +34,7 @@ public class SecurityConfig {
     @Bean
     @Order(1)
     SecurityFilterChain graphQlSecurity(HttpSecurity http) throws Exception {
-        return http.securityMatcher("/graphql", "/graphql/**")
+        return http.securityMatcher("/graphql", "/graphql/**", BlobController.PATH + "/**")
                 .csrf(c -> c.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .requestCache(c -> c.disable())

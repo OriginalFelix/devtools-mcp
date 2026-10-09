@@ -28,6 +28,7 @@ import systems.grebe.devtools.mcp.backend.scripts.ScriptService;
 import systems.grebe.devtools.mcp.backend.skills.SkillService;
 import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptViews;
+import systems.grebe.devtools.mcp.modules.shares.ShareViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 import systems.grebe.devtools.mcp.profile.Overrides;
 import systems.grebe.devtools.mcp.backend.profile.ProfileService;
@@ -206,6 +207,12 @@ public class BackendGraphQlController {
         return as(user, () -> skills.history(name, revision));
     }
 
+    @QueryMapping
+    public SkillViews.File skillFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                     @Argument String name, @Argument String filePath) {
+        return as(user, () -> skills.file(name, filePath).orElse(null));
+    }
+
     @MutationMapping
     public String createSkill(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                               @Argument String name, @Argument String description, @Argument String content,
@@ -246,6 +253,14 @@ public class BackendGraphQlController {
     }
 
     @MutationMapping
+    public String attachSkillFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                  @Argument String name, @Argument String filePath, @Argument String blob,
+                                  @Argument String mediaType, @Argument String note) {
+        return asTool(user, "skills", "skills_write_file",
+                () -> skills.attachBlob(name, filePath, blob, mediaType, note));
+    }
+
+    @MutationMapping
     public String removeSkillFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                                   @Argument String name, @Argument String filePath, @Argument String note) {
         return asTool(user, "skills", "skills_remove_file", () -> skills.removeFile(name, filePath, note));
@@ -255,6 +270,26 @@ public class BackendGraphQlController {
     public String deleteSkill(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
                               @Argument String name) {
         return asTool(user, "skills", "skills_delete", () -> skills.delete(name));
+    }
+
+    @QueryMapping
+    public List<ShareViews.Share> skillShares(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                              @Argument String name) {
+        return as(user, () -> skills.shares(name));
+    }
+
+    @MutationMapping
+    public String shareSkill(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                             @Argument String name, @Argument List<String> users, @Argument List<String> roles,
+                             @Argument Boolean everyone, @Argument Boolean revoke) {
+        return asTool(user, "skills", "skills_share", () -> skills.share(name,
+                new ShareViews.Request(users, roles, Boolean.TRUE.equals(everyone)), Boolean.TRUE.equals(revoke)));
+    }
+
+    @QueryMapping
+    public List<ShareViews.Candidate> shareTargets(
+            @ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
+        return as(user, skills::shareTargets);
     }
 
     @MutationMapping
@@ -305,6 +340,18 @@ public class BackendGraphQlController {
     }
 
     @QueryMapping
+    public MemoryViews.File memoryFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                       @Argument long id, @Argument String filePath) {
+        return as(user, () -> memories.file(id, filePath).orElse(null));
+    }
+
+    @QueryMapping
+    public String memoryFileView(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                 @Argument long id, @Argument String filePath) {
+        return as(user, () -> memories.viewFile(id, filePath));
+    }
+
+    @QueryMapping
     public List<String> memoryReferences(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
         return as(user, () -> List.copyOf(memories.references()));
     }
@@ -344,6 +391,36 @@ public class BackendGraphQlController {
                                @Argument long id, @Argument Boolean temporaryOnly) {
         return asToolOrTemporary(user, "memories_delete", id, Boolean.TRUE.equals(temporaryOnly),
                 tempOnly -> memories.delete(id, tempOnly));
+    }
+
+    /** Anhängen und Entfernen von Dateien ändern die Memory – gleiches Recht wie {@code updateMemory}. */
+    @MutationMapping
+    public String attachMemoryFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                   @Argument long id, @Argument String filePath, @Argument String blob,
+                                   @Argument String mediaType, @Argument Boolean temporaryOnly) {
+        return asToolOrTemporary(user, "memories_update", id, Boolean.TRUE.equals(temporaryOnly),
+                tempOnly -> memories.attachBlob(id, filePath, blob, mediaType, tempOnly));
+    }
+
+    @MutationMapping
+    public String removeMemoryFile(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                   @Argument long id, @Argument String filePath, @Argument Boolean temporaryOnly) {
+        return asToolOrTemporary(user, "memories_update", id, Boolean.TRUE.equals(temporaryOnly),
+                tempOnly -> memories.removeFile(id, filePath, tempOnly));
+    }
+
+    @QueryMapping
+    public List<ShareViews.Share> memoryShares(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                               @Argument long id) {
+        return as(user, () -> memories.shares(id));
+    }
+
+    @MutationMapping
+    public String shareMemory(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                              @Argument long id, @Argument List<String> users, @Argument List<String> roles,
+                              @Argument Boolean everyone, @Argument Boolean revoke) {
+        return asTool(user, "memories", "memories_share", () -> memories.share(id,
+                new ShareViews.Request(users, roles, Boolean.TRUE.equals(everyone)), Boolean.TRUE.equals(revoke)));
     }
 
     /**

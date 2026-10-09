@@ -29,8 +29,8 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
-| **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
-| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update` · Schalter (Standard aus): `memories_delete` · Typ dauerhaft, temporär oder **Rückruf** (`INVOCATION`) |
+| **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Teilen (Standard an): `skills_share` · Schalter (Standard aus): `skills_delete` |
+| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update`, `memories_attach_file`, `memories_remove_file` · Teilen (Standard an): `memories_share` · Schalter (Standard aus): `memories_delete` · Typ dauerhaft, temporär oder **Rückruf** (`INVOCATION`) |
 | **Rückrufe** (Invocations) | lang laufende Aktion fertig → das LLM bekommt Ergebnis und hinterlegte Memory (Typ `INVOCATION`) per Channel, auch in einer später gestarteten Sitzung; danach wird die Memory gelöscht: `invocations_list`, `invocations_cancel` (siehe [Rückrufe](#rückrufe--ergebnis-lang-laufender-aktionen-an-das-llm)) |
 | **Kooperation** (MQTT 5, z.B. HiveMQ) | Austausch zwischen Claude-Instanzen auf verschiedenen Rechnern – anderer Nutzer oder eigenes weiteres Gerät: `share_peers`, `share_send` (Notiz, Memories, Skills, Dateien; Rückfrage bei Nutzer 1), `share_inbox`, `share_view`, `share_accept` (Rückfrage bei Nutzer 2), `share_decline` – über den Broker des Backends (HiveMQ CE im Team-Server bzw. eingebetteten Backend, Anmeldung mit dem Benutzerkonto, Absender geprüft) oder einen eigenen, optional Ende-zu-Ende verschlüsselt, neue Angebote und Antworten als Rückruf per Channel (siehe [Kooperation](#kooperation-zwischen-instanzen-und-geräten)) (Modul Standard: aus) |
 | **Skripte** (Groovy 5 oder Java per `javac`) | `scripts_list`, `scripts_view` (Quelltext, Historie, ohne Namen die Referenz) · je Schalter (Standard aus): `scripts_save`, `scripts_delete` – jedes Skript wird zur Laufzeit ein eigenes Modul mit Tools `<skript>_*`, gespeichert im Backend (siehe [Skripte](#skripte--eigene-tools-zur-laufzeit)) |
@@ -833,6 +833,21 @@ HTTP, Subscriptions über WebSocket).
   ändern…* bzw. im Tab *Backend* die Server-Adresse eintragen; gilt nach einem Neustart der App (dann läuft kein
   eingebettetes Backend, keine lokalen Datenbanken), angemeldet wird mit dem Konto des Servers. *Eingebettet
   verwenden* stellt zurück.
+* **Im Netzwerk suchen (Advertise-Endpunkt):** Statt die Adresse abzutippen, findet *Im Netzwerk suchen…* (Tab
+  *Backend* und Anmeldefenster) Backends im lokalen Netzwerk: Die App fragt per UDP an Port `47913` – Multicast an
+  `239.255.47.13` über jede Netzwerkschnittstelle, Broadcast und Loopback – und listet nach 1,5 s alle Antworten
+  (Name, Team-Server oder Desktop-App, Adresse); die gewählte Adresse wird wie von Hand eingetragen. Antworten tut
+  nur ein Backend mit eingeschaltetem **Advertise-Endpunkt** (Standard aus):
+  * Team-Server: `devtools.discovery.advertise=true`; hinter einem Reverse-Proxy `devtools.discovery.url` auf die
+    öffentliche Adresse setzen, sonst meldet er Schema und `server.port` und der Suchende nimmt die Absenderadresse.
+    Optional `devtools.discovery.name` (Standard Rechnername) und `devtools.discovery.port` (UDP).
+  * Desktop-App mit eingebettetem Backend: Tab *Backend* → *Advertise-Endpunkt aktivieren* (wirksam nach Neustart).
+    Die App lauscht dann auf allen Adressen statt nur `127.0.0.1`, damit andere Desktop-Apps ihr Backend nutzen
+    können; von anderen Rechnern erreichbar sind nur `/graphql` und `/blobs` (eigene Anmeldung mit einem Konto
+    dieser App), MCP-Endpunkt und Channel bleiben lokal (`LocalOnlyFilter`). Ohne TLS – nur in vertrauenswürdigen
+    Netzen einschalten.
+
+  Firewalls müssen UDP `47913` (eingehend beim Backend) durchlassen.
 
 ```bash
 java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL unter /graphql
@@ -992,6 +1007,7 @@ Tab **Benutzer** der Desktop-App, beides mit dem Recht „Benutzer und Rollen ve
   | Projekte anlegen | `projects.create` | eigene Projekte anlegen, ändern, freigeben |
   | Alle Projekte verwalten | `projects.manage-all` | Projekte anderer ändern, freigeben, löschen |
   | Vorlagen veröffentlichen | `templates.publish` | Skills und Skripte als globale Vorlage veröffentlichen/zurückziehen |
+  | Mit allen teilen | `shares.all` | eigene Skills und Memories für alle Benutzer freigeben (vorbelegt in der Rolle Benutzer) |
   | Desktop-Tokens erzeugen | `tokens.create` | persönliche Tokens für den Start ohne Anmeldedialog |
 
 * **Module und Tools:** `module:*` (alle Module und Tools, auch künftige aus Plugins und Skripten), `module:<id>` (ein
@@ -1190,6 +1206,14 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
 
 * **Aufbau** wie ein `SKILL.md`: Name (`a-z0-9._-`), ein Satz `description` („wann greift der Skill“), Kategorie,
   Tags, Markdown-Inhalt, dazu Zusatzdateien unter `references/`, `templates/`, `scripts/`, `assets/`.
+* **Zusatzdateien beliebigen Inhalts:** `skills_write_file` nimmt genau eines von `file_content` (Text),
+  `content_base64` (kleine Binärdateien) oder `source_path` (lokale Datei, beliebig groß). Text bis „Max. Zeichen je
+  Inhalt“ bleibt im Skill und mit `skills_patch` änderbar; alles andere (Bilder, PDFs, Office, Archive, große Texte)
+  wird ohne Größengrenze als **Anhang** in der [Dateiablage](#dateiablage-für-anhänge) gespeichert und lässt sich nur
+  ersetzen. `skills_view` mit `file_path` zeigt Text direkt und speichert Binäres als lokale Datei (ohne
+  `target_path` unter `attachments/` im Datenordner der App), deren Pfad das LLM mit eigenen Werkzeugen öffnen kann.
+  `source_path` und `target_path` müssen in „Dateien anhängen aus und speichern in“ (Modul Skills) oder in den
+  globalen „Freigaben“ liegen – außer die Beschränkung ist dort aufgehoben.
 * **Registrierung (`triggers`):** Tool-Namen oder Präfixe (`ticket_get`, `pr_*`), für die der Skill gilt. Ruft das LLM
   ein solches Tool auf, hängt der Server einmal je Session eine Zeile an das Ergebnis: „[DevTools] Registrierter Skill
   für ticket_get: ticket-review – … (per skills_view ladbar)“. Ein bereits geladener Skill wird nicht mehr genannt.
@@ -1274,16 +1298,73 @@ Entscheidungen, Datum.
   Skill; Treffer werden nach Anzahl getroffener Begriffe gewichtet (Titel und Bezug doppelt), dann nach Datum. Filter:
   `project`, `skill` (z.B. alle früheren Ticket-Reviews), `tag`, `days`, `limit` (Standard 5, max. 50). Ohne Suchtext
   kommen die neuesten. `memories_view` lädt eine Memory vollständig.
+* **Dateien:** `memories_attach_file` hängt Belege wie Screenshots, Logs oder Exporte an (beliebiger Inhalt, ohne
+  Größengrenze; `source_path`, `content_base64` oder `file_content`, gleicher `file_path` ersetzt),
+  `memories_remove_file` entfernt sie. `memories_view` mit `file_path` zeigt Text bzw. speichert Binäres lokal (wie
+  bei den Skills; Freigabe im Modul Memories unter „Dateien anhängen aus und speichern in“). Anhängen und Entfernen
+  gelten als Änderung der Memory – temporäre gehen ohne Freigabe.
 * **Ablage:** im Backend neben den Skills (Tabelle `memory` in derselben Datenbank, Spring Data JPA mit
-  `MemoryRepository`/`MemoryService`), je Benutzerkonto (E-Mail) – andere Benutzer sehen sie nicht, globale Memories
-  gibt es nicht. GraphQL: `memories`, `memory`, `memorySearch`, `memoryView`, `saveMemory`, `updateMemory`,
-  `deleteMemory`, Subscription `memoriesChanged`.
+  `MemoryRepository`/`MemoryService`), je Benutzerkonto (E-Mail) – andere Benutzer sehen sie nur, wenn sie
+  [geteilt](#skills-und-memories-teilen) sind; globale Memories gibt es nicht. GraphQL: `memories`, `memory`, `memorySearch`, `memoryView`, `memoryFile`, `memoryFileView`,
+  `saveMemory`, `updateMemory`, `attachMemoryFile`, `removeMemoryFile`, `deleteMemory`, Subscription
+  `memoriesChanged`.
+
+#### Dateiablage für Anhänge
+
+Inhalte von Skill-Anhängen und Memory-Dateien liegen nicht in der Datenbank, sondern als Dateien im Datenverzeichnis
+des Backends (eingebettet: Datenordner der App; Server: `devtools.server.home`):
+
+```
+blobs/<e-mail>/<sha256>   Dateien des Benutzers (Skills und Memories)
+blobs/GLOBAL/<sha256>     Anhänge globaler Skill-Vorlagen
+```
+
+Die Datenbank hält nur Pfad, Größe, Medientyp und Hash; gleicher Inhalt liegt je Eigentümer nur einmal. Beim
+Übernehmen einer Vorlage bzw. beim Veröffentlichen wird der Inhalt in das andere Verzeichnis kopiert (Hardlink, wo
+möglich). Nicht mehr verwendete Inhalte löscht das Backend nach dem Commit; abgebrochene Uploads und verwaiste Inhalte
+räumt es kurz nach dem Start und dann täglich auf (ab einem Tag Alter). **Backup:** `blobs/` gehört zur Datenbank dazu.
+
+Übertragen wird über HTTP statt GraphQL (`Authorization: Bearer <Token>` wie bei `/graphql`): `POST /blobs/uploads`,
+dann Teile zu 4 MB per `PUT /blobs/uploads/<id>?offset=<n>`, abgeschlossen mit `POST /blobs/uploads/<id>/complete`
+(liefert den SHA-256); angehängt wird anschließend per GraphQL (`attachSkillFile`, `attachMemoryFile`). `GET
+/blobs/<sha256>` liefert den Inhalt – eigene Dateien, die der globalen Vorlagen und die Anhänge der für den Benutzer
+geteilten Skills und Memories, sonst keine fremden. Durch die Teile
+greift keine Grenze je Anfrage (WildFly `max-post-size`, Reverse-Proxy); ein Proxy muss Anfragen bis 4 MB durchlassen
+(nginx z.B. `client_max_body_size 8m;`).
 * **Schalter:** „Anlegen und Nachtragen erlauben“ (Standard an), „Löschen erlauben“ (Standard aus, nur für das LLM –
   im Tab **Memories** der App geht Löschen immer), „Max. Zeichen je Memory“ (Standard 20 000).
 * **Sparsam ausgeliefert:** Standard 5 Treffer mit einer Zeile plus kurzem Ausschnitt; bei genau einem Treffer kommt
   die Memory direkt vollständig.
 * **Typ:** `PERMANENT` (Standard), `TEMPORARY` (nur ausdrücklich, für Zwischenstände) oder `INVOCATION` (Rückruf, siehe
   unten). Temporäre und Rückruf-Memories darf das LLM ohne die Schalter anlegen, ändern und löschen.
+
+### Skills und Memories teilen
+
+Eigene Skills und Memories lassen sich auf dem Team-Server freigeben – für **einen anderen Benutzer**, für **alle
+Benutzer einer Rolle** oder für **alle**. Anders als die [Kooperation](#kooperation-zwischen-instanzen-und-geräten)
+(einmalige Kopie an eine Adresse) bleibt das Geteilte beim Eigentümer: Die Empfänger sehen immer den aktuellen Stand,
+schreibgeschützt, bis die Freigabe zurückgenommen wird.
+
+* **LLM:** `skills_share(name, users, roles, everyone, revoke)` bzw. `memories_share(id, …)` – Benutzer per Anmeldename
+  oder E-Mail, Rollen per Name; ohne Ziele zeigt das Tool die bestehenden Freigaben, `revoke=true` nimmt zurück. Vor
+  dem Freigeben fragt die App den Nutzer (MCP-Elicitation oder Dialog), Zurücknehmen geht ohne Rückfrage. Schalter
+  „Teilen erlauben“ im Modul Skills bzw. Memories (Standard an); auf dem Server braucht es das Recht auf das Tool.
+* **App:** Tab **Skills** bzw. **Memories**, Knopf **Teilen…** – bestehende Freigaben entfernen, Benutzer, Rolle oder
+  „Alle Benutzer“ hinzufügen.
+* **Empfänger:** Geteilte Skills stehen in `skills_list` mit `+` und „(von …)“, in der App mit Herkunft „geteilt“
+  (Filter „Nur mit mir geteilte“). Ein eigener Skill und eine globale Vorlage gleichen Namens gehen vor. Ändert das LLM
+  einen geteilten Skill, entsteht wie bei Vorlagen automatisch eine persönliche Kopie samt Zusatzdateien; löschen kann
+  ihn nur der Eigentümer. Geteilte Memories erscheinen in `memories_search` und der Übersicht („geteilt von …“) und
+  lassen sich samt Dateien lesen, aber nicht ändern, löschen oder weiter teilen. Rückrufe (`INVOCATION`) lassen sich
+  nicht teilen.
+* **Rechte:** Benutzer und Rollen darf jeder als Ziel angeben, „alle“ nur mit dem Systemrecht **Mit allen teilen**
+  (`shares.all`). Mögliche Ziele (aktive Benutzer mit E-Mail und Rollen) liefert `shareTargets` auch ohne
+  `users.manage`.
+* **Ablage:** Tabelle `item_share` in der Skill-Datenbank (Art, ID, Eigentümer, Ziel `USER`/`ROLE`/`ALL`, E-Mail bzw.
+  Rollenname). Wird eine Rolle umbenannt, wandern ihre Freigaben mit; wird sie gelöscht, entfallen sie, ebenso alle
+  Freigaben eines gelöschten Skills bzw. einer gelöschten Memory. GraphQL: `skillShares`, `memoryShares`,
+  `shareTargets`, `shareSkill`, `shareMemory`; `SkillSummary.scope` kennt `SHARED`, `SkillSummary.owner` und
+  `MemoryEntry.owner` nennen den Eigentümer.
 
 ### Rückrufe – Ergebnis lang laufender Aktionen an das LLM
 
@@ -1315,7 +1396,8 @@ im eingebetteten Backend](#mqtt-broker-für-die-kooperation)), alternativ einen 
 und nur mit **Zustimmung beider Nutzer**:
 
 1. **Nutzer 1 sendet.** `share_send(to, title, note, memories, skills, files, invocation)` packt eine Notiz (Stand,
-   Ergebnisse, offene Punkte), Memories (Nummern), Skills (mit Zusatzdateien) und Dateien zu einem Angebot. Bevor
+   Ergebnisse, offene Punkte), Memories (Nummern, mit angehängten Dateien), Skills (mit Zusatzdateien und Anhängen)
+   und Dateien zu einem Angebot; Anhänge zählen zur „Max. Größe je Angebot“. Bevor
    etwas den Rechner verlässt, bestätigt Nutzer 1 es selbst – im MCP-Client (Elicitation) oder per Dialog der App
    (*Rückfrage beim Senden und Annehmen*, `auto`/`client`/`app`). Mit `invocation` kommt die Antwort als Rückruf.
 2. **Die App von Nutzer 2 meldet es.** Das Angebot landet im Eingang (`share_inbox`, `share_view`) und geht als Rückruf
@@ -1323,7 +1405,7 @@ und nur mit **Zustimmung beider Nutzer**:
 3. **Nutzer 2 nimmt an.** `share_accept` fragt ihn ebenfalls selbst; alternativ in der App unter *Module → Kooperation
    → Aktionen → Annehmen/Ablehnen* (der Klick ist die Zustimmung). Übernommen wird so:
    * Notiz und Memories → **temporäre Memories** (Tag `geteilt`, mit Herkunftsvermerk) – dauerhaft macht sie der
-     Empfänger bei Bedarf selbst,
+     Empfänger bei Bedarf selbst; angehängte Dateien hängen wieder an der neuen Memory,
    * Skills → eigene Skills; gibt es den Namen schon, als `<name>-<absender>` – nie überschrieben,
    * Dateien → je Angebot ein eigener Ordner unter *Empfangene Dateien ablegen in* (Standard
      `~/.devtools-mcp/share-received`), nichts wird überschrieben.
@@ -1617,6 +1699,32 @@ zusätzlich **jede** Tool-Beschreibung mit der Grundregel ihres Moduls (`core/Sh
 gibt, den ersetzten Befehl („Statt `git status` in der Shell verwenden.“, „Statt `podman ps -a` verwenden.“).
 Ein Integrationstest prüft das für alle Tools; neue `@Tool`-Methoden brauchen `+ ShellHints.<MODUL>` am Ende der
 Beschreibung.
+
+### Kontext sparen (Modul `context`)
+
+Alles, was DevTools in den Kontext des LLM schreibt, kostet Tokens – in jeder weiteren Runde der Sitzung erneut. Das
+Modul „Kontext sparen“ (standardmäßig an) senkt das zentral für alle Module:
+
+| Maßnahme | Wo | Wirkung |
+|---|---|---|
+| **Ergebnis-Budget**: Ergebnisse über *Höchstlänge* (Standard 12.000 Zeichen ≈ 3.000 Tokens) gehen als Anfang + Ende an das LLM, dazwischen ein Hinweis mit Handle (`r12`); vollständig liegen sie im Speicher | `context/ResultBudget`, `ResultStore` | lange Logs, Diffs, Dumps kosten höchstens das Budget |
+| **Nachlesen** statt neu aufrufen: `context_slice(handle, grep=…)` (Treffer mit Zeilennummer und Umgebung) oder `from_line`/`to_line` | `context_slice` | nur die gebrauchte Stelle kommt in den Kontext |
+| **Zusammenfassen** mit einem kleinen Modell: `context_digest(handle, focus=…)` – per Sampling über den Client, sonst Claude API (Key im Modul, aus „Modellwahl“ oder `ANTHROPIC_API_KEY`) | `context/Digester` | Überblick über riesige Ausgaben für ein paar hundert Tokens |
+| **Aufräumen**: Terminal-Steuerzeichen, überschriebene Fortschrittszeilen; bei Logs und Befehlsausgaben zusätzlich Framework-Frames in Stacktraces (JUnit, Gradle, Reflection, Proxies …), gleiche Zeilen in Folge und Leerzeilen-Serien. Dateien, Diffs und Abfragen bleiben wortgetreu (Liste *Wortgetreu*) | `core/OutputCleaner` | Stacktraces oft auf ein Drittel |
+| **Schon gesehen**: liefert ein lesendes Tool (`@ToolHints(readOnly = true)`) in derselben Session mit denselben Argumenten dasselbe wie vor höchstens 10 Minuten, geht nur ein Verweis mit Handle raus | `ResultBudget` | wiederholte `git_status`/`git_log` fast kostenlos |
+| **Kompakte Instructions**: je Modul Überschrift plus Kurzfassung (`ToolModule#briefInstructions()`, sonst kurze Instructions ganz oder der erste Satz der Beschreibung); alles Weitere über `context_guide(module)` | `ServerInstructions` | ≈ 33.000 → 7.400 Zeichen je Sitzung |
+| **Shell-Hinweise nur einmal** (aus): die Grundregel je Modul steht dann einmal in den Instructions statt in jeder Tool-Beschreibung | `McpRuntime` | ≈ 39.000 Zeichen Tool-Definitionen weniger (alle Module an); nur für Clients, die Instructions übernehmen |
+| **Nur Such- und Aufruf-Tools** (aus): der Client sieht nur `context_*` (plus eine Liste), alle übrigen findet das LLM mit `context_find` und ruft sie mit `context_call` auf | `McpRuntime`, `context_call` | Tool-Definitionen von ≈ 170.000 auf wenige tausend Zeichen – für Clients, die alle Tools sofort laden |
+| **Stabile Tool-Liste**: ein Neuaufbau tauscht bei unveränderter Definition nur den Aufruf aus – keine `list_changed`-Meldung, der Prompt-Cache des Clients bleibt gültig | `McpRuntime` | weniger Cache-Misses |
+| **Code Mode**: `scripts_run` (Schalter im Modul Skripte, aus) führt ein Groovy-Programm aus, das Tools aufruft (`tools.git_status(repository: 'x')`) – nur Ausgabe und Rückgabewert kommen zurück | `scripts/ScriptRunTools` | viele Aufrufe mit langen Zwischenergebnissen → eine kurze Antwort |
+| **Fehler mit nächstem Schritt**: „nicht freigegeben“ nennt `permissions_check`, Zeitlimits den Rückruf-Weg | `core/ErrorHints` | weniger Fehlversuche |
+
+**Messen:** Der Reiter „Aufrufe“ zeigt je Aufruf die geschätzten Tokens (bei gekürzten Ergebnissen mit der
+Ursprungsgröße) und daneben die Summen je Tool, teuerste zuerst. `context_stats` liefert dasselbe dem LLM, dazu die
+Größe der Instructions und der angebotenen Tool-Definitionen. Geschätzt wird mit Zeichen / 4.
+
+Für eigene Module: `briefInstructions()` überschreiben (ein, zwei Sätze, was das LLM ohne Nachfrage wissen muss),
+lesende Tools mit `@ToolHints(readOnly = true)` markieren und lange Ausgaben ruhig liefern – gekürzt wird zentral.
 
 ## Eigenes Modul schreiben
 

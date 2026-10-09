@@ -30,6 +30,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
+import systems.grebe.devtools.mcp.api.MediaTypes;
 import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
 import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 
@@ -49,6 +50,7 @@ public class MemoriesView extends BorderPane {
     private final TextField search = new TextField();
     private final Label countLabel = new Label();
     private final Button delete = new Button("Löschen…");
+    private final Button share = new Button("Teilen…");
     private final StackPane detailHolder = new StackPane();
     private final Label placeholder = new Label("Memory auswählen");
     private final PauseTransition debounce = new PauseTransition(Duration.millis(300));
@@ -56,6 +58,9 @@ public class MemoriesView extends BorderPane {
     private final Label title = new Label();
     private final Label meta = new Label();
     private final TextArea content = new TextArea();
+    private final javafx.scene.control.ListView<MemoryViews.File> files = new javafx.scene.control.ListView<>();
+    private final Button saveFile = new Button("Datei speichern unter…");
+    private final HBox fileBox = new HBox(8);
     private final VBox detail;
 
     public MemoriesView(MemoryBackend service) {
@@ -86,15 +91,21 @@ public class MemoriesView extends BorderPane {
         Button refresh = new Button("Aktualisieren");
         refresh.setOnAction(e -> refresh());
         delete.setOnAction(e -> selected().ifPresent(this::confirmDelete));
+        share.setOnAction(e -> selected().ifPresent(this::openShare));
         delete.setDisable(true);
-        table.getSelectionModel().selectedItemProperty().addListener((o, a, m) -> delete.setDisable(m == null));
+        share.setDisable(true);
+        // geteilte Memories anderer Benutzer sind schreibgeschützt
+        table.getSelectionModel().selectedItemProperty().addListener((o, a, m) -> {
+            delete.setDisable(m == null || m.shared());
+            share.setDisable(m == null || m.shared() || m.invocation());
+        });
         countLabel.getStyleClass().add("form-help");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        for (javafx.scene.control.Control c : List.of(refresh, delete, countLabel)) {
+        for (javafx.scene.control.Control c : List.of(refresh, share, delete, countLabel)) {
             c.setMinWidth(Region.USE_PREF_SIZE);
         }
-        HBox bar = new HBox(8, search, spacer, countLabel, refresh, delete);
+        HBox bar = new HBox(8, search, spacer, countLabel, refresh, share, delete);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(10, 12, 8, 12));
         return bar;
@@ -110,7 +121,8 @@ public class MemoriesView extends BorderPane {
         table.getColumns().add(col("Projekt", 100, m -> orEmpty(m.project())));
         table.getColumns().add(col("Skill", 110, m -> orEmpty(m.skill())));
         table.getColumns().add(col("Bezug", 90, m -> orEmpty(m.reference())));
-        table.getColumns().add(col("Titel", 300, MemoryViews.Entry::title));
+        table.getColumns().add(col("Titel", 300, m -> m.shared() ? m.title() + "  (von " + m.owner() + ")"
+                : m.title()));
         table.getColumns().forEach(c -> c.setReorderable(false));
         table.getSelectionModel().selectedItemProperty().addListener((o, a, m) -> showDetails(m));
         return table;
@@ -126,7 +138,21 @@ public class MemoriesView extends BorderPane {
         content.setWrapText(true);
         content.getStyleClass().add("mono");
         VBox.setVgrow(content, Priority.ALWAYS);
-        VBox box = new VBox(6, title, meta, content);
+        files.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override
+            protected void updateItem(MemoryViews.File f, boolean empty) {
+                super.updateItem(f, empty);
+                setText(empty || f == null ? null
+                        : f.path() + "  (" + f.mediaType() + ", " + MediaTypes.size(f.size()) + ")");
+            }
+        });
+        files.setPrefHeight(90);
+        files.getSelectionModel().selectedItemProperty().addListener((o, a, f) -> saveFile.setDisable(f == null));
+        saveFile.setOnAction(e -> saveSelectedFile());
+        HBox.setHgrow(files, Priority.ALWAYS);
+        fileBox.getChildren().setAll(files, saveFile);
+        fileBox.managedProperty().bind(fileBox.visibleProperty());
+        VBox box = new VBox(6, title, meta, content, fileBox);
         box.setPadding(new Insets(14, 16, 12, 16));
         return box;
     }
@@ -160,7 +186,26 @@ public class MemoriesView extends BorderPane {
         meta.setText(metaLine(m));
         content.setText(m.content());
         content.positionCaret(0);
+        files.getItems().setAll(m.files());
+        saveFile.setDisable(true);
+        fileBox.setVisible(!m.files().isEmpty());
         detailHolder.getChildren().setAll(detail);
+    }
+
+    private void saveSelectedFile() {
+        MemoryViews.File f = files.getSelectionModel().getSelectedItem();
+        Optional<MemoryViews.Entry> m = selected();
+        if (f == null || m.isEmpty()) {
+            return;
+        }
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle("Angehängte Datei speichern");
+        chooser.setInitialFileName(f.path().substring(f.path().lastIndexOf('/') + 1));
+        java.io.File target = chooser.showSaveDialog(getScene() == null ? null : getScene().getWindow());
+        if (target != null) {
+            long id = m.get().id();
+            background(() -> service.exportFile(id, f.path(), target.toPath()), msg -> { });
+        }
     }
 
     static String metaLine(MemoryViews.Entry m) {
@@ -185,6 +230,12 @@ public class MemoriesView extends BorderPane {
             parts.add("geändert " + TIME.format(m.updatedAt()));
         }
         return String.join("  ·  ", parts);
+    }
+
+    private void openShare(MemoryViews.Entry m) {
+        new ShareDialog(getScene() == null ? null : getScene().getWindow(), "Memory #" + m.id(),
+                service::shareTargets, () -> service.shares(m.id()),
+                (request, revoke) -> service.share(m.id(), request, revoke)).showAndWait();
     }
 
     private void confirmDelete(MemoryViews.Entry m) {

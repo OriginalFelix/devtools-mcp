@@ -17,6 +17,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
@@ -40,11 +41,13 @@ import systems.grebe.devtools.mcp.backend.graph.GraphStorage;
 import systems.grebe.devtools.mcp.config.GraphDatabaseSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.config.TeamSettings;
+import systems.grebe.devtools.mcp.discovery.BackendDiscovery;
 import systems.grebe.devtools.mcp.remote.BackendConnection;
 import systems.grebe.devtools.mcp.remote.EmbeddedBackend;
 
 /**
- * Tab „Backend“: eingebettet oder Team-Server (Adresse, wirksam nach Neustart), Verbindungsstatus, angemeldeter
+ * Tab „Backend“: eingebettet oder Team-Server (Adresse, wirksam nach Neustart, auch per Suche im lokalen Netzwerk),
+ * Advertise-Endpunkt des eingebetteten Backends, Verbindungsstatus, angemeldeter
  * Benutzer mit Rollen (Abmelden, Passwort ändern), aktives Profil, die Graph-Datenbank des eingebetteten Backends
  * (eingebettete oder externe ArcadeDB) und die Projekte mit ihrem lokalen Verzeichnis.
  * Netzwerkzugriffe laufen im Hintergrund.
@@ -57,6 +60,8 @@ public class BackendView extends BorderPane {
     private final TextField url = new TextField();
     private final Button useServer = new Button("Server eintragen");
     private final Button useEmbedded = new Button("Eingebettet verwenden");
+    private final Button discover = new Button("Im Netzwerk suchen…");
+    private final CheckBox advertise = new CheckBox("Advertise-Endpunkt aktivieren");
     private final Label mode = new Label();
     private final Label status = new Label();
     private final Label user = new Label();
@@ -111,6 +116,25 @@ public class BackendView extends BorderPane {
             return "";
         }, msg -> msg));
         changePassword.setOnAction(e -> changePassword());
+        discover.setOnAction(e -> DiscoveryDialog.search(getScene() == null ? null : getScene().getWindow(),
+                discover::setDisable, found -> {
+                    url.setText(found);
+                    status.setText("Gefunden: " + found + " – mit „Server eintragen“ übernehmen.");
+                }));
+        advertise.setSelected(current.advertise());
+        advertise.setOnAction(e -> {
+            boolean on = advertise.isSelected();
+            store.saveTeam(store.team().withAdvertise(on));
+            status.setText("Advertise-Endpunkt " + (on ? "aktiviert" : "deaktiviert")
+                    + " – wirksam nach einem Neustart der App.");
+        });
+        Label advertiseHelp = new Label("Das eingebettete Backend ist dann im lokalen Netzwerk erreichbar (GraphQL und "
+                + "Dateiablage, Anmeldung mit einem Konto dieser App; MCP bleibt lokal) und antwortet auf die Suche "
+                + "anderer Desktop-Apps (UDP-Port " + BackendDiscovery.PORT + ", Multicast " + BackendDiscovery.GROUP
+                + "). Nur mit eingebettetem Backend; der Team-Server schaltet ihn mit devtools.discovery.advertise=true "
+                + "ein.");
+        advertiseHelp.setWrapText(true);
+        advertiseHelp.getStyleClass().add("form-help");
         roles.setWrapText(true);
         roles.getStyleClass().add("form-help");
 
@@ -146,13 +170,15 @@ public class BackendView extends BorderPane {
         grid.setVgap(8);
         grid.addRow(0, new Label("Backend"), mode);
         grid.addRow(1, new Label("Server-Adresse"), url);
-        grid.add(new HBox(8, useServer, useEmbedded), 1, 2);
-        grid.addRow(3, new Label("Status"), status);
+        grid.add(new HBox(8, useServer, useEmbedded, discover), 1, 2);
+        grid.addRow(3, new Label("Advertise"), advertise);
+        grid.add(advertiseHelp, 1, 4);
+        grid.addRow(5, new Label("Status"), status);
         HBox userRow = new HBox(12, user, logout, changePassword);
         userRow.setAlignment(Pos.CENTER_LEFT);
-        grid.addRow(4, new Label("Angemeldet"), userRow);
-        grid.add(roles, 1, 5);
-        grid.addRow(6, new Label("Profil"), profile);
+        grid.addRow(6, new Label("Angemeldet"), userRow);
+        grid.add(roles, 1, 7);
+        grid.addRow(8, new Label("Profil"), profile);
         GridPane.setHgrow(url, Priority.ALWAYS);
         status.setWrapText(true);
         status.getStyleClass().add("status-text");
@@ -327,6 +353,7 @@ public class BackendView extends BorderPane {
     private void refresh() {
         updating = true;
         try {
+            advertise.setDisable(!backend.embedded());
             mode.setText(backend.embedded() ? "eingebettet (" + backend.url() + ")" : "Team-Server " + backend.url());
             String when = backend.lastSync().map(t -> " (zuletzt " + TIME.format(t) + ")").orElse("");
             status.setText(switch (backend.status()) {

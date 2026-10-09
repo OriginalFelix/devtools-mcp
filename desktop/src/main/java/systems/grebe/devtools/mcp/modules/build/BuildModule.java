@@ -56,6 +56,12 @@ public class BuildModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Builds und Tests nur über build_* (build_list_projects zuerst); nicht Freigegebenes nicht "
+                + "per Shell nachholen, sondern den Nutzer fragen.";
+    }
+
+    @Override
     public Set<String> sharedDirectoryFields() {
         return Set.of(PROJECTS);
     }

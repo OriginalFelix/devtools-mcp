@@ -1,7 +1,10 @@
 package systems.grebe.devtools.mcp.modules.skills;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
+
+import systems.grebe.devtools.mcp.api.MediaTypes;
 
 /** Lesemodell für die Oberfläche – unabhängig von JPA-Entities und Lazy Loading. */
 public final class SkillViews {
@@ -16,20 +19,37 @@ public final class SkillViews {
         /** Persönliche Kopie einer globalen Vorlage (verdeckt die Vorlage). */
         COPY,
         /** Globale, schreibgeschützte Vorlage. */
-        GLOBAL
+        GLOBAL,
+        /** Von einem anderen Benutzer geteilt, schreibgeschützt (Änderung legt eine persönliche Kopie an). */
+        SHARED
     }
 
     /**
      * Zeile der Übersicht. {@code templateRevision}: bei {@link Scope#COPY} die Revision der Vorlage beim Kopieren;
      * {@code currentTemplateRevision}: die aktuelle Revision der Vorlage (oder {@code null}, wenn sie inzwischen
-     * zurückgezogen wurde); {@code triggers}: Tool-Namen bzw. Präfixe ({@code pr_*}), für die der Skill registriert ist.
+     * zurückgezogen wurde); {@code triggers}: Tool-Namen bzw. Präfixe ({@code pr_*}), für die der Skill registriert ist;
+     * {@code owner}: bei {@link Scope#SHARED} die E-Mail des Eigentümers, sonst leer.
      */
     public record Summary(String name, String description, String category, List<String> tags, int revision,
                           long useCount, Instant lastUsedAt, Instant updatedAt, int fileCount, Scope scope,
-                          Integer templateRevision, Integer currentTemplateRevision, List<String> triggers) {
+                          Integer templateRevision, Integer currentTemplateRevision, List<String> triggers,
+                          String owner) {
 
         public Summary {
             triggers = triggers == null ? List.of() : List.copyOf(triggers);
+        }
+
+        /** Ohne Eigentümer (eigener Skill, Kopie oder Vorlage). */
+        public Summary(String name, String description, String category, List<String> tags, int revision,
+                       long useCount, Instant lastUsedAt, Instant updatedAt, int fileCount, Scope scope,
+                       Integer templateRevision, Integer currentTemplateRevision, List<String> triggers) {
+            this(name, description, category, tags, revision, useCount, lastUsedAt, updatedAt, fileCount, scope,
+                    templateRevision, currentTemplateRevision, triggers, null);
+        }
+
+        /** Von einem anderen Benutzer geteilt. */
+        public boolean shared() {
+            return scope == Scope.SHARED;
         }
 
         /** Ist der Skill für dieses Tool registriert (exakter Name oder Präfix mit {@code *})? */
@@ -49,8 +69,24 @@ public final class SkillViews {
         }
     }
 
-    /** Zusatzdatei. */
-    public record File(String path, String content, Instant updatedAt) {
+    /**
+     * Zusatzdatei: Text direkt im Skill ({@code content}, mit {@code skills_patch} änderbar) oder ein Anhang mit
+     * beliebigem Inhalt in der Dateiablage des Backends ({@code blob} = SHA-256, {@code content} leer).
+     *
+     * @param size Größe in Bytes
+     */
+    public record File(String path, String content, Instant updatedAt, long size, String mediaType, String blob) {
+
+        /** Textdatei im Skill. */
+        public File(String path, String content, Instant updatedAt) {
+            this(path, content, updatedAt, content == null ? 0 : content.getBytes(StandardCharsets.UTF_8).length,
+                    MediaTypes.guess(path), null);
+        }
+
+        /** Text im Skill statt Anhang in der Dateiablage. */
+        public boolean inline() {
+            return blob == null;
+        }
     }
 
     /** Eintrag der Änderungshistorie. */

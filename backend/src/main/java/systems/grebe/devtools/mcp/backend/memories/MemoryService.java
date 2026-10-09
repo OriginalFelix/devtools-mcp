@@ -1,10 +1,18 @@
 package systems.grebe.devtools.mcp.backend.memories;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -27,10 +35,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import systems.grebe.devtools.mcp.api.MediaTypes;
+import systems.grebe.devtools.mcp.backend.blobs.BlobReferences;
+import systems.grebe.devtools.mcp.backend.blobs.BlobStore;
+import systems.grebe.devtools.mcp.backend.shares.ItemShare;
+import systems.grebe.devtools.mcp.backend.shares.ShareStore;
 import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
 import systems.grebe.devtools.mcp.backend.skills.SkillService;
 import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
 import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
+import systems.grebe.devtools.mcp.modules.shares.ShareViews;
 
 /**
  * Fachlogik des Memory-Speichers: Anlegen, Nachtragen, Suchen und Löschen von Memories des aktuellen Benutzers
@@ -44,6 +58,13 @@ import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
  * <p><b>Typ:</b> Memories sind dauerhaft, außer sie werden ausdrücklich als temporär angelegt. Mit
  * {@code temporaryOnly} (Aufrufer ohne Freigabe für dauerhafte Memories) lassen sich nur temporäre ändern und
  * löschen; dauerhaft machen lässt sich eine temporäre Memory so nicht.
+ *
+ * <p><b>Dateien:</b> An eine Memory lassen sich beliebige Dateien hängen (auch binär, ohne Größengrenze); der Inhalt
+ * liegt in der {@link BlobStore Dateiablage} im Verzeichnis des Benutzers. Anhängen und Entfernen zählen als Änderung
+ * der Memory ({@code temporaryOnly} gilt wie bei {@link #update}).
+ *
+ * <p><b>Teilen:</b> Eigene Memories lassen sich für andere Benutzer, Rollen oder alle freigeben ({@link ShareStore}).
+ * Die Empfänger finden sie in Suche und Übersicht und können sie samt Dateien lesen, aber nicht ändern oder löschen.
  */
 @Service
 @Transactional
@@ -61,6 +82,10 @@ public class MemoryService implements MemoryBackend {
     private static final int SNIPPET = 120;
     /** Bis zu dieser Länge liefert memories_search bei genau einem Treffer den Inhalt gleich mit. */
     static final int INLINE_MAX = 4_000;
+    /** Angehängte Textdateien bis zu dieser Größe (Bytes) zeigt memories_view direkt. */
+    public static final int VIEW_MAX = 200_000;
+    static final Pattern FILE_PATH = Pattern.compile("[A-Za-z0-9._/-]+");
+    static final int MAX_FILE_PATH = 200;
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
             .withZone(ZoneId.systemDefault());
@@ -70,11 +95,18 @@ public class MemoryService implements MemoryBackend {
 
     private final MemoryRepository memories;
     private final SkillOwner users;
+    private final BlobStore blobs;
+    private final BlobReferences references;
+    private final ShareStore shares;
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
-    public MemoryService(MemoryRepository memories, SkillOwner users) {
+    public MemoryService(MemoryRepository memories, SkillOwner users, BlobStore blobs, BlobReferences references,
+                         ShareStore shares) {
         this.memories = memories;
         this.users = users;
+        this.blobs = blobs;
+        this.references = references;
+        this.shares = shares;
     }
 
     /** Wird nach jeder erfolgreich committeten Änderung aufgerufen – nicht bei Rollback. */
@@ -88,14 +120,16 @@ public class MemoryService implements MemoryBackend {
     @Override
     @Transactional(readOnly = true)
     public List<MemoryViews.Entry> overview(String query, String project, String skill, int limit) {
-        return find(users.email(), query, project, skill, null, null, null, Math.max(1, limit)).stream()
-                .map(h -> entry(h.memory())).toList();
+        String user = users.email();
+        return find(user, query, project, skill, null, null, null, Math.max(1, limit)).stream()
+                .map(h -> entry(h.memory(), user)).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public Optional<MemoryViews.Entry> details(long id) {
-        return memories.findByIdAndOwner(id, users.email()).map(MemoryService::entry);
+        String user = users.email();
+        return readable(user, id).map(m -> entry(m, user));
     }
 
     @Override
@@ -105,12 +139,12 @@ public class MemoryService implements MemoryBackend {
     }
 
     /**
-     * Ob die Memory ohne Freigabe für dauerhafte Memories geändert werden darf (temporär oder Rückruf); unbekannte oder
-     * fremde Memories wie bei {@link #view}.
+     * Ob die Memory ohne Freigabe für dauerhafte Memories geändert werden darf (temporär oder Rückruf); unbekannte,
+     * fremde oder geteilte Memories wie bei {@link #update}.
      */
     @Transactional(readOnly = true)
     public boolean temporary(long id) {
-        return find(users.email(), id).isEphemeral();
+        return own(users.email(), id).isEphemeral();
     }
 
     @Override
@@ -146,9 +180,15 @@ public class MemoryService implements MemoryBackend {
                 .toList();
     }
 
-    private static MemoryViews.Entry entry(Memory m) {
+    private static MemoryViews.Entry entry(Memory m, String user) {
         return new MemoryViews.Entry(m.getId(), m.getTitle(), m.getContent(), m.getProject(), m.getSkill(),
-                m.getReference(), m.tagList(), m.getType(), m.getCreatedAt(), m.getUpdatedAt());
+                m.getReference(), m.tagList(), m.getType(), m.getCreatedAt(), m.getUpdatedAt(),
+                m.getFiles().stream().map(MemoryService::view).toList(),
+                m.getOwner().equals(user) ? null : m.getOwner());
+    }
+
+    private static MemoryViews.File view(MemoryFile f) {
+        return new MemoryViews.File(f.getPath(), f.getSize(), f.getMediaType(), f.getBlob(), f.getUpdatedAt());
     }
 
     // ------------------------------------------------------------------ Lesen
@@ -161,7 +201,8 @@ public class MemoryService implements MemoryBackend {
             throw new IllegalArgumentException("'days' muss mindestens 1 sein (leer = beliebig alt).");
         }
         int max = limit == null ? DEFAULT_LIMIT : Math.max(1, Math.min(MAX_LIMIT, limit));
-        List<Hit> found = find(users.email(), query, project, skill, tag, type, days, max);
+        String user = users.email();
+        List<Hit> found = find(user, query, project, skill, tag, type, days, max);
         String filters = describeFilters(query, project, skill, tag, type, days);
         if (found.isEmpty()) {
             return filters.isEmpty()
@@ -172,21 +213,21 @@ public class MemoryService implements MemoryBackend {
         List<String> terms = terms(query);
         if (found.size() == 1 && (!terms.isEmpty() || !filters.isEmpty())
                 && found.getFirst().memory().getContent().length() <= INLINE_MAX) {
-            return "1 Memory" + filters + " – direkt geladen:\n\n" + render(found.getFirst().memory());
+            return "1 Memory" + filters + " – direkt geladen:\n\n" + render(found.getFirst().memory(), user);
         }
         StringBuilder sb = new StringBuilder(found.size() + (found.size() == 1 ? " Memory" : " Memories"))
                 .append(filters).append(" (").append(terms.isEmpty() ? "neueste" : "beste Treffer")
                 .append(" zuerst; laden mit memories_view(id)):\n");
         for (Hit h : found) {
             Memory m = h.memory();
-            sb.append(line(m)).append("\n  ").append(snippet(m.getContent(), terms)).append('\n');
+            sb.append(line(m, user)).append("\n  ").append(snippet(m.getContent(), terms)).append('\n');
         }
         return sb.toString().stripTrailing();
     }
 
-    /** Eine Zeile: Nummer, Datum, Titel und – kompakt – temporär, Projekt, Skill, Bezug. */
-    static String line(Memory m) {
-        String meta = meta(m);
+    /** Eine Zeile: Nummer, Datum, Titel und – kompakt – temporär, Projekt, Skill, Bezug, ggf. wer sie geteilt hat. */
+    static String line(Memory m, String user) {
+        String meta = meta(m, user);
         return "#" + m.getId() + " " + DAY.format(m.getCreatedAt()) + " " + m.getTitle()
                 + (meta.isEmpty() ? "" : " [" + meta + "]");
     }
@@ -194,13 +235,17 @@ public class MemoryService implements MemoryBackend {
     @Override
     @Transactional(readOnly = true)
     public String view(long id) {
-        return render(find(users.email(), id));
+        String user = users.email();
+        return render(find(user, id), user);
     }
 
     /** Kompakter Kopf (eine Zeile Metadaten) plus Inhalt. */
-    private static String render(Memory m) {
+    private static String render(Memory m, String user) {
         StringBuilder sb = new StringBuilder("# #").append(m.getId()).append(' ').append(m.getTitle()).append('\n');
         List<String> parts = new ArrayList<>();
+        if (!m.getOwner().equals(user)) {
+            parts.add("geteilt von " + m.getOwner() + " (schreibgeschützt)");
+        }
         if (m.isEphemeral()) {
             parts.add(m.getType().label());
         }
@@ -218,7 +263,13 @@ public class MemoryService implements MemoryBackend {
         }
         parts.add(DATE.format(m.getCreatedAt())
                 + (m.getUpdatedAt().equals(m.getCreatedAt()) ? "" : ", geändert " + DATE.format(m.getUpdatedAt())));
-        return sb.append(String.join(" · ", parts)).append("\n\n").append(m.getContent().strip()).toString();
+        sb.append(String.join(" · ", parts)).append("\n\n").append(m.getContent().strip());
+        if (!m.getFiles().isEmpty()) {
+            sb.append("\n\nDateien (memories_view mit file_path): ").append(m.getFiles().stream()
+                    .map(f -> f.getPath() + " (" + f.getMediaType() + ", " + MediaTypes.size(f.getSize()) + ")")
+                    .collect(Collectors.joining(", ")));
+        }
+        return sb.toString();
     }
 
     // ------------------------------------------------------------------ Schreiben
@@ -255,7 +306,7 @@ public class MemoryService implements MemoryBackend {
             throw new IllegalArgumentException("Entweder 'content' (ersetzt den Inhalt) oder 'append' (hängt einen "
                     + "Nachtrag an) angeben, nicht beides.");
         }
-        Memory m = find(users.email(), id);
+        Memory m = own(users.email(), id);
         if (temporaryOnly) {
             requireTemporary(m, "geändert");
             if (type == MemoryViews.Type.PERMANENT) {
@@ -310,13 +361,148 @@ public class MemoryService implements MemoryBackend {
 
     @Override
     public String delete(long id, boolean temporaryOnly) {
-        Memory m = find(users.email(), id);
+        Memory m = own(users.email(), id);
         if (temporaryOnly) {
             requireTemporary(m, "gelöscht");
         }
+        List<String> attached = m.getFiles().stream().map(MemoryFile::getBlob).toList();
+        shares.removeAll(ItemShare.Kind.MEMORY, m.getId());
         memories.delete(m);
+        memories.flush();
+        references.release(m.getOwner(), attached);
         changed();
-        return "Memory #" + id + " („" + m.getTitle() + "“) gelöscht.";
+        return "Memory #" + id + " („" + m.getTitle() + "“) gelöscht"
+                + (attached.isEmpty() ? "" : " samt " + attached.size() + " Datei(en)") + ".";
+    }
+
+    // ------------------------------------------------------------------ Dateien
+
+    @Override
+    public String attachFile(long id, String filePath, Path source, String mediaType, boolean temporaryOnly) {
+        String p = filePath == null || filePath.isBlank() ? fileName(source) : normalizeFilePath(filePath);
+        Memory m = own(users.email(), id);
+        if (temporaryOnly) {
+            requireTemporary(m, "geändert");
+        }
+        BlobStore.Blob blob;
+        try (InputStream in = Files.newInputStream(source)) {
+            blob = blobs.put(m.getOwner(), in);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Datei " + source + " nicht lesbar: " + e.getMessage(), e);
+        }
+        return attachBlob(id, p, blob.sha(), mediaType, temporaryOnly);
+    }
+
+    /**
+     * Hängt einen bereits in der Dateiablage des Benutzers liegenden Inhalt (Upload über {@code /blobs}) an bzw.
+     * ersetzt die Datei gleichen Pfads.
+     */
+    public String attachBlob(long id, String filePath, String blob, String mediaType, boolean temporaryOnly) {
+        String p = normalizeFilePath(filePath);
+        String type = MediaTypes.orGuess(mediaType, p);
+        Memory m = own(users.email(), id);
+        if (temporaryOnly) {
+            requireTemporary(m, "geändert");
+        }
+        BlobStore.Blob b = blobs.describe(m.getOwner(), BlobStore.requireSha(blob));
+        Instant now = Instant.now();
+        Optional<MemoryFile> existing = m.file(p);
+        String replaced = existing.map(MemoryFile::getBlob).orElse(null);
+        existing.ifPresentOrElse(f -> f.replace(b, type, now), () -> m.addFile(new MemoryFile(m, p, b, type, now)));
+        m.touch(now);
+        if (replaced != null && !replaced.equals(b.sha())) {
+            memories.flush();
+            references.release(m.getOwner(), List.of(replaced));
+        }
+        changed();
+        return "Datei '" + p + "' (" + type + ", " + MediaTypes.size(b.size()) + ") an Memory #" + id + " "
+                + (existing.isPresent() ? "ersetzt" : "angehängt") + ".";
+    }
+
+    @Override
+    public String removeFile(long id, String filePath, boolean temporaryOnly) {
+        String p = normalizeFilePath(filePath);
+        Memory m = own(users.email(), id);
+        if (temporaryOnly) {
+            requireTemporary(m, "geändert");
+        }
+        MemoryFile f = requireFile(m, p);
+        m.removeFile(f);
+        m.touch(Instant.now());
+        memories.flush();
+        references.release(m.getOwner(), List.of(f.getBlob()));
+        changed();
+        return "Datei '" + p + "' von Memory #" + id + " entfernt.";
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<MemoryViews.File> file(long id, String filePath) {
+        String p = normalizeFilePath(filePath);
+        return readable(users.email(), id).flatMap(m -> m.file(p)).map(MemoryService::view);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String viewFile(long id, String filePath) {
+        Memory m = find(users.email(), id);
+        MemoryFile f = requireFile(m, normalizeFilePath(filePath));
+        String head = "# #" + id + " / " + f.getPath() + " · " + f.getMediaType() + ", " + MediaTypes.size(f.getSize());
+        if (!MediaTypes.textual(f.getMediaType()) || f.getSize() > VIEW_MAX) {
+            return head + "\n\nNicht als Text anzeigbar – memories_view mit file_path speichert sie als lokale Datei.";
+        }
+        try {
+            return head + "\n\n" + new String(Files.readAllBytes(blobs.require(m.getOwner(), f.getBlob())),
+                    StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Datei nicht lesbar: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String exportFile(long id, String filePath, Path target) {
+        Memory m = find(users.email(), id);
+        MemoryFile f = requireFile(m, normalizeFilePath(filePath));
+        try {
+            if (target.getParent() != null) {
+                Files.createDirectories(target.getParent());
+            }
+            Files.copy(blobs.require(m.getOwner(), f.getBlob()), target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Datei " + target + " nicht schreibbar: " + e.getMessage(), e);
+        }
+        return "'" + f.getPath() + "' aus Memory #" + id + " gespeichert: " + target + " (" + f.getMediaType() + ", "
+                + MediaTypes.size(f.getSize()) + ").";
+    }
+
+    private static MemoryFile requireFile(Memory m, String path) {
+        return m.file(path).orElseThrow(() -> new IllegalArgumentException("Memory #" + m.getId() + " hat keine Datei '"
+                + path + "'. Vorhanden: " + (m.getFiles().isEmpty() ? "keine"
+                : m.getFiles().stream().map(MemoryFile::getPath).collect(Collectors.joining(", ")))));
+    }
+
+    /** Relativer Pfad ohne {@code ..}, z.B. {@code screenshot.png} oder {@code logs/server.log}. */
+    static String normalizeFilePath(String path) {
+        String p = path == null ? "" : path.strip().replace('\\', '/');
+        boolean valid = !p.isEmpty() && p.length() <= MAX_FILE_PATH && FILE_PATH.matcher(p).matches()
+                && Arrays.stream(p.split("/", -1)).noneMatch(x -> x.isEmpty() || x.equals(".")
+                || x.equals(".."));
+        if (!valid) {
+            throw new IllegalArgumentException("Ungültiger Dateipfad '" + path + "': relativ, nur Buchstaben, Ziffern, "
+                    + "'.', '_', '-' und '/', ohne '..', max. " + MAX_FILE_PATH + " Zeichen (z.B. 'screenshot.png').");
+        }
+        return p;
+    }
+
+    /** Dateiname der Quelle als Pfad in der Memory; unzulässige Zeichen werden zu {@code _}. */
+    static String fileName(Path source) {
+        String n = source.getFileName() == null ? "" : source.getFileName().toString();
+        n = n.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (n.isEmpty() || n.chars().allMatch(c -> c == '.')) {
+            n = "datei";
+        }
+        return n.length() > MAX_FILE_PATH ? n.substring(n.length() - MAX_FILE_PATH) : n;
     }
 
     // ------------------------------------------------------------------ Suche
@@ -332,9 +518,11 @@ public class MemoryService implements MemoryBackend {
         String s = blankToNull(skill);
         String t = blankToNull(tag);
         Instant since = days == null ? null : Instant.now().minus(Duration.ofDays(days));
+        List<Long> shared = shares.visible(ItemShare.Kind.MEMORY);
         Specification<Memory> spec = (root, q, cb) -> {
             List<Predicate> and = new ArrayList<>();
-            and.add(cb.equal(root.get("owner"), user));
+            and.add(shared.isEmpty() ? cb.equal(root.get("owner"), user)
+                    : cb.or(cb.equal(root.get("owner"), user), root.get("id").in(shared)));
             if (p != null) {
                 and.add(cb.equal(cb.lower(root.<String>get("project")), p.toLowerCase(Locale.ROOT)));
             }
@@ -428,8 +616,11 @@ public class MemoryService implements MemoryBackend {
         return memories.findAll(spec, PageRequest.of(0, 5, Sort.by("id"))).stream().map(Memory::getId).toList();
     }
 
-    private static String meta(Memory m) {
+    private static String meta(Memory m, String user) {
         List<String> parts = new ArrayList<>();
+        if (!m.getOwner().equals(user)) {
+            parts.add("von " + m.getOwner());
+        }
         if (m.isEphemeral()) {
             parts.add(m.getType().label());
         }
@@ -475,9 +666,56 @@ public class MemoryService implements MemoryBackend {
 
     // ------------------------------------------------------------------ intern
 
+    /** Eigene oder für den Benutzer freigegebene Memory – zum Lesen. */
+    private Optional<Memory> readable(String user, long id) {
+        return memories.findByIdAndOwner(id, user).or(() -> shares.visible(ItemShare.Kind.MEMORY).contains(id)
+                ? memories.findById(id) : Optional.empty());
+    }
+
     private Memory find(String user, long id) {
-        return memories.findByIdAndOwner(id, user).orElseThrow(() -> new IllegalArgumentException("Memory #" + id
-                + " gibt es nicht (oder sie gehört einem anderen Benutzer). Mit memories_search suchen."));
+        return readable(user, id).orElseThrow(() -> notFound(id));
+    }
+
+    /** Eigene Memory – zum Ändern, Löschen und Teilen; eine geteilte ist schreibgeschützt. */
+    private Memory own(String user, long id) {
+        return memories.findByIdAndOwner(id, user).orElseThrow(() -> readable(user, id)
+                .map(m -> new IllegalArgumentException("Memory #" + id + " ist von " + m.getOwner() + " geteilt und "
+                        + "schreibgeschützt – ändern, löschen und teilen kann sie nur der Eigentümer. Eigene Ergänzungen "
+                        + "mit memories_save festhalten."))
+                .orElseGet(() -> notFound(id)));
+    }
+
+    private static IllegalArgumentException notFound(long id) {
+        return new IllegalArgumentException("Memory #" + id + " gibt es nicht (oder sie gehört einem anderen "
+                + "Benutzer). Mit memories_search suchen.");
+    }
+
+    // ------------------------------------------------------------------ Teilen
+
+    /**
+     * Gibt eine eigene Memory frei bzw. nimmt Freigaben zurück ({@code revoke}); ohne Ziele nur der aktuelle Stand.
+     * Rückrufe ({@link MemoryViews.Type#INVOCATION}) lassen sich nicht teilen.
+     */
+    @Override
+    public String share(long id, ShareViews.Request request, boolean revoke) {
+        Memory m = own(users.email(), id);
+        boolean change = request != null && !request.empty();
+        if (change && !revoke && m.getType() == MemoryViews.Type.INVOCATION) {
+            throw new IllegalArgumentException("Memory #" + id + " ist ein Rückruf und wird nach der Zustellung "
+                    + "gelöscht – teilen lassen sich dauerhafte und temporäre Memories.");
+        }
+        String result = shares.apply(ItemShare.Kind.MEMORY, m.getId(), "Memory #" + id, request, revoke);
+        if (change) {
+            changed();
+        }
+        return result;
+    }
+
+    /** Freigaben einer eigenen Memory. */
+    @Override
+    @Transactional(readOnly = true)
+    public List<ShareViews.Share> shares(long id) {
+        return shares.of(ItemShare.Kind.MEMORY, own(users.email(), id).getId());
     }
 
     /** Ohne Freigabe für dauerhafte Memories: nur temporäre und Rückrufe dürfen geändert bzw. gelöscht werden. */

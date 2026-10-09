@@ -43,6 +43,17 @@ public interface ToolModule {
     }
 
     /**
+     * Kurzfassung von {@link #instructions()} für kompakte Instructions (Modul „Kontext sparen“): ein bis zwei Sätze
+     * mit dem, was das LLM <em>ohne</em> Nachfrage wissen muss – wann das Modul statt welchen Shell-Befehls dran ist.
+     * Den vollen Text holt das LLM bei Bedarf über {@code context_guide}.
+     *
+     * @return Text oder {@code null} = erster Satz von {@link #description()}
+     */
+    default String briefInstructions() {
+        return null;
+    }
+
+    /**
      * Modul, dessen Recht dieses Modul mitumfasst (Rollen: {@code module:<id>}), z.B. {@code scripts} für die Module
      * der Skripte; {@code null} = nur das eigene.
      */

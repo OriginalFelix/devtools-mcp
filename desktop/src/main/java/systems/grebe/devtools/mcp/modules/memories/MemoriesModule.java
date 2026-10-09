@@ -2,19 +2,25 @@ package systems.grebe.devtools.mcp.modules.memories;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.backend.memories.Memory;
+import systems.grebe.devtools.mcp.config.DataHome;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.DelegatingToolCallback;
 import systems.grebe.devtools.mcp.core.FieldType;
+import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.UserConfirmation;
+import systems.grebe.devtools.mcp.modules.skills.SkillsModule;
 
 /**
  * Episodisches Gedächtnis für das LLM: Memories halten fest, was bei früheren Aufgaben konkret passiert ist (Ticket
@@ -35,13 +41,25 @@ public class MemoriesModule implements ToolModule {
 
     static final String ALLOW_WRITE = "allowWrite";
     static final String ALLOW_DELETE = "allowDelete";
+    static final String ALLOW_SHARE = "allowShare";
     static final String MAX_CONTENT = "maxContentChars";
     static final int DEFAULT_MAX_CONTENT = 20_000;
+    static final String FILE_DIRS = "fileDirectories";
 
     private final MemoryBackend memories;
+    private final DataHome home;
+    private final UserConfirmation confirmation;
 
-    public MemoriesModule(MemoryBackend memories) {
+    @Autowired
+    public MemoriesModule(MemoryBackend memories, DataHome home, UserConfirmation confirmation) {
         this.memories = memories;
+        this.home = home;
+        this.confirmation = confirmation;
+    }
+
+    /** Ohne Rückfrage beim Nutzer – {@code memories_share} lehnt dann das Teilen ab. */
+    public MemoriesModule(MemoryBackend memories, DataHome home) {
+        this(memories, home, null);
     }
 
     @Override
@@ -57,7 +75,8 @@ public class MemoriesModule implements ToolModule {
     @Override
     public String description() {
         return "Gedächtnis für frühere Aktionen: Das LLM hält nach einer Aufgabe fest, was getan, entschieden und "
-                + "herausgefunden wurde (z.B. ein Ticket-Review mit Ergebnis), und findet es später per Suche wieder. "
+                + "herausgefunden wurde (z.B. ein Ticket-Review mit Ergebnis), samt angehängter Dateien (Screenshots, "
+                + "Logs … ohne Größengrenze), und findet es später per Suche wieder. "
                 + "Gespeichert im Backend (eingebettet oder Team-Server) je Benutzerkonto.";
     }
 
@@ -73,11 +92,22 @@ public class MemoriesModule implements ToolModule {
                 statt neu zu recherchieren.
                 - Nach einer abgeschlossenen Aktion: `memories_save` (title = eine Zeile; content = Ergebnis, \
                 Begründung, offene Punkte; dazu project, skill, reference). Folgeaktion zur selben Sache: \
-                `memories_update` mit `append`. Keine Geheimnisse.
+                `memories_update` mit `append`. Keine Geheimnisse. Belege wie Screenshots, Logs oder Exporte mit \
+                `memories_attach_file` anhängen (`source_path` für lokale Dateien, beliebig groß); `memories_view` mit \
+                `file_path` liefert Text bzw. speichert Binäres lokal.
+                - Von anderen Benutzern geteilte Memories („geteilt von …“) erscheinen in der Suche, sind aber \
+                schreibgeschützt. Eigene teilt `memories_share` (nur auf Wunsch).
                 - Typ: Standard dauerhaft. `type=TEMPORARY` nur, wenn der Nutzer es so will oder für kurzlebige \
                 Zwischenstände; temporäre Memories ohne Rückfrage ändern und löschen (z.B. wenn erledigt), \
                 dauerhafte mit `memories_delete` nur auf Wunsch.
                 - `type=INVOCATION` (Rückruf): vor einer lang laufenden Aktion kurz festhalten, was zu tun ist, wenn                 sie fertig ist, und die ID an das Tool der Aktion geben (z.B. `share_send invocation=<id>`). Die App                 meldet das Ergebnis samt dieser Memory per Channel – auch an eine später gestartete Sitzung – und                 löscht sie danach selbst.""";
+    }
+
+    @Override
+    public String briefInstructions() {
+        return "Vor Aufgaben zu Ticket, PR, Fehler oder bekanntem Thema memories_search; nach einer "
+                + "abgeschlossenen Aktion memories_save. Nennt der Server „Frühere Aktionen …“, diese Memory "
+                + "laden statt neu zu recherchieren.";
     }
 
     @Override
@@ -94,23 +124,44 @@ public class MemoriesModule implements ToolModule {
     public List<ConfigField> configSchema() {
         return List.of(
                 ConfigField.of(ALLOW_WRITE, "Anlegen und Nachtragen erlauben", FieldType.BOOLEAN).withDefault("true")
-                        .withHelp("save, update für dauerhafte Memories; temporäre und Rückrufe gehen immer."),
+                        .withHelp("save, update, attach_file, remove_file für dauerhafte Memories; temporäre und "
+                                + "Rückrufe gehen immer."),
                 ConfigField.of(ALLOW_DELETE, "Löschen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("Dauerhafte Memories löschen; temporäre und Rückrufe gehen immer."),
+                ConfigField.of(ALLOW_SHARE, "Teilen erlauben", FieldType.BOOLEAN).withDefault("true")
+                        .withHelp("share: eigene Memories für Benutzer, Rollen oder alle auf dem Team-Server "
+                                + "freigeben – nach Rückfrage beim Nutzer."),
                 ConfigField.of(MAX_CONTENT, "Max. Zeichen je Memory", FieldType.INT)
                         .withDefault(String.valueOf(DEFAULT_MAX_CONTENT))
-                        .withHelp("Obergrenze für den Inhalt einer Memory (inkl. Nachträgen)."));
+                        .withHelp("Obergrenze für den Inhalt einer Memory (inkl. Nachträgen). Angehängte Dateien "
+                                + "haben keine Grenze."),
+                ConfigField.of(FILE_DIRS, "Dateien anhängen aus und speichern in", FieldType.DIRECTORY_LIST)
+                        .withHelp("Aus diesen Verzeichnissen (inkl. Unterverzeichnissen) darf das LLM Dateien an "
+                                + "Memories hängen (source_path) und angehängte hineinspeichern (target_path); dazu "
+                                + "die globalen „Freigaben“. Ohne target_path landen binäre Dateien in "
+                                + "„attachments“ im Datenordner der App."));
+    }
+
+    @Override
+    public Set<String> sharedDirectoryFields() {
+        return Set.of(FILE_DIRS);
     }
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(new MemoryReadTools(memories))));
+        LocalFiles files = new LocalFiles(config.getList(FILE_DIRS),
+                "Module → Memories → „Dateien anhängen aus und speichern in“ oder global unter „Freigaben“");
+        List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(
+                new MemoryReadTools(memories, files, SkillsModule.attachments(home)))));
         boolean write = config.getBoolean(ALLOW_WRITE);
         boolean delete = config.getBoolean(ALLOW_DELETE);
         // ohne Schalter nur temporäre Memories – die brauchen keine Freigabe
-        noted(tools, ToolCallbacks.from(new MemoryWriteTools(memories, maxContent(config), !write)), write,
+        noted(tools, ToolCallbacks.from(new MemoryWriteTools(memories, maxContent(config), !write, files)), write,
                 ALLOW_WRITE);
         noted(tools, ToolCallbacks.from(new MemoryDeleteTools(memories, !delete)), delete, ALLOW_DELETE);
+        if (config.getBoolean(ALLOW_SHARE)) {
+            tools.addAll(List.of(ToolCallbacks.from(new MemoryShareTools(memories, confirmation))));
+        }
         return tools;
     }
 

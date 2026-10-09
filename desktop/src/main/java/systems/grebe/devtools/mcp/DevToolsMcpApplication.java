@@ -19,6 +19,7 @@ import org.springframework.context.annotation.FilterType;
 import systems.grebe.devtools.mcp.channel.ChannelBridge;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.discovery.BackendDiscovery;
 import systems.grebe.devtools.mcp.fx.FxApp;
 import systems.grebe.devtools.mcp.modules.skills.SkillsModule;
 import systems.grebe.devtools.mcp.plugin.PluginSigner;
@@ -125,6 +126,13 @@ public class DevToolsMcpApplication {
         if (!embedded) {
             p.put("spring.autoconfigure.exclude", String.join(",", BACKEND_AUTO_CONFIG));
             return p;
+        }
+        if (store.team().advertise()) {
+            // Advertise-Endpunkt: Backend im lokalen Netzwerk erreichbar; alles außer GraphQL und Blobs bleibt lokal
+            // (LocalOnlyFilter)
+            p.put("server.address", "0.0.0.0");
+            p.put("devtools.discovery.advertise", true);
+            p.put("devtools.discovery.kind", BackendDiscovery.KIND_DESKTOP);
         }
         Map<String, String> skills = store.module(SkillsModule.ID).map(ModuleSettings::values).orElse(Map.of());
         putIfSet(p, "devtools.skills.datasource.url", skills.get(SkillsModule.LEGACY_JDBC_URL));

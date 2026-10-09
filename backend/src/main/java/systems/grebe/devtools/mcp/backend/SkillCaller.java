@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.backend;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -11,7 +12,8 @@ import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
 
 /**
  * Eigentümer der Skills im Backend: der angemeldete Benutzer der laufenden GraphQL-Operation mit seiner Konto-E-Mail;
- * globale Vorlagen verwaltet, wer das Recht {@link Permission#TEMPLATES_PUBLISH} hat. Gesetzt für die Dauer eines
+ * globale Vorlagen verwaltet, wer das Recht {@link Permission#TEMPLATES_PUBLISH} hat; für alle teilen darf, wer
+ * {@link Permission#SHARES_ALL} hat. Gesetzt für die Dauer eines
  * Aufrufs über {@link #as}.
  */
 @Component
@@ -52,5 +54,17 @@ public class SkillCaller implements SkillOwner {
     public boolean admin() {
         UserAccount u = CURRENT.get();
         return u != null && u.has(Permission.TEMPLATES_PUBLISH);
+    }
+
+    @Override
+    public List<String> roles() {
+        UserAccount u = CURRENT.get();
+        return u == null ? List.of() : u.roles();
+    }
+
+    @Override
+    public boolean shareWithAll() {
+        UserAccount u = CURRENT.get();
+        return u != null && u.has(Permission.SHARES_ALL);
     }
 }

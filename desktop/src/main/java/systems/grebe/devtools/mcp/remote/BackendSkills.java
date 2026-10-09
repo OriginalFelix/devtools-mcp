@@ -1,5 +1,9 @@
 package systems.grebe.devtools.mcp.remote;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -7,6 +11,8 @@ import java.util.Optional;
 
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
+import systems.grebe.devtools.mcp.api.MediaTypes;
+import systems.grebe.devtools.mcp.modules.shares.ShareViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 
@@ -20,12 +26,19 @@ import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 public class BackendSkills implements SkillBackend {
 
     private static final String SUMMARY = "name description category tags revision useCount lastUsedAt updatedAt "
-            + "fileCount scope templateRevision currentTemplateRevision triggers";
+            + "fileCount scope templateRevision currentTemplateRevision triggers owner";
+
+    private static final String FILE = "path content updatedAt size mediaType blob";
+
+    /** Felder einer Freigabe (auch für Memories). */
+    static final String SHARE = "target name createdAt";
 
     private final BackendConnection backend;
+    private final BackendFiles files;
 
-    public BackendSkills(BackendConnection backend) {
+    public BackendSkills(BackendConnection backend, BackendFiles files) {
         this.backend = backend;
+        this.files = files;
     }
 
     @Override
@@ -44,7 +57,7 @@ public class BackendSkills implements SkillBackend {
     @Override
     public Optional<SkillViews.Details> details(String name) {
         return Optional.ofNullable(backend.query("query($n: String!) { skill(name: $n) { summary { " + SUMMARY
-                        + " } content createdAt files { path content updatedAt } revisions { revision action note "
+                        + " } content createdAt files { " + FILE + " } revisions { revision action note "
                         + "changedBy changedAt description content } } }", Map.of("n", name), "skill",
                 SkillViews.Details.class));
     }
@@ -131,6 +144,41 @@ public class BackendSkills implements SkillBackend {
                         "max", maxContentChars));
     }
 
+    /** Inhalt über {@code /blobs} hochladen, dann per GraphQL anhängen. */
+    @Override
+    public String attachFile(String name, String filePath, Path source, String mediaType, String note) {
+        String blob = files.upload(source);
+        return text("""
+                mutation($name: String!, $file: String!, $blob: String!, $type: String, $note: String) { \
+                attachSkillFile(name: $name, filePath: $file, blob: $blob, mediaType: $type, note: $note) }""",
+                "attachSkillFile", args("name", name, "file", filePath, "blob", blob, "type", mediaType,
+                        "note", note));
+    }
+
+    @Override
+    public Optional<SkillViews.File> file(String name, String filePath) {
+        return Optional.ofNullable(backend.query("query($n: String!, $f: String!) { skillFile(name: $n, filePath: $f) "
+                + "{ " + FILE + " } }", Map.of("n", name, "f", filePath), "skillFile", SkillViews.File.class));
+    }
+
+    @Override
+    public String exportFile(String name, String filePath, Path target) {
+        SkillViews.File f = file(name, filePath).orElseThrow(() -> new IllegalArgumentException("Skill '" + name
+                + "' hat keine Datei '" + filePath + "' – skills_view(name) zeigt die Zusatzdateien."));
+        if (f.inline()) {
+            try {
+                Files.createDirectories(target.toAbsolutePath().getParent());
+                Files.writeString(target, f.content() == null ? "" : f.content(), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                throw new IllegalStateException("Datei " + target + " nicht schreibbar: " + e.getMessage(), e);
+            }
+        } else {
+            files.download(f.blob(), target);
+        }
+        return "'" + f.path() + "' aus Skill '" + name + "' gespeichert: " + target + " (" + f.mediaType() + ", "
+                + MediaTypes.size(f.size()) + ").";
+    }
+
     @Override
     public String removeFile(String name, String filePath, String note) {
         return text("""
@@ -142,6 +190,31 @@ public class BackendSkills implements SkillBackend {
     @Override
     public String delete(String name) {
         return text("mutation($name: String!) { deleteSkill(name: $name) }", "deleteSkill", args("name", name));
+    }
+
+    @Override
+    public String share(String name, ShareViews.Request request, boolean revoke) {
+        ShareViews.Request r = request == null ? new ShareViews.Request(null, null, false) : request;
+        return text("""
+                mutation($name: String!, $users: [String!], $roles: [String!], $all: Boolean, $revoke: Boolean) { \
+                shareSkill(name: $name, users: $users, roles: $roles, everyone: $all, revoke: $revoke) }""",
+                "shareSkill", args("name", name, "users", r.users(), "roles", r.roles(), "all", r.everyone(),
+                        "revoke", revoke));
+    }
+
+    @Override
+    public List<ShareViews.Share> shares(String name) {
+        return backend.queryList("query($n: String!) { skillShares(name: $n) { " + SHARE + " } }",
+                Map.of("n", name), "skillShares", ShareViews.Share.class);
+    }
+
+    @Override
+    public List<ShareViews.Candidate> shareTargets() {
+        if (!backend.signedIn()) {
+            return List.of();
+        }
+        return backend.queryList("{ shareTargets { target name label } }", "shareTargets",
+                ShareViews.Candidate.class);
     }
 
     private String text(String document, String field, Map<String, Object> args) {

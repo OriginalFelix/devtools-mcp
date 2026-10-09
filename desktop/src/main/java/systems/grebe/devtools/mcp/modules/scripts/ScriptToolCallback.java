@@ -159,7 +159,8 @@ final class ScriptToolCallback implements ToolCallback {
             return result.toString();
         }
         try {
-            return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(plain(result));
+            // kompakt: eingerücktes JSON kostet das LLM ein Vielfaches an Tokens, lesbar ist es auch so
+            return JSON.writeValueAsString(plain(result));
         } catch (RuntimeException e) {
             return result.toString();
         }

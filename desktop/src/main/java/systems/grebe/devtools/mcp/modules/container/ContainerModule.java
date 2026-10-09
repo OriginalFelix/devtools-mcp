@@ -93,6 +93,12 @@ public class ContainerModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Docker/Podman über container_*; fehlt ein schreibendes Tool, ist es in der App abgeschaltet "
+                + "– nachfragen statt Shell.";
+    }
+
+    @Override
     public boolean enabledByDefault() {
         return true;
     }

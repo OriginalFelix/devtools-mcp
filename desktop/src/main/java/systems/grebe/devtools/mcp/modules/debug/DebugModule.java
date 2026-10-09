@@ -52,6 +52,12 @@ public class DebugModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "debug_attach → debug_set_breakpoint → debug_wait_for_break → debug_stack/debug_variables → "
+                + "debug_detach; hält Threads der Ziel-JVM an.";
+    }
+
+    @Override
     public int order() {
         return 250;
     }

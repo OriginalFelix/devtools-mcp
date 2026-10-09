@@ -271,6 +271,38 @@ public class ToolRegistry {
         return local.activeTool(name);
     }
 
+    /** Aktives Tool samt Listenern, wie es der Client aufrufen würde (siehe {@link McpRuntime#enabledTool}). */
+    public Optional<ManagedToolCallback> enabledTool(String name) {
+        return local.enabledTool(name);
+    }
+
+    /** Definitionen aller aktiven Tools, auch der nicht angebotenen (siehe {@link ContextSettings#lazyTools}). */
+    public List<ToolDefinition> activeToolDefinitions() {
+        return local.activeToolDefinitions();
+    }
+
+    /** Umfang der angebotenen Tool-Definitionen (siehe {@link McpRuntime#exposed}). */
+    public McpRuntime.Exposed exposedTools() {
+        return local.exposed();
+    }
+
+    /** Wirksame Einstellungen des Moduls „Kontext sparen“; {@link ContextSettings#OFF} ohne das Modul. */
+    public ContextSettings contextSettings() {
+        ModuleState s;
+        synchronized (states) {
+            s = states.get(ContextSettings.ID);
+        }
+        if (s == null) {
+            return ContextSettings.OFF;
+        }
+        try {
+            return ContextSettings.of(effective(s).enabled(), config(ContextSettings.ID));
+        } catch (RuntimeException e) {
+            LOG.warn("Einstellungen von {} nicht lesbar – Kontext sparen aus", ContextSettings.ID, e);
+            return ContextSettings.OFF;
+        }
+    }
+
     // ------------------------------------------------------------------ Ändern
 
     public void setModuleEnabled(String moduleId, boolean enabled) {
@@ -398,8 +430,8 @@ public class ToolRegistry {
             s.settings = change.apply(s.settings);
             store.saveModule(moduleId, s.settings, secretKeys(s.module));
         }
-        if (AccessModule.ID.equals(moduleId)) {
-            refreshAll(); // globale Freigaben betreffen alle Module mit Projektlisten
+        if (AccessModule.ID.equals(moduleId) || ContextSettings.ID.equals(moduleId)) {
+            refreshAll(); // globale Freigaben bzw. Angebot und Beschreibungen betreffen alle Module
         } else {
             rebuild(moduleId);
         }
@@ -423,6 +455,7 @@ public class ToolRegistry {
                 local.scope().setUnrestricted(accessConfig().getBoolean(AccessModule.UNRESTRICTED));
             }
             SettingsResolver resolver = resolver();
+            local.setContext(contextSettings());
             local.rebuild(s.module, toolSettings(s), callListeners(), tool -> resolver.permitted(s.module, tool));
         }
         // Kein explizites notifyToolsListChanged(): addTool/removeTool benachrichtigen die Clients bereits selbst

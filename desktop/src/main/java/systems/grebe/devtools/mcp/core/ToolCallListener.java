@@ -11,8 +11,15 @@ import org.springframework.ai.mcp.McpToolUtils;
  */
 public interface ToolCallListener {
 
-    /** Ein abgeschlossener Aufruf. {@code sessionId} ist die MCP-Session des Clients, {@code null} wenn unbekannt. */
-    record ToolCall(String moduleId, String toolName, String input, String sessionId) {
+    /**
+     * Ein abgeschlossener Aufruf. {@code sessionId} ist die MCP-Session des Clients, {@code null} wenn unbekannt;
+     * {@code readOnly}, wenn das Tool als nur lesend markiert ist ({@link ToolHints}).
+     */
+    record ToolCall(String moduleId, String toolName, String input, String sessionId, boolean readOnly) {
+
+        public ToolCall(String moduleId, String toolName, String input, String sessionId) {
+            this(moduleId, toolName, input, sessionId, false);
+        }
     }
 
     /** @return das (ggf. ergänzte) Ergebnis, das an das LLM geht */

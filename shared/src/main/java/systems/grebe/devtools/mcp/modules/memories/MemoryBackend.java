@@ -1,8 +1,11 @@
 package systems.grebe.devtools.mcp.modules.memories;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+
+import systems.grebe.devtools.mcp.modules.shares.ShareViews;
 
 /**
  * Memory-Speicher aus Sicht von Tools und Oberfläche: im Backend (eingebettet oder auf dem Team-Server). Texte sind
@@ -48,4 +51,39 @@ public interface MemoryBackend {
                   String skill, String reference, List<String> tags, boolean temporaryOnly, int maxContentChars);
 
     String delete(long id, boolean temporaryOnly);
+
+    /**
+     * Hängt eine Datei mit beliebigem Inhalt (auch binär, ohne Größengrenze) an eine Memory an bzw. ersetzt die Datei
+     * gleichen Pfads.
+     *
+     * @param filePath  Name in der Memory, z.B. {@code screenshot.png}; {@code null} = Dateiname von {@code source}
+     * @param source    lokale Datei mit dem Inhalt
+     * @param mediaType z.B. {@code image/png}; {@code null} = aus dem Namen raten
+     */
+    String attachFile(long id, String filePath, Path source, String mediaType, boolean temporaryOnly);
+
+    String removeFile(long id, String filePath, boolean temporaryOnly);
+
+    /** Metadaten einer angehängten Datei; leer, wenn es Memory oder Datei nicht gibt. */
+    Optional<MemoryViews.File> file(long id, String filePath);
+
+    /** Inhalt einer angehängten Textdatei für das LLM; bei Binärem nur die Metadaten. */
+    String viewFile(long id, String filePath);
+
+    /** Schreibt den Inhalt einer angehängten Datei nach {@code target}; vorhandene wird ersetzt. */
+    String exportFile(long id, String filePath, Path target);
+
+    /**
+     * Gibt eine eigene Memory für Benutzer, Rollen oder alle frei bzw. nimmt Freigaben zurück ({@code revoke}); ohne
+     * Ziele nur der aktuelle Stand. Geteilte Memories sehen die Empfänger in Suche und Übersicht, schreibgeschützt.
+     */
+    String share(long id, ShareViews.Request request, boolean revoke);
+
+    /** Freigaben einer eigenen Memory. */
+    List<ShareViews.Share> shares(long id);
+
+    /** Mögliche Ziele einer Freigabe (Benutzer, Rollen, ggf. alle); ohne Team-Server leer. */
+    default List<ShareViews.Candidate> shareTargets() {
+        return List.of();
+    }
 }

@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.ToolHints;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Kind;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Node;
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
@@ -18,6 +19,7 @@ import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Key;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Stored;
 
 /** Tools des Graph-Moduls: Code-Graph je Projekt und Branch bauen (Graph-Storage des Backends oder Datei) und abfragen. */
+@ToolHints(readOnly = true, openWorld = false)
 public class GraphTools {
 
     private static final String PROJECT_PARAM = "Projektname (Ordnername) oder Pfad; leer = Standardprojekt";
@@ -52,6 +54,7 @@ public class GraphTools {
         return service.open(project, branch);
     }
 
+    @ToolHints(destructive = false, idempotent = true, openWorld = false)
     @Tool(name = "build", description = "Baut den Code-Graphen eines Java-Projekts für den ausgecheckten Git-Branch "
             + "(tree-sitter-AST, lokal, ohne LLM): Pakete, Dateien, Klassen/Interfaces/Enums/Records, Methoden, "
             + "Konstruktoren, Felder, Imports, Vererbung, Überschreibungen, Aufrufgraph und Communities. Speichert ihn "

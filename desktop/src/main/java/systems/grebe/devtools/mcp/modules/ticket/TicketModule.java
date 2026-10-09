@@ -138,6 +138,12 @@ public class TicketModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Tickets über ticket_*; steht ein Ticket-Schlüssel in Branch, Commit oder Aufgabe, zuerst "
+                + "ticket_get. Schreiben nur auf ausdrückliche Anweisung, Ergebnis mit Link melden.";
+    }
+
+    @Override
     public int order() {
         return 160;
     }

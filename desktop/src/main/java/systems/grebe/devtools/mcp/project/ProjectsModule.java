@@ -59,6 +59,12 @@ public class ProjectsModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "projects_list zuerst: die Namen dort gelten als Repository/Projekt in git_*, build_* und "
+                + "graph_*.";
+    }
+
+    @Override
     public boolean enabledByDefault() {
         return true;
     }

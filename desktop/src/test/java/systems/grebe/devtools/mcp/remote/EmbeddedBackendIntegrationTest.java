@@ -30,7 +30,10 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.core.Workspaces;
+import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
+import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
+import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 import systems.grebe.devtools.mcp.profile.Overrides;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -75,6 +78,12 @@ class EmbeddedBackendIntegrationTest {
 
     @Autowired
     SkillBackend skills;
+
+    @Autowired
+    MemoryBackend memories;
+
+    @Autowired
+    BackendFiles files;
 
     @Autowired
     ProfileService profiles;
@@ -161,6 +170,43 @@ class EmbeddedBackendIntegrationTest {
         assertThatThrownBy(() -> skills.create("deploy", "x", "y", null, null, 5_000))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("existiert bereits");
         assertThat(skills.details("deploy")).get().satisfies(d -> assertThat(d.content()).isEqualTo("1. bauen"));
+    }
+
+    @Test
+    void attachmentsTravelOverHttpInParts(@TempDir Path dir) throws Exception {
+        // größer als ein Teil, damit der Upload über mehrere Anfragen läuft
+        byte[] data = new byte[BackendFiles.CHUNK * 2 + 123];
+        new java.util.Random(7).nextBytes(data);
+        Path big = Files.write(dir.resolve("dump.bin"), data);
+
+        skills.create("mit-anhang", "Mit Anhang.", "Siehe assets/dump.bin", null, null, 5_000);
+        assertThat(skills.attachFile("mit-anhang", "assets/dump.bin", big, null, null))
+                .contains("application/octet-stream", "angelegt");
+        SkillViews.File f = skills.file("mit-anhang", "assets/dump.bin").orElseThrow();
+        assertThat(f.size()).isEqualTo(data.length);
+        assertThat(store.dir().resolve("blobs/local@example.com").resolve(f.blob())).hasBinaryContent(data);
+        skills.exportFile("mit-anhang", "assets/dump.bin", dir.resolve("skill.bin"));
+        assertThat(dir.resolve("skill.bin")).hasBinaryContent(data);
+        skills.writeFile("mit-anhang", "references/a.md", "# A", null, 5_000);
+        skills.exportFile("mit-anhang", "references/a.md", dir.resolve("a.md"));
+        assertThat(dir.resolve("a.md")).hasContent("# A");
+
+        String saved = memories.save("Mit Datei", "Siehe Anhang.", null, null, null, null, List.of(), 5_000);
+        long id = Long.parseLong(saved.replaceAll("^Memory #(\\d+).*$", "$1"));
+        assertThat(memories.attachFile(id, null, big, null, false)).contains("'dump.bin'", "angehängt");
+        assertThat(memories.details(id).orElseThrow().files()).extracting(MemoryViews.File::path)
+                .containsExactly("dump.bin");
+        memories.exportFile(id, "dump.bin", dir.resolve("memory.bin"));
+        assertThat(dir.resolve("memory.bin")).hasBinaryContent(data);
+        assertThat(memories.removeFile(id, "dump.bin", false)).contains("entfernt");
+
+        assertThatThrownBy(() -> files.download("0".repeat(64), dir.resolve("x")))
+                .hasMessageContaining("gibt es nicht");
+        // ohne Token kein Zugriff auf die Ablage
+        var anonymous = java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(
+                java.net.URI.create(backend.url() + "/blobs/" + f.blob())).build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(anonymous.statusCode()).isEqualTo(401);
     }
 
     @Test

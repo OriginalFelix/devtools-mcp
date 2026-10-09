@@ -5,6 +5,9 @@ import java.util.Locale;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import systems.grebe.devtools.mcp.api.MediaTypes;
+import systems.grebe.devtools.mcp.core.FileSource;
+import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ShellHints;
 
 /**
@@ -21,11 +24,14 @@ public class MemoryWriteTools {
     private final MemoryBackend service;
     private final int maxContentChars;
     private final boolean temporaryOnly;
+    private final LocalFiles files;
 
-    MemoryWriteTools(MemoryBackend service, int maxContentChars, boolean temporaryOnly) {
+    /** @param files woher {@code source_path} lesen darf */
+    MemoryWriteTools(MemoryBackend service, int maxContentChars, boolean temporaryOnly, LocalFiles files) {
         this.service = service;
         this.maxContentChars = maxContentChars;
         this.temporaryOnly = temporaryOnly;
+        this.files = files;
     }
 
     @Tool(name = "save", description = "Hält eine abgeschlossene Aktion als Memory fest. Nach Ticket-Review, "
@@ -66,6 +72,37 @@ public class MemoryWriteTools {
             @ToolParam(required = false, description = "Neuer Typ: PERMANENT, TEMPORARY oder INVOCATION") String type) {
         return service.update(id, title, content, append, type(type), project, skill, reference, tags, temporaryOnly,
                 maxContentChars);
+    }
+
+    @Tool(name = "attach_file", description = "Hängt eine Datei an eine Memory (Screenshot, Log, Export, "
+            + "Dokument …) – beliebiger Inhalt, ohne Größengrenze; gleicher file_path ersetzt. Genau eines: "
+            + "source_path (lokale Datei, beliebig groß), content_base64 (kleine Binärdatei) oder file_content (Text)."
+            + ShellHints.MEMORIES)
+    public String attachFile(
+            @ToolParam(description = MemoryReadTools.ID) long id,
+            @ToolParam(required = false, description = "Lokale Datei (absolut, aus freigegebenem Verzeichnis)")
+            String source_path,
+            @ToolParam(required = false, description = "Name in der Memory, z.B. 'screenshot.png'; leer bei "
+                    + "source_path = Dateiname") String file_path,
+            @ToolParam(required = false, description = "Dateiinhalt als Base64") String content_base64,
+            @ToolParam(required = false, description = "Dateiinhalt als Text") String file_content,
+            @ToolParam(required = false, description = "Medientyp, z.B. 'image/png'; leer = aus dem Namen raten")
+            String media_type) {
+        try (FileSource source = FileSource.of(file_content, content_base64, source_path, files)) {
+            if ((file_path == null || file_path.isBlank()) && source.name().isEmpty()) {
+                throw new IllegalArgumentException("'file_path' fehlt, z.B. 'notiz.md' oder 'screenshot.png'.");
+            }
+            String type = media_type == null || media_type.isBlank() ? null
+                    : MediaTypes.orGuess(media_type, file_path);
+            return service.attachFile(id, file_path, source.path(), type, temporaryOnly);
+        }
+    }
+
+    @Tool(name = "remove_file", description = "Entfernt eine angehängte Datei von einer Memory." + ShellHints.MEMORIES)
+    public String removeFile(
+            @ToolParam(description = MemoryReadTools.ID) long id,
+            @ToolParam(description = MemoryReadTools.FILE) String file_path) {
+        return service.removeFile(id, file_path, temporaryOnly);
     }
 
     /** Typ aus der Tool-Eingabe, großzügig gelesen; leer = {@code null}. */

@@ -159,28 +159,50 @@ class McpServerIntegrationTest {
     }
 
     @Test
-    void initializeSendsInstructionsPreferringMcpToolsOverShell() {
+    void initializeSendsInstructionsPreferringMcpToolsOverShell() throws Exception {
+        // Standard: kompakt („Kontext sparen“) – je Modul Überschrift und Kurzfassung, Details über context_guide
         String instructions = client.getServerInstructions();
         assertThat(instructions)
                 .startsWith("# DevTools MCP")
-                .contains("statt eines Shell-/Terminal-Befehls")
-                // Git-Abschnitt mit Zuordnung Shell-Befehl -> Tool
-                .contains("## Git – Tools `git_*`", "NICHT `git` im Terminal", "`git_status` (statt `git status`)",
-                        "`git_commit` (statt `git commit`)", "`git_list_repositories`")
+                .contains("statt eines Shell-/Terminal-Befehls", "`context_guide(module=<id>)`", "context_slice")
+                .contains("## Git – Tools `git_*`", "Alle Git-Aufgaben über git_*", "git_list_repositories")
                 // alle Module mit Hinweisen, auch standardmäßig deaktivierte (Instructions stehen ab Start fest)
                 .contains("Tools `build_*`", "Tools `container_*`", "Tools `sonar_*`", "Tools `jvm_*`",
                         "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`", "Tools `graph_*`",
-                        "`graph_report`", "`graph_neighbors`", "Tools `ticket_*`", "`ticket_get`", "`ticket_board`",
-                        "## Skills – Tools `skills_*`", "`skills_list`", "Tools `maven_*`", "`maven_breaking_changes`", "`skills_create`", "`skills_patch`",
-                        "## Memories – Tools `memories_*`", "`memories_search`", "`memories_save`",
-                        "## Berechtigungen – Tools `permissions_*`", "`permissions_request`")
-                .doesNotContain("Java-Grundeinstellungen"); // reines Einstellungsmodul ohne Instructions
+                        "Tools `ticket_*`", "ticket_get", "## Skills – Tools `skills_*`", "skills_list", "skills_patch",
+                        "Tools `maven_*`", "## Memories – Tools `memories_*`", "memories_search", "memories_save",
+                        "## Berechtigungen – Tools `permissions_*`", "permissions_request")
+                .doesNotContain("Java-Grundeinstellungen") // reines Einstellungsmodul ohne Instructions
+                .doesNotContain("`git_commit` (statt `git commit`)"); // die Tabelle liefert context_guide
+        assertThat(instructions.length()).as("kompakte Instructions").isLessThan(14_000);
         // Reihenfolge wie in der Modulliste: order, dann Anzeigename – Skills zuerst, damit sie vor jeder Aufgabe greifen
         assertThat(instructions.indexOf("Tools `skills_*`")).isLessThan(instructions.indexOf("Tools `memories_*`"));
         assertThat(instructions.indexOf("Tools `memories_*`")).isLessThan(instructions.indexOf("Tools `git_*`"));
         assertThat(instructions.indexOf("Tools `git_*`")).isLessThan(instructions.indexOf("Tools `container_*`"));
         assertThat(instructions.indexOf("Tools `container_*`")).isLessThan(instructions.indexOf("Tools `jvm_*`"));
         assertThat(instructions.indexOf("Tools `jvm_*`")).isLessThan(instructions.indexOf("Tools `debug_*`"));
+
+        // ausführliche Hinweise eines Moduls auf Abruf
+        assertThat(text(client.callTool(callRequest("context_guide", Map.of("module", "git")))))
+                .contains("NICHT `git` im Terminal", "`git_status` (statt `git status`)",
+                        "`git_commit` (statt `git commit`)", "`git_list_repositories`");
+        assertThat(text(client.callTool(callRequest("context_guide", Map.of("module", "graph")))))
+                .contains("`graph_report`", "`graph_neighbors`");
+
+        // abgeschaltet: wieder alle Modul-Hinweise vollständig, für jede neue Sitzung
+        registry.updateConfig("context", Map.of("compactInstructions", "false"));
+        var transport = HttpClientStreamableHttpTransport.builder("http://127.0.0.1:" + port).endpoint("/mcp").build();
+        McpSyncClient full = McpClient.sync(transport).requestTimeout(java.time.Duration.ofSeconds(30))
+                .clientInfo(new McpSchema.Implementation("test-client", "1.0")).build();
+        try {
+            assertThat(full.initialize().instructions())
+                    .contains("## Git – Tools `git_*`", "NICHT `git` im Terminal", "`git_status` (statt `git status`)",
+                            "`git_commit` (statt `git commit`)", "`graph_report`", "`ticket_board`",
+                            "`maven_breaking_changes`", "`skills_create`");
+        } finally {
+            full.closeGracefully();
+            registry.updateConfig("context", Map.of());
+        }
     }
 
     @Test
@@ -216,9 +238,10 @@ class McpServerIntegrationTest {
                     Map.entry("projects_", ShellHints.PROJECTS), Map.entry("maven_", ShellHints.MAVEN),
                     Map.entry("decompile_", ShellHints.DECOMPILE), Map.entry("pr_", ShellHints.PR),
                     Map.entry("scripts_", ShellHints.SCRIPTS), Map.entry("permissions_", ShellHints.PERMISSIONS),
-                    Map.entry("invocations_", ShellHints.INVOCATIONS), Map.entry("share_", ShellHints.SHARE));
+                    Map.entry("invocations_", ShellHints.INVOCATIONS), Map.entry("share_", ShellHints.SHARE),
+                    Map.entry("context_", ShellHints.CONTEXT));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(185); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(195); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);

@@ -24,6 +24,8 @@ public enum Permission {
             "Projekte anderer Benutzer ändern, freigeben und löschen."),
     TEMPLATES_PUBLISH("templates.publish", "Vorlagen veröffentlichen",
             "Skills und Skripte als globale Vorlage für alle Benutzer veröffentlichen und zurückziehen."),
+    SHARES_ALL("shares.all", "Mit allen teilen",
+            "Eigene Skills und Memories für alle Benutzer freigeben (einzelne Benutzer und Rollen darf jeder)."),
     TOKENS_CREATE("tokens.create", "Desktop-Tokens erzeugen",
             "Persönliche Tokens für den Start ohne Anmeldedialog (headless, Automatisierung).");
 

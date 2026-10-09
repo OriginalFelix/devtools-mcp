@@ -66,6 +66,7 @@ public class ScriptManager {
     private final ObjectProvider<ScriptCache> cache;
     private final ScriptCompiler compiler = new ScriptCompiler();
     private final JavaScriptCompiler javaCompiler = new JavaScriptCompiler();
+    private final ToolCaller toolCaller;
     private final GherkinScriptCompiler gherkinCompiler;
     private final Map<String, Entry> loaded = new LinkedHashMap<>();
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
@@ -80,7 +81,13 @@ public class ScriptManager {
         this.backend = backend;
         this.registry = registry;
         this.cache = cache;
-        this.gherkinCompiler = new GherkinScriptCompiler(new RegistryToolCaller(registry::getObject));
+        this.toolCaller = new RegistryToolCaller(registry::getObject);
+        this.gherkinCompiler = new GherkinScriptCompiler(toolCaller);
+    }
+
+    /** Ruft aktive Tools auf – für Gherkin-Schritte und {@code scripts_run}. */
+    ToolCaller toolCaller() {
+        return toolCaller;
     }
 
     /** Nach der Registrierung der eingebauten Module; den ersten Stand liefert die Subscription bzw. dieser Abgleich. */

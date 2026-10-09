@@ -72,8 +72,10 @@ public final class LoginWindow {
                 : "Team-Server " + backend.url());
         where.getStyleClass().add("form-help");
         Hyperlink change = new Hyperlink("Backend ändern…");
-        change.setOnAction(e -> changeBackend());
-        HBox backendLine = new HBox(6, where, change);
+        change.setOnAction(e -> changeBackend(backend.embedded() ? "" : backend.url()));
+        Hyperlink discover = new Hyperlink("Im Netzwerk suchen…");
+        discover.setOnAction(e -> DiscoveryDialog.search(stage, discover::setDisable, this::changeBackend));
+        HBox backendLine = new HBox(6, where, change, discover);
         backendLine.setAlignment(Pos.BASELINE_LEFT);
         HBox head = new HBox(12, icon, new VBox(2, title, backendLine));
         head.setAlignment(Pos.CENTER_LEFT);
@@ -251,8 +253,8 @@ public final class LoginWindow {
     }
 
     /** Team-Server eintragen oder zurück zum eingebetteten Backend – wirksam nach einem Neustart. */
-    private void changeBackend() {
-        TextInputDialog d = new TextInputDialog(backend.embedded() ? "" : backend.url());
+    private void changeBackend(String initial) {
+        TextInputDialog d = new TextInputDialog(initial);
         d.initOwner(stage);
         d.setTitle("Backend ändern");
         d.setHeaderText("Adresse des Team-Servers, z.B. https://devtools.example.com\n"
