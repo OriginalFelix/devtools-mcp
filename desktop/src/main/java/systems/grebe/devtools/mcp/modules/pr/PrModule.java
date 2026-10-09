@@ -67,7 +67,7 @@ public class PrModule implements ToolModule {
     @Override
     public String description() {
         return "GitHub, GitLab, Bitbucket und weitere Git-Server (erweiterbar per ServiceLoader): Pull/Merge Requests "
-                + "auflisten, lesen, Diff, CI-Status und Kommentar-Threads; optional anlegen, kommentieren, beantworten, "
+                + "auflisten, lesen, Diff, CI-Status, Berichte von Integrationen und Kommentar-Threads; optional anlegen, kommentieren, beantworten, "
                 + "Threads auflösen, mergen und den Branch pushen (einzeln schaltbar, je Repository freigebbar).";
     }
 
@@ -80,9 +80,12 @@ public class PrModule implements ToolModule {
                 Nummer, ein voller Schlüssel (owner/repo#12, gruppe/projekt!12) oder seine URL.
                 - `pr_providers`: aktive Server, angemeldeter Benutzer, Formate; `pr_list`: Pull Requests filtern \
                 (Status, Autor `me`, Quell-/Ziel-Branch – z.B. den PR zum aktuellen Branch finden).
-                - `pr_get`: Titel, Beschreibung, Branches, Reviewer, Freigaben, Merge-Status und CI-Checks; `pr_diff`: \
+                - `pr_get`: Titel, Beschreibung, Branches, Reviewer, Freigaben, Merge-Status, CI-Checks und Kurzfassung der \
+                Integrationen; `pr_diff`: \
                 geänderte Dateien mit Diff; `pr_comments`: alle Kommentare als Threads mit ID, Datei/Zeile und Status \
-                (`unresolved=true` für die offenen).
+                (`unresolved=true` für die offenen), Kommentare von Apps/Bots als [Integration]; `pr_insights`: Berichte \
+                von Integrationen (SonarQube, Tests, Scans) mit Befunden an Datei und Zeile.
+                - `pr_comment` mit `path` und `line` kommentiert eine Codezeile, mit `path` ohne `line` die ganze Datei.
                 - Pull Request anlegen (`pr_create`, falls angeboten): Branch mit git_* committen, mit `pr_push` pushen \
                 (falls angeboten, sonst den Nutzer bitten), Titel und Beschreibung aus git_log/git_diff zusammenfassen.
                 - Review-Kommentare abarbeiten: `pr_comments unresolved=true` → Code ändern und committen → `pr_push` → je \
@@ -143,7 +146,7 @@ public class PrModule implements ToolModule {
                 ConfigField.of(ALLOW_CREATE, "Pull Requests anlegen/bearbeiten erlauben", FieldType.BOOLEAN)
                         .withDefault("false").withHelp("pr_create, pr_update"),
                 ConfigField.of(ALLOW_COMMENT, "Kommentieren und antworten erlauben", FieldType.BOOLEAN)
-                        .withDefault("false").withHelp("pr_comment (allgemein oder an einer Codezeile), pr_reply"),
+                        .withDefault("false").withHelp("pr_comment (allgemein, an einer Codezeile oder an einer Datei), pr_reply"),
                 ConfigField.of(ALLOW_RESOLVE, "Threads auflösen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("pr_resolve: Kommentar-Threads als erledigt markieren bzw. wieder öffnen"),
                 ConfigField.of(ALLOW_MERGE, "Mergen erlauben", FieldType.BOOLEAN).withDefault("false")

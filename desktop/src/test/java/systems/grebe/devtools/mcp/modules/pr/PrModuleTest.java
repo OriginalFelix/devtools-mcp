@@ -56,7 +56,7 @@ class PrModuleTest {
     void readToolsAlwaysWriteToolsPerSwitch() {
         List<ToolCallback> tools = module.createTools(ModuleConfig.of(module.configSchema(), Map.of()));
         assertThat(tools).extracting(t -> t.getToolDefinition().name())
-                .containsExactlyInAnyOrder("providers", "list", "get", "diff", "comments");
+                .containsExactlyInAnyOrder("providers", "list", "get", "diff", "comments", "insights");
         List<ToolCallback> all = module.createTools(ModuleConfig.of(module.configSchema(), Map.of("allowCreate", "true",
                 "allowComment", "true", "allowResolve", "true", "allowMerge", "true", "allowPush", "true")));
         assertThat(all).extracting(t -> t.getToolDefinition().name()).contains("create", "update", "comment", "reply",

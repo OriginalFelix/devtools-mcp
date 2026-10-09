@@ -381,9 +381,10 @@ final class BitbucketDataCenter implements GitServer {
             boolean task = "BLOCKER".equals(text(c.path("severity")));
             Boolean resolved = task ? "RESOLVED".equals(text(c.path("state")))
                     : c.has("threadResolved") ? c.path("threadResolved").asBoolean(false) : null;
-            out.add(new Thread(text(c.path("id")), task ? "Aufgabe" : code ? "Code" : "Kommentar", resolved,
-                    code ? text(anchor.path("path")) : null,
-                    code && anchor.path("line").isNumber() ? anchor.path("line").asInt() : null,
+            // Anker ohne Zeile = Kommentar zur ganzen Datei
+            boolean line = code && anchor.path("line").isNumber();
+            out.add(new Thread(text(c.path("id")), task ? "Aufgabe" : line ? "Code" : code ? "Datei" : "Kommentar",
+                    resolved, code ? text(anchor.path("path")) : null, line ? anchor.path("line").asInt() : null,
                     code && anchor.path("orphaned").asBoolean(false), comments));
         }
         out.sort(Comparator.comparing(t -> String.valueOf(t.comments().getFirst().created())));
@@ -391,8 +392,39 @@ final class BitbucketDataCenter implements GitServer {
     }
 
     private static void collect(JsonNode c, List<Comment> out) {
-        out.add(new Comment(text(c.path("id")), user(c.path("author")), date(c.path("createdDate")), text(c.path("text"))));
+        out.add(new Comment(text(c.path("id")), user(c.path("author")), date(c.path("createdDate")), text(c.path("text")),
+                CodeInsights.integration(c.path("author"))));
         c.path("comments").forEach(child -> collect(child, out));
+    }
+
+    /** Code-Insights-Berichte zum letzten Commit des Quell-Branches samt Annotations. */
+    @Override
+    public List<Insight> insights(String key, String project) {
+        Ref r = ref(key, project);
+        String head = text(http.getJson(r.path()).path("fromRef").path("latestCommit"));
+        List<Insight> out = new ArrayList<>();
+        if (head == null) {
+            return out;
+        }
+        String base = "/rest/insights/1.0/projects/" + r.projectKey() + "/repos/" + r.slug() + "/commits/" + head
+                + "/reports";
+        for (JsonNode rep : pages(base + query("limit", 100), 100)) {
+            String id = text(rep.path("key"));
+            JsonNode res = http.getJson(base + "/" + HttpJson.enc(id) + "/annotations");
+            JsonNode list = res.isArray() ? res : res.path("annotations");
+            List<Annotation> annotations = new ArrayList<>();
+            for (JsonNode a : list) {
+                JsonNode line = a.path("line");
+                annotations.add(new Annotation(text(a.path("path")), line.isNumber() && line.asInt() > 0
+                        ? line.asInt() : null, text(a.path("severity")), text(a.path("type")), text(a.path("message")),
+                        text(a.path("link"))));
+            }
+            out.add(new Insight(id, text(rep.path("title")), text(rep.path("reporter")), text(rep.path("result")),
+                    text(rep.path("details")), text(rep.path("link")), date(rep.path("createdDate")),
+                    CodeInsights.data(rep.path("data")), annotations,
+                    res.path("totalCount").asInt(annotations.size())));
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ Schreiben
@@ -483,19 +515,23 @@ final class BitbucketDataCenter implements GitServer {
         ObjectNode body = HttpJson.object();
         body.put("text", c.body());
         if (c.inline()) {
-            if (c.line() == null || c.line() < 1) {
-                throw new IllegalArgumentException("Bitbucket: Code-Kommentar braucht 'line' (Zeile der neuen Fassung).");
+            if (c.line() != null && c.line() < 1) {
+                throw new IllegalArgumentException("Bitbucket: 'line' muss ≥ 1 sein (Zeile der neuen Fassung).");
             }
+            // ohne Zeile: Kommentar zur ganzen Datei
             ObjectNode anchor = body.putObject("anchor");
             anchor.put("path", c.path());
-            anchor.put("line", c.line());
-            anchor.put("lineType", lineType(r, c.path(), c.line()));
-            anchor.put("fileType", "TO");
+            if (!c.fileLevel()) {
+                anchor.put("line", c.line());
+                anchor.put("lineType", lineType(r, c.path(), c.line()));
+                anchor.put("fileType", "TO");
+            }
             anchor.put("diffType", "EFFECTIVE");
         }
         JsonNode n = http.post(r.path() + "/comments", body).body();
-        return new WriteResult(r.key(), c.inline() ? "Code-Kommentar an " + c.path() + ":" + c.line() + " hinzugefügt"
-                : "Kommentar hinzugefügt", webUrl(r) + "/overview?commentId=" + text(n.path("id")), text(n.path("id")));
+        return new WriteResult(r.key(), (c.fileLevel() ? "Datei-Kommentar an " + c.path()
+                : c.inline() ? "Code-Kommentar an " + c.path() + ":" + c.line() : "Kommentar") + " hinzugefügt",
+                webUrl(r) + "/overview?commentId=" + text(n.path("id")), text(n.path("id")));
     }
 
     /** {@code ADDED} oder {@code CONTEXT} – Bitbucket verankert Kommentare nur an Zeilen des Diffs. */
