@@ -102,6 +102,27 @@ class WindowToolsTest {
         assertThat(desktop.events).startsWith("move 300,150"); // dieselbe Stelle wie beim Bild vom Bildschirm
     }
 
+    /**
+     * „Kontext sparen“ ersetzt gleiche Ergebnisse lesender Tools durch einen Verweis. Der Text eines Screenshots ist
+     * deshalb nur dann gleich, wenn auch das Bild gleich ist – sonst hieße es „unverändert“ trotz neuem Bild.
+     */
+    @Test
+    void screenshotTextChangesExactlyWhenTheImageChanges() {
+        bind();
+        desktop.independent = true;
+        desktop.foreground = 0x99;
+        desktop.backgroundImage = new java.awt.image.BufferedImage(2560, 1440, java.awt.image.BufferedImage.TYPE_INT_RGB);
+
+        String first = ToolImages.capture(() -> read.screenshot("0x1A2B")).value();
+        String same = ToolImages.capture(() -> read.screenshot("0x1A2B")).value();
+        desktop.backgroundImage.setRGB(10, 10, 0xFFFFFF);
+        String changed = ToolImages.capture(() -> read.screenshot("0x1A2B")).value();
+
+        assertThat(first).contains("Prüfsumme ");
+        assertThat(same).isEqualTo(first);
+        assertThat(changed).isNotEqualTo(first);
+    }
+
     @Test
     void ownPointerWithoutBackgroundCaptureWarnsInsteadOfActivating() {
         bind();

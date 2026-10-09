@@ -27,6 +27,15 @@ class ToolSessionTest {
         assertThat(ToolSession.current()).isEqualTo(ToolSession.LOCAL);
     }
 
+    /** Skripte rufen Tools ohne MCP-Kontext auf – sie handeln für die KI, die das Skript aufgerufen hat. */
+    @Test
+    void withoutMcpExchangeTheRunningSessionIsKept() {
+        ToolSession s1 = new ToolSession("s1", "Claude Code");
+
+        assertThat(ToolSession.callIn(s1, () -> ToolSession.of(null))).isEqualTo(s1);
+        assertThat(ToolSession.callIn(s1, () -> ToolSession.of(new ToolContext(Map.of())))).isEqualTo(s1);
+    }
+
     @Test
     void withoutMcpExchangeTheSessionIsLocal() {
         assertThat(ToolSession.of(null)).isEqualTo(ToolSession.LOCAL);

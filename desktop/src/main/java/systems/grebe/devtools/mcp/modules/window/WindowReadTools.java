@@ -183,12 +183,16 @@ public class WindowReadTools {
             BufferedImage image = factor < 1.0 ? scale(shot, factor) : shot;
             // Bildpixel je Bildschirmpunkt – das Bild kann physische Pixel haben (PrintWindow bei HiDPI)
             support.session().scale(w.id(), image.getWidth() / (double) b.width);
-            ToolImages.attach("image/png", png(image));
+            byte[] png = png(image);
+            ToolImages.attach("image/png", png);
             StringBuilder sb = new StringBuilder(describe(w)).append('\n')
                     .append("Bild ").append(image.getWidth()).append('×').append(image.getHeight()).append(" px");
             if (factor < 1.0) {
                 sb.append(String.format(Locale.ROOT, " (verkleinert, Faktor %.3f)", factor));
             }
+            // „Kontext sparen“ meldet gleiche Ergebnisse lesender Tools als „unverändert“ – mit der Prüfsumme ist der
+            // Text nur dann gleich, wenn es auch das Bild ist
+            sb.append(", Prüfsumme ").append(checksum(png));
             sb.append(". Koordinaten für Eingaben in Pixeln dieses Bildes, Ursprung oben links.");
             if (!front) {
                 sb.append("\nAchtung: Das Fenster ließ sich nicht in den Vordergrund holen – das Bild kann verdeckte "
@@ -235,6 +239,12 @@ public class WindowReadTools {
             g.dispose();
         }
         return out;
+    }
+
+    private static String checksum(byte[] data) {
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(data);
+        return String.format(Locale.ROOT, "%08x", crc.getValue());
     }
 
     private static byte[] png(BufferedImage image) {

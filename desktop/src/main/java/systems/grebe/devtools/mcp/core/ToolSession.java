@@ -40,14 +40,18 @@ public record ToolSession(String id, String client) {
         }
     }
 
-    /** Session aus dem Tool-Kontext, den Spring AI beim Aufruf über MCP mitgibt; sonst {@link #LOCAL}. */
+    /**
+     * Session aus dem Tool-Kontext, den Spring AI beim Aufruf über MCP mitgibt; ohne MCP-Kontext die laufende
+     * ({@link #current()}) – ruft z.B. ein Skript Tools auf, handeln sie für die KI, die das Skript aufgerufen hat.
+     * Außerhalb jedes Aufrufs {@link #LOCAL}.
+     */
     public static ToolSession of(ToolContext toolContext) {
         if (toolContext == null) {
-            return LOCAL;
+            return current();
         }
         Object exchange = toolContext.getContext().get(McpToolUtils.TOOL_CONTEXT_MCP_EXCHANGE_KEY);
         if (!(exchange instanceof McpSyncServerExchange e) || e.sessionId() == null) {
-            return LOCAL;
+            return current();
         }
         String client = e.getClientInfo() == null ? null : e.getClientInfo().name();
         return new ToolSession(e.sessionId(), client == null || client.isBlank() ? null : client);

@@ -121,6 +121,13 @@ public class WindowModule implements ToolModule {
     }
 
     @Override
+    public String briefInstructions() {
+        return "Fenster anderer Programme nur über window_*, nie per Shell/PowerShell: window_list → window_bind "
+                + "(Programme starten mit window_launch), nach jeder Eingabe window_screenshot prüfen, am Ende "
+                + "window_unbind. Keine Passwörter eintippen.";
+    }
+
+    @Override
     public int order() {
         return 150;
     }
