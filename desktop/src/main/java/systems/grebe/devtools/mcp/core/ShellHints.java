@@ -61,6 +61,9 @@ public final class ShellHints {
     public static final String PR = " Pull/Merge Requests (GitHub, GitLab, Bitbucket) immer über die pr_*-Tools, nicht "
             + "mit `gh pr`/`glab mr` in der Shell, per `curl` gegen die REST-API oder im Browser.";
 
+    public static final String CI = " CI/CD-Builds (Jenkins, GitLab CI/CD, GitHub Actions) immer über die ci_*-Tools, "
+            + "nicht mit `gh run`/`glab ci` in der Shell, per `curl` gegen die REST-API oder im Browser.";
+
     public static final String SSH =" Konfigurierte SSH-Server immer über die ssh_*-Tools ansprechen, nicht mit "
             + "`ssh`, `scp` oder `sftp` in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
 
@@ -104,7 +107,8 @@ public final class ShellHints {
             java.util.Map.entry("decompile", DECOMPILE), java.util.Map.entry("debug", DEBUG),
             java.util.Map.entry("skills", SKILLS), java.util.Map.entry("memories", MEMORIES),
             java.util.Map.entry("scripts", SCRIPTS), java.util.Map.entry("graph", GRAPH),
-            java.util.Map.entry("ticket", TICKET), java.util.Map.entry("pr", PR), java.util.Map.entry("ssh", SSH),
+            java.util.Map.entry("ticket", TICKET), java.util.Map.entry("pr", PR), java.util.Map.entry("ci", CI),
+            java.util.Map.entry("ssh", SSH),
             java.util.Map.entry("jdbc", JDBC), java.util.Map.entry("dolt", DOLT), java.util.Map.entry("chat", CHAT),
             java.util.Map.entry("invocations", INVOCATIONS), java.util.Map.entry("share", SHARE),
             java.util.Map.entry("mail", MAIL), java.util.Map.entry("projects", PROJECTS),

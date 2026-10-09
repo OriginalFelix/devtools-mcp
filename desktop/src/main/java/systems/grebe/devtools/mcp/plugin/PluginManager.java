@@ -39,6 +39,7 @@ import systems.grebe.devtools.mcp.core.ServiceProvider;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider;
+import systems.grebe.devtools.mcp.modules.ci.spi.CiProvider;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
@@ -63,7 +64,7 @@ public class PluginManager implements AutoCloseable {
 
     /** Provider-Schnittstellen, deren Implementierungen Plugins über {@code META-INF/services} beisteuern können. */
     public static final List<Class<? extends ServiceProvider>> PROVIDER_TYPES = List.of(TicketProvider.class,
-            ChatProvider.class, GitServerProvider.class, ContainerRuntimeProvider.class);
+            ChatProvider.class, GitServerProvider.class, CiProvider.class, ContainerRuntimeProvider.class);
 
     public enum State {
         /** Geladen und aktiv, Module registriert. */

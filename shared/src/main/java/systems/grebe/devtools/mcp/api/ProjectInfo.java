@@ -14,11 +14,12 @@ public record ProjectInfo(long id, String name, String owner, String toolName, b
 
     /** Modul → Feld, das die Desktop-App aus den zugeordneten Projektverzeichnissen füllt. */
     public static final Map<String, String> DIRECTORY_FIELDS = Map.of("git", "repositories", "build", "projects",
-            "graph", "projects", "pr", "repositories");
+            "graph", "projects", "pr", "repositories", "ci", "repositories");
 
     /** Modul → Feld mit dem Standardprojekt. */
     public static final Map<String, String> DEFAULT_FIELDS = Map.of("git", "defaultRepository",
-            "build", "defaultProject", "graph", "defaultProject", "pr", "defaultRepository");
+            "build", "defaultProject", "graph", "defaultProject", "pr", "defaultRepository", "ci",
+            "defaultRepository");
 
     /** Ob die Desktop-App das Feld bei Server-Anbindung aus den Projekten füllt (Überschreiben wirkungslos). */
     public static boolean projectField(String moduleId, String key) {
