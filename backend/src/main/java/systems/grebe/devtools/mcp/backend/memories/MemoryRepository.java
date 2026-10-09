@@ -26,6 +26,10 @@ public interface MemoryRepository extends JpaRepository<Memory, Long>, JpaSpecif
     @Query("select count(f) from MemoryFile f where f.memory.owner = :owner and f.blob = :blob")
     long countFileReferences(@Param("owner") String owner, @Param("blob") String blob);
 
+    /** Eigentümer der freigegebenen Memories ({@code ids}), deren angehängte Dateien auf diesen Inhalt verweisen. */
+    @Query("select distinct f.memory.owner from MemoryFile f where f.blob = :blob and f.memory.id in :ids")
+    List<String> ownersOfBlob(@Param("ids") List<Long> ids, @Param("blob") String blob);
+
     /** Alle verwendeten Inhalte der Dateiablage als Paare (Eigentümer, SHA-256). */
     @Query("select f.memory.owner, f.blob from MemoryFile f")
     List<Object[]> fileReferences();

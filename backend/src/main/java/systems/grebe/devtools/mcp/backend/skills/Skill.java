@@ -144,6 +144,11 @@ public class Skill {
         templateRevision = null;
     }
 
+    /** Löst eine Kopie von ihrer Herkunft (Kopie eines geteilten Skills statt einer Vorlage). */
+    void unlinkTemplate() {
+        this.templateRevision = null;
+    }
+
     /** Verknüpft einen eigenen Skill nach dem Veröffentlichen mit der Vorlage (er gilt dann als deren Kopie). */
     void linkTemplate(int templateRevision) {
         this.templateRevision = templateRevision;

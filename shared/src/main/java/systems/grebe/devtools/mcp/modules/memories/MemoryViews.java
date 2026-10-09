@@ -47,18 +47,31 @@ public final class MemoryViews {
      * @param reference Bezug wie Ticket-Key, PR, Commit oder leer
      * @param type      Lebensdauer; {@code null} gilt als {@link Type#PERMANENT}
      * @param files     angehängte Dateien
+     * @param owner     bei einer von einem anderen Benutzer geteilten Memory dessen E-Mail, sonst leer
      */
     public record Entry(long id, String title, String content, String project, String skill, String reference,
-                        List<String> tags, Type type, Instant createdAt, Instant updatedAt, List<File> files) {
+                        List<String> tags, Type type, Instant createdAt, Instant updatedAt, List<File> files,
+                        String owner) {
 
         public Entry {
             files = files == null ? List.of() : List.copyOf(files);
+        }
+
+        /** Eigene Memory. */
+        public Entry(long id, String title, String content, String project, String skill, String reference,
+                     List<String> tags, Type type, Instant createdAt, Instant updatedAt, List<File> files) {
+            this(id, title, content, project, skill, reference, tags, type, createdAt, updatedAt, files, null);
         }
 
         /** Ohne Dateien. */
         public Entry(long id, String title, String content, String project, String skill, String reference,
                      List<String> tags, Type type, Instant createdAt, Instant updatedAt) {
             this(id, title, content, project, skill, reference, tags, type, createdAt, updatedAt, List.of());
+        }
+
+        /** Von einem anderen Benutzer geteilt – schreibgeschützt. */
+        public boolean shared() {
+            return owner != null;
         }
 
         public boolean temporary() {

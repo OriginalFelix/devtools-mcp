@@ -28,8 +28,8 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
-| **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Schalter (Standard aus): `skills_delete` |
-| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update`, `memories_attach_file`, `memories_remove_file` · Schalter (Standard aus): `memories_delete` · Typ dauerhaft, temporär oder **Rückruf** (`INVOCATION`) |
+| **Skills** (Spring Data JPA, Standard H2) | registrierte Abläufe je Aufgabentyp (z.B. `ticket-review`): `skills_list`, `skills_view`, `skills_history` · schreibend (Standard an): `skills_create`, `skills_patch`, `skills_update`, `skills_write_file`, `skills_remove_file` · Selbstverbesserung: `skills_review` (Tool und MCP-Prompt) · Teilen (Standard an): `skills_share` · Schalter (Standard aus): `skills_delete` |
+| **Memories** (Spring Data JPA, Standard H2) | frühere Aktionen (was getan, entschieden, herausgefunden wurde): `memories_search`, `memories_view` · schreibend (Standard an): `memories_save`, `memories_update`, `memories_attach_file`, `memories_remove_file` · Teilen (Standard an): `memories_share` · Schalter (Standard aus): `memories_delete` · Typ dauerhaft, temporär oder **Rückruf** (`INVOCATION`) |
 | **Rückrufe** (Invocations) | lang laufende Aktion fertig → das LLM bekommt Ergebnis und hinterlegte Memory (Typ `INVOCATION`) per Channel, auch in einer später gestarteten Sitzung; danach wird die Memory gelöscht: `invocations_list`, `invocations_cancel` (siehe [Rückrufe](#rückrufe--ergebnis-lang-laufender-aktionen-an-das-llm)) |
 | **Kooperation** (MQTT 5, z.B. HiveMQ) | Austausch zwischen Claude-Instanzen auf verschiedenen Rechnern – anderer Nutzer oder eigenes weiteres Gerät: `share_peers`, `share_send` (Notiz, Memories, Skills, Dateien; Rückfrage bei Nutzer 1), `share_inbox`, `share_view`, `share_accept` (Rückfrage bei Nutzer 2), `share_decline` – über den Broker des Backends (HiveMQ CE im Team-Server bzw. eingebetteten Backend, Anmeldung mit dem Benutzerkonto, Absender geprüft) oder einen eigenen, optional Ende-zu-Ende verschlüsselt, neue Angebote und Antworten als Rückruf per Channel (siehe [Kooperation](#kooperation-zwischen-instanzen-und-geräten)) (Modul Standard: aus) |
 | **Skripte** (Groovy 5 oder Java per `javac`) | `scripts_list`, `scripts_view` (Quelltext, Historie, ohne Namen die Referenz) · je Schalter (Standard aus): `scripts_save`, `scripts_delete` – jedes Skript wird zur Laufzeit ein eigenes Modul mit Tools `<skript>_*`, gespeichert im Backend (siehe [Skripte](#skripte--eigene-tools-zur-laufzeit)) |
@@ -990,6 +990,7 @@ Tab **Benutzer** der Desktop-App, beides mit dem Recht „Benutzer und Rollen ve
   | Projekte anlegen | `projects.create` | eigene Projekte anlegen, ändern, freigeben |
   | Alle Projekte verwalten | `projects.manage-all` | Projekte anderer ändern, freigeben, löschen |
   | Vorlagen veröffentlichen | `templates.publish` | Skills und Skripte als globale Vorlage veröffentlichen/zurückziehen |
+  | Mit allen teilen | `shares.all` | eigene Skills und Memories für alle Benutzer freigeben (vorbelegt in der Rolle Benutzer) |
   | Desktop-Tokens erzeugen | `tokens.create` | persönliche Tokens für den Start ohne Anmeldedialog |
 
 * **Module und Tools:** `module:*` (alle Module und Tools, auch künftige aus Plugins und Skripten), `module:<id>` (ein
@@ -1286,8 +1287,8 @@ Entscheidungen, Datum.
   bei den Skills; Freigabe im Modul Memories unter „Dateien anhängen aus und speichern in“). Anhängen und Entfernen
   gelten als Änderung der Memory – temporäre gehen ohne Freigabe.
 * **Ablage:** im Backend neben den Skills (Tabelle `memory` in derselben Datenbank, Spring Data JPA mit
-  `MemoryRepository`/`MemoryService`), je Benutzerkonto (E-Mail) – andere Benutzer sehen sie nicht, globale Memories
-  gibt es nicht. GraphQL: `memories`, `memory`, `memorySearch`, `memoryView`, `memoryFile`, `memoryFileView`,
+  `MemoryRepository`/`MemoryService`), je Benutzerkonto (E-Mail) – andere Benutzer sehen sie nur, wenn sie
+  [geteilt](#skills-und-memories-teilen) sind; globale Memories gibt es nicht. GraphQL: `memories`, `memory`, `memorySearch`, `memoryView`, `memoryFile`, `memoryFileView`,
   `saveMemory`, `updateMemory`, `attachMemoryFile`, `removeMemoryFile`, `deleteMemory`, Subscription
   `memoriesChanged`.
 
@@ -1309,7 +1310,8 @@ räumt es kurz nach dem Start und dann täglich auf (ab einem Tag Alter). **Back
 Übertragen wird über HTTP statt GraphQL (`Authorization: Bearer <Token>` wie bei `/graphql`): `POST /blobs/uploads`,
 dann Teile zu 4 MB per `PUT /blobs/uploads/<id>?offset=<n>`, abgeschlossen mit `POST /blobs/uploads/<id>/complete`
 (liefert den SHA-256); angehängt wird anschließend per GraphQL (`attachSkillFile`, `attachMemoryFile`). `GET
-/blobs/<sha256>` liefert den Inhalt – eigene Dateien und die der globalen Vorlagen, fremde nicht. Durch die Teile
+/blobs/<sha256>` liefert den Inhalt – eigene Dateien, die der globalen Vorlagen und die Anhänge der für den Benutzer
+geteilten Skills und Memories, sonst keine fremden. Durch die Teile
 greift keine Grenze je Anfrage (WildFly `max-post-size`, Reverse-Proxy); ein Proxy muss Anfragen bis 4 MB durchlassen
 (nginx z.B. `client_max_body_size 8m;`).
 * **Schalter:** „Anlegen und Nachtragen erlauben“ (Standard an), „Löschen erlauben“ (Standard aus, nur für das LLM –
@@ -1318,6 +1320,34 @@ greift keine Grenze je Anfrage (WildFly `max-post-size`, Reverse-Proxy); ein Pro
   die Memory direkt vollständig.
 * **Typ:** `PERMANENT` (Standard), `TEMPORARY` (nur ausdrücklich, für Zwischenstände) oder `INVOCATION` (Rückruf, siehe
   unten). Temporäre und Rückruf-Memories darf das LLM ohne die Schalter anlegen, ändern und löschen.
+
+### Skills und Memories teilen
+
+Eigene Skills und Memories lassen sich auf dem Team-Server freigeben – für **einen anderen Benutzer**, für **alle
+Benutzer einer Rolle** oder für **alle**. Anders als die [Kooperation](#kooperation-zwischen-instanzen-und-geräten)
+(einmalige Kopie an eine Adresse) bleibt das Geteilte beim Eigentümer: Die Empfänger sehen immer den aktuellen Stand,
+schreibgeschützt, bis die Freigabe zurückgenommen wird.
+
+* **LLM:** `skills_share(name, users, roles, everyone, revoke)` bzw. `memories_share(id, …)` – Benutzer per Anmeldename
+  oder E-Mail, Rollen per Name; ohne Ziele zeigt das Tool die bestehenden Freigaben, `revoke=true` nimmt zurück. Vor
+  dem Freigeben fragt die App den Nutzer (MCP-Elicitation oder Dialog), Zurücknehmen geht ohne Rückfrage. Schalter
+  „Teilen erlauben“ im Modul Skills bzw. Memories (Standard an); auf dem Server braucht es das Recht auf das Tool.
+* **App:** Tab **Skills** bzw. **Memories**, Knopf **Teilen…** – bestehende Freigaben entfernen, Benutzer, Rolle oder
+  „Alle Benutzer“ hinzufügen.
+* **Empfänger:** Geteilte Skills stehen in `skills_list` mit `+` und „(von …)“, in der App mit Herkunft „geteilt“
+  (Filter „Nur mit mir geteilte“). Ein eigener Skill und eine globale Vorlage gleichen Namens gehen vor. Ändert das LLM
+  einen geteilten Skill, entsteht wie bei Vorlagen automatisch eine persönliche Kopie samt Zusatzdateien; löschen kann
+  ihn nur der Eigentümer. Geteilte Memories erscheinen in `memories_search` und der Übersicht („geteilt von …“) und
+  lassen sich samt Dateien lesen, aber nicht ändern, löschen oder weiter teilen. Rückrufe (`INVOCATION`) lassen sich
+  nicht teilen.
+* **Rechte:** Benutzer und Rollen darf jeder als Ziel angeben, „alle“ nur mit dem Systemrecht **Mit allen teilen**
+  (`shares.all`). Mögliche Ziele (aktive Benutzer mit E-Mail und Rollen) liefert `shareTargets` auch ohne
+  `users.manage`.
+* **Ablage:** Tabelle `item_share` in der Skill-Datenbank (Art, ID, Eigentümer, Ziel `USER`/`ROLE`/`ALL`, E-Mail bzw.
+  Rollenname). Wird eine Rolle umbenannt, wandern ihre Freigaben mit; wird sie gelöscht, entfallen sie, ebenso alle
+  Freigaben eines gelöschten Skills bzw. einer gelöschten Memory. GraphQL: `skillShares`, `memoryShares`,
+  `shareTargets`, `shareSkill`, `shareMemory`; `SkillSummary.scope` kennt `SHARED`, `SkillSummary.owner` und
+  `MemoryEntry.owner` nennen den Eigentümer.
 
 ### Rückrufe – Ergebnis lang laufender Aktionen an das LLM
 

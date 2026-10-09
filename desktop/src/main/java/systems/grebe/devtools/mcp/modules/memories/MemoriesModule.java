@@ -9,6 +9,7 @@ import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.backend.memories.Memory;
 import systems.grebe.devtools.mcp.config.DataHome;
@@ -18,6 +19,7 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.UserConfirmation;
 import systems.grebe.devtools.mcp.modules.skills.SkillsModule;
 
 /**
@@ -39,16 +41,25 @@ public class MemoriesModule implements ToolModule {
 
     static final String ALLOW_WRITE = "allowWrite";
     static final String ALLOW_DELETE = "allowDelete";
+    static final String ALLOW_SHARE = "allowShare";
     static final String MAX_CONTENT = "maxContentChars";
     static final int DEFAULT_MAX_CONTENT = 20_000;
     static final String FILE_DIRS = "fileDirectories";
 
     private final MemoryBackend memories;
     private final DataHome home;
+    private final UserConfirmation confirmation;
 
-    public MemoriesModule(MemoryBackend memories, DataHome home) {
+    @Autowired
+    public MemoriesModule(MemoryBackend memories, DataHome home, UserConfirmation confirmation) {
         this.memories = memories;
         this.home = home;
+        this.confirmation = confirmation;
+    }
+
+    /** Ohne Rückfrage beim Nutzer – {@code memories_share} lehnt dann das Teilen ab. */
+    public MemoriesModule(MemoryBackend memories, DataHome home) {
+        this(memories, home, null);
     }
 
     @Override
@@ -84,6 +95,8 @@ public class MemoriesModule implements ToolModule {
                 `memories_update` mit `append`. Keine Geheimnisse. Belege wie Screenshots, Logs oder Exporte mit \
                 `memories_attach_file` anhängen (`source_path` für lokale Dateien, beliebig groß); `memories_view` mit \
                 `file_path` liefert Text bzw. speichert Binäres lokal.
+                - Von anderen Benutzern geteilte Memories („geteilt von …“) erscheinen in der Suche, sind aber \
+                schreibgeschützt. Eigene teilt `memories_share` (nur auf Wunsch).
                 - Typ: Standard dauerhaft. `type=TEMPORARY` nur, wenn der Nutzer es so will oder für kurzlebige \
                 Zwischenstände; temporäre Memories ohne Rückfrage ändern und löschen (z.B. wenn erledigt), \
                 dauerhafte mit `memories_delete` nur auf Wunsch.
@@ -115,6 +128,9 @@ public class MemoriesModule implements ToolModule {
                                 + "Rückrufe gehen immer."),
                 ConfigField.of(ALLOW_DELETE, "Löschen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("Dauerhafte Memories löschen; temporäre und Rückrufe gehen immer."),
+                ConfigField.of(ALLOW_SHARE, "Teilen erlauben", FieldType.BOOLEAN).withDefault("true")
+                        .withHelp("share: eigene Memories für Benutzer, Rollen oder alle auf dem Team-Server "
+                                + "freigeben – nach Rückfrage beim Nutzer."),
                 ConfigField.of(MAX_CONTENT, "Max. Zeichen je Memory", FieldType.INT)
                         .withDefault(String.valueOf(DEFAULT_MAX_CONTENT))
                         .withHelp("Obergrenze für den Inhalt einer Memory (inkl. Nachträgen). Angehängte Dateien "
@@ -143,6 +159,9 @@ public class MemoriesModule implements ToolModule {
         noted(tools, ToolCallbacks.from(new MemoryWriteTools(memories, maxContent(config), !write, files)), write,
                 ALLOW_WRITE);
         noted(tools, ToolCallbacks.from(new MemoryDeleteTools(memories, !delete)), delete, ALLOW_DELETE);
+        if (config.getBoolean(ALLOW_SHARE)) {
+            tools.addAll(List.of(ToolCallbacks.from(new MemoryShareTools(memories, confirmation))));
+        }
         return tools;
     }
 

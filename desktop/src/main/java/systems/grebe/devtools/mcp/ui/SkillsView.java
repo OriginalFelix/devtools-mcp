@@ -48,7 +48,8 @@ import systems.grebe.devtools.mcp.modules.skills.SkillViews;
  * Übersicht der Skills des aktuellen Benutzers und der globalen Vorlagen: links Liste mit Suche und Filtern, rechts
  * Inhalt, Zusatzdateien und Änderungshistorie. Aktualisiert sich selbst, sobald das LLM einen Skill anlegt oder ändert.
  * Mit dem Recht „Vorlagen veröffentlichen“ lassen sich eigene Skills als Vorlage veröffentlichen und Vorlagen
- * zurückziehen.
+ * zurückziehen; eigene Skills lassen sich mit Benutzern, Rollen oder allen teilen, von anderen geteilte erscheinen
+ * schreibgeschützt.
  */
 public class SkillsView extends BorderPane {
 
@@ -56,6 +57,7 @@ public class SkillsView extends BorderPane {
     static final String ALL_SCOPES = "Eigene und global";
     static final String ONLY_OWN = "Nur eigene";
     static final String ONLY_GLOBAL = "Nur globale Vorlagen";
+    static final String ONLY_SHARED = "Nur mit mir geteilte";
     static final String NO_CATEGORY = "(ohne Kategorie)";
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("dd.MM.yy HH:mm")
             .withZone(ZoneId.systemDefault());
@@ -71,6 +73,7 @@ public class SkillsView extends BorderPane {
     private final Button publish = new Button("Als Vorlage veröffentlichen…");
     private final Button unpublish = new Button("Vorlage zurückziehen…");
     private final Button delete = new Button("Löschen…");
+    private final Button share = new Button("Teilen…");
     private final ObservableList<SkillViews.Summary> items = FXCollections.observableArrayList();
     private final FilteredList<SkillViews.Summary> filtered = new FilteredList<>(items);
     private final TableView<SkillViews.Summary> table = new TableView<>(filtered);
@@ -124,7 +127,7 @@ public class SkillsView extends BorderPane {
         category.getItems().setAll(ALL_CATEGORIES);
         category.getSelectionModel().selectFirst();
         category.valueProperty().addListener((o, a, b) -> applyFilter());
-        scopeFilter.getItems().setAll(ALL_SCOPES, ONLY_OWN, ONLY_GLOBAL);
+        scopeFilter.getItems().setAll(ALL_SCOPES, ONLY_OWN, ONLY_GLOBAL, ONLY_SHARED);
         scopeFilter.getSelectionModel().selectFirst();
         scopeFilter.valueProperty().addListener((o, a, b) -> applyFilter());
         Button refresh = new Button("Aktualisieren");
@@ -132,6 +135,7 @@ public class SkillsView extends BorderPane {
         delete.setOnAction(e -> selected().ifPresent(this::confirmDelete));
         publish.setOnAction(e -> selected().ifPresent(this::confirmPublish));
         unpublish.setOnAction(e -> selected().ifPresent(this::confirmUnpublish));
+        share.setOnAction(e -> selected().ifPresent(this::openShare));
         table.getSelectionModel().selectedItemProperty().addListener((o, a, s) -> updateActions(s));
         updateActions(null);
         countLabel.getStyleClass().add("form-help");
@@ -142,9 +146,10 @@ public class SkillsView extends BorderPane {
         filters.setAlignment(Pos.CENTER_LEFT);
         Region spacer2 = new Region();
         HBox.setHgrow(spacer2, Priority.ALWAYS);
-        HBox actions = new HBox(8, userLabel, spacer2, publish, unpublish, delete);
+        HBox actions = new HBox(8, userLabel, spacer2, share, publish, unpublish, delete);
         actions.setAlignment(Pos.CENTER_LEFT);
-        for (javafx.scene.control.Control c : List.of(publish, unpublish, delete, refresh, userLabel, countLabel)) {
+        for (javafx.scene.control.Control c : List.of(share, publish, unpublish, delete, refresh, userLabel,
+                countLabel)) {
             c.setMinWidth(Region.USE_PREF_SIZE);
         }
         VBox bar = new VBox(6, filters, actions);
@@ -275,7 +280,11 @@ public class SkillsView extends BorderPane {
         if (scope == null || scope.equals(ALL_SCOPES)) {
             return true;
         }
-        return scope.equals(ONLY_GLOBAL) == s.global();
+        return switch (scope) {
+            case ONLY_GLOBAL -> s.global();
+            case ONLY_SHARED -> s.shared();
+            default -> !s.global() && !s.shared();
+        };
     }
 
     static String scopeLabel(SkillViews.Summary s) {
@@ -283,6 +292,7 @@ public class SkillsView extends BorderPane {
             case GLOBAL -> "global";
             case COPY -> s.templateUpdated() ? "Kopie ⟳" : "Kopie";
             case OWN -> "eigen";
+            case SHARED -> "geteilt";
         };
     }
 
@@ -298,18 +308,22 @@ public class SkillsView extends BorderPane {
                     + "bei Revision " + s.currentTemplateRevision() + ". Löschen der Kopie zeigt wieder die Vorlage."
                     : "Persönliche Kopie der globalen Vorlage (Revision " + s.templateRevision() + "); sie verdeckt die "
                     + "Vorlage. Löschen der Kopie zeigt wieder die Vorlage.";
+            case SHARED -> "Geteilt von " + s.owner() + " – schreibgeschützt. Ändert das LLM ihn, entsteht "
+                    + "automatisch eine persönliche Kopie, die ab dann gilt.";
             case OWN -> null;
         };
     }
 
     private void updateActions(SkillViews.Summary s) {
         boolean admin = account.get().map(m -> m.grants().has(Permission.TEMPLATES_PUBLISH)).orElse(false);
-        delete.setDisable(s == null || s.global());
+        boolean foreign = s != null && (s.global() || s.shared());
+        delete.setDisable(s == null || foreign);
+        share.setDisable(s == null || foreign);
         publish.setVisible(admin);
         publish.setManaged(admin);
         unpublish.setVisible(admin);
         unpublish.setManaged(admin);
-        publish.setDisable(s == null || s.global());
+        publish.setDisable(s == null || foreign);
         unpublish.setDisable(s == null || !s.global());
     }
 
@@ -417,6 +431,12 @@ public class SkillsView extends BorderPane {
     private void confirmUnpublish(SkillViews.Summary s) {
         confirm("Globale Vorlage „" + s.name() + "“ zurückziehen? Persönliche Kopien der Benutzer bleiben erhalten.",
                 () -> service.unpublish(s.name()));
+    }
+
+    private void openShare(SkillViews.Summary s) {
+        new ShareDialog(getScene() == null ? null : getScene().getWindow(), "Skill „" + s.name() + "“",
+                service::shareTargets, () -> service.shares(s.name()),
+                (request, revoke) -> service.share(s.name(), request, revoke)).showAndWait();
     }
 
     private void confirm(String question, Supplier<String> action) {

@@ -12,6 +12,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -33,6 +34,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import systems.grebe.devtools.mcp.api.MediaTypes;
 import systems.grebe.devtools.mcp.backend.blobs.BlobReferences;
 import systems.grebe.devtools.mcp.backend.blobs.BlobStore;
+import systems.grebe.devtools.mcp.backend.shares.ItemShare;
+import systems.grebe.devtools.mcp.backend.shares.ShareStore;
+import systems.grebe.devtools.mcp.modules.shares.ShareViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 
@@ -51,6 +55,10 @@ import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
  * Größengrenze) liegen als Anhang in der {@link BlobStore Dateiablage} im Verzeichnis des Eigentümers – beim Übernehmen
  * einer Vorlage bzw. beim Veröffentlichen wird der Inhalt mitkopiert, nicht mehr verwendete Inhalte gibt
  * {@link BlobReferences} frei.
+ *
+ * <p><b>Teilen:</b> Eigene Skills lassen sich für andere Benutzer, Rollen oder alle freigeben ({@link ShareStore}).
+ * Dort sind sie live und schreibgeschützt sichtbar wie Vorlagen – hinter eigenen Skills und Vorlagen gleichen Namens;
+ * eine Änderung legt eine persönliche Kopie an.
  *
  * <p>Die Inhaltsgrenze kommt als Parameter, weil sie in der UI zur Laufzeit geändert werden kann, der Service aber
  * ein Singleton ist.
@@ -83,15 +91,17 @@ public class SkillService implements SkillBackend {
     private final SkillOwner users;
     private final BlobStore blobs;
     private final BlobReferences references;
+    private final ShareStore shares;
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
     public SkillService(SkillRepository skills, SkillRevisionRepository revisions, SkillOwner users, BlobStore blobs,
-                        BlobReferences references) {
+                        BlobReferences references, ShareStore shares) {
         this.skills = skills;
         this.revisions = revisions;
         this.users = users;
         this.blobs = blobs;
         this.references = references;
+        this.shares = shares;
     }
 
     // ------------------------------------------------------------------ Oberfläche
@@ -104,18 +114,22 @@ public class SkillService implements SkillBackend {
         changeListeners.add(listener);
     }
 
-    /** Für den aktuellen Benutzer sichtbare Skills (eigene und nicht verdeckte Vorlagen), nach Kategorie und Name. */
+    /**
+     * Für den aktuellen Benutzer sichtbare Skills (eigene, nicht verdeckte Vorlagen und geteilte), nach Kategorie und
+     * Name.
+     */
     @Transactional(readOnly = true)
     public List<SkillViews.Summary> overview() {
         String user = users.email();
         Map<String, Integer> templates = templateRevisions();
-        return visible(user, null, null).stream().map(k -> summary(k, templates)).toList();
+        return visible(user, null, null).stream().map(k -> summary(k, user, templates)).toList();
     }
 
     /** Vollständiger sichtbarer Skill samt Dateien und Historie (neueste Revision zuerst). */
     @Transactional(readOnly = true)
     public Optional<SkillViews.Details> details(String name) {
-        return resolve(users.email(), name).map(k -> new SkillViews.Details(summary(k, templateRevisions()),
+        String user = users.email();
+        return resolve(user, name).map(k -> new SkillViews.Details(summary(k, user, templateRevisions()),
                 k.getContent(), k.getCreatedAt(),
                 k.getFiles().stream().map(SkillService::view).toList(),
                 revisions.findBySkillOrderByRevisionDesc(k).stream().map(r -> new SkillViews.Revision(r.getRevision(),
@@ -128,17 +142,25 @@ public class SkillService implements SkillBackend {
                 f.getMediaType(), f.getBlob());
     }
 
-    private static SkillViews.Summary summary(Skill k, Map<String, Integer> templates) {
-        SkillViews.Scope scope = scope(k);
+    private static SkillViews.Summary summary(Skill k, String user, Map<String, Integer> templates) {
+        SkillViews.Scope scope = scope(k, user);
+        boolean shared = scope == SkillViews.Scope.SHARED;
         return new SkillViews.Summary(k.getName(), k.getDescription(), k.getCategory(), k.tagList(), k.getRevision(),
                 k.getUseCount(), k.getLastUsedAt(), k.getUpdatedAt(), k.getFiles().size(), scope,
-                k.getTemplateRevision(), scope == SkillViews.Scope.COPY ? templates.get(k.getName()) : null,
-                k.triggerList());
+                shared ? null : k.getTemplateRevision(),
+                scope == SkillViews.Scope.COPY ? templates.get(k.getName()) : null, k.triggerList(),
+                shared ? k.getOwner() : null);
     }
 
-    private static SkillViews.Scope scope(Skill k) {
+    private static SkillViews.Scope scope(Skill k, String user) {
         return k.isGlobal() ? SkillViews.Scope.GLOBAL
+                : shared(k, user) ? SkillViews.Scope.SHARED
                 : k.getTemplateRevision() != null ? SkillViews.Scope.COPY : SkillViews.Scope.OWN;
+    }
+
+    /** Von einem anderen Benutzer geteilt (weder eigener Skill noch Vorlage). */
+    private static boolean shared(Skill k, String user) {
+        return !k.isGlobal() && !k.getOwner().equals(user);
     }
 
     private Map<String, Integer> templateRevisions() {
@@ -202,6 +224,45 @@ public class SkillService implements SkillBackend {
         return users.email();
     }
 
+    // ------------------------------------------------------------------ Teilen
+
+    /**
+     * Gibt einen eigenen Skill frei bzw. nimmt Freigaben zurück ({@code revoke}); ohne Ziele nur der aktuelle Stand.
+     */
+    @Override
+    public String share(String name, ShareViews.Request request, boolean revoke) {
+        Skill own = requireOwn(name);
+        String result = shares.apply(ItemShare.Kind.SKILL, own.getId(), "Skill '" + own.getName() + "'", request,
+                revoke);
+        if (request != null && !request.empty()) {
+            changed();
+        }
+        return result;
+    }
+
+    /** Freigaben eines eigenen Skills. */
+    @Override
+    @Transactional(readOnly = true)
+    public List<ShareViews.Share> shares(String name) {
+        return shares.of(ItemShare.Kind.SKILL, requireOwn(name).getId());
+    }
+
+    /** Mögliche Ziele einer Freigabe (Benutzer, Rollen, ggf. alle). */
+    @Override
+    @Transactional(readOnly = true)
+    public List<ShareViews.Candidate> shareTargets() {
+        return shares.candidates();
+    }
+
+    private Skill requireOwn(String name) {
+        String n = requireName(name);
+        String user = users.email();
+        return skills.findByOwnerAndName(user, n).orElseThrow(() -> resolve(user, n)
+                .map(k -> new IllegalArgumentException("'" + n + "' ist " + (k.isGlobal() ? "eine globale Vorlage"
+                        : "von " + k.getOwner() + " geteilt") + " – teilen lassen sich nur eigene Skills."))
+                .orElseGet(() -> notFound(n)));
+    }
+
     private void changed() {
         if (changeListeners.isEmpty()) {
             return;
@@ -249,8 +310,9 @@ public class SkillService implements SkillBackend {
         if (q != null && found.size() == 1 && found.getFirst().getContent().length() <= INLINE_MAX) {
             Skill k = found.getFirst();
             skills.markUsed(k.getId(), Instant.now());
-            return "1 Skill für '" + q + "' – direkt geladen:\n\n" + render(k);
+            return "1 Skill für '" + q + "' – direkt geladen:\n\n" + render(k, users.email());
         }
+        String user = users.email();
         StringBuilder sb = new StringBuilder(found.size() + " Skill(s)")
                 .append(q != null ? " für '" + q + "'" : "").append(" – laden mit skills_view(name):\n");
         String lastCategory = "\u0000";
@@ -260,11 +322,16 @@ public class SkillService implements SkillBackend {
                 sb.append(cat).append(":\n");
                 lastCategory = cat;
             }
-            sb.append("  ").append(k.getName()).append(k.isGlobal() ? "*" : "").append(" – ")
-                    .append(shorten(k.getDescription(), LIST_DESCRIPTION)).append('\n');
+            boolean shared = shared(k, user);
+            sb.append("  ").append(k.getName()).append(k.isGlobal() ? "*" : shared ? "+" : "").append(" – ")
+                    .append(shorten(k.getDescription(), LIST_DESCRIPTION))
+                    .append(shared ? " (von " + k.getOwner() + ")" : "").append('\n');
         }
         if (found.stream().anyMatch(Skill::isGlobal)) {
             sb.append("* globale Vorlage (Änderung legt automatisch eine persönliche Kopie an)\n");
+        }
+        if (found.stream().anyMatch(k -> shared(k, user))) {
+            sb.append("+ geteilt von einem anderen Benutzer (Änderung legt automatisch eine persönliche Kopie an)\n");
         }
         return sb.toString().stripTrailing();
     }
@@ -288,14 +355,16 @@ public class SkillService implements SkillBackend {
             return head + "\n\nNicht als Text anzeigbar – skills_view mit file_path speichert ihn als lokale Datei.";
         }
         skills.markUsed(k.getId(), Instant.now());
-        return render(k);
+        return render(k, users.email());
     }
 
     /** Kompakter Kopf (Name, Revision, Herkunft, Registrierung) plus Inhalt – die Beschreibung kennt das LLM schon. */
-    private static String render(Skill k) {
+    private static String render(Skill k, String user) {
         StringBuilder sb = new StringBuilder("# ").append(k.getName()).append(" · Revision ").append(k.getRevision());
         if (k.isGlobal()) {
             sb.append(" · globale Vorlage (Änderung legt persönliche Kopie an)");
+        } else if (shared(k, user)) {
+            sb.append(" · geteilt von ").append(k.getOwner()).append(" (Änderung legt persönliche Kopie an)");
         } else if (k.getTemplateRevision() != null) {
             sb.append(" · Kopie der Vorlage Rev. ").append(k.getTemplateRevision());
         }
@@ -340,7 +409,7 @@ public class SkillService implements SkillBackend {
         return sb.append("Einzelne Stände mit skills_history(name, revision) ansehen.").toString();
     }
 
-    /** Anzahl der für den aktuellen Benutzer sichtbaren Skills (eigene und nicht verdeckte Vorlagen). */
+    /** Anzahl der für den aktuellen Benutzer sichtbaren Skills (eigene, nicht verdeckte Vorlagen und geteilte). */
     @Transactional(readOnly = true)
     public int visibleCount() {
         return visible(users.email(), null, null).size();
@@ -582,7 +651,10 @@ public class SkillService implements SkillBackend {
         return w.prefix() + "Datei '" + p + "' aus Skill '" + n + "' entfernt (Revision " + k.getRevision() + ").";
     }
 
-    /** Löscht einen eigenen Skill (auch eine persönliche Kopie); globale Vorlagen sind nicht löschbar. */
+    /**
+     * Löscht einen eigenen Skill (auch eine persönliche Kopie) samt seiner Freigaben; globale Vorlagen und geteilte
+     * Skills sind nicht löschbar.
+     */
     public String delete(String name) {
         String n = requireName(name);
         String user = users.email();
@@ -593,10 +665,16 @@ public class SkillService implements SkillBackend {
                 throw new IllegalArgumentException("'" + n + "' ist eine globale Vorlage und schreibgeschützt – sie "
                         + "kann nicht gelöscht werden.");
             }
+            Optional<Skill> shared = resolve(user, n);
+            if (shared.isPresent()) {
+                throw new IllegalArgumentException("'" + n + "' ist von " + shared.get().getOwner() + " geteilt und "
+                        + "schreibgeschützt – löschen kann ihn nur der Eigentümer.");
+            }
             throw notFound(n);
         }
         int files = own.get().getFiles().size();
         List<String> attached = blobsOf(own.get());
+        shares.removeAll(ItemShare.Kind.SKILL, own.get().getId());
         skills.delete(own.get());
         skills.flush();
         references.release(user, attached);
@@ -607,9 +685,13 @@ public class SkillService implements SkillBackend {
 
     // ------------------------------------------------------------------ intern
 
-    /** Sichtbarer Skill: der eigene vor der globalen Vorlage gleichen Namens. */
+    /** Sichtbarer Skill: der eigene vor der globalen Vorlage gleichen Namens, beide vor einem geteilten. */
     private Optional<Skill> resolve(String user, String name) {
-        return skills.findByOwnerAndName(user, name).or(() -> skills.findByOwnerAndName(SkillOwner.GLOBAL, name));
+        return skills.findByOwnerAndName(user, name).or(() -> skills.findByOwnerAndName(SkillOwner.GLOBAL, name))
+                .or(() -> {
+                    List<Long> ids = shares.visible(ItemShare.Kind.SKILL);
+                    return ids.isEmpty() ? Optional.empty() : skills.findShared(ids, name).stream().findFirst();
+                });
     }
 
     private Skill find(String user, String name) {
@@ -621,11 +703,29 @@ public class SkillService implements SkillBackend {
                 + "' gibt es nicht. Vorhandene mit skills_list anzeigen oder mit skills_create anlegen.");
     }
 
-    /** Eigene Skills und globale Vorlagen, ohne die Vorlagen, die ein eigener Skill gleichen Namens verdeckt. */
+    /**
+     * Eigene Skills, globale Vorlagen und geteilte Skills – ohne die, die ein Skill gleichen Namens verdeckt (eigener vor
+     * Vorlage vor geteiltem).
+     */
     private List<Skill> visible(String user, String pattern, String category) {
         List<Skill> found = skills.search(List.of(user, SkillOwner.GLOBAL), pattern, category);
         Set<String> own = new HashSet<>(skills.namesOf(user));
-        return found.stream().filter(k -> !k.isGlobal() || !own.contains(k.getName())).toList();
+        List<Skill> result = found.stream().filter(k -> !k.isGlobal() || !own.contains(k.getName()))
+                .collect(Collectors.toCollection(ArrayList::new));
+        List<Long> ids = shares.visible(ItemShare.Kind.SKILL);
+        if (ids.isEmpty()) {
+            return result;
+        }
+        Set<String> taken = new HashSet<>(own);
+        taken.addAll(skills.namesOf(SkillOwner.GLOBAL));
+        for (Skill k : skills.searchShared(ids, pattern, category)) {
+            if (taken.add(k.getName())) {
+                result.add(k);
+            }
+        }
+        result.sort(Comparator.comparing(Skill::getCategory, Comparator.nullsFirst(Comparator.<String>naturalOrder()))
+                .thenComparing(Skill::getName));
+        return result;
     }
 
     /** Ziel einer Änderung und ggf. Hinweis, dass dafür eine persönliche Kopie entstanden ist. */
@@ -637,6 +737,17 @@ public class SkillService implements SkillBackend {
      * (Aktion {@code adopt}), auf die die Änderung wirkt. Eigene Skills werden direkt geändert.
      */
     private Writable writable(String user, Skill visible) {
+        if (shared(visible, user)) {
+            Instant now = Instant.now();
+            copyBlobs(visible, visible.getOwner(), user);
+            Skill copy = visible.copyFor(user, now);
+            copy.unlinkTemplate();
+            copy.recordRevision("adopt", "Kopie des geteilten Skills von " + visible.getOwner() + " (Revision "
+                    + visible.getRevision() + ")", user, now);
+            skills.save(copy);
+            return new Writable(copy, "Skill '" + visible.getName() + "' ist von " + visible.getOwner() + " geteilt "
+                    + "und schreibgeschützt – persönliche Kopie angelegt (Revision " + visible.getRevision() + "). ");
+        }
         if (!visible.isGlobal()) {
             return new Writable(visible, "");
         }

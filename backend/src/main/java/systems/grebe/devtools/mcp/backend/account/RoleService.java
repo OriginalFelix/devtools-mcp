@@ -68,11 +68,13 @@ public class RoleService {
     public Role update(long id, String name, String description, Collection<String> permissions) {
         String n = name(name);
         Set<String> perms = permissions(permissions);
+        String[] before = new String[1];
         accounts.guardUserManagers(() -> {
             Role r = repo.role(id).orElseThrow(() -> unknown(id));
             if (r.builtin()) {
                 throw new IllegalArgumentException("Die Rolle „" + r.name() + "“ ist eingebaut und nicht änderbar.");
             }
+            before[0] = r.name();
             if (repo.roleByName(n).filter(o -> o.id() != id).isPresent()) {
                 throw new IllegalArgumentException("Rolle „" + n + "“ gibt es schon.");
             }
@@ -80,20 +82,26 @@ public class RoleService {
             repo.replacePermissions(id, perms);
         });
         LOG.info("Rolle {} geändert: {}", n, perms);
+        if (before[0] != null && !before[0].equals(n)) {
+            events.publishEvent(new RoleRenamedEvent(before[0], n));
+        }
         changed(id);
         return repo.role(id).orElseThrow();
     }
 
     public void delete(long id) {
         List<Long> users = repo.roleUsers(id);
+        String[] name = new String[1];
         accounts.guardUserManagers(() -> {
             Role r = repo.role(id).orElseThrow(() -> unknown(id));
             if (r.builtin()) {
                 throw new IllegalArgumentException("Die Rolle „" + r.name() + "“ ist eingebaut und nicht löschbar.");
             }
+            name[0] = r.name();
             repo.deleteRole(id);
         });
         LOG.info("Rolle {} gelöscht", id);
+        events.publishEvent(new RoleDeletedEvent(name[0]));
         notify(users);
     }
 
@@ -149,5 +157,13 @@ public class RoleService {
 
     private static IllegalArgumentException unknown(long id) {
         return new IllegalArgumentException("Unbekannte Rolle " + id);
+    }
+
+    /** Eine Rolle heißt jetzt anders – Freigaben an sie wandern mit. */
+    public record RoleRenamedEvent(String from, String to) {
+    }
+
+    /** Eine Rolle wurde gelöscht – Freigaben an sie entfallen. */
+    public record RoleDeletedEvent(String name) {
     }
 }

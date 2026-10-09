@@ -23,14 +23,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import systems.grebe.devtools.mcp.backend.GraphQlErrors;
+import systems.grebe.devtools.mcp.backend.SkillCaller;
 import systems.grebe.devtools.mcp.backend.account.TokenService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
+import systems.grebe.devtools.mcp.backend.shares.SharedBlobs;
 import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
 
 /**
  * Inhalte der {@link BlobStore Dateiablage} über HTTP – GraphQL taugt nicht für große Binärdaten. Angemeldet wird wie
  * bei {@code /graphql} mit {@code Authorization: Bearer <Token>}; jeder Benutzer schreibt und liest in seinem eigenen
- * Verzeichnis, lesen darf er außerdem die globalen Vorlagen.
+ * Verzeichnis, lesen darf er außerdem die globalen Vorlagen und die Anhänge der für ihn geteilten Skills und Memories.
  *
  * <ul>
  *   <li>{@code POST /blobs/uploads} beginnt einen Upload → {@code {"upload": "<id>"}}</li>
@@ -50,10 +52,12 @@ public class BlobController {
 
     private final BlobStore store;
     private final TokenService tokens;
+    private final SharedBlobs shared;
 
-    public BlobController(BlobStore store, TokenService tokens) {
+    public BlobController(BlobStore store, TokenService tokens, SharedBlobs shared) {
         this.store = store;
         this.tokens = tokens;
+        this.shared = shared;
     }
 
     @PostMapping("/uploads")
@@ -79,9 +83,10 @@ public class BlobController {
     @GetMapping("/{sha}")
     public ResponseEntity<Resource> download(
             @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String auth, @PathVariable String sha) {
-        String owner = owner(auth);
+        UserAccount user = user(auth);
         String s = BlobStore.requireSha(sha);
-        Path file = store.find(owner, s).or(() -> store.find(SkillOwner.GLOBAL, s))
+        Path file = store.find(email(user), s).or(() -> store.find(SkillOwner.GLOBAL, s))
+                .or(() -> SkillCaller.as(user, () -> shared.owner(s)).flatMap(o -> store.find(o, s)))
                 .orElseThrow(() -> new IllegalArgumentException("Datei " + s + " gibt es nicht."));
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(new FileSystemResource(file));
@@ -89,6 +94,10 @@ public class BlobController {
 
     /** E-Mail des angemeldeten Benutzers (Verzeichnis seiner Dateien), wie bei den Skills. */
     private String owner(String auth) {
+        return email(user(auth));
+    }
+
+    private UserAccount user(String auth) {
         if (auth == null || !auth.regionMatches(true, 0, "Bearer ", 0, 7)) {
             throw new GraphQlErrors.Unauthorized();
         }
@@ -100,6 +109,10 @@ public class BlobController {
         if (user.email() == null || user.email().isBlank()) {
             throw new GraphQlErrors.Forbidden("Im Konto von '" + user.username() + "' ist keine E-Mail hinterlegt.");
         }
+        return user;
+    }
+
+    private static String email(UserAccount user) {
         return user.email().strip().toLowerCase(Locale.ROOT);
     }
 

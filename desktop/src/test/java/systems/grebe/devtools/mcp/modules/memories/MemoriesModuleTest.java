@@ -26,7 +26,9 @@ class MemoriesModuleTest {
         // ohne Schalter bleiben save/update/delete und die Dateien – dann nur für temporäre Memories
         assertThat(module.createTools(config(Map.of()))).extracting(t -> t.getToolDefinition().name())
                 .containsExactlyInAnyOrder("search", "view", "save", "update", "attach_file", "remove_file",
-                        "delete");
+                        "delete", "share");
+        assertThat(module.createTools(config(Map.of(MemoriesModule.ALLOW_SHARE, "false"))))
+                .extracting(t -> t.getToolDefinition().name()).doesNotContain("share");
         assertThat(description(Map.of(MemoriesModule.ALLOW_WRITE, "false"), "attach_file"))
                 .contains("NUR temporäre", "setting='allowWrite'");
         assertThat(description(Map.of(), "delete")).contains("NUR temporäre", "setting='allowDelete'");
