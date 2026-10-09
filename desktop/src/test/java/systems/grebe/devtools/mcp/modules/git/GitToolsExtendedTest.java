@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import systems.grebe.devtools.mcp.core.CommandRunner;
+import systems.grebe.devtools.mcp.core.GitWorktrees;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -452,7 +453,7 @@ class GitToolsExtendedTest {
         CommandRunner.run(List.of("git", "worktree", "add", "-b", "wt-branch", wt.toString()), Duration.ofSeconds(30),
                 java.nio.charset.StandardCharsets.UTF_8, repo).orThrow("git worktree add");
         GitSupport s = support(Map.of());
-        assertThat(s.worktrees()).extracting(GitSupport.Worktree::name).containsExactly("demo/wt1");
+        assertThat(s.worktrees()).extracting(GitWorktrees.Worktree::name).containsExactly("demo/wt1");
         assertThat(read.listRepositories()).contains("demo  [main]", "demo/wt1  [wt-branch]", "(Worktree)");
         assertThat(read.status("demo/wt1")).contains("Branch: wt-branch");
         // Pfad im Worktree (liegt im Haupt-Repository) → Worktree, nicht das Haupt-Repository

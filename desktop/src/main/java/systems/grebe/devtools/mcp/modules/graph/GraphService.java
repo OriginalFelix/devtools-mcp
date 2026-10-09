@@ -11,11 +11,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
+import systems.grebe.devtools.mcp.core.GitWorktrees;
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.Workspaces;
@@ -103,9 +105,22 @@ final class GraphService {
         return projects;
     }
 
-    /** Projektwurzel, absolut – identifiziert das Projekt in der Ablage. */
+    /**
+     * Projektwurzel, absolut – daraus wird gebaut. Ein Worktree eines Projekts ({@code <projekt>/<ordner>} oder ein
+     * Pfad darin) ist sein eigenes Arbeitsverzeichnis mit eigenem Branch, nicht das Haupt-Repository, in dem er oft
+     * liegt.
+     */
     Path resolve(String project) {
+        GitWorktrees.Worktree w = GitWorktrees.find(worktrees(), project);
+        if (w != null) {
+            return w.dir();
+        }
         return projects.resolve(project, defaultProject).toAbsolutePath().normalize();
+    }
+
+    /** Verknüpfte Worktrees der Projekte ({@code git worktree add}). */
+    List<GitWorktrees.Worktree> worktrees() {
+        return GitWorktrees.of(projects.all());
     }
 
     static String name(Path root) {
@@ -131,11 +146,23 @@ final class GraphService {
      * Datenbank ist das derselbe Graph für alle mit diesem Projekt und Branch, egal unter welchem Pfad.
      */
     Key key(Path root, String branch) {
-        GraphProjects.Identity id = identities == null ? null : identities.identify(root);
-        String name = id != null ? id.name() : projects.all().entrySet().stream()
-                .filter(e -> e.getValue().toAbsolutePath().normalize().equals(root)).map(Map.Entry::getKey)
-                .findFirst().orElseGet(() -> name(root));
+        Path main = GitWorktrees.main(worktrees(), root);
+        GraphProjects.Identity id = identity(root);
+        if (id == null && !main.equals(root)) {
+            id = identity(main); // Worktree: Graph des Projekts, nur auf dem Branch des Worktrees
+        }
+        String name = id != null ? id.name() : configuredName(root).or(() -> configuredName(main))
+                .orElseGet(() -> name(main));
         return new Key(name, root.toString(), branch, id == null ? null : id.projectId());
+    }
+
+    private GraphProjects.Identity identity(Path root) {
+        return identities == null ? null : identities.identify(root);
+    }
+
+    private Optional<String> configuredName(Path root) {
+        return projects.all().entrySet().stream().filter(e -> e.getValue().toAbsolutePath().normalize().equals(root))
+                .map(Map.Entry::getKey).findFirst();
     }
 
     /**
@@ -282,7 +309,8 @@ final class GraphService {
                     return linked;
                 }
             }
-            Workspaces.requireWritable(root); // nur lesend freigegeben: vorhandenen Graphen nutzen, nicht neu bauen
+            // nur lesend freigegeben: vorhandenen Graphen nutzen, nicht neu bauen (Worktree: Freigabe des Projekts)
+            Workspaces.requireWritable(GitWorktrees.main(worktrees(), root));
             Session session = session(root);
             if (force) {
                 session.last = null;
@@ -414,6 +442,44 @@ final class GraphService {
             }
         }
         return gone;
+    }
+
+    /**
+     * Ein Worktree wurde entfernt ({@code git worktree remove}): Der Graph seines Branches wird gelöscht, wenn er hier
+     * gebaut wurde und der Branch weder im Haupt-Repository noch in einem anderen Worktree ausgecheckt ist – der Branch
+     * selbst bleibt dabei meist bestehen, die Aufräumregel für gelöschte Branches greift also nicht. Die Datei-Ablage
+     * liegt im Worktree und ist mit ihm verschwunden.
+     *
+     * @param main   Haupt-Repository des Worktrees
+     * @param branch zuletzt im Worktree ausgecheckter Branch; {@code null} = nichts zu tun
+     * @return gelöschte Branch-Graphen
+     */
+    List<String> removeWorktreeGraph(Path main, String branch) {
+        if (branch == null) {
+            return List.of();
+        }
+        GraphProvider store = storage();
+        if (store instanceof FileGraphProvider) {
+            return List.of();
+        }
+        Set<String> checkedOut = new HashSet<>();
+        GitState.Heads heads = GitState.Heads.of(main);
+        if (heads != null) {
+            checkedOut.add(heads.branch());
+        }
+        for (GitWorktrees.Worktree w : worktrees()) {
+            GitState.Heads h = w.main().equals(main) ? GitState.Heads.of(w.dir()) : null;
+            if (h != null) {
+                checkedOut.add(h.branch());
+            }
+        }
+        if (checkedOut.contains(branch)) {
+            return List.of();
+        }
+        Key key = key(main, branch);
+        boolean builtHere = store.branches(key).stream().anyMatch(s -> branch.equals(s.branch())
+                && (s.builtBy() == null || s.builtBy().equals(GraphProvider.localBuilder())));
+        return builtHere && store.delete(key) ? List.of(branch) : List.of();
     }
 
     /**
