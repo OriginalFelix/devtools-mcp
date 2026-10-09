@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.LongPredicate;
+import java.util.function.UnaryOperator;
 
 import com.arcadedb.Constants;
 import com.arcadedb.database.BasicDatabase;
@@ -1187,15 +1188,50 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
     /**
      * Die Generationen eines Typs, von Schlüssel zu Schlüssel im Index auf {@code g} gesprungen: eine Abfrage je
      * Generation statt eines Durchlaufs über alle Knoten ({@code GROUP BY g} liest jeden Datensatz).
+     * <p>
+     * Ein beschädigter Index (Einträge gelöschter Datensätze, Schlüssel außer der Reihe) kann auf {@code g > :last}
+     * einen kleineren Schlüssel liefern – der Sprung liefe dann endlos im Kreis. Dann wird der Index neu aufgebaut und
+     * die Generationen dieses Laufs einmalig per Scan gelesen.
      */
     List<String> generations(String type) {
-        List<String> out = new ArrayList<>();
         String q = nextGenerationQuery(type);
+        List<String> out = ascendingKeys(after -> {
+            List<Map<String, Object>> r = rows("sql", q, params("last", after));
+            return r.isEmpty() ? null : (String) r.getFirst().get("g");
+        });
+        if (out != null) {
+            return out;
+        }
+        String index = new IndexDef(type, "g", false).name();
+        LOG.warn("Graph-Storage: Index {} liefert Schlüssel außer der Reihe – wird neu aufgebaut", index);
+        try (ResultSet rs = db().command("sql", "REBUILD INDEX `" + index + "`")) {
+            while (rs.hasNext()) {
+                rs.next();
+            }
+            LOG.info("Graph-Storage: Index {} neu aufgebaut", index);
+        } catch (RuntimeException e) {
+            LOG.warn("Graph-Storage: Index {} nicht neu aufgebaut: {}", index, rootMessage(e));
+        }
+        List<String> scanned = new ArrayList<>();
+        rows("sql", "SELECT g FROM `" + type + "` GROUP BY g", Map.of()).forEach(r -> scanned.add((String) r.get("g")));
+        scanned.remove(null);
+        return scanned;
+    }
+
+    /**
+     * Schlüssel, die {@code next} ab {@code ""} der Reihe nach liefert, bis {@code null}. {@code null} als Ergebnis,
+     * sobald ein Schlüssel nicht größer als der vorige ist – der Index ist dann nicht sortiert.
+     */
+    List<String> ascendingKeys(UnaryOperator<String> next) {
+        List<String> out = new ArrayList<>();
         String after = "";
         while (!closing) {
-            List<Map<String, Object>> r = rows("sql", q, params("last", after));
-            if (r.isEmpty() || !(r.getFirst().get("g") instanceof String g)) {
+            String g = next.apply(after);
+            if (g == null) {
                 break;
+            }
+            if (g.compareTo(after) <= 0) {
+                return null;
             }
             out.add(g);
             after = g;
