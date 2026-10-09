@@ -1,10 +1,8 @@
 package systems.grebe.devtools.mcp.backend;
 
-import org.springframework.boot.graphql.autoconfigure.GraphQlSourceBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ClassPathResource;
 import systems.grebe.devtools.mcp.backend.account.Sha3Pbkdf2PasswordEncoder;
 
 /**
@@ -12,28 +10,15 @@ import systems.grebe.devtools.mcp.backend.account.Sha3Pbkdf2PasswordEncoder;
  * auf, die Desktop-App nur ohne eingetragene Server-URL ({@code devtools.backend.embedded=true}).
  *
  * <p>Benötigte Properties (GraphQL über HTTP und WebSocket unter {@code /graphql}) setzen Server und Desktop in ihrer
- * {@code application.properties}.
+ * {@code application.properties}; Schemas und Pfade der API-Versionen stellt
+ * {@link systems.grebe.devtools.mcp.backend.api.ApiConfig} bereit.
  */
 @Configuration(proxyBeanMethods = false)
 @ComponentScan(basePackageClasses = BackendConfig.class)
 public class BackendConfig {
 
-    /** Schema der GraphQL-API. */
-    public static final String SCHEMA = "backend-graphql/schema.graphqls";
-    /** Erweiterung um die Code-Graphen der Graph-Storage. */
-    public static final String GRAPH_SCHEMA = "backend-graphql/graph.graphqls";
-
     @Bean
     Sha3Pbkdf2PasswordEncoder passwordEncoder() {
         return new Sha3Pbkdf2PasswordEncoder();
-    }
-
-    /**
-     * Schema als einzelne Ressourcen statt über die Pattern-Suche {@code classpath*:graphql/**}: die findet im WAR
-     * unter WildFly (VFS) nichts, und ohne Schema schaltete sich GraphQL ganz ab.
-     */
-    @Bean
-    GraphQlSourceBuilderCustomizer backendSchema() {
-        return builder -> builder.schemaResources(new ClassPathResource(SCHEMA), new ClassPathResource(GRAPH_SCHEMA));
     }
 }

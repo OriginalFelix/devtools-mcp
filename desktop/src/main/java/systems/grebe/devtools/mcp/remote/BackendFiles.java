@@ -17,10 +17,10 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Dateien von und zur Dateiablage des Backends ({@code /blobs}, eingebettet oder Team-Server) – für Anhänge von Skills
- * und Memories. Hochgeladen wird in Teilen von {@value #CHUNK} Bytes, damit keine Grenze je Anfrage (WildFly, Proxy)
- * die Dateigröße beschränkt; ein fehlgeschlagener Teil wird einmal wiederholt. Heruntergeladen wird gestreamt in eine
- * Datei.
+ * Dateien von und zur Dateiablage des Backends ({@code /blobs} der API-Version, eingebettet oder Team-Server) – für
+ * Anhänge von Skills und Memories. Hochgeladen wird in Teilen von {@value #CHUNK} Bytes, damit keine Grenze je Anfrage
+ * (WildFly, Proxy) die Dateigröße beschränkt; ein fehlgeschlagener Teil wird einmal wiederholt. Heruntergeladen wird
+ * gestreamt in eine Datei.
  */
 @Component
 public class BackendFiles {
@@ -89,7 +89,7 @@ public class BackendFiles {
 
     private HttpRequest.Builder request(String path) {
         String token = backend.token().orElseThrow(() -> new IllegalStateException("Nicht angemeldet."));
-        return HttpRequest.newBuilder(URI.create(backend.url() + path)).timeout(TIMEOUT)
+        return HttpRequest.newBuilder(URI.create(backend.apiUrl() + path)).timeout(TIMEOUT)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
     }
 

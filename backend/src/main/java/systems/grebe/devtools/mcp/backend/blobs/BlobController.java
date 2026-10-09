@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -22,10 +23,12 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import systems.grebe.devtools.mcp.backend.GraphQlErrors;
 import systems.grebe.devtools.mcp.backend.SkillCaller;
 import systems.grebe.devtools.mcp.backend.account.TokenService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
+import systems.grebe.devtools.mcp.backend.api.ApiSchemas;
 import systems.grebe.devtools.mcp.backend.shares.SharedBlobs;
 import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
 
@@ -43,12 +46,19 @@ import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
  *
  * In Teilen, damit keine Grenze je Anfrage (Servlet-Container, Reverse-Proxy) die Dateigröße beschränkt. Angehängt
  * wird ein abgelegter Inhalt anschließend per GraphQL ({@code attachSkillFile}, {@code attachMemoryFile}).
+ *
+ * <p>Dieselben Pfade gibt es je {@link systems.grebe.devtools.mcp.api.ApiVersions API-Version} unter
+ * {@code /api/v<n>/blobs}; {@code /blobs} ist Version 0. Ändert eine Version die Dateiablage, unterscheiden die
+ * Methoden nach {@code apiVersion}.
  */
 @RestController
-@RequestMapping(BlobController.PATH)
+@RequestMapping({BlobController.PATH, BlobController.VERSIONED_PATH})
 public class BlobController {
 
+    /** Pfad ohne Version (Version 0). */
     public static final String PATH = "/blobs";
+    /** Pfad je API-Version. */
+    public static final String VERSIONED_PATH = "/api/v{apiVersion:\\d+}/blobs";
 
     private final BlobStore store;
     private final TokenService tokens;
@@ -58,6 +68,15 @@ public class BlobController {
         this.store = store;
         this.tokens = tokens;
         this.shared = shared;
+    }
+
+    /** Nur angebotene Versionen; sonst wie ein unbekannter Pfad. */
+    @ModelAttribute
+    void requireOffered(@PathVariable(required = false) Integer apiVersion) {
+        if (apiVersion != null && !ApiSchemas.offered(apiVersion)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "API-Version " + apiVersion
+                    + " wird nicht angeboten.");
+        }
     }
 
     @PostMapping("/uploads")
@@ -124,6 +143,12 @@ public class BlobController {
     @ExceptionHandler(GraphQlErrors.Forbidden.class)
     ResponseEntity<Map<String, Object>> forbidden(GraphQlErrors.Forbidden e) {
         return error(HttpStatus.FORBIDDEN, e.getMessage());
+    }
+
+    /** Mit Rumpf statt über die Fehlerseite – die läge beim Team-Server hinter der Anmeldung der Web-UI. */
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<Map<String, Object>> status(ResponseStatusException e) {
+        return error(HttpStatus.valueOf(e.getStatusCode().value()), e.getReason());
     }
 
     @ExceptionHandler({IllegalArgumentException.class, NoSuchFileException.class})

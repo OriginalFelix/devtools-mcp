@@ -1,0 +1,3 @@
+# Prüfsummen der veröffentlichten API-Versionen (backend-graphql/v<n>/) – siehe ApiSchemasTest.
+# Eine Version, die hier steht, ist eingefroren: Protokolländerungen gehören in eine neue Version.
+0=d7a9cd8c629594fa0cce0e15a9dd250395dba06e254adf3c9a7271f30ad7ccdd
