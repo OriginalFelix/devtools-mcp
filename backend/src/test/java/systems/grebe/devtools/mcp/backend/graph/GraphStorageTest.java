@@ -156,6 +156,36 @@ class GraphStorageTest {
     }
 
     @Test
+    void createsMissingIndexesAndFindsGenerationsWithoutScanning() throws Exception {
+        assertThat(GraphStorage.indexNames(storage.db()))
+                .containsAll(GraphStorage.INDEXES.stream().map(GraphStorage.IndexDef::name).toList());
+
+        // Bestehende Datenbank ohne einen der Indizes: wird beim nächsten Öffnen nachgezogen
+        storage.write(MAIN, graph("c1"));
+        storage.exec("sql", "DROP INDEX `GraphBranch[graphId]`", Map.of());
+        assertThat(GraphStorage.indexNames(storage.db())).doesNotContain("GraphBranch[graphId]");
+        storage.close();
+        storage = create();
+        assertThat(GraphStorage.indexNames(storage.db())).contains("GraphBranch[graphId]");
+
+        // Der Aufräumer zählt die Generationen über den Index auf, statt alle Knoten zu lesen
+        String g1 = ((ArcadeGraphReader) storage.reader(MAIN)).graphId();
+        String g2 = storage.begin(GraphStorage.Access.LOCAL, MAIN.withBranch("feature/x"));
+        storage.writeNodes(GraphStorage.Access.LOCAL, g2, graph("c2").nodes());
+        assertThat(storage.generations("CodeNode")).containsExactlyElementsOf(java.util.stream.Stream.of(g1, g2)
+                .sorted().toList());
+        if (!(storage.db() instanceof com.arcadedb.database.Database)) {
+            return; // extern liefert EXPLAIN keine Zeilen; der Plan entsteht auf dem Server genauso
+        }
+        for (String type : List.of("CodeNode", "SourceFile")) {
+            String plan = (String) storage.rows("sql", "EXPLAIN " + GraphStorage.nextGenerationQuery(type),
+                    Map.of("last", "")).getFirst().get("executionPlanAsString");
+            assertThat(plan).contains("FETCH FROM INDEX " + type + "[g]").doesNotContain("FETCH FROM TYPE")
+                    .doesNotContain("ORDER BY");
+        }
+    }
+
+    @Test
     void startsReportsStatusAndSwitchesToOtherSettings() {
         List<String> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
         storage.addStatusListener(() -> seen.add(storage.status()));
