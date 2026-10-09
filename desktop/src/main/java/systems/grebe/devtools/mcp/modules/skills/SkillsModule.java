@@ -7,6 +7,7 @@ import java.util.Set;
 
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.backend.skills.Skill;
 import systems.grebe.devtools.mcp.config.DataHome;
@@ -15,6 +16,7 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.UserConfirmation;
 
 /**
  * Skill-Speicher für das LLM, angelehnt an das Skill-Management von Hermes: Ein Skill ist die Registrierung eines
@@ -37,6 +39,7 @@ public class SkillsModule implements ToolModule {
 
     static final String ALLOW_WRITE = "allowWrite";
     static final String ALLOW_DELETE = "allowDelete";
+    static final String ALLOW_SHARE = "allowShare";
     static final String MAX_CONTENT = "maxContentChars";
     static final String REVIEW_INTERVAL = "reviewNudgeInterval";
     static final String FILE_DIRS = "fileDirectories";
@@ -45,12 +48,21 @@ public class SkillsModule implements ToolModule {
     private final SkillReview review;
     private final SkillReviewTracker tracker;
     private final DataHome home;
+    private final UserConfirmation confirmation;
 
-    public SkillsModule(SkillBackend skills, SkillReview review, SkillReviewTracker tracker, DataHome home) {
+    @Autowired
+    public SkillsModule(SkillBackend skills, SkillReview review, SkillReviewTracker tracker, DataHome home,
+                        UserConfirmation confirmation) {
         this.skills = skills;
         this.review = review;
         this.tracker = tracker;
         this.home = home;
+        this.confirmation = confirmation;
+    }
+
+    /** Ohne Rückfrage beim Nutzer – {@code skills_share} lehnt dann das Teilen ab. */
+    public SkillsModule(SkillBackend skills, SkillReview review, SkillReviewTracker tracker, DataHome home) {
+        this(skills, review, tracker, home, null);
     }
 
     @Override
@@ -84,7 +96,8 @@ public class SkillsModule implements ToolModule {
                 - Danach: Korrektur des Nutzers, Fehlversuch oder neuer Workaround → `skills_patch` am passenden \
                 Skill, sonst `skills_create` mit `triggers` (Tools, bei denen er greifen soll). Checkliste: \
                 `skills_review`; Hinweise „[DevTools-Skills] …“ erst nach der laufenden Aufgabe abarbeiten.
-                - `*` in `skills_list` = globale Vorlage; Änderungen legen automatisch eine persönliche Kopie an.
+                - `*` in `skills_list` = globale Vorlage, `+` = von einem anderen Benutzer geteilt; Änderungen legen \
+                automatisch eine persönliche Kopie an. Eigene Skills teilt `skills_share` (nur auf Wunsch).
                 - Inhalt: Regel + Begründung, konkrete Tool-Aufrufe; keine Einzelfall-Details (→ Memory), keine \
                 Geheimnisse. `skills_delete` nur auf Wunsch.
                 - Vorlagen, Bilder, PDFs u.ä. mit `skills_write_file` anhängen (`source_path` für lokale Dateien, \
@@ -114,6 +127,9 @@ public class SkillsModule implements ToolModule {
                 ConfigField.of(ALLOW_WRITE, "Anlegen und Bearbeiten erlauben", FieldType.BOOLEAN).withDefault("true")
                         .withHelp("create, patch, update, write_file (auch Dateien anhängen), remove_file."),
                 ConfigField.of(ALLOW_DELETE, "Löschen erlauben", FieldType.BOOLEAN).withDefault("false"),
+                ConfigField.of(ALLOW_SHARE, "Teilen erlauben", FieldType.BOOLEAN).withDefault("true")
+                        .withHelp("share: eigene Skills für Benutzer, Rollen oder alle auf dem Team-Server freigeben "
+                                + "– nach Rückfrage beim Nutzer."),
                 ConfigField.of(MAX_CONTENT, "Max. Zeichen je Inhalt", FieldType.INT).withDefault("100000")
                         .withHelp("Obergrenze für den Skill-Inhalt und Zusatzdateien als Text (mit skills_patch "
                                 + "änderbar). Längere und binäre Dateien werden ohne Grenze als Anhang gespeichert."),
@@ -148,6 +164,9 @@ public class SkillsModule implements ToolModule {
         }
         if (config.getBoolean(ALLOW_DELETE)) {
             tools.addAll(List.of(ToolCallbacks.from(new SkillDeleteTools(skills))));
+        }
+        if (config.getBoolean(ALLOW_SHARE)) {
+            tools.addAll(List.of(ToolCallbacks.from(new SkillShareTools(skills, confirmation))));
         }
         return tools;
     }

@@ -20,9 +20,11 @@ class SkillsModuleTest {
 
     @Test
     void toolSelectionFollowsSwitches() {
-        assertThat(module.createTools(config(Map.of()))).hasSize(9);
-        assertThat(module.createTools(config(Map.of(SkillsModule.ALLOW_WRITE, "false")))).hasSize(3);
-        assertThat(module.createTools(config(Map.of(SkillsModule.ALLOW_DELETE, "true")))).hasSize(10);
+        assertThat(module.createTools(config(Map.of()))).hasSize(10);
+        assertThat(module.createTools(config(Map.of(SkillsModule.ALLOW_WRITE, "false")))).hasSize(4);
+        assertThat(module.createTools(config(Map.of(SkillsModule.ALLOW_DELETE, "true")))).hasSize(11);
+        assertThat(module.createTools(config(Map.of(SkillsModule.ALLOW_SHARE, "false"))))
+                .extracting(t -> t.getToolDefinition().name()).doesNotContain("share");
     }
 
     @Test

@@ -12,6 +12,7 @@ import java.util.Optional;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.api.MediaTypes;
+import systems.grebe.devtools.mcp.modules.shares.ShareViews;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 
@@ -25,9 +26,12 @@ import systems.grebe.devtools.mcp.modules.skills.SkillViews;
 public class BackendSkills implements SkillBackend {
 
     private static final String SUMMARY = "name description category tags revision useCount lastUsedAt updatedAt "
-            + "fileCount scope templateRevision currentTemplateRevision triggers";
+            + "fileCount scope templateRevision currentTemplateRevision triggers owner";
 
     private static final String FILE = "path content updatedAt size mediaType blob";
+
+    /** Felder einer Freigabe (auch für Memories). */
+    static final String SHARE = "target name createdAt";
 
     private final BackendConnection backend;
     private final BackendFiles files;
@@ -186,6 +190,31 @@ public class BackendSkills implements SkillBackend {
     @Override
     public String delete(String name) {
         return text("mutation($name: String!) { deleteSkill(name: $name) }", "deleteSkill", args("name", name));
+    }
+
+    @Override
+    public String share(String name, ShareViews.Request request, boolean revoke) {
+        ShareViews.Request r = request == null ? new ShareViews.Request(null, null, false) : request;
+        return text("""
+                mutation($name: String!, $users: [String!], $roles: [String!], $all: Boolean, $revoke: Boolean) { \
+                shareSkill(name: $name, users: $users, roles: $roles, everyone: $all, revoke: $revoke) }""",
+                "shareSkill", args("name", name, "users", r.users(), "roles", r.roles(), "all", r.everyone(),
+                        "revoke", revoke));
+    }
+
+    @Override
+    public List<ShareViews.Share> shares(String name) {
+        return backend.queryList("query($n: String!) { skillShares(name: $n) { " + SHARE + " } }",
+                Map.of("n", name), "skillShares", ShareViews.Share.class);
+    }
+
+    @Override
+    public List<ShareViews.Candidate> shareTargets() {
+        if (!backend.signedIn()) {
+            return List.of();
+        }
+        return backend.queryList("{ shareTargets { target name label } }", "shareTargets",
+                ShareViews.Candidate.class);
     }
 
     private String text(String document, String field, Map<String, Object> args) {

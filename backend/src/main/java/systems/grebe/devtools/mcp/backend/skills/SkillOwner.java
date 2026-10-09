@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.backend.skills;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -22,4 +23,14 @@ public interface SkillOwner {
 
     /** Darf globale Vorlagen veröffentlichen und zurückziehen (Recht „Vorlagen veröffentlichen“). */
     boolean admin();
+
+    /** Namen der Rollen des Benutzers – für Freigaben an Rollen. */
+    default List<String> roles() {
+        return List.of();
+    }
+
+    /** Darf eigene Skills und Memories für alle freigeben (Recht „Mit allen teilen“). */
+    default boolean shareWithAll() {
+        return admin();
+    }
 }

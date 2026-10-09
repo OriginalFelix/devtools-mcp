@@ -55,7 +55,7 @@ class AccountServiceTest {
         assertThat(admin.grants().all()).isTrue();
         Role user = roles.roles().get(1);
         assertThat(user.permissions()).containsExactlyInAnyOrder(Grants.ALL_MODULES, Permission.SETTINGS_OWN.key(),
-                Permission.PROJECTS_CREATE.key(), Permission.TOKENS_CREATE.key());
+                Permission.PROJECTS_CREATE.key(), Permission.TOKENS_CREATE.key(), Permission.SHARES_ALL.key());
     }
 
     @Test

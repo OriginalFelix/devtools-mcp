@@ -502,6 +502,110 @@ class GraphQlApiIntegrationTest {
     }
 
     @Test
+    void skillsAndMemoriesAreSharedWithUsersRolesAndEveryone() throws Exception {
+        roles.create("Freigabe-Team", null, List.of("module:*"));
+        roles.create("Ohne-Teilen", null, List.of("module:*", Permission.TOKENS_CREATE.key()));
+        UserAccount a = newUser();
+        UserAccount b = newUser(Role.USER, "Freigabe-Team");
+        UserAccount c = newUser();
+        UserAccount d = newUser("Ohne-Teilen");
+        String ja = token(a);
+        String jb = token(b);
+        String jc = token(c);
+        String jd = token(d);
+        String share = """
+                mutation($n: String!, $u: [String!], $r: [String!], $all: Boolean, $revoke: Boolean) { \
+                shareSkill(name: $n, users: $u, roles: $r, everyone: $all, revoke: $revoke) }""";
+
+        mutation(ja, "mutation { createSkill(name: \"geteilt\", description: \"Geteilter Ablauf\", content: \"1. tun\") }",
+                Map.of(), "createSkill");
+        String blob = upload(ja, "Anhang von A");
+        mutation(ja, "mutation($b: String!) { attachSkillFile(name: \"geteilt\", filePath: \"assets/a.bin\", blob: $b) }",
+                Map.of("b", blob), "attachSkillFile");
+
+        // Ziele: andere Benutzer, Rollen und – mit shares.all (Rolle Benutzer) – alle
+        List<Map<String, Object>> targets = client(ja).document("{ shareTargets { target name label } }")
+                .retrieveSync("shareTargets").toEntityList(new org.springframework.core.ParameterizedTypeReference<>() {
+                });
+        assertThat(targets).extracting(t -> t.get("target") + ":" + t.get("name"))
+                .contains("USER:" + b.email(), "ROLE:Freigabe-Team", "ALL:*").doesNotContain("USER:" + a.email());
+
+        assertThat(mutation(ja, share, Map.of("n", "geteilt", "u", List.of(b.username())), "shareSkill"))
+                .contains("freigegeben für " + b.email());
+        assertThat(client(jb).document("{ skillList }").retrieveSync("skillList").toEntity(String.class))
+                .contains("geteilt+", "(von " + a.email() + ")");
+        assertThat(client(jb).document("{ skill(name: \"geteilt\") { summary { scope owner } } }")
+                .retrieveSync("skill.summary.scope").toEntity(String.class)).isEqualTo("SHARED");
+        assertThat(client(jc).document("{ skillList }").retrieveSync("skillList").toEntity(String.class))
+                .doesNotContain("geteilt");
+        assertThat(client(ja).document("{ skillShares(name: \"geteilt\") { target name } }")
+                .retrieveSync("skillShares[0].name").toEntity(String.class)).isEqualTo(b.email());
+
+        // Anhang des geteilten Skills: B darf ihn laden, C nicht
+        java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
+        var get = (java.util.function.Function<String, java.net.http.HttpResponse<String>>) jwt -> {
+            try {
+                return http.send(java.net.http.HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port
+                                + "/blobs/" + blob)).header("Authorization", "Bearer " + jwt).GET().build(),
+                        java.net.http.HttpResponse.BodyHandlers.ofString());
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        };
+        assertThat(get.apply(jb).body()).isEqualTo("Anhang von A");
+        assertThat(get.apply(jc).statusCode()).isEqualTo(400);
+
+        // Für alle nur mit dem Recht shares.all
+        ClientGraphQlResponse denied = client(jd).document(share).variables(Map.of("n", "x", "all", true)).executeSync();
+        assertThat(denied.getErrors()).isNotEmpty();
+        mutation(jd, "mutation { createSkill(name: \"von-d\", description: \"D\", content: \"d\") }", Map.of(),
+                "createSkill");
+        assertThat(client(jd).document(share).variables(Map.of("n", "von-d", "all", true)).executeSync().getErrors()
+                .getFirst().getMessage()).contains("Mit allen teilen");
+        assertThat(mutation(ja, share, Map.of("n", "geteilt", "all", true), "shareSkill")).contains("alle");
+        assertThat(client(jc).document("{ skillList }").retrieveSync("skillList").toEntity(String.class))
+                .contains("geteilt+");
+
+        // Memory an eine Rolle; Umbenennen der Rolle behält die Freigabe, Löschen entfernt sie
+        String saved = mutation(ja, "mutation { saveMemory(title: \"Ticket SHR-1 analysiert\", content: \"Ursache X\") }",
+                Map.of(), "saveMemory");
+        long id = Long.parseLong(saved.replaceAll("\\D", ""));
+        assertThat(mutation(ja, "mutation($id: Int!) { shareMemory(id: $id, roles: [\"Freigabe-Team\"]) }",
+                Map.of("id", id), "shareMemory")).contains("Rolle Freigabe-Team");
+        String search = "{ memorySearch(query: \"shr-1\") }";
+        assertThat(client(jb).document(search).retrieveSync("memorySearch").toEntity(String.class))
+                .contains("Ticket SHR-1", "geteilt von " + a.email());
+        assertThat(client(jc).document(search).retrieveSync("memorySearch").toEntity(String.class))
+                .contains("Keine Memories");
+        assertThat(errorType(client(jb).document("mutation($id: Int!) { deleteMemory(id: $id) }")
+                .variables(Map.of("id", id)).executeSync())).isEqualTo("BAD_REQUEST");
+        Role team = roles.roles().stream().filter(r -> r.name().equals("Freigabe-Team")).findFirst().orElseThrow();
+        roles.update(team.id(), "Freigabe-Team-Neu", null, List.of("module:*"));
+        String jb2 = token(accounts.user(b.id()).orElseThrow());
+        assertThat(client(jb2).document(search).retrieveSync("memorySearch").toEntity(String.class))
+                .contains("Ticket SHR-1");
+        roles.delete(team.id());
+        assertThat(client(ja).document("query($id: Int!) { memoryShares(id: $id) { name } }")
+                .variables(Map.of("id", id)).retrieveSync("memoryShares").toEntityList(Object.class)).isEmpty();
+    }
+
+    /** Lädt Text in einem Teil in die Dateiablage des Benutzers und liefert den SHA-256. */
+    private String upload(String jwt, String text) throws Exception {
+        java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
+        java.util.function.Function<String, java.net.http.HttpRequest.Builder> req = path -> java.net.http.HttpRequest
+                .newBuilder(URI.create("http://127.0.0.1:" + port + "/blobs" + path))
+                .header("Authorization", "Bearer " + jwt);
+        var string = java.net.http.HttpResponse.BodyHandlers.ofString();
+        var noBody = java.net.http.HttpRequest.BodyPublishers.noBody();
+        String id = http.send(req.apply("/uploads").POST(noBody).build(), string).body()
+                .replaceAll(".*\"upload\"\\s*:\\s*\"([0-9a-f]+)\".*", "$1");
+        http.send(req.apply("/uploads/" + id + "?offset=0")
+                .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(text)).build(), string);
+        return http.send(req.apply("/uploads/" + id + "/complete").POST(noBody).build(), string).body()
+                .replaceAll(".*\"blob\"\\s*:\\s*\"([0-9a-f]{64})\".*", "$1");
+    }
+
+    @Test
     void skillsBelongToTheTokenUser() {
         String ja = token(newUser());
         String jb = token(newUser());

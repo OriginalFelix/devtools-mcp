@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import systems.grebe.devtools.mcp.modules.shares.ShareViews;
+
 /**
  * Memory-Speicher aus Sicht von Tools und Oberfläche: im Backend (eingebettet oder auf dem Team-Server). Texte sind
  * für das LLM formuliert; fachliche Fehler kommen als {@link IllegalArgumentException} mit einem Hinweis auf den
@@ -70,4 +72,18 @@ public interface MemoryBackend {
 
     /** Schreibt den Inhalt einer angehängten Datei nach {@code target}; vorhandene wird ersetzt. */
     String exportFile(long id, String filePath, Path target);
+
+    /**
+     * Gibt eine eigene Memory für Benutzer, Rollen oder alle frei bzw. nimmt Freigaben zurück ({@code revoke}); ohne
+     * Ziele nur der aktuelle Stand. Geteilte Memories sehen die Empfänger in Suche und Übersicht, schreibgeschützt.
+     */
+    String share(long id, ShareViews.Request request, boolean revoke);
+
+    /** Freigaben einer eigenen Memory. */
+    List<ShareViews.Share> shares(long id);
+
+    /** Mögliche Ziele einer Freigabe (Benutzer, Rollen, ggf. alle); ohne Team-Server leer. */
+    default List<ShareViews.Candidate> shareTargets() {
+        return List.of();
+    }
 }

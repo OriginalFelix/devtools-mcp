@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.api.MediaTypes;
 import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
 import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
+import systems.grebe.devtools.mcp.modules.shares.ShareViews;
 
 /**
  * Memories im Backend über GraphQL – eingebettet oder auf dem Team-Server, wie {@link BackendSkills}. Änderungen (auch
@@ -23,7 +24,7 @@ public class BackendMemories implements MemoryBackend {
 
     private static final String FILE = "path size mediaType blob updatedAt";
     private static final String ENTRY = "id title content project skill reference tags type createdAt updatedAt "
-            + "files { " + FILE + " }";
+            + "files { " + FILE + " } owner";
 
     private final BackendConnection backend;
     private final BackendFiles files;
@@ -31,6 +32,31 @@ public class BackendMemories implements MemoryBackend {
     public BackendMemories(BackendConnection backend, BackendFiles files) {
         this.backend = backend;
         this.files = files;
+    }
+
+    @Override
+    public String share(long id, ShareViews.Request request, boolean revoke) {
+        ShareViews.Request r = request == null ? new ShareViews.Request(null, null, false) : request;
+        return backend.query("""
+                mutation($id: Int!, $users: [String!], $roles: [String!], $all: Boolean, $revoke: Boolean) { \
+                shareMemory(id: $id, users: $users, roles: $roles, everyone: $all, revoke: $revoke) }""",
+                args("id", id, "users", r.users(), "roles", r.roles(), "all", r.everyone(), "revoke", revoke),
+                "shareMemory", String.class);
+    }
+
+    @Override
+    public List<ShareViews.Share> shares(long id) {
+        return backend.queryList("query($id: Int!) { memoryShares(id: $id) { " + BackendSkills.SHARE + " } }",
+                Map.of("id", id), "memoryShares", ShareViews.Share.class);
+    }
+
+    @Override
+    public List<ShareViews.Candidate> shareTargets() {
+        if (!backend.signedIn()) {
+            return List.of();
+        }
+        return backend.queryList("{ shareTargets { target name label } }", "shareTargets",
+                ShareViews.Candidate.class);
     }
 
     @Override

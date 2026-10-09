@@ -19,20 +19,37 @@ public final class SkillViews {
         /** Persönliche Kopie einer globalen Vorlage (verdeckt die Vorlage). */
         COPY,
         /** Globale, schreibgeschützte Vorlage. */
-        GLOBAL
+        GLOBAL,
+        /** Von einem anderen Benutzer geteilt, schreibgeschützt (Änderung legt eine persönliche Kopie an). */
+        SHARED
     }
 
     /**
      * Zeile der Übersicht. {@code templateRevision}: bei {@link Scope#COPY} die Revision der Vorlage beim Kopieren;
      * {@code currentTemplateRevision}: die aktuelle Revision der Vorlage (oder {@code null}, wenn sie inzwischen
-     * zurückgezogen wurde); {@code triggers}: Tool-Namen bzw. Präfixe ({@code pr_*}), für die der Skill registriert ist.
+     * zurückgezogen wurde); {@code triggers}: Tool-Namen bzw. Präfixe ({@code pr_*}), für die der Skill registriert ist;
+     * {@code owner}: bei {@link Scope#SHARED} die E-Mail des Eigentümers, sonst leer.
      */
     public record Summary(String name, String description, String category, List<String> tags, int revision,
                           long useCount, Instant lastUsedAt, Instant updatedAt, int fileCount, Scope scope,
-                          Integer templateRevision, Integer currentTemplateRevision, List<String> triggers) {
+                          Integer templateRevision, Integer currentTemplateRevision, List<String> triggers,
+                          String owner) {
 
         public Summary {
             triggers = triggers == null ? List.of() : List.copyOf(triggers);
+        }
+
+        /** Ohne Eigentümer (eigener Skill, Kopie oder Vorlage). */
+        public Summary(String name, String description, String category, List<String> tags, int revision,
+                       long useCount, Instant lastUsedAt, Instant updatedAt, int fileCount, Scope scope,
+                       Integer templateRevision, Integer currentTemplateRevision, List<String> triggers) {
+            this(name, description, category, tags, revision, useCount, lastUsedAt, updatedAt, fileCount, scope,
+                    templateRevision, currentTemplateRevision, triggers, null);
+        }
+
+        /** Von einem anderen Benutzer geteilt. */
+        public boolean shared() {
+            return scope == Scope.SHARED;
         }
 
         /** Ist der Skill für dieses Tool registriert (exakter Name oder Präfix mit {@code *})? */

@@ -50,6 +50,7 @@ public class MemoriesView extends BorderPane {
     private final TextField search = new TextField();
     private final Label countLabel = new Label();
     private final Button delete = new Button("Löschen…");
+    private final Button share = new Button("Teilen…");
     private final StackPane detailHolder = new StackPane();
     private final Label placeholder = new Label("Memory auswählen");
     private final PauseTransition debounce = new PauseTransition(Duration.millis(300));
@@ -90,15 +91,21 @@ public class MemoriesView extends BorderPane {
         Button refresh = new Button("Aktualisieren");
         refresh.setOnAction(e -> refresh());
         delete.setOnAction(e -> selected().ifPresent(this::confirmDelete));
+        share.setOnAction(e -> selected().ifPresent(this::openShare));
         delete.setDisable(true);
-        table.getSelectionModel().selectedItemProperty().addListener((o, a, m) -> delete.setDisable(m == null));
+        share.setDisable(true);
+        // geteilte Memories anderer Benutzer sind schreibgeschützt
+        table.getSelectionModel().selectedItemProperty().addListener((o, a, m) -> {
+            delete.setDisable(m == null || m.shared());
+            share.setDisable(m == null || m.shared() || m.invocation());
+        });
         countLabel.getStyleClass().add("form-help");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        for (javafx.scene.control.Control c : List.of(refresh, delete, countLabel)) {
+        for (javafx.scene.control.Control c : List.of(refresh, share, delete, countLabel)) {
             c.setMinWidth(Region.USE_PREF_SIZE);
         }
-        HBox bar = new HBox(8, search, spacer, countLabel, refresh, delete);
+        HBox bar = new HBox(8, search, spacer, countLabel, refresh, share, delete);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(10, 12, 8, 12));
         return bar;
@@ -114,7 +121,8 @@ public class MemoriesView extends BorderPane {
         table.getColumns().add(col("Projekt", 100, m -> orEmpty(m.project())));
         table.getColumns().add(col("Skill", 110, m -> orEmpty(m.skill())));
         table.getColumns().add(col("Bezug", 90, m -> orEmpty(m.reference())));
-        table.getColumns().add(col("Titel", 300, MemoryViews.Entry::title));
+        table.getColumns().add(col("Titel", 300, m -> m.shared() ? m.title() + "  (von " + m.owner() + ")"
+                : m.title()));
         table.getColumns().forEach(c -> c.setReorderable(false));
         table.getSelectionModel().selectedItemProperty().addListener((o, a, m) -> showDetails(m));
         return table;
@@ -222,6 +230,12 @@ public class MemoriesView extends BorderPane {
             parts.add("geändert " + TIME.format(m.updatedAt()));
         }
         return String.join("  ·  ", parts);
+    }
+
+    private void openShare(MemoryViews.Entry m) {
+        new ShareDialog(getScene() == null ? null : getScene().getWindow(), "Memory #" + m.id(),
+                service::shareTargets, () -> service.shares(m.id()),
+                (request, revoke) -> service.share(m.id(), request, revoke)).showAndWait();
     }
 
     private void confirmDelete(MemoryViews.Entry m) {

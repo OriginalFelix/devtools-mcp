@@ -4,6 +4,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
+import systems.grebe.devtools.mcp.modules.shares.ShareViews;
+
 /**
  * Skill-Speicher aus Sicht von Tools und Oberfläche: lokal ({@link SkillService} auf der konfigurierten Datenbank) oder
  * – bei Anbindung an einen Team-Server – zentral auf dem Server. Texte sind für das LLM formuliert; fachliche Fehler
@@ -74,4 +76,16 @@ public interface SkillBackend {
     String removeFile(String name, String filePath, String note);
 
     String delete(String name);
+
+    /**
+     * Gibt einen eigenen Skill für Benutzer, Rollen oder alle frei bzw. nimmt Freigaben zurück ({@code revoke}); ohne
+     * Ziele nur der aktuelle Stand. Für alle teilen braucht das Recht „Mit allen teilen“.
+     */
+    String share(String name, ShareViews.Request request, boolean revoke);
+
+    /** Freigaben eines eigenen Skills. */
+    List<ShareViews.Share> shares(String name);
+
+    /** Mögliche Ziele einer Freigabe (Benutzer, Rollen, ggf. alle) – auch für Memories. */
+    List<ShareViews.Candidate> shareTargets();
 }
