@@ -320,6 +320,33 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         return kind.name().charAt(0) + kind.name().substring(1).toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * Index auf einer String-Property. Indizes auf {@code CodeNode} gelten für alle Untertypen ({@code Class},
+     * {@code Method}, …) – ArcadeDB legt sie über deren Buckets mit an.
+     */
+    record IndexDef(String type, String property, boolean unique) {
+
+        /** Name in ArcadeDB, z.B. {@code CodeNode[uid]}. */
+        String name() {
+            return type + "[" + property + "]";
+        }
+    }
+
+    /**
+     * Alle Indizes der Ablage. Sie werden beim Öffnen automatisch angelegt – auch in bestehenden Datenbanken, dort
+     * einmalig über die vorhandenen Datensätze. Jede Abfrage der Ablage greift über einen davon zu, keine durchsucht
+     * einen Typ komplett: {@code uid} für Knoten-Lookups und Kantenimport, {@code g} für alles je Generation (auch das
+     * Aufzählen der Generationen im Aufräumer), {@code graphId}/{@code pendingGraphId} für Leser und laufende Aufbauten.
+     */
+    static final List<IndexDef> INDEXES = List.of(
+            new IndexDef("CodeNode", "uid", true),
+            new IndexDef("CodeNode", "g", false),
+            new IndexDef("SourceFile", "g", false),
+            new IndexDef("GraphBranch", "branchKey", true),
+            new IndexDef("GraphBranch", "projectKey", false),
+            new IndexDef("GraphBranch", "graphId", false),
+            new IndexDef("GraphBranch", "pendingGraphId", false));
+
     private static void createSchema(BasicDatabase d) {
         StringBuilder sql = new StringBuilder();
         sql.append("CREATE VERTEX TYPE `CodeNode` IF NOT EXISTS;\n")
@@ -333,21 +360,22 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         for (Relation r : Relation.values()) {
             sql.append("CREATE EDGE TYPE `").append(r.name()).append("` IF NOT EXISTS;\n");
         }
-        sql.append("""
-                CREATE PROPERTY `CodeNode`.uid IF NOT EXISTS STRING;
-                CREATE PROPERTY `CodeNode`.g IF NOT EXISTS STRING;
-                CREATE INDEX IF NOT EXISTS ON `CodeNode` (uid) UNIQUE;
-                CREATE INDEX IF NOT EXISTS ON `CodeNode` (g) NOTUNIQUE;
-                CREATE VERTEX TYPE `SourceFile` IF NOT EXISTS;
-                CREATE PROPERTY `SourceFile`.g IF NOT EXISTS STRING;
-                CREATE INDEX IF NOT EXISTS ON `SourceFile` (g) NOTUNIQUE;
-                CREATE VERTEX TYPE `GraphBranch` IF NOT EXISTS;
-                CREATE PROPERTY `GraphBranch`.branchKey IF NOT EXISTS STRING;
-                CREATE PROPERTY `GraphBranch`.projectKey IF NOT EXISTS STRING;
-                CREATE INDEX IF NOT EXISTS ON `GraphBranch` (branchKey) UNIQUE;
-                CREATE INDEX IF NOT EXISTS ON `GraphBranch` (projectKey) NOTUNIQUE;
-                """);
+        sql.append("CREATE VERTEX TYPE `SourceFile` IF NOT EXISTS;\n")
+                .append("CREATE VERTEX TYPE `GraphBranch` IF NOT EXISTS;\n");
+        for (IndexDef i : INDEXES) {
+            sql.append("CREATE PROPERTY `").append(i.type()).append("`.`").append(i.property())
+                    .append("` IF NOT EXISTS STRING;\n");
+        }
+        Set<String> existing = indexNames(d);
+        for (IndexDef i : INDEXES) {
+            sql.append("CREATE INDEX IF NOT EXISTS ON `").append(i.type()).append("` (`").append(i.property())
+                    .append("`) ").append(i.unique() ? "UNIQUE" : "NOTUNIQUE").append(";\n");
+        }
         d.command("sqlscript", sql.toString());
+        List<String> created = INDEXES.stream().map(IndexDef::name).filter(n -> !existing.contains(n)).toList();
+        if (!existing.isEmpty() && !created.isEmpty()) {
+            LOG.info("Graph-Storage: Indizes {} angelegt", created);
+        }
         // Branches älterer Schlüssel (nach Pfad) – ihre Generationen entfernt danach der Aufräumer. Eigenes Kommando:
         // im selben Skript kennt ArcadeDB den eben angelegten Typ noch nicht.
         String old = "DELETE FROM GraphBranch WHERE keyVersion IS NULL OR keyVersion < " + KEY_VERSION;
@@ -356,6 +384,17 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         } else {
             d.command("sql", old).close();
         }
+    }
+
+    /** Namen der vorhandenen Indizes, z.B. {@code CodeNode[uid]}. */
+    static Set<String> indexNames(BasicDatabase d) {
+        Set<String> out = new HashSet<>();
+        try (ResultSet rs = d.query("sql", "SELECT name FROM schema:indexes")) {
+            while (rs.hasNext()) {
+                out.add(rs.next().getProperty("name"));
+            }
+        }
+        return out;
     }
 
     /** Beschreibung samt ArcadeDB-Version; öffnet dabei die Datenbank. */
@@ -1122,9 +1161,8 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
      * vorgemerkt bzw. veröffentlicht oder wirklich verwaist.
      */
     void cleanup() {
-        Set<String> generations = new HashSet<>();
-        rows("sql", "SELECT g FROM SourceFile GROUP BY g", Map.of()).forEach(r -> generations.add((String) r.get("g")));
-        rows("sql", "SELECT g FROM CodeNode GROUP BY g", Map.of()).forEach(r -> generations.add((String) r.get("g")));
+        Set<String> generations = new HashSet<>(generations("SourceFile"));
+        generations.addAll(generations("CodeNode"));
         if (generations.isEmpty()) {
             return;
         }
@@ -1139,6 +1177,30 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
             }
             deleteGeneration(g);
         }
+    }
+
+    /** Nächste Generation nach {@code :last} – über den Index auf {@code g} in dessen Reihenfolge, ohne Scan. */
+    static String nextGenerationQuery(String type) {
+        return "SELECT g FROM `" + type + "` WHERE g > :last ORDER BY g LIMIT 1";
+    }
+
+    /**
+     * Die Generationen eines Typs, von Schlüssel zu Schlüssel im Index auf {@code g} gesprungen: eine Abfrage je
+     * Generation statt eines Durchlaufs über alle Knoten ({@code GROUP BY g} liest jeden Datensatz).
+     */
+    List<String> generations(String type) {
+        List<String> out = new ArrayList<>();
+        String q = nextGenerationQuery(type);
+        String after = "";
+        while (!closing) {
+            List<Map<String, Object>> r = rows("sql", q, params("last", after));
+            if (r.isEmpty() || !(r.getFirst().get("g") instanceof String g)) {
+                break;
+            }
+            out.add(g);
+            after = g;
+        }
+        return out;
     }
 
     /** Entfernt Knoten, Kanten und Quelldateien einer Generation in Batches; Quelldateien zuletzt. */
