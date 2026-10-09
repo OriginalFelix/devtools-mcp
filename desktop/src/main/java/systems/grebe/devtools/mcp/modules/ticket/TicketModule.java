@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +21,8 @@ import systems.grebe.devtools.mcp.modules.classify.ClassifyModule;
 import systems.grebe.devtools.mcp.modules.classify.TaskClassifier;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * Ticket-Systeme über austauschbare Provider ({@link TicketProvider}, per ServiceLoader): Boards, Suche, Ticket lesen;
@@ -142,22 +143,11 @@ public class TicketModule implements ToolModule {
         return 160;
     }
 
-    static String key(String providerId, String field) {
-        return providerId + "." + field;
-    }
-
-    static String enabledKey(String providerId) {
-        return key(providerId, "enabled");
-    }
-
     @Override
     public List<ConfigField> configSchema() {
-        List<String> options = new ArrayList<>(List.of("auto"));
-        providers.providers().forEach(p -> options.add(p.id()));
         List<ConfigField> fields = new ArrayList<>();
-        fields.add(ConfigField.of(DEFAULT_PROVIDER, "Standard-System", FieldType.ENUM).withDefault("auto")
-                .withOptions(options.toArray(String[]::new))
-                .withHelp("Für Aufrufe ohne 'provider', deren Schlüssel keinem System eindeutig gehört. "
+        fields.add(ProviderSchema.defaultProviderField(DEFAULT_PROVIDER, "Standard-System", providers.providers(),
+                "Für Aufrufe ohne 'provider', deren Schlüssel keinem System eindeutig gehört. "
                         + "'auto' = das einzige aktive System."));
         for (TicketProvider p : providers.providers()) {
             List<ConfigField> own = new ArrayList<>(p.configFields());
@@ -236,14 +226,14 @@ public class TicketModule implements ToolModule {
         if (config.getBoolean(ALLOW_CLASSIFY)) {
             beans.add(new TicketClassifyTools(env, () -> new TaskClassifier(classifier.get())));
         }
-        return List.of(ToolCallbacks.from(beans.toArray()));
+        return ToolBeans.callbacks(beans.toArray());
     }
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         TicketEnvironment env;
         try {

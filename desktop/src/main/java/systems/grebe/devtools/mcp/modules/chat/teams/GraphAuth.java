@@ -2,9 +2,6 @@ package systems.grebe.devtools.mcp.modules.chat.teams;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.LocalTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -14,6 +11,7 @@ import java.util.function.Consumer;
 
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatVault;
 import tools.jackson.databind.JsonNode;
+import systems.grebe.devtools.mcp.core.EntraDeviceLogin;
 
 /**
  * Anmeldung bei Entra ID als öffentlicher Client mit delegierten Berechtigungen: Device-Code-Flow (der Nutzer gibt im
@@ -24,8 +22,6 @@ final class GraphAuth {
 
     /** {@code offline_access} für das Refresh-Token, {@code openid} für das ID-Token (Tenant-ID). */
     static final String SCOPES = "openid profile offline_access User.Read Chat.ReadWrite ChatMessage.Send";
-    static final String DEVICE_CODE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
-    private static final DateTimeFormatter HHMM = DateTimeFormatter.ofPattern("HH:mm");
 
     private final GraphHttp http;
     private final ChatVault vault;
@@ -129,54 +125,20 @@ final class GraphAuth {
             awaitFlow(existing);
             return;
         }
-        JsonNode code;
-        try {
-            code = http.form(endpoint("devicecode"), Map.of("client_id", clientId, "scope", SCOPES));
-        } catch (GraphHttp.GraphException e) {
-            // häufig: AADSTS7000218 = „Öffentliche Clientflows zulassen“ ist in der App-Registrierung aus
-            throw new IllegalStateException("Teams: Anmeldung konnte nicht starten (" + e.code() + "): " + e.getMessage()
-                    + " – Client-ID, Tenant und „Öffentliche Clientflows zulassen“ in der App-Registrierung prüfen.", e);
-        }
-        String uri = code.path("verification_uri").asString("https://microsoft.com/devicelogin");
-        String userCode = code.path("user_code").asString("");
-        long expiresIn = code.path("expires_in").asLong(900);
-        long interval = Math.max(1, code.path("interval").asLong(5));
-        Instant deadline = Instant.now().plusSeconds(expiresIn);
-        String text = "Im Browser " + uri + " öffnen und den Code " + userCode + " eingeben (gültig bis "
-                + LocalTime.ofInstant(deadline, ZoneId.systemDefault()).format(HHMM) + ").";
+        EntraDeviceLogin.Started flow = EntraDeviceLogin.start(http::form, endpoint("devicecode"), clientId, SCOPES,
+                "Teams: ", "");
         CompletableFuture<Void> mine = new CompletableFuture<>();
         synchronized (this) {
-            pendingPrompt = text;
+            pendingPrompt = flow.text();
             lastError = null;
             running = mine;
         }
-        Map<String, String> form = Map.of("client_id", clientId, "grant_type", DEVICE_CODE_GRANT,
-                "device_code", code.path("device_code").asString(""));
         RuntimeException failure = null;
         try {
-            prompt.accept(text);
-            while (true) {
-                GraphHttp.sleep(interval * 1000);
-                if (Instant.now().isAfter(deadline)) {
-                    throw new IllegalStateException("Teams: Code abgelaufen – Anmeldung neu starten.");
-                }
-                try {
-                    JsonNode token = http.form(endpoint("token"), form);
-                    synchronized (this) {
-                        accept(token);
-                    }
-                    return;
-                } catch (GraphHttp.GraphException e) {
-                    switch (e.code()) {
-                        case "authorization_pending" -> { }
-                        case "slow_down" -> interval += 5; // RFC 8628
-                        case "authorization_declined" -> throw new IllegalStateException("Teams: Anmeldung im Browser "
-                                + "abgelehnt.", e);
-                        case "expired_token", "bad_verification_code" -> throw new IllegalStateException("Teams: Code "
-                                + "abgelaufen oder ungültig – Anmeldung neu starten.", e);
-                        default -> throw new IllegalStateException("Teams: Anmeldung fehlgeschlagen: " + e.getMessage(), e);
-                    }
-                }
+            prompt.accept(flow.text());
+            JsonNode token = flow.awaitToken(http::form, endpoint("token"), "Teams: ");
+            synchronized (this) {
+                accept(token);
             }
         } catch (RuntimeException e) {
             failure = e;

@@ -22,6 +22,7 @@ import systems.grebe.devtools.mcp.core.UserConfirmation;
 import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
 import systems.grebe.devtools.mcp.modules.share.ShareState.Received;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
+import systems.grebe.devtools.mcp.core.LocalFiles;
 
 /**
  * Kooperation zwischen Claude-Instanzen auf verschiedenen Rechnern: Ein Nutzer bietet Kontext (Notiz), Memories,
@@ -183,27 +184,21 @@ public class ShareModule implements ToolModule {
             return Optional.empty();
         }
         try {
-            String s = raw.strip().replaceFirst("^~(?=[/\\\\]|$)",
-                    java.util.regex.Matcher.quoteReplacement(System.getProperty("user.home")));
-            return Optional.of(Path.of(s).toAbsolutePath().normalize());
+            return Optional.of(Path.of(LocalFiles.expandHome(raw)).toAbsolutePath().normalize());
         } catch (InvalidPathException e) {
             return Optional.empty();
         }
     }
 
     static UserConfirmation.Channel confirmChannel(ModuleConfig config) {
-        return switch (config.getString(CONFIRM, "auto")) {
-            case "client" -> UserConfirmation.Channel.CLIENT;
-            case "app" -> UserConfirmation.Channel.APP;
-            default -> UserConfirmation.Channel.AUTO;
-        };
+        return UserConfirmation.Channel.parse(config.getString(CONFIRM, "auto"));
     }
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         String url = config.getString(BROKER_URL, "");
         if (!url.isBlank()) {

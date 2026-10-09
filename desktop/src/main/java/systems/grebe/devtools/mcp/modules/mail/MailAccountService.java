@@ -42,6 +42,7 @@ import systems.grebe.devtools.mcp.modules.mail.spi.MailQuery;
 import systems.grebe.devtools.mcp.modules.mail.spi.MailSend;
 import systems.grebe.devtools.mcp.modules.mail.spi.MailSummary;
 import systems.grebe.devtools.mcp.modules.mail.spi.NewMail;
+import systems.grebe.devtools.mcp.core.ContextClassLoader;
 
 /**
  * Stellt die Konten des Mail-Moduls anderen Modulen und Plugins bereit ({@link MailAccountProvider} aus der Plugin-API).
@@ -222,10 +223,8 @@ public class MailAccountService implements MailAccountProvider, AutoCloseable {
     public AutoCloseable onNewMail(Consumer<NewMail> listener) {
         ClassLoader loader = listener.getClass().getClassLoader();
         return watcher.addListener(mails -> {
-            Thread t = Thread.currentThread();
-            ClassLoader previous = t.getContextClassLoader();
-            t.setContextClassLoader(loader); // Listener eines Plugins sieht dessen Klassen
-            try {
+            // Listener eines Plugins sieht dessen Klassen
+            ContextClassLoader.run(loader, () -> {
                 for (MailWatcher.NewMail m : mails) {
                     try {
                         listener.accept(new NewMail(new MailSummary(m.account(), m.folder(), m.uid(), instant(m.date()),
@@ -234,9 +233,7 @@ public class MailAccountService implements MailAccountProvider, AutoCloseable {
                         LOG.warn("Listener für neue Mails ({}) fehlgeschlagen", listener.getClass().getName(), e);
                     }
                 }
-            } finally {
-                t.setContextClassLoader(previous);
-            }
+            });
         });
     }
 

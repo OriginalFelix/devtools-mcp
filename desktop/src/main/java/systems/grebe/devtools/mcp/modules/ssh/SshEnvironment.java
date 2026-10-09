@@ -24,6 +24,8 @@ import com.jcraft.jsch.UIKeyboardInteractive;
 import com.jcraft.jsch.UserInfo;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolProgress;
+import systems.grebe.devtools.mcp.core.LocalFiles;
+import systems.grebe.devtools.mcp.core.NamedEntries;
 
 /** Ausgewertete Konfiguration des SSH-Moduls: Verbindungen, Host-Key-Prüfung, Grenzen – und die Ausführung selbst. */
 final class SshEnvironment {
@@ -39,8 +41,15 @@ final class SshEnvironment {
         T run(ChannelSftp sftp) throws SftpException, IOException;
     }
 
-    private final Map<String, SshConnection> connections = new LinkedHashMap<>();
-    private final List<String> duplicates = new ArrayList<>();
+    private final NamedEntries<SshConnection> connections = new NamedEntries<>(SshConnection::name,
+            new NamedEntries.Messages("Keine SSH-Verbindung konfiguriert – in der DevTools-App unter Module → SSH "
+                    + "eine Verbindung anlegen (Name, Host, Port, Benutzer, Passwort).",
+                    names -> "Mehrere SSH-Verbindungen konfiguriert – 'connection' angeben: " + names
+                            + " (siehe ssh_connections).",
+                    name -> "Der Verbindungsname '" + name + "' ist mehrfach vergeben – der Nutzer muss "
+                            + "ihn in der DevTools-App eindeutig machen.",
+                    (name, names) -> "Unbekannte SSH-Verbindung '" + name + "'. Konfiguriert: " + names
+                            + ". Neue Verbindungen legt der Nutzer in der DevTools-App an."));
     private final SshSessions sessions;
     private final SshShells shells;
     private final Path knownHosts;
@@ -69,7 +78,7 @@ final class SshEnvironment {
         this.shellIdleMillis = Math.max(1, c.getInt(SshModule.SHELL_IDLE_MINUTES, 30)) * 60_000L;
         for (String dir : c.getList(SshModule.LOCAL_DIRS)) {
             try {
-                Path root = Path.of(expandHome(dir)).toAbsolutePath().normalize();
+                Path root = Path.of(LocalFiles.expandHome(dir)).toAbsolutePath().normalize();
                 if (Files.isDirectory(root)) {
                     localRoots.add(root);
                 }
@@ -82,13 +91,10 @@ final class SshEnvironment {
             if (conn.name().isEmpty()) {
                 continue;
             }
-            String key = conn.name().toLowerCase(Locale.ROOT);
-            if (connections.putIfAbsent(key, conn) != null) {
-                duplicates.add(conn.name());
-            }
+            connections.add(conn);
         }
         String file = c.getString(SshModule.KNOWN_HOSTS, "");
-        this.knownHosts = file.isBlank() ? defaultKnownHosts : Path.of(expandHome(file));
+        this.knownHosts = file.isBlank() ? defaultKnownHosts : Path.of(LocalFiles.expandHome(file));
         this.acceptNewHostKeys = !"strict".equals(c.getString(SshModule.HOST_KEY_POLICY, "accept-new"));
         this.connectTimeout = Duration.ofSeconds(Math.max(3, c.getInt(SshModule.CONNECT_TIMEOUT, 15)));
         this.maxExecSeconds = Math.max(1, c.getInt(SshModule.MAX_EXEC_SECONDS, 300));
@@ -99,7 +105,7 @@ final class SshEnvironment {
     // ------------------------------------------------------------------ Verbindungen
 
     List<SshConnection> connections() {
-        return List.copyOf(connections.values());
+        return connections.all();
     }
 
     boolean isOpen(SshConnection c) {
@@ -113,36 +119,11 @@ final class SshEnvironment {
 
     /** Verbindung nach Name (ohne Groß-/Kleinschreibung); ohne Name die einzige konfigurierte. */
     SshConnection resolve(String name) {
-        if (connections.isEmpty()) {
-            throw new IllegalStateException("Keine SSH-Verbindung konfiguriert – in der DevTools-App unter Module → SSH "
-                    + "eine Verbindung anlegen (Name, Host, Port, Benutzer, Passwort).");
-        }
-        if (name == null || name.isBlank()) {
-            if (connections.size() == 1) {
-                return connections.values().iterator().next();
-            }
-            throw new IllegalArgumentException("Mehrere SSH-Verbindungen konfiguriert – 'connection' angeben: "
-                    + names() + " (siehe ssh_connections).");
-        }
-        String key = name.trim().toLowerCase(Locale.ROOT);
-        if (duplicates.stream().anyMatch(d -> d.equalsIgnoreCase(key))) {
-            throw new IllegalStateException("Der Verbindungsname '" + name + "' ist mehrfach vergeben – der Nutzer muss "
-                    + "ihn in der DevTools-App eindeutig machen.");
-        }
-        SshConnection c = connections.get(key);
-        if (c == null) {
-            throw new IllegalArgumentException("Unbekannte SSH-Verbindung '" + name + "'. Konfiguriert: " + names()
-                    + ". Neue Verbindungen legt der Nutzer in der DevTools-App an.");
-        }
-        return c;
-    }
-
-    private List<String> names() {
-        return connections.values().stream().map(SshConnection::name).toList();
+        return connections.resolve(name);
     }
 
     List<String> duplicates() {
-        return List.copyOf(duplicates);
+        return connections.duplicates();
     }
 
     Path knownHosts() {
@@ -183,7 +164,7 @@ final class SshEnvironment {
         }
         Path p;
         try {
-            p = Path.of(expandHome(path));
+            p = Path.of(LocalFiles.expandHome(path));
         } catch (java.nio.file.InvalidPathException e) {
             throw new IllegalArgumentException("Ungültiger lokaler Pfad: " + path);
         }
@@ -196,23 +177,11 @@ final class SshEnvironment {
         }
         Path target = p.toAbsolutePath().normalize();
         for (Path root : localRoots) {
-            if (target.startsWith(root) && realPathInside(target, root)) {
+            if (target.startsWith(root) && LocalFiles.realPathInside(target, root)) {
                 return target;
             }
         }
         throw new IllegalArgumentException("Lokaler Pfad " + target + " ist nicht freigegeben. Freigegeben: " + localRoots);
-    }
-
-    private static boolean realPathInside(Path target, Path root) {
-        try {
-            Path existing = target;
-            while (existing != null && !Files.exists(existing)) {
-                existing = existing.getParent();
-            }
-            return existing != null && existing.toRealPath().startsWith(root.toRealPath());
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     int maxShells() {
@@ -236,7 +205,7 @@ final class SshEnvironment {
         JSch jsch = new JSch();
         jsch.setHostKeyRepository(new TofuHostKeys(hostKeyStores.open(knownHosts), acceptNewHostKeys));
         if (c.privateKey() != null) {
-            String keyFile = expandHome(c.privateKey());
+            String keyFile = LocalFiles.expandHome(c.privateKey());
             if (!Files.isRegularFile(Path.of(keyFile))) {
                 throw new IllegalStateException("Verbindung '" + c.name() + "': Schlüsseldatei nicht gefunden: " + keyFile);
             }
@@ -266,20 +235,23 @@ final class SshEnvironment {
      */
     <T> T withSession(SshConnection c, SessionAction<T> action) {
         for (int attempt = 0; ; attempt++) {
-            Session s;
+            SshSessions.Lease lease;
             try {
-                s = sessions.get(c, this::open);
+                lease = sessions.lease(c, this::open);
             } catch (JSchException e) {
                 throw new IllegalStateException(describe(c, e), e);
             }
-            try {
-                return action.run(s);
-            } catch (JSchException e) {
-                sessions.evict(c.name());
-                if (attempt == 0 && !s.isConnected()) {
-                    continue;
+            Session s = lease.session();
+            try (lease) { // gibt die Sitzung zurück; eine als fehlerhaft gemeldete wird danach getrennt
+                try {
+                    return action.run(s);
+                } catch (JSchException e) {
+                    lease.fail();
+                    if (attempt == 0 && !s.isConnected()) {
+                        continue;
+                    }
+                    throw new IllegalStateException(describe(c, e), e);
                 }
-                throw new IllegalStateException(describe(c, e), e);
             }
         }
     }
@@ -426,14 +398,6 @@ final class SshEnvironment {
 
     private static String suffix(String msg) {
         return msg.isBlank() ? "." : ": " + msg;
-    }
-
-    static String expandHome(String path) {
-        String p = path.trim();
-        if (p.equals("~") || p.startsWith("~/") || p.startsWith("~\\")) {
-            return System.getProperty("user.home") + p.substring(1);
-        }
-        return p;
     }
 
     // ------------------------------------------------------------------ intern

@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -18,6 +17,8 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * Pull/Merge Requests auf Git-Servern über austauschbare Provider ({@link GitServerProvider}, per ServiceLoader):
@@ -99,14 +100,6 @@ public class PrModule implements ToolModule {
         return 165;
     }
 
-    static String key(String providerId, String field) {
-        return providerId + "." + field;
-    }
-
-    static String enabledKey(String providerId) {
-        return key(providerId, "enabled");
-    }
-
     @Override
     public Set<String> sharedDirectoryFields() {
         return Set.of(REPOSITORIES);
@@ -114,8 +107,6 @@ public class PrModule implements ToolModule {
 
     @Override
     public List<ConfigField> configSchema() {
-        List<String> options = new ArrayList<>(List.of("auto"));
-        providers.providers().forEach(p -> options.add(p.id()));
         List<ConfigField> fields = new ArrayList<>();
         fields.add(ConfigField.of(REPOSITORIES, "Lokale Repositories", FieldType.DIRECTORY_LIST)
                 .withHelp("Repository-Verzeichnisse oder Sammelordner wie im Modul Git. Aus ihrem Remote ergeben sich "
@@ -124,9 +115,8 @@ public class PrModule implements ToolModule {
                 .withHelp("Name (Ordnername) des Repositories, das ohne Angabe verwendet wird."));
         fields.add(ConfigField.of(REMOTE, "Remote", FieldType.STRING).withDefault("origin")
                 .withHelp("Remote, dessen URL den Server bestimmt und auf das pr_push pusht."));
-        fields.add(ConfigField.of(DEFAULT_PROVIDER, "Standard-Server", FieldType.ENUM).withDefault("auto")
-                .withOptions(options.toArray(String[]::new))
-                .withHelp("Für Aufrufe, bei denen weder Remote noch URL den Server bestimmen. 'auto' = der einzige aktive."));
+        fields.add(ProviderSchema.defaultProviderField(DEFAULT_PROVIDER, "Standard-Server", providers.providers(),
+                "Für Aufrufe, bei denen weder Remote noch URL den Server bestimmen. 'auto' = der einzige aktive."));
         for (GitServerProvider p : providers.providers()) {
             fields.addAll(new ConfigGroup(p.id(), p.displayName()).fields(false, p.configFields()));
         }
@@ -174,14 +164,14 @@ public class PrModule implements ToolModule {
         if (config.getBoolean(ALLOW_PUSH)) {
             beans.add(new PrPushTools(env));
         }
-        return List.of(ToolCallbacks.from(beans.toArray()));
+        return ToolBeans.callbacks(beans.toArray());
     }
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         PrEnvironment env;
         try {

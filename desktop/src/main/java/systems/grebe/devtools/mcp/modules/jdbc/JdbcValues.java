@@ -42,7 +42,7 @@ final class JdbcValues {
     /** Typ unbekannt – die Datenbank soll ihn ableiten. */
     static final int UNKNOWN = Integer.MIN_VALUE;
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private JdbcValues() {
     }

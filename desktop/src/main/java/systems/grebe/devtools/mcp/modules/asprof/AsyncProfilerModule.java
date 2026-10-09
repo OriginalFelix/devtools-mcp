@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.modules.asprof;
 
 import java.util.List;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.CommandRunner;
@@ -12,6 +11,7 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * async-profiler 4.5: sampling-Profiler ohne Safepoint-Bias (CPU inkl. nativer/Kernel-Frames, Allokationen, Locks, Wall-Clock).
@@ -74,8 +74,8 @@ public class AsyncProfilerModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new AsyncProfilerTools(env, new AsprofInstaller(config),
-                Math.max(5, config.getInt(MAX_SECONDS, 300)))));
+        return ToolBeans.callbacks(new AsyncProfilerTools(env, new AsprofInstaller(config),
+                Math.max(5, config.getInt(MAX_SECONDS, 300))));
     }
 
     @Override

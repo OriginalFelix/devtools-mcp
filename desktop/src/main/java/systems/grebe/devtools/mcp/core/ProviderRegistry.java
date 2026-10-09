@@ -6,10 +6,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceConfigurationError;
+import java.util.ServiceLoader;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import systems.grebe.devtools.mcp.plugin.PluginManager;
 
 /**
  * Provider einer SPI ({@link ServiceProvider}): die eingebauten (einmal über den {@link java.util.ServiceLoader}
@@ -23,6 +27,7 @@ import org.slf4j.LoggerFactory;
 public class ProviderRegistry<T extends ServiceProvider> {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProviderRegistry.class);
+    private static final Pattern ID = Pattern.compile("[a-z][a-z0-9-]*");
 
     private final String kind;
     private final List<T> builtin;
@@ -43,6 +48,21 @@ public class ProviderRegistry<T extends ServiceProvider> {
         this.plugins = plugins;
         this.merged = merge(List.of());
         LOG.info("{} gefunden: {}", kind, merged.byId.keySet());
+    }
+
+    /** Nur die eingebauten Provider der SPI (Tests, Verbindungsprüfungen). */
+    protected ProviderRegistry(String kind, Class<T> spi, Supplier<List<T>> plugins) {
+        this(kind, builtin(spi), plugins);
+    }
+
+    /** In der App: die eingebauten Provider der SPI plus die aus aktiven Plugins. */
+    protected ProviderRegistry(String kind, Class<T> spi, ObjectProvider<PluginManager> plugins) {
+        this(kind, builtin(spi), PluginManager.providers(plugins, spi));
+    }
+
+    /** Eingebaute Provider über den {@link ServiceLoader} mit dem ClassLoader der SPI - nötig im Spring-Boot-Fat-Jar. */
+    protected static <T> Iterable<T> builtin(Class<T> spi) {
+        return ServiceLoader.load(spi, spi.getClassLoader());
     }
 
     /** Provider in Auswahlreihenfolge (Priorität, dann ID). */
@@ -114,6 +134,6 @@ public class ProviderRegistry<T extends ServiceProvider> {
     }
 
     private static boolean valid(ServiceProvider p) {
-        return p.id() != null && p.id().matches("[a-z][a-z0-9-]*");
+        return p.id() != null && ID.matcher(p.id()).matches();
     }
 }

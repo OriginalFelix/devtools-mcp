@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.modules.skills;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +13,7 @@ import systems.grebe.devtools.mcp.core.ToolCallListener;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.core.BoundedMap;
 
 /**
  * Selbstverbesserung wie bei Hermes' Skill-Nudge: zählt je MCP-Session die Tool-Aufrufe seit der letzten Skill-Pflege
@@ -44,7 +44,7 @@ public class SkillReviewTracker implements ToolCallListener {
     static final Duration IDLE_RESTART = Duration.ofMinutes(30);
     static final int DEFAULT_INTERVAL = 5;
     private static final int MAX_SESSIONS = 256;
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     /** Zustand einer Client-Session. */
     public static final class SessionState {
@@ -73,12 +73,7 @@ public class SkillReviewTracker implements ToolCallListener {
 
     private final ObjectProvider<ToolRegistry> registry;
     private final ObjectProvider<SkillBackend> service;
-    private final Map<String, SessionState> sessions = new LinkedHashMap<>(16, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, SessionState> eldest) {
-            return size() > MAX_SESSIONS;
-        }
-    };
+    private final Map<String, SessionState> sessions = BoundedMap.lru(MAX_SESSIONS);
 
     public SkillReviewTracker(ObjectProvider<ToolRegistry> registry, ObjectProvider<SkillBackend> service) {
         this.registry = registry;

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptCache;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Skripte des Team-Servers als verschlüsselte Datei {@code scripts-cache.json} im Einstellungsordner – wie
@@ -23,7 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class ScriptCacheFile implements ScriptCache {
 
     private static final Logger LOG = LoggerFactory.getLogger(ScriptCacheFile.class);
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     /**
      * Inhalt der Datei.
@@ -56,7 +57,7 @@ public class ScriptCacheFile implements ScriptCache {
             return;
         }
         try {
-            Files.writeString(file, store.encrypt(JSON.writeValueAsString(new Stored(url, List.copyOf(scripts)))));
+            AtomicFiles.writeString(file, store.encrypt(JSON.writeValueAsString(new Stored(url, List.copyOf(scripts)))));
         } catch (IOException | RuntimeException e) {
             LOG.warn("Skript-Cache {} nicht schreibbar", file, e);
         }

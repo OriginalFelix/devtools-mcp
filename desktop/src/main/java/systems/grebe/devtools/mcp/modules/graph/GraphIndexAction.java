@@ -13,6 +13,7 @@ import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Key;
 import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Stored;
+import systems.grebe.devtools.mcp.api.Errors;
 
 /** UI-Aktion „Indizieren“: baut den Code-Graphen eines Projekts für den ausgecheckten Branch. */
 final class GraphIndexAction implements ModuleAction {
@@ -82,7 +83,7 @@ final class GraphIndexAction implements ModuleAction {
             return head + " – Graph vom " + when + ", " + current.files() + " Dateien, " + current.nodes() + " Knoten"
                     + others;
         } catch (RuntimeException e) {
-            return head + " – Ablage nicht lesbar: " + GraphModule.rootMessage(e);
+            return head + " – Ablage nicht lesbar: " + Errors.rootMessage(e);
         }
     }
 

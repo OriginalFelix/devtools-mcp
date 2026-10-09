@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 final class DoltliteBackend implements DoltBackend {
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private final DoltDatabase db;
     private final String program;

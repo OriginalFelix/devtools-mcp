@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
+import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
 
 /**
  * Minimaler Client für die Matrix Client-Server-API ({@code /_matrix/client/v3}): Anmelden, {@code /sync},
@@ -26,7 +27,7 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public class MatrixClient {
 
-    static final JsonMapper JSON = JsonMapper.builder().build();
+    static final JsonMapper JSON = JsonMapper.shared();
     static final String API = "/_matrix/client/v3";
     /** Feste Geräte-ID beim Anmelden mit Passwort – wiederholte Anmeldungen legen so kein neues Gerät an. */
     static final String DEVICE_ID = "DEVTOOLS_MCP";
@@ -52,10 +53,7 @@ public class MatrixClient {
         this.user = user;
         this.password = password == null || password.isBlank() ? null : password;
         this.timeout = timeout;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        this.http = HttpJson.sharedClient();
     }
 
     public String baseUrl() {
@@ -235,7 +233,7 @@ public class MatrixClient {
                 reloggedIn = true;
                 continue;
             }
-            throw error(code, errcode, err.path("error").asString(abbreviate(res.body())), path);
+            throw error(code, errcode, err.path("error").asString(HttpJson.abbreviate(res.body())), path);
         }
     }
 
@@ -301,7 +299,7 @@ public class MatrixClient {
             return JSON.readTree(body);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Unerwartete Antwort vom Matrix-Homeserver (" + path + "): "
-                    + abbreviate(body), e);
+                    + HttpJson.abbreviate(body), e);
         }
     }
 
@@ -335,7 +333,4 @@ public class MatrixClient {
         return u;
     }
 
-    private static String abbreviate(String s) {
-        return s == null ? "" : s.length() > 300 ? s.substring(0, 300) + "…" : s;
-    }
 }

@@ -18,6 +18,7 @@ import jakarta.mail.StoreClosedException;
 import jakarta.mail.internet.InternetAddress;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.UserConfirmation;
+import systems.grebe.devtools.mcp.core.NamedEntries;
 
 /** Ausgewertete Konfiguration des Mail-Moduls: Konten, Freigaben, Grenzen – und der Zugriff auf die Ordner. */
 final class MailEnvironment {
@@ -32,8 +33,14 @@ final class MailEnvironment {
         T run(Store store) throws MessagingException;
     }
 
-    private final Map<String, MailAccount> accounts = new LinkedHashMap<>();
-    private final List<String> duplicates = new ArrayList<>();
+    private final NamedEntries<MailAccount> accounts = new NamedEntries<>(MailAccount::name,
+            new NamedEntries.Messages("Kein Mail-Konto konfiguriert – der Nutzer legt es in der DevTools-App unter "
+                    + "Module → Mail an (Name, Host, Benutzer, Passwort, freigegebene Ordner).",
+                    names -> "Mehrere Mail-Konten konfiguriert – 'account' angeben: " + names
+                            + " (siehe mail_accounts).",
+                    name -> "Der Kontoname '" + name + "' ist mehrfach vergeben – der Nutzer muss ihn in "
+                            + "der DevTools-App eindeutig machen.",
+                    (name, names) -> "Unbekanntes Mail-Konto '" + name + "'. Konfiguriert: " + names + "."));
     private final Sessions sessions;
     private final MailWatcher watcher;
     private final Duration timeout;
@@ -50,13 +57,8 @@ final class MailEnvironment {
         this.sessions = sessions;
         this.watcher = watcher;
         this.confirmation = confirmation;
-        String confirm = c.getString(MailModule.SEND_CONFIRM, "auto").toLowerCase(Locale.ROOT);
-        this.sendConfirm = switch (confirm) {
-            case "off" -> null;
-            case "client" -> UserConfirmation.Channel.CLIENT;
-            case "app" -> UserConfirmation.Channel.APP;
-            default -> UserConfirmation.Channel.AUTO;
-        };
+        String confirm = c.getString(MailModule.SEND_CONFIRM, "auto");
+        this.sendConfirm = "off".equalsIgnoreCase(confirm.strip()) ? null : UserConfirmation.Channel.parse(confirm);
         this.sendRecipients = c.getList(MailModule.SEND_RECIPIENTS);
         this.sendPerHour = Math.max(1, c.getInt(MailModule.SEND_PER_HOUR, 20));
         this.saveSent = c.getString(MailModule.SAVE_SENT, "auto").toLowerCase(Locale.ROOT);
@@ -64,9 +66,7 @@ final class MailEnvironment {
         this.maxLines = Math.max(50, c.getInt(MailModule.MAX_LINES, 400));
         this.maxChars = Math.max(1000, c.getInt(MailModule.MAX_CHARS, 20_000));
         for (MailAccount a : accounts(c)) {
-            if (accounts.putIfAbsent(a.name().toLowerCase(Locale.ROOT), a) != null) {
-                duplicates.add(a.name());
-            }
+            accounts.add(a);
         }
     }
 
@@ -77,11 +77,11 @@ final class MailEnvironment {
     }
 
     List<MailAccount> accounts() {
-        return List.copyOf(accounts.values());
+        return accounts.all();
     }
 
     List<String> duplicates() {
-        return List.copyOf(duplicates);
+        return accounts.duplicates();
     }
 
     MailWatcher watcher() {
@@ -133,17 +133,8 @@ final class MailEnvironment {
         if (sendConfirm == null) {
             return;
         }
-        if (confirmation == null) {
-            throw new IllegalStateException("Nicht gesendet: keine Rückfrage beim Nutzer möglich.");
-        }
-        UserConfirmation.Result r = confirmation.ask(exchange, sendConfirm, "E-Mail senden?", question);
-        switch (r.answer()) {
-            case GRANTED -> { }
-            case DECLINED -> throw new IllegalStateException("Nicht gesendet: vom Nutzer abgelehnt (" + r.via() + "). "
-                    + "Nicht erneut versuchen, ohne dass der Nutzer es ausdrücklich will.");
-            default -> throw new IllegalStateException("Nicht gesendet: keine Rückfrage möglich (" + r.via() + "). Der "
-                    + "Nutzer kann einen Entwurf (mail_draft) selbst senden oder die Rückfrage in der App umstellen.");
-        }
+        UserConfirmation.require(confirmation, exchange, sendConfirm, "E-Mail senden?", question, "Nicht gesendet",
+                "Der Nutzer kann einen Entwurf (mail_draft) selbst senden oder die Rückfrage in der App umstellen.");
     }
 
     /** Ob eine Kopie in „Gesendet“ abgelegt wird; {@code auto}: nicht bei Exchange Online und Gmail (legen selbst ab). */
@@ -159,31 +150,7 @@ final class MailEnvironment {
 
     /** Konto nach Name (ohne Groß-/Kleinschreibung); ohne Name das einzige. */
     MailAccount resolve(String name) {
-        if (accounts.isEmpty()) {
-            throw new IllegalStateException("Kein Mail-Konto konfiguriert – der Nutzer legt es in der DevTools-App unter "
-                    + "Module → Mail an (Name, Host, Benutzer, Passwort, freigegebene Ordner).");
-        }
-        if (name == null || name.isBlank()) {
-            if (accounts.size() == 1) {
-                return accounts.values().iterator().next();
-            }
-            throw new IllegalArgumentException("Mehrere Mail-Konten konfiguriert – 'account' angeben: " + names()
-                    + " (siehe mail_accounts).");
-        }
-        String key = name.trim().toLowerCase(Locale.ROOT);
-        if (duplicates.stream().anyMatch(d -> d.equalsIgnoreCase(key))) {
-            throw new IllegalStateException("Der Kontoname '" + name + "' ist mehrfach vergeben – der Nutzer muss ihn in "
-                    + "der DevTools-App eindeutig machen.");
-        }
-        MailAccount a = accounts.get(key);
-        if (a == null) {
-            throw new IllegalArgumentException("Unbekanntes Mail-Konto '" + name + "'. Konfiguriert: " + names() + ".");
-        }
-        return a;
-    }
-
-    private List<String> names() {
-        return accounts.values().stream().map(MailAccount::name).toList();
+        return accounts.resolve(name);
     }
 
     /** Ordnername: angegeben, sonst INBOX bzw. der einzige freigegebene; nur freigegebene Ordner. */

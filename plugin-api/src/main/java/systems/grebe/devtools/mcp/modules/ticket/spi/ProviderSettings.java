@@ -5,8 +5,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
+import systems.grebe.devtools.mcp.core.ConfigValues;
+
 /** Sicht auf die Einstellungen genau eines Ticket-Systems (Schlüssel ohne Präfix) plus gemeinsamer HTTP-Timeout. */
-public final class ProviderSettings {
+public final class ProviderSettings implements ConfigValues {
 
     private final Function<String, Optional<String>> lookup;
     private final Duration timeout;
@@ -17,16 +19,12 @@ public final class ProviderSettings {
     }
 
     public static ProviderSettings of(Map<String, String> values) {
-        return new ProviderSettings(k -> Optional.ofNullable(values.get(k)).map(String::trim).filter(s -> !s.isEmpty()),
-                Duration.ofSeconds(30));
+        return new ProviderSettings(ConfigValues.lookupIn(values), Duration.ofSeconds(30));
     }
 
+    @Override
     public Optional<String> get(String key) {
         return lookup.apply(key);
-    }
-
-    public String getString(String key, String fallback) {
-        return get(key).orElse(fallback);
     }
 
     public Duration timeout() {

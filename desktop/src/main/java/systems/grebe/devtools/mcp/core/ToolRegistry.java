@@ -1,6 +1,5 @@
 package systems.grebe.devtools.mcp.core;
 
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -44,6 +43,8 @@ public class ToolRegistry {
     private final McpRuntime local;
     private final SettingsStore store;
     private final Map<String, ModuleState> states = new LinkedHashMap<>();
+    /** Ergebnisse von {@link #probeTools}; fallen bei jedem Neuaufbau weg. */
+    private final Map<ProbeKey, Set<String>> probes = java.util.Collections.synchronizedMap(BoundedMap.lru(64));
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
     private final ObjectProvider<ToolCallListener> callListenerProvider;
     private volatile List<ToolCallListener> callListeners;
@@ -71,6 +72,14 @@ public class ToolRegistry {
             .thenComparing(ToolModule::id);
 
     private static final java.util.regex.Pattern MODULE_ID = java.util.regex.Pattern.compile("[a-z][a-z0-9]{1,31}");
+
+    /** Prüft das Format einer Modul-ID; sie wird Präfix der Tool-Namen. */
+    public static void requireValidModuleId(String id) {
+        if (id == null || !MODULE_ID.matcher(id).matches()) {
+            throw new IllegalArgumentException("Modul-ID '" + id + "' ungültig: 2–32 Kleinbuchstaben/Ziffern, "
+                    + "beginnend mit einem Buchstaben (sie wird Tool-Präfix, z.B. " + "jira_issue).");
+        }
+    }
 
     private ModuleSettings initialSettings(ToolModule m) {
         return store.module(m.id())
@@ -182,10 +191,7 @@ public class ToolRegistry {
      */
     public void register(ToolModule module) {
         String id = module.id();
-        if (id == null || !MODULE_ID.matcher(id).matches()) {
-            throw new IllegalArgumentException("Modul-ID '" + id + "' ungültig: 2–32 Kleinbuchstaben/Ziffern, "
-                    + "beginnend mit einem Buchstaben (sie wird Tool-Präfix, z.B. " + "jira_issue).");
-        }
+        requireValidModuleId(id);
         synchronized (states) {
             if (states.containsKey(id)) {
                 throw new IllegalArgumentException("Modul-ID '" + id + "' ist bereits vergeben.");
@@ -235,16 +241,26 @@ public class ToolRegistry {
         Map<String, String> values = new LinkedHashMap<>(toolSettings(s).values());
         values.putAll(overrides);
         ModuleConfig cfg = ModuleConfig.of(s.module.configSchema(), values);
+        ProbeKey key = new ProbeKey(moduleId, Map.copyOf(values), local.scope().admin(), local.scope().unrestricted());
+        Set<String> cached = probes.get(key);
+        if (cached != null) {
+            return cached;
+        }
         ToolScope probe = new ToolScope("probe:" + moduleId, null, null, null, null, local.scope().admin());
         probe.setUnrestricted(local.scope().unrestricted());
         try (probe) {
-            return ToolScope.callIn(probe, () -> s.module.createTools(cfg, probe)).stream()
+            Set<String> names = ToolScope.callIn(probe, () -> s.module.createTools(cfg, probe)).stream()
                     .map(cb -> ManagedToolCallback.prefixed(moduleId, cb.getToolDefinition().name()))
                     .collect(Collectors.toCollection(LinkedHashSet::new));
+            probes.put(key, names);
+            return names;
         } catch (RuntimeException e) {
             LOG.debug("Tools von {} mit {} nicht ermittelbar", moduleId, overrides.keySet(), e);
             return Set.of();
         }
+    }
+
+    private record ProbeKey(String moduleId, Map<String, String> values, boolean admin, boolean unrestricted) {
     }
 
     /** Fehler beim Erzeugen der Tools, falls vorhanden. */
@@ -393,6 +409,7 @@ public class ToolRegistry {
     /** Erzeugt die Tools des Moduls neu und gleicht die Registrierung am MCP-Server ab. */
     private void rebuild(String moduleId) {
         ModuleState s = state(moduleId);
+        probes.clear();
         synchronized (states) {
             if (states.get(moduleId) != s) {
                 return; // inzwischen entfernt (Plugin deaktiviert) – keine Tools eines alten Moduls registrieren
@@ -428,29 +445,9 @@ public class ToolRegistry {
         }
         Map<String, String> out = new LinkedHashMap<>(values);
         for (String field : module.sharedDirectoryFields()) {
-            List<String> lines = new ArrayList<>(ModuleConfig.splitLines(out.getOrDefault(field, "")));
-            for (String dir : shared) {
-                if (lines.stream().noneMatch(l -> sameDir(l, dir))) {
-                    lines.add(dir);
-                }
-            }
-            out.put(field, String.join("\n", lines));
+            out.put(field, DirectoryLists.merge(out.getOrDefault(field, ""), shared, false));
         }
         return out;
-    }
-
-    /** Ob ein Listeneintrag ({@code pfad} oder {@code name=pfad}) dasselbe Verzeichnis meint. */
-    private static boolean sameDir(String line, String dir) {
-        int eq = line.indexOf('=');
-        return samePath(line, dir) || eq > 0 && samePath(line.substring(eq + 1), dir);
-    }
-
-    private static boolean samePath(String a, String b) {
-        try {
-            return Path.of(a.strip()).toAbsolutePath().normalize().equals(Path.of(b.strip()).toAbsolutePath().normalize());
-        } catch (InvalidPathException e) {
-            return false;
-        }
     }
 
     /** Einstellungen des Moduls „Freigaben“ (leer, falls es fehlt). */

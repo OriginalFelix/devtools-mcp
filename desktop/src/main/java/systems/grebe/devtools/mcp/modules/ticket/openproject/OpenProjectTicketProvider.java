@@ -1,9 +1,7 @@
 package systems.grebe.devtools.mcp.modules.ticket.openproject;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -89,8 +87,7 @@ public class OpenProjectTicketProvider implements TicketProvider {
             base = base.substring(0, base.length() - 7);
         }
         Map<String, String> headers = new LinkedHashMap<>();
-        s.get(TOKEN).ifPresent(t -> headers.put("Authorization", "Basic "
-                + Base64.getEncoder().encodeToString(("apikey:" + t).getBytes(StandardCharsets.UTF_8))));
+        s.get(TOKEN).ifPresent(t -> headers.put("Authorization", HttpJson.basicAuth("apikey", t)));
         return new OpenProject(base.isEmpty() ? null : new HttpJson("OpenProject", base + "/api/v3", headers, s.timeout()), base);
     }
 

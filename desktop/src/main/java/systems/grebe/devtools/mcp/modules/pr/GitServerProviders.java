@@ -17,23 +17,21 @@ import systems.grebe.devtools.mcp.plugin.PluginManager;
 @Component
 public class GitServerProviders extends ProviderRegistry<GitServerProvider> {
 
+    private static final String KIND = "Git-Server-Provider";
+
     /** Nur die eingebauten Provider (Tests, Verbindungsprüfungen). */
     public GitServerProviders() {
-        this(builtin());
+        super(KIND, GitServerProvider.class, List::of);
     }
 
     /** Für Tests: eigene Provider-Quelle. */
     public GitServerProviders(Iterable<GitServerProvider> source) {
-        super("Git-Server-Provider", source, List::of);
+        super(KIND, source, List::of);
     }
 
     /** In der App: eingebaute Provider plus die aus aktiven Plugins. */
     @Autowired
     public GitServerProviders(ObjectProvider<PluginManager> plugins) {
-        super("Git-Server-Provider", builtin(), PluginManager.providers(plugins, GitServerProvider.class));
-    }
-
-    private static Iterable<GitServerProvider> builtin() {
-        return ServiceLoader.load(GitServerProvider.class, GitServerProvider.class.getClassLoader());
+        super(KIND, GitServerProvider.class, plugins);
     }
 }

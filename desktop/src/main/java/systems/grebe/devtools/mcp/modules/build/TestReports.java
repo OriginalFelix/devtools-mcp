@@ -9,12 +9,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
-import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+import systems.grebe.devtools.mcp.core.Xml;
 
 /** Liest JUnit-XML-Berichte (Gradle: build/test-results, Maven: target/surefire- und failsafe-reports). */
 final class TestReports {
@@ -44,15 +44,9 @@ final class TestReports {
         int tests = 0, failures = 0, errors = 0, skipped = 0;
         double seconds = 0;
         List<Failure> failed = new ArrayList<>();
-        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-        try {
-            dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        } catch (Exception ignored) {
-            // nicht unterstützt
-        }
         for (Path f : files) {
             try (InputStream in = Files.newInputStream(f)) {
-                Document doc = dbf.newDocumentBuilder().parse(in);
+                Document doc = Xml.parse(in);
                 NodeList suites = doc.getElementsByTagName("testsuite");
                 for (int s = 0; s < suites.getLength(); s++) {
                     Element suite = (Element) suites.item(s);

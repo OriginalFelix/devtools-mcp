@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * }</pre>
  *
  * <p>Gemeldet wird nur, wenn der Client im Aufruf ein {@code _meta.progressToken} mitschickt. Die App legt dafür für
- * die Dauer des Aufrufs ein Ziel ({@link Sink}) in einen {@link ThreadLocal} – das Tool läuft im selben Thread wie der
+ * die Dauer des Aufrufs ein Ziel ({@link Sink}) in einen {@link ScopedValue} – das Tool läuft im selben Thread wie der
  * Handler. Außerhalb eines Tool-Aufrufs (oder in einem anderen Thread) sind alle Methoden wirkungslos.
  */
 public final class ToolProgress {
@@ -47,34 +47,29 @@ public final class ToolProgress {
         }
     }
 
-    private static final ThreadLocal<Target> CURRENT = new ThreadLocal<>();
+    private static final ScopedValue<Target> CURRENT = ScopedValue.newInstance();
 
     private ToolProgress() {
     }
 
+    /** Das Ziel des laufenden Aufrufs oder {@code null}. */
+    private static Target current() {
+        return CURRENT.isBound() ? CURRENT.get() : null;
+    }
+
     /** Für die App: führt {@code body} so aus, dass {@link #report} an {@code sink} meldet. */
     public static <T> T callWith(Sink sink, Supplier<T> body) {
-        Target previous = CURRENT.get();
-        CURRENT.set(new Target(sink));
-        try {
-            return body.get();
-        } finally {
-            if (previous == null) {
-                CURRENT.remove();
-            } else {
-                CURRENT.set(previous);
-            }
-        }
+        return ScopedValue.where(CURRENT, new Target(sink)).call(body::get);
     }
 
     /** Ob der laufende Aufruf Fortschritt empfangen kann. */
     public static boolean active() {
-        return CURRENT.get() != null;
+        return CURRENT.isBound();
     }
 
     /** Ob jetzt eine Meldung gesendet würde – um teure Meldungstexte nur dann zu bauen. */
     public static boolean due() {
-        Target t = CURRENT.get();
+        Target t = current();
         return t != null && System.currentTimeMillis() - t.last >= MIN_INTERVAL_MILLIS;
     }
 
@@ -83,7 +78,7 @@ public final class ToolProgress {
      * werden ignoriert. Ohne Token oder außerhalb eines Tool-Aufrufs wirkungslos.
      */
     public static void report(String message) {
-        Target t = CURRENT.get();
+        Target t = current();
         if (t == null || message == null || message.isBlank()) {
             return;
         }

@@ -1,11 +1,9 @@
 package systems.grebe.devtools.mcp.modules.ticket.jira;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -89,7 +87,7 @@ public class JiraTicketProvider implements TicketProvider {
         String base = HttpJson.stripSlash(s.getString(BASE_URL, ""));
         Map<String, String> headers = new LinkedHashMap<>();
         s.get(TOKEN).ifPresent(token -> headers.put("Authorization", s.get(USER)
-                .map(u -> "Basic " + Base64.getEncoder().encodeToString((u + ":" + token).getBytes(StandardCharsets.UTF_8)))
+                .map(u -> HttpJson.basicAuth(u, token))
                 .orElse("Bearer " + token)));
         String deployment = s.getString(DEPLOYMENT, "auto");
         boolean cloud = "cloud".equals(deployment) || "auto".equals(deployment) && base.toLowerCase(Locale.ROOT).contains(".atlassian.net");

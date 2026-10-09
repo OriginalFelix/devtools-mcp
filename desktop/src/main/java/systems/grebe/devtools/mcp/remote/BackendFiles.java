@@ -28,11 +28,10 @@ public class BackendFiles {
     /** Größe eines Teils beim Hochladen. */
     static final int CHUNK = 4 * 1024 * 1024;
     private static final Duration TIMEOUT = Duration.ofMinutes(5);
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private final BackendConnection backend;
-    private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
-            .connectTimeout(Duration.ofSeconds(10)).build();
+    private final HttpClient http = BackendConnection.backendHttpClient();
 
     public BackendFiles(BackendConnection backend) {
         this.backend = backend;

@@ -30,6 +30,8 @@ import systems.grebe.devtools.mcp.modules.share.ShareMessages.SkillFile;
 import systems.grebe.devtools.mcp.modules.share.ShareMessages.SkillItem;
 import systems.grebe.devtools.mcp.modules.skills.SkillBackend;
 import systems.grebe.devtools.mcp.modules.skills.SkillViews;
+import systems.grebe.devtools.mcp.core.Text;
+import systems.grebe.devtools.mcp.core.LocalFiles;
 
 /**
  * Packt Memories, Skills und Dateien dieser Instanz in ein Angebot und übernimmt ein angenommenes Angebot: Notiz und
@@ -119,7 +121,7 @@ final class ShareTransfer {
             throw new IllegalArgumentException("Nichts zu senden – 'note', 'memories', 'skills' oder 'files' angeben.");
         }
         return new Offer(ShareMessages.VERSION, UUID.randomUUID().toString().replace("-", "").substring(0, 12),
-                s.address(), s.name(), instance, ShareMessages.address(to), Instant.now().toString(), oneLine(title),
+                s.address(), s.name(), instance, ShareMessages.address(to), Instant.now().toString(), Text.oneLine(title, 200),
                 n, ms, ks, fs);
     }
 
@@ -166,8 +168,7 @@ final class ShareTransfer {
         }
         Path p;
         try {
-            p = Path.of(path.strip().replaceFirst("^~(?=[/\\\\]|$)",
-                    java.util.regex.Matcher.quoteReplacement(System.getProperty("user.home"))));
+            p = Path.of(LocalFiles.expandHome(path));
         } catch (InvalidPathException e) {
             throw new IllegalArgumentException("Ungültiger Pfad: " + path);
         }
@@ -180,20 +181,12 @@ final class ShareTransfer {
         }
         Path target = p.toAbsolutePath().normalize();
         for (Path root : sendRoots) {
-            if (target.startsWith(root) && realPathInside(target, root)) {
+            if (target.startsWith(root) && LocalFiles.realPathInside(target, root)) {
                 return target;
             }
         }
         throw new IllegalArgumentException("Datei " + target + " liegt nicht in einem freigegebenen Verzeichnis: "
                 + sendRoots);
-    }
-
-    private static boolean realPathInside(Path target, Path root) {
-        try {
-            return !Files.exists(target) || target.toRealPath().startsWith(root.toRealPath());
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     // ------------------------------------------------------------------ Rückfragen
@@ -233,7 +226,7 @@ final class ShareTransfer {
                     + " Dateien)").append(" – ").append(shorten(k.description(), 200)).append('\n');
         }
         for (FileItem f : o.files()) {
-            sb.append("Datei: ").append(f.name()).append(" (").append(size(f.size())).append(")\n");
+            sb.append("Datei: ").append(f.name()).append(" (").append(Text.fileSize(f.size())).append(")\n");
         }
     }
 
@@ -353,7 +346,7 @@ final class ShareTransfer {
             Path target = unique(dir, safeName(f.name()));
             Files.write(target, f.data() == null ? new byte[0] : Base64.getDecoder().decode(f.data()),
                     StandardOpenOption.CREATE_NEW);
-            written.add(target.getFileName() + " (" + size(Files.size(target)) + ")");
+            written.add(target.getFileName() + " (" + Text.fileSize(Files.size(target)) + ")");
         }
         return written.size() + " Datei(en) in " + dir + ": " + String.join(", ", written);
     }
@@ -404,11 +397,6 @@ final class ShareTransfer {
                 .filter(v -> v != null && !(v instanceof String s && s.isBlank())).toList()));
     }
 
-    static String oneLine(String s) {
-        String t = s.replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}]+", " ").strip();
-        return t.length() > 200 ? t.substring(0, 199) + "…" : t;
-    }
-
     static String shorten(String s, int max) {
         if (s == null) {
             return "";
@@ -416,13 +404,4 @@ final class ShareTransfer {
         return s.length() > max ? s.substring(0, max - 1) + "…" : s;
     }
 
-    static String size(long bytes) {
-        if (bytes < 1024) {
-            return bytes + " B";
-        }
-        if (bytes < 1024 * 1024) {
-            return String.format(Locale.GERMAN, "%.1f KB", bytes / 1024.0);
-        }
-        return String.format(Locale.GERMAN, "%.1f MB", bytes / (1024.0 * 1024));
-    }
 }

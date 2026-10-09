@@ -3,7 +3,6 @@ package systems.grebe.devtools.mcp.modules.sonar;
 import java.time.Duration;
 import java.util.List;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -12,6 +11,7 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import tools.jackson.databind.JsonNode;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /** Anbindung an SonarQube bzw. SonarCloud (Issues, Quality Gate, Metriken, Regeln, Hotspots). */
 @Component
@@ -62,7 +62,7 @@ public class SonarModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new SonarTools(() -> client(config), config.getString(DEFAULT_PROJECT, null))));
+        return ToolBeans.callbacks(new SonarTools(() -> client(config), config.getString(DEFAULT_PROJECT, null)));
     }
 
     static SonarClient client(ModuleConfig config) {
@@ -72,9 +72,9 @@ public class SonarModule implements ToolModule {
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         SonarClient client = client(config);
         JsonNode status = client.get("/api/system/status", SonarClient.params());

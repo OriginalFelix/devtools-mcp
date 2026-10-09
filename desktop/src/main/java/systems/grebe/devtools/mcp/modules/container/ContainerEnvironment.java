@@ -1,9 +1,7 @@
 package systems.grebe.devtools.mcp.modules.container;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -25,6 +23,8 @@ import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
 import systems.grebe.devtools.mcp.modules.container.spi.RuntimeSettings;
+import systems.grebe.devtools.mcp.core.LocalFiles;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
 
 /**
  * Ausgewertete Konfiguration des Container-Moduls: aktive Laufzeiten, Freigaben und Sicherheitsprüfungen.
@@ -69,10 +69,10 @@ public final class ContainerEnvironment {
 
     public ContainerEnvironment(ContainerRuntimes runtimes, ModuleConfig c) {
         for (ContainerRuntimeProvider p : runtimes.providers()) {
-            if (!c.get(ContainerModule.enabledKey(p.id())).map(Boolean::parseBoolean).orElse(true)) {
+            if (!ProviderSchema.enabled(c, p.id(), true)) {
                 continue;
             }
-            RuntimeSettings rs = new RuntimeSettings(k -> c.get(ContainerModule.key(p.id(), k)));
+            RuntimeSettings rs = new RuntimeSettings(ProviderSchema.settings(c, p.id()));
             entries.put(p.id(), new Entry(p, p.create(rs)));
         }
         this.defaultRuntime = c.getString(ContainerModule.DEFAULT_RUNTIME, "auto");
@@ -218,31 +218,11 @@ public final class ContainerEnvironment {
             throw new IllegalArgumentException("Ungültiger Pfad: " + path);
         }
         for (Path d : hostDirs) {
-            if (p.startsWith(d) && realPathInside(p, d)) {
+            if (p.startsWith(d) && LocalFiles.realPathInside(p, d)) {
                 return p;
             }
         }
         throw new IllegalArgumentException("Pfad '" + p + "' liegt nicht in einem freigegebenen Host-Verzeichnis: " + hostDirs);
-    }
-
-    /**
-     * Liegt der echte Pfad des nächsten vorhandenen Vorfahren von {@code target} im echten Pfad von {@code root}? Ein
-     * ins Leere zeigender Symlink zählt als vorhanden (und scheitert), damit die Laufzeit kein Ziel außerhalb anlegt.
-     * Existiert die Freigabe selbst noch nicht, kann in ihr auch kein Symlink liegen.
-     */
-    private static boolean realPathInside(Path target, Path root) {
-        if (!Files.exists(root)) {
-            return true;
-        }
-        try {
-            Path existing = target;
-            while (existing != null && !Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
-                existing = existing.getParent();
-            }
-            return existing != null && existing.toRealPath().startsWith(root.toRealPath());
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     /** Portangabe prüfen und ggf. an 127.0.0.1 binden. */

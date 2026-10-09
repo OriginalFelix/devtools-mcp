@@ -5,7 +5,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -26,6 +25,7 @@ import systems.grebe.devtools.mcp.modules.memories.MemoryBackend;
 import systems.grebe.devtools.mcp.modules.memories.MemoryViews;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.core.BoundedMap;
 
 /**
  * Bringt Skills und Memories dorthin, wo das LLM sie braucht – ohne dass es selbst daran denken muss. Hängt an
@@ -56,7 +56,7 @@ public class RecallHints implements ToolCallListener {
     private static final Pattern SPLIT = Pattern.compile("[\\s,;()\\[\\]{}\"'<>|]+");
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("yyyy-MM-dd")
             .withZone(ZoneId.systemDefault());
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
     private static final Logger LOG = LoggerFactory.getLogger(RecallHints.class);
 
     /** Was in einer Client-Session schon genannt oder geladen wurde. */
@@ -70,12 +70,7 @@ public class RecallHints implements ToolCallListener {
     private final ObjectProvider<ToolRegistry> registry;
     private final ObjectProvider<SkillBackend> skills;
     private final ObjectProvider<MemoryBackend> memories;
-    private final Map<String, Session> sessions = new LinkedHashMap<>(16, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, Session> eldest) {
-            return size() > MAX_SESSIONS;
-        }
-    };
+    private final Map<String, Session> sessions = BoundedMap.lru(MAX_SESSIONS);
     private volatile List<SkillViews.Summary> skillCache;
     /** Normalisierter Bezug → Bezug wie gespeichert (klein). */
     private volatile Map<String, String> referenceCache;

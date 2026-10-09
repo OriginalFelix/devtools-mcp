@@ -75,6 +75,73 @@ class SshToolsTest {
         return ModuleConfig.of(module.configSchema(), values);
     }
 
+    private SshConnection connection(String name) {
+        return SshConnection.of(Map.of("name", name, "host", "127.0.0.1", "port", String.valueOf(server.getPort()),
+                "username", "alice", "password", "geheim"));
+    }
+
+    @Test
+    void slowConnectDoesNotBlockOtherConnections() throws Exception {
+        SshEnvironment env = module.environment(config("geheim", Map.of()));
+        SshSessions sessions = new SshSessions();
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch gate = new java.util.concurrent.CountDownLatch(1);
+        SshSessions.Opener opener = c -> {
+            if (c.name().equals("langsam")) {
+                entered.countDown();
+                try {
+                    gate.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return env.open(c);
+        };
+        java.util.concurrent.CompletableFuture<Void> slow = java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try (SshSessions.Lease l = sessions.lease(connection("langsam"), opener)) {
+                assertThat(l.session().isConnected()).isTrue();
+            } catch (com.jcraft.jsch.JSchException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        try {
+            assertThat(entered.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            // früher hielt der langsame Aufbau die Pool-Sperre: Jeder andere Aufruf wartete auf ihn
+            try (SshSessions.Lease fast = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                try {
+                    return sessions.lease(connection("schnell"), opener);
+                } catch (com.jcraft.jsch.JSchException e) {
+                    throw new IllegalStateException(e);
+                }
+            }).get(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                assertThat(fast.session().isConnected()).isTrue();
+            }
+            assertThat(slow.isDone()).isFalse();
+        } finally {
+            gate.countDown();
+        }
+        slow.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        sessions.closeAll();
+    }
+
+    @Test
+    void sessionInUseIsNotDisconnectedByIdleEvictionOrByEvict() throws Exception {
+        SshEnvironment env = module.environment(config("geheim", Map.of()));
+        SshSessions sessions = new SshSessions(50);
+        SshSessions.Lease busy = sessions.lease(connection("belegt"), env::open);
+        try {
+            Thread.sleep(150); // länger als die Leerlaufzeit
+            sessions.lease(connection("andere"), env::open).close(); // die Leerlauf-Prüfung läuft
+            assertThat(busy.session().isConnected()).isTrue();
+            sessions.evict("belegt"); // z.B. das Werkzeug "disconnect" oder ein Fehler eines anderen Aufrufs
+            assertThat(busy.session().isConnected()).isTrue();
+        } finally {
+            busy.close();
+        }
+        assertThat(busy.session().isConnected()).isFalse(); // jetzt, nach der Rückgabe
+        sessions.closeAll();
+    }
+
     @Test
     void connectionsSecretFieldIsEncrypted() {
         ConfigField connections = module.configSchema().getFirst();

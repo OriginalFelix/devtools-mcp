@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +15,8 @@ import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.Workspaces;
+import systems.grebe.devtools.mcp.api.Errors;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /**
  * Code-Graph für Java-Projekte, angelehnt an den AST-Durchlauf von graphify: tree-sitter liest Klassen, Methoden,
@@ -149,14 +150,14 @@ public class GraphModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new GraphTools(service(config))));
+        return ToolBeans.callbacks(new GraphTools(service(config)));
     }
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         GraphService service = service(config);
         Workspaces projects = service.projects();
@@ -172,7 +173,7 @@ public class GraphModule implements ToolModule {
         } catch (IllegalStateException | IllegalArgumentException e) {
             return ConnectionTestResult.failed(e.getMessage());
         } catch (RuntimeException e) {
-            return ConnectionTestResult.failed("Graph-Storage nicht erreichbar: " + rootMessage(e));
+            return ConnectionTestResult.failed("Graph-Storage nicht erreichbar: " + Errors.rootMessage(e));
         }
         sb.append(projects.all().size()).append(" Projekt(e) gefunden:\n");
         projects.all().forEach((name, dir) -> {
@@ -182,14 +183,6 @@ public class GraphModule implements ToolModule {
                     .append(branches.isEmpty() ? "" : "  [Graph: " + String.join(", ", branches) + "]").append('\n');
         });
         return ConnectionTestResult.ok(sb.toString().trim());
-    }
-
-    static String rootMessage(Throwable e) {
-        Throwable t = e;
-        while (t.getCause() != null && t.getCause() != t) {
-            t = t.getCause();
-        }
-        return t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
     }
 
     @Override

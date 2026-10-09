@@ -66,6 +66,8 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.api.Errors;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Verbindung der Desktop-App zu ihrem Backend über GraphQL – eingebettet ({@link EmbeddedBackend}) oder auf einem
@@ -167,7 +169,7 @@ public class BackendConnection {
     private final ObjectProvider<EmbeddedAccounts> embeddedAccounts;
     private final Environment env;
     private final Path cacheFile;
-    private final JsonMapper json = JsonMapper.builder().build();
+    private final JsonMapper json = JsonMapper.shared();
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private final List<Runnable> skillListeners = new CopyOnWriteArrayList<>();
     private final List<Runnable> memoryListeners = new CopyOnWriteArrayList<>();
@@ -548,7 +550,7 @@ public class BackendConnection {
         } catch (RuntimeException e) {
             if (session == s) {
                 status = state != null && state.settings() != null ? Status.OFFLINE : Status.ERROR;
-                message = describe(e);
+                message = Errors.rootMessage(e);
                 notifyListeners();
             }
             throw e;
@@ -665,7 +667,7 @@ public class BackendConnection {
         if (status != Status.ERROR) {
             status = Status.OFFLINE;
         }
-        message = describe(error);
+        message = Errors.rootMessage(error);
         notifyListeners();
     }
 
@@ -926,7 +928,7 @@ public class BackendConnection {
         try {
             return c.document(document).variables(variables).executeSync();
         } catch (RuntimeException e) {
-            throw new UnreachableException("Backend nicht erreichbar (" + url() + "): " + describe(e), e);
+            throw new UnreachableException("Backend nicht erreichbar (" + url() + "): " + Errors.rootMessage(e), e);
         }
     }
 
@@ -970,10 +972,22 @@ public class BackendConnection {
         return c;
     }
 
+    /**
+     * Der JDK-Client für alle Anfragen an das Backend (GraphQL und {@code /blobs}): HTTP/1.1, 10 s Verbindungs-Timeout.
+     * Ein Client für die ganze App - nicht je (Wieder-)Verbindung und Anmeldung ein neuer mit eigenen Threads und TLS-Sitzung.
+     */
+    static HttpClient backendHttpClient() {
+        return BackendHttp.CLIENT;
+    }
+
+    private static final class BackendHttp {
+        static final HttpClient CLIENT = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10)).build();
+    }
+
     /** Client mit Token ({@code null} = ohne, für {@code login}); HTTP/1.1, Zeitlimits gegen hängende Server. */
     private static HttpSyncGraphQlClient httpClient(String url, String token) {
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(10)).build());
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(backendHttpClient());
         factory.setReadTimeout(Duration.ofMinutes(2));
         RestClient.Builder rest = RestClient.builder().baseUrl(url + "/graphql").requestFactory(factory);
         if (token != null) {
@@ -1082,7 +1096,7 @@ public class BackendConnection {
         try {
             CacheFile c = new CacheFile(st, st.me().username(), s.personal() ? null : verifier,
                     s.personal() ? s.token() : null);
-            Files.writeString(cacheFile, store.encrypt(json.writeValueAsString(c)));
+            AtomicFiles.writeString(cacheFile, store.encrypt(json.writeValueAsString(c)));
         } catch (IOException | RuntimeException e) {
             LOG.warn("Cache {} nicht schreibbar", cacheFile, e);
         }
@@ -1133,12 +1147,4 @@ public class BackendConnection {
         return name == null || name.isBlank() ? "unbekannter Rechner" : name;
     }
 
-    private static String describe(Throwable e) {
-        Throwable root = e;
-        while (root.getCause() != null && root.getCause() != root) {
-            root = root.getCause();
-        }
-        String m = root.getMessage() != null ? root.getMessage() : e.getMessage();
-        return m == null ? e.getClass().getSimpleName() : m;
-    }
 }

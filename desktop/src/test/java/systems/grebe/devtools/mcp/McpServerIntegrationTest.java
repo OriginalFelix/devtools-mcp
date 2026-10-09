@@ -92,6 +92,20 @@ class McpServerIntegrationTest {
         client = connect(null);
     }
 
+    @Test
+    void probedToolsAreCachedUntilTheNextRebuild() {
+        var first = registry.probeTools("container", Map.of("allowExec", "true"));
+        assertThat(first).contains("container_exec");
+
+        assertThat(registry.probeTools("container", Map.of("allowExec", "true"))).isSameAs(first);
+        assertThat(registry.probeTools("container", Map.of("allowExec", "false"))).doesNotContain("container_exec");
+
+        registry.updateConfig("container", Map.of("allowCopy", "true"));
+        var afterRebuild = registry.probeTools("container", Map.of("allowExec", "true"));
+        assertThat(afterRebuild).isNotSameAs(first).contains("container_exec", "container_copy_from");
+        registry.updateConfig("container", Map.of());
+    }
+
     @AfterEach
     void tearDown() {
         if (client != null) {

@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
-import org.springframework.ai.support.ToolCallbacks;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -83,14 +83,14 @@ public class BuildModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new BuildTools(new BuildRunner(config))));
+        return ToolBeans.callbacks(new BuildTools(new BuildRunner(config)));
     }
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         Workspaces projects = new BuildRunner(config).projects();
         if (projects.isEmpty()) {

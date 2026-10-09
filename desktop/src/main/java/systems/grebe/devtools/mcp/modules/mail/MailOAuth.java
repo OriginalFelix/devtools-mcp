@@ -9,12 +9,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +28,8 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
+import systems.grebe.devtools.mcp.core.EntraDeviceLogin;
 
 /**
  * Anmeldung von Exchange-Online-Konten (Microsoft 365) für IMAP per OAuth2: Entra ID als öffentlicher Client mit der
@@ -45,14 +43,13 @@ import tools.jackson.databind.node.ObjectNode;
 public class MailOAuth {
 
     private static final Logger LOG = LoggerFactory.getLogger(MailOAuth.class);
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     /** {@code offline_access} für das Refresh-Token; die Zielgruppe ist Exchange Online, nicht Graph. */
     static final String SCOPES = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All";
     /** Zusätzlich für Konten, die senden: gleiche Zielgruppe, ein Token für IMAP und SMTP. */
     static final String SMTP_SCOPE = "https://outlook.office.com/SMTP.Send";
-    static final String DEVICE_CODE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
-    private static final DateTimeFormatter HHMM = DateTimeFormatter.ofPattern("HH:mm");
+    static final String DEVICE_CODE_GRANT = EntraDeviceLogin.GRANT;
 
     /** Nicht angemeldet – die Überwachung wartet dann auf die Anmeldung statt wiederholt zu versuchen. */
     static final class NotLoggedInException extends IllegalStateException {
@@ -62,12 +59,9 @@ public class MailOAuth {
     }
 
     /** Fehlerantwort des Token-Endpunkts. */
-    static final class OAuthException extends IllegalStateException {
-        final String code;
-
+    static final class OAuthException extends EntraDeviceLogin.Rejected {
         OAuthException(String code, String message) {
-            super(message);
-            this.code = code;
+            super(code, message);
         }
     }
 
@@ -150,7 +144,7 @@ public class MailOAuth {
                 return accept(key, token);
             }
         } catch (OAuthException e) {
-            if ("invalid_grant".equals(e.code) || "interaction_required".equals(e.code)) {
+            if ("invalid_grant".equals(e.code()) || "interaction_required".equals(e.code())) {
                 store(key, null);
                 throw new NotLoggedInException("Konto '" + a.name() + "': Anmeldung abgelaufen, widerrufen oder ohne "
                         + "eine neu nötige Berechtigung (z.B. SMTP.Send nach dem Eintragen eines SMTP-Servers) – neu "
@@ -206,58 +200,18 @@ public class MailOAuth {
                     + "anlegen (siehe README) und die Anwendungs-ID beim Konto eintragen.");
         }
         String key = key(a);
-        JsonNode code;
-        try {
-            code = post(endpoint(a, "devicecode"), Map.of("client_id", a.clientId(), "scope", scopes(a)));
-        } catch (OAuthException e) {
-            // häufig: AADSTS7000218 = „Öffentliche Clientflows zulassen“ ist in der App-Registrierung aus
-            throw new IllegalStateException("Anmeldung konnte nicht starten (" + e.code + "): " + e.getMessage()
-                    + " – Client-ID, Tenant und „Öffentliche Clientflows zulassen“ in der App-Registrierung prüfen.", e);
-        }
-        String uri = code.path("verification_uri").asString("https://microsoft.com/devicelogin");
-        String userCode = code.path("user_code").asString("");
-        long expiresIn = code.path("expires_in").asLong(900);
-        long interval = Math.max(1, code.path("interval").asLong(5));
-        Instant deadline = Instant.now().plusSeconds(expiresIn);
-        String text = "Im Browser " + uri + " öffnen und den Code " + userCode + " eingeben (gültig bis "
-                + LocalTime.ofInstant(deadline, ZoneId.systemDefault()).format(HHMM) + "), mit dem Konto "
-                + a.username() + " anmelden.";
+        EntraDeviceLogin.Started flow = EntraDeviceLogin.start(this::post, endpoint(a, "devicecode"), a.clientId(),
+                scopes(a), "", ", mit dem Konto " + a.username() + " anmelden");
         synchronized (this) {
             Session s = session(key);
-            s.pendingPrompt = text;
+            s.pendingPrompt = flow.text();
             s.lastError = null;
         }
-        prompt.accept(text);
-        Map<String, String> form = Map.of("client_id", a.clientId(), "grant_type", DEVICE_CODE_GRANT,
-                "device_code", code.path("device_code").asString(""));
+        prompt.accept(flow.text());
         try {
-            while (true) {
-                try {
-                    Thread.sleep(interval * 1000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("Anmeldung abgebrochen.", e);
-                }
-                if (Instant.now().isAfter(deadline)) {
-                    throw new IllegalStateException("Code abgelaufen – Anmeldung neu starten.");
-                }
-                try {
-                    JsonNode token = post(endpoint(a, "token"), form);
-                    synchronized (this) {
-                        accept(key, token);
-                    }
-                    break;
-                } catch (OAuthException e) {
-                    switch (e.code) {
-                        case "authorization_pending" -> { }
-                        case "slow_down" -> interval += 5; // RFC 8628
-                        case "authorization_declined" -> throw new IllegalStateException("Anmeldung im Browser "
-                                + "abgelehnt.", e);
-                        case "expired_token", "bad_verification_code" -> throw new IllegalStateException("Code "
-                                + "abgelaufen oder ungültig – Anmeldung neu starten.", e);
-                        default -> throw new IllegalStateException("Anmeldung fehlgeschlagen: " + e.getMessage(), e);
-                    }
-                }
+            JsonNode token = flow.awaitToken(this::post, endpoint(a, "token"), "");
+            synchronized (this) {
+                accept(key, token);
             }
         } catch (RuntimeException e) {
             synchronized (this) {
@@ -369,10 +323,7 @@ public class MailOAuth {
         ObjectNode tokens = root.putObject("refreshTokens");
         refreshTokens.forEach(tokens::put);
         try {
-            Files.createDirectories(file.toAbsolutePath().getParent());
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, JSON.writeValueAsString(root));
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicFiles.writeString(file, JSON.writeValueAsString(root));
         } catch (IOException | RuntimeException e) {
             LOG.warn("Mail-Anmeldungen nicht gespeichert ({}): {}", file, e.getMessage());
         }

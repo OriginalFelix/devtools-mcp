@@ -17,26 +17,21 @@ import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
 @Component
 public class SkillCaller implements SkillOwner {
 
-    private static final ThreadLocal<UserAccount> CURRENT = new ThreadLocal<>();
+    private static final ScopedValue<UserAccount> CURRENT = ScopedValue.newInstance();
+
+    /** Der Benutzer des laufenden Aufrufs oder {@code null}. */
+    private static UserAccount current() {
+        return CURRENT.isBound() ? CURRENT.get() : null;
+    }
 
     /** Führt {@code body} als {@code user} aus. */
     public static <T> T as(UserAccount user, Supplier<T> body) {
-        UserAccount previous = CURRENT.get();
-        CURRENT.set(user);
-        try {
-            return body.get();
-        } finally {
-            if (previous == null) {
-                CURRENT.remove();
-            } else {
-                CURRENT.set(previous);
-            }
-        }
+        return ScopedValue.where(CURRENT, user).call(body::get);
     }
 
     @Override
     public String email() {
-        UserAccount u = CURRENT.get();
+        UserAccount u = current();
         return emailIfKnown().orElseThrow(() -> new IllegalStateException(u == null
                 ? "Skills nur über die GraphQL-API mit Anmeldung."
                 : "Kein Benutzer für die Skills: im Konto von '" + u.username() + "' ist keine E-Mail hinterlegt."));
@@ -44,13 +39,13 @@ public class SkillCaller implements SkillOwner {
 
     @Override
     public Optional<String> emailIfKnown() {
-        return Optional.ofNullable(CURRENT.get()).map(UserAccount::email).filter(e -> !e.isBlank())
+        return Optional.ofNullable(current()).map(UserAccount::email).filter(e -> !e.isBlank())
                 .map(e -> e.strip().toLowerCase(Locale.ROOT));
     }
 
     @Override
     public boolean admin() {
-        UserAccount u = CURRENT.get();
+        UserAccount u = current();
         return u != null && u.has(Permission.TEMPLATES_PUBLISH);
     }
 }

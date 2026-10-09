@@ -26,9 +26,9 @@ import com.anthropic.models.messages.StopReason;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.mcp.McpToolUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.core.McpExchanges;
 
 /**
  * Pre-Classifier für Aufgaben: schätzt die Komplexität einer Aufgabe (Ticket, Feature, Bugfix, Analyse, Text, Recherche …)
@@ -82,7 +82,7 @@ public final class TaskClassifier {
     private static final Duration TIMEOUT = Duration.ofMinutes(5);
     private static final int MAX_DESCRIPTION = 60_000;
     private static final int MAX_COMMENT = 4_000;
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     /** Komplexitätsstufe mit deutscher Bezeichnung für die Ausgabe. */
     public enum Complexity {
@@ -203,8 +203,7 @@ public final class TaskClassifier {
 
     /** MCP-Exchange des laufenden Tool-Aufrufs ({@code null} außerhalb von MCP, z.B. in Tests ohne Client). */
     public static McpSyncServerExchange exchange(ToolContext toolContext) {
-        Object e = toolContext == null ? null : toolContext.getContext().get(McpToolUtils.TOOL_CONTEXT_MCP_EXCHANGE_KEY);
-        return e instanceof McpSyncServerExchange x ? x : null;
+        return McpExchanges.of(toolContext);
     }
 
     /**

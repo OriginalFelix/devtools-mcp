@@ -15,7 +15,6 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.mcp.McpToolUtils;
 import org.springframework.stereotype.Component;
 
 /**
@@ -41,7 +40,19 @@ public class UserConfirmation {
         /** Nur über den MCP-Client (Elicitation). */
         CLIENT,
         /** Nur über einen Dialog der Desktop-App. */
-        APP
+        APP;
+
+        /** Aus einer Einstellung ({@code auto}, {@code client}, {@code app}, ohne Groß-/Kleinschreibung); sonst {@link #AUTO}. */
+        public static Channel parse(String value) {
+            if (value != null) {
+                for (Channel c : values()) {
+                    if (c.name().equalsIgnoreCase(value.strip())) {
+                        return c;
+                    }
+                }
+            }
+            return AUTO;
+        }
     }
 
     /** Ergebnis einer Rückfrage. */
@@ -66,8 +77,7 @@ public class UserConfirmation {
 
     /** MCP-Exchange des laufenden Tool-Aufrufs ({@code null} außerhalb von MCP). */
     public static McpSyncServerExchange exchange(ToolContext toolContext) {
-        Object e = toolContext == null ? null : toolContext.getContext().get(McpToolUtils.TOOL_CONTEXT_MCP_EXCHANGE_KEY);
-        return e instanceof McpSyncServerExchange x ? x : null;
+        return McpExchanges.of(toolContext);
     }
 
     /** Ob der Client Formulare per Elicitation anbietet (ein leeres {@code elicitation} heißt nach der Spezifikation Formular). */
@@ -105,6 +115,28 @@ public class UserConfirmation {
                     : "weder der MCP-Client (elicitation) noch die DevTools-App können nachfragen");
         }
         return viaDesktop(handler, title, question);
+    }
+
+    /**
+     * Wie {@link #ask}, wirft aber, wenn der Nutzer nicht zustimmt oder niemand gefragt werden kann.
+     *
+     * @param confirmation {@code null} = keine Rückfrage möglich
+     * @param refused      Anfang der Meldung, was nicht geschah (z.B. {@code "Nicht gesendet"})
+     * @param unavailable  Satz, was der Nutzer tun kann, wenn keine Rückfrage möglich ist
+     */
+    public static void require(UserConfirmation confirmation, McpSyncServerExchange exchange, Channel channel,
+                               String title, String question, String refused, String unavailable) {
+        if (confirmation == null) {
+            throw new IllegalStateException(refused + ": keine Rückfrage beim Nutzer möglich.");
+        }
+        Result r = confirmation.ask(exchange, channel, title, question);
+        switch (r.answer()) {
+            case GRANTED -> { }
+            case DECLINED -> throw new IllegalStateException(refused + ": vom Nutzer abgelehnt (" + r.via() + "). "
+                    + "Nicht erneut versuchen, ohne dass der Nutzer es ausdrücklich will.");
+            default -> throw new IllegalStateException(refused + ": keine Rückfrage möglich (" + r.via() + "). "
+                    + unavailable);
+        }
     }
 
     private static Result viaClient(McpSyncServerExchange exchange, String title, String question) {

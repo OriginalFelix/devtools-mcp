@@ -361,19 +361,14 @@ public class UsersAdminView extends BorderPane {
             });
             return;
         }
-        CompletableFuture.supplyAsync(() -> List.of(
+        FxTasks.background(() -> List.of(
                 backend.queryList("{ users { " + USER_FIELDS + " } }", "users", UserInfo.class),
-                backend.queryList("{ roles { " + ROLE_FIELDS + " } }", "roles", RoleInfo.class)))
-                .whenComplete((r, e) -> Platform.runLater(() -> {
-                    if (e != null) {
-                        status.setText("Fehler: " + (e.getCause() != null ? e.getCause() : e).getMessage());
-                        return;
-                    }
-                    @SuppressWarnings("unchecked") List<UserInfo> u = (List<UserInfo>) r.get(0);
-                    @SuppressWarnings("unchecked") List<RoleInfo> ro = (List<RoleInfo>) r.get(1);
-                    users.setAll(u);
-                    roles.setAll(ro);
-                }));
+                backend.queryList("{ roles { " + ROLE_FIELDS + " } }", "roles", RoleInfo.class)), r -> {
+            @SuppressWarnings("unchecked") List<UserInfo> u = (List<UserInfo>) r.get(0);
+            @SuppressWarnings("unchecked") List<RoleInfo> ro = (List<RoleInfo>) r.get(1);
+            users.setAll(u);
+            roles.setAll(ro);
+        }, e -> status.setText("Fehler: " + e.getMessage()));
     }
 
     private void done(String message) {
@@ -383,14 +378,7 @@ public class UsersAdminView extends BorderPane {
 
     private <T> void background(Supplier<T> action, Consumer<T> success) {
         status.setText("…");
-        CompletableFuture.supplyAsync(action).whenComplete((r, e) -> Platform.runLater(() -> {
-            if (e != null) {
-                Throwable cause = e.getCause() != null ? e.getCause() : e;
-                status.setText("Fehler: " + cause.getMessage());
-            } else {
-                success.accept(r);
-            }
-        }));
+        FxTasks.background(action, success, e -> status.setText("Fehler: " + e.getMessage()));
     }
 
     private Dialog<ButtonType> dialog(String title) {

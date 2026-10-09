@@ -1,8 +1,6 @@
 package systems.grebe.devtools.mcp.core;
 
-import io.modelcontextprotocol.server.McpSyncServerExchange;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.mcp.McpToolUtils;
 
 /**
  * Wird nach jedem erfolgreichen Tool-Aufruf eines beliebigen Moduls benachrichtigt und darf das Ergebnis ergänzen –
@@ -20,10 +18,6 @@ public interface ToolCallListener {
 
     /** MCP-Session-ID aus dem Tool-Kontext, den Spring AI beim Aufruf über MCP mitgibt. */
     static String sessionId(ToolContext toolContext) {
-        if (toolContext == null) {
-            return null;
-        }
-        Object exchange = toolContext.getContext().get(McpToolUtils.TOOL_CONTEXT_MCP_EXCHANGE_KEY);
-        return exchange instanceof McpSyncServerExchange e ? e.sessionId() : null;
+        return McpExchanges.sessionId(toolContext);
     }
 }

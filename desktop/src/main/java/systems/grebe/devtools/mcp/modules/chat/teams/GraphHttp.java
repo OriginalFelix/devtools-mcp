@@ -14,6 +14,8 @@ import java.util.stream.Collectors;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
+import systems.grebe.devtools.mcp.core.EntraDeviceLogin;
 
 /**
  * HTTP für Microsoft Graph (JSON mit Bearer-Token) und die Token-Endpunkte von Entra ID (Formular). Fehler werden als
@@ -21,34 +23,25 @@ import tools.jackson.databind.json.JsonMapper;
  */
 final class GraphHttp {
 
-    static final JsonMapper JSON = JsonMapper.builder().build();
+    static final JsonMapper JSON = JsonMapper.shared();
     private static final int MAX_RETRIES = 3;
     private static final long MAX_RETRY_WAIT_MILLIS = 10_000;
 
     /** Fehler mit HTTP-Status und Fehlercode ({@code error} bzw. {@code error.code}). */
-    static final class GraphException extends IllegalStateException {
+    static final class GraphException extends EntraDeviceLogin.Rejected {
         private final int status;
-        private final String code;
 
         GraphException(int status, String code, String message) {
-            super(message);
+            super(code, message);
             this.status = status;
-            this.code = code;
         }
 
         int status() {
             return status;
         }
-
-        String code() {
-            return code;
-        }
     }
 
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
+    private final HttpClient http = HttpJson.sharedClient();
     private final Duration timeout;
 
     GraphHttp(Duration timeout) {
@@ -68,7 +61,7 @@ final class GraphHttp {
         JsonNode json = parse(res.body());
         if (res.statusCode() >= 400) {
             String code = json.path("error").asString("");
-            String desc = json.path("error_description").asString(abbreviate(res.body()));
+            String desc = json.path("error_description").asString(HttpJson.abbreviate(res.body()));
             // Entra-Beschreibungen tragen Zeitstempel und Trace-IDs in weiteren Zeilen
             throw new GraphException(res.statusCode(), code, desc.lines().findFirst().orElse(desc));
         }
@@ -101,7 +94,7 @@ final class GraphHttp {
             }
             JsonNode err = parse(res.body()).path("error");
             String errCode = err.path("code").asString("");
-            String message = err.path("message").asString(abbreviate(res.body()));
+            String message = err.path("message").asString(HttpJson.abbreviate(res.body()));
             if ((code == 429 || code == 503) && retries++ < MAX_RETRIES) {
                 long wait = res.headers().firstValueAsLong("Retry-After").orElse(2) * 1000;
                 sleep(Math.min(MAX_RETRY_WAIT_MILLIS, Math.max(500, wait)));
@@ -164,7 +157,4 @@ final class GraphHttp {
         return path == null ? url : path;
     }
 
-    private static String abbreviate(String s) {
-        return s == null ? "" : s.length() > 300 ? s.substring(0, 300) + "…" : s;
-    }
 }

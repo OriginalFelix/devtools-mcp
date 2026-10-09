@@ -33,6 +33,8 @@ import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.McpToolHints;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.ContextClassLoader;
+import systems.grebe.devtools.mcp.core.ForwardingToolCallback;
 
 /**
  * Übersetzt ein Java-Skript mit dem {@code javac} des JDK im Speicher. Ein Java-Skript ist eine Quelldatei mit einer
@@ -269,17 +271,12 @@ public final class JavaScriptCompiler {
 
     /** Setzt für Aufrufe in Skript-Code den Context-ClassLoader auf den des Skripts (wie bei Plugins). */
     static <T> T withLoader(ClassLoader loader, ThrowingSupplier<T> call) {
-        Thread t = Thread.currentThread();
-        ClassLoader previous = t.getContextClassLoader();
-        t.setContextClassLoader(loader);
         try {
-            return call.get();
+            return ContextClassLoader.callChecked(loader, call::get);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
             throw new IllegalStateException(e.getMessage(), e);
-        } finally {
-            t.setContextClassLoader(previous);
         }
     }
 
@@ -305,17 +302,7 @@ public final class JavaScriptCompiler {
 
     /** Tool-Aufruf unter Zeitlimit und mit dem ClassLoader des Skripts; Fehler mit Zeile im Skript. */
     private record TimedCallback(ToolCallback delegate, ClassLoader loader, Supplier<Duration> timeout,
-                                 String scriptName, String fileName) implements ToolCallback {
-        @Override
-        public ToolDefinition getToolDefinition() {
-            return delegate.getToolDefinition();
-        }
-
-        @Override
-        public ToolMetadata getToolMetadata() {
-            return delegate.getToolMetadata();
-        }
-
+                                 String scriptName, String fileName) implements ForwardingToolCallback {
         @Override
         public String call(String toolInput) {
             return call(toolInput, null);

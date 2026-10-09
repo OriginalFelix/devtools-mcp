@@ -29,6 +29,7 @@ import org.eclipse.aether.util.filter.DependencyFilterUtils;
 import org.eclipse.aether.util.repository.AuthenticationBuilder;
 import org.eclipse.aether.util.repository.JreProxySelector;
 import org.eclipse.aether.version.Version;
+import systems.grebe.devtools.mcp.api.Errors;
 
 /**
  * Zugriff auf Maven-Repositories über Maven Resolver (derselbe Code wie in Maven selbst): Versionen aus
@@ -67,7 +68,7 @@ public class MavenPluginResolver implements AutoCloseable {
             ArtifactRequest request = new ArtifactRequest(new DefaultArtifact(coordinates), remotes(session), null);
             return system.resolveArtifact(session, request).getArtifact().getPath();
         } catch (ArtifactResolutionException e) {
-            throw new ResolutionException("Artefakt " + coordinates + " nicht gefunden: " + rootMessage(e), e);
+            throw new ResolutionException("Artefakt " + coordinates + " nicht gefunden: " + Errors.rootMessage(e), e);
         }
     }
 
@@ -91,7 +92,7 @@ public class MavenPluginResolver implements AutoCloseable {
             }
             return paths;
         } catch (DependencyResolutionException e) {
-            throw new ResolutionException("Bibliotheken " + coordinates + " nicht auflösbar: " + rootMessage(e), e);
+            throw new ResolutionException("Bibliotheken " + coordinates + " nicht auflösbar: " + Errors.rootMessage(e), e);
         }
     }
 
@@ -107,7 +108,7 @@ public class MavenPluginResolver implements AutoCloseable {
             Artifact a = new DefaultArtifact(ga[0], ga[1], "yml", versions.getFirst());
             return system.resolveArtifact(session, new ArtifactRequest(a, only, null)).getArtifact().getPath();
         } catch (ArtifactResolutionException e) {
-            throw new ResolutionException("Katalog " + repo.catalog() + " nicht ladbar: " + rootMessage(e), e);
+            throw new ResolutionException("Katalog " + repo.catalog() + " nicht ladbar: " + Errors.rootMessage(e), e);
         }
     }
 
@@ -143,7 +144,7 @@ public class MavenPluginResolver implements AutoCloseable {
             return out;
         } catch (VersionRangeResolutionException e) {
             throw new ResolutionException("Versionen von " + groupId + ":" + artifactId + " nicht ermittelbar: "
-                    + rootMessage(e), e);
+                    + Errors.rootMessage(e), e);
         }
     }
 
@@ -193,12 +194,4 @@ public class MavenPluginResolver implements AutoCloseable {
         }
     }
 
-    private static String rootMessage(Throwable e) {
-        Throwable root = e;
-        while (root.getCause() != null && root.getCause() != root) {
-            root = root.getCause();
-        }
-        String msg = root.getMessage();
-        return msg == null ? root.getClass().getSimpleName() : msg;
-    }
 }

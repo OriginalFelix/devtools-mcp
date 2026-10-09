@@ -20,6 +20,7 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolBeans;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolScope;
+import systems.grebe.devtools.mcp.core.ConfigChange;
 
 /**
  * SSH-Zugriff auf hinterlegte Server (JSch): Befehle ausführen, Verzeichnisse und Dateien per SFTP lesen und schreiben.
@@ -95,7 +96,7 @@ public class SshModule implements ToolModule {
     private static final class ScopeState implements AutoCloseable {
         final SshSessions sessions = new SshSessions();
         final SshShells shells = new SshShells();
-        Map<String, String> lastValues;
+        final ConfigChange config = new ConfigChange();
 
         @Override
         public void close() {
@@ -208,11 +209,8 @@ public class SshModule implements ToolModule {
     public List<ToolCallback> createTools(ModuleConfig config, ToolScope scope) {
         ScopeState state = state(scope);
         // Neu aufgebaut wird auch beim An-/Abschalten einzelner Tools – offene Shells nur bei geänderten Werten schließen
-        synchronized (state) {
-            if (!config.rawValues().equals(state.lastValues)) {
-                state.close();
-                state.lastValues = config.rawValues();
-            }
+        if (state.config.changed(config)) {
+            state.close();
         }
         SshEnvironment env = environment(config, state);
         List<Object> beans = new ArrayList<>(List.of(new SshTools(env)));
@@ -234,9 +232,9 @@ public class SshModule implements ToolModule {
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         SshEnvironment env = environment(config);
         if (env.connections().isEmpty()) {

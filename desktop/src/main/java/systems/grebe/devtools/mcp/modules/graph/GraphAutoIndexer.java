@@ -25,6 +25,7 @@ import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
+import systems.grebe.devtools.mcp.api.Errors;
 
 /**
  * Indiziert die Graph-Projekte automatisch: beobachtet je Projekt den ausgecheckten Branch, seinen Commit und die
@@ -99,7 +100,7 @@ public class GraphAutoIndexer {
             } catch (InterruptedException e) {
                 return;
             } catch (RuntimeException e) {
-                LOG.warn("Automatisches Indizieren: {}", GraphModule.rootMessage(e));
+                LOG.warn("Automatisches Indizieren: {}", Errors.rootMessage(e));
             }
         }
     }
@@ -164,12 +165,12 @@ public class GraphAutoIndexer {
                 Duration wait = retryBase.multipliedBy(1L << Math.min(n - 1, 20));
                 retryAt.put(root, Instant.now().plus(wait.compareTo(MAX_BACKOFF) > 0 ? MAX_BACKOFF : wait));
                 if (n == 1) { // bei bleibenden Fehlern nicht bei jedem Versuch warnen
-                    out.add(root + ": " + GraphModule.rootMessage(e));
+                    out.add(root + ": " + Errors.rootMessage(e));
                     LOG.warn("Code-Graph {} nicht automatisch indiziert (neuer Versuch später): {}", root,
-                            GraphModule.rootMessage(e));
+                            Errors.rootMessage(e));
                 } else {
                     LOG.debug("Code-Graph {} weiterhin nicht automatisch indiziert (Versuch {}): {}", root, n,
-                            GraphModule.rootMessage(e));
+                            Errors.rootMessage(e));
                 }
             }
         }

@@ -3,7 +3,6 @@ package systems.grebe.devtools.mcp.modules.ticket;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -13,6 +12,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Verzeichnis der über die Tools angelegten Tickets und Kommentare – Grundlage für „nur selbst angelegte löschen“
@@ -107,10 +107,7 @@ public final class TicketOwnership {
         var c = root.putArray("comments");
         comments.forEach(c::add);
         try {
-            Files.createDirectories(file.toAbsolutePath().getParent());
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, JSON.writeValueAsString(root));
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicFiles.writeString(file, JSON.writeValueAsString(root));
         } catch (IOException | RuntimeException e) {
             LOG.warn("Verzeichnis selbst angelegter Tickets nicht gespeichert ({}): {}", file, e.getMessage());
         }

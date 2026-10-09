@@ -4,8 +4,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
+import systems.grebe.devtools.mcp.core.ConfigValues;
+
 /** Sicht auf die Einstellungen genau einer Laufzeit (Schlüssel ohne Präfix). */
-public final class RuntimeSettings {
+public final class RuntimeSettings implements ConfigValues {
 
     private final Function<String, Optional<String>> lookup;
 
@@ -14,14 +16,11 @@ public final class RuntimeSettings {
     }
 
     public static RuntimeSettings of(Map<String, String> values) {
-        return new RuntimeSettings(k -> Optional.ofNullable(values.get(k)).map(String::trim).filter(s -> !s.isEmpty()));
+        return new RuntimeSettings(ConfigValues.lookupIn(values));
     }
 
+    @Override
     public Optional<String> get(String key) {
         return lookup.apply(key);
-    }
-
-    public String getString(String key, String fallback) {
-        return get(key).orElse(fallback);
     }
 }

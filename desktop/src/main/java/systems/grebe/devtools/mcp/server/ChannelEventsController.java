@@ -31,7 +31,7 @@ public class ChannelEventsController {
 
     public static final String PATH = "/mcp/channel/events";
     static final int HEARTBEAT_SECONDS = 20;
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private final ChannelEvents events;
     private final ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor(

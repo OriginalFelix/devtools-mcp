@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.channel;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -17,6 +16,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Hält eine Kopie des laufenden Jars unter einem festen Pfad ({@code ~/.devtools-mcp/devtools-mcp.jar}), damit der
@@ -97,11 +97,7 @@ public class BridgeJar {
             Files.createDirectories(target.getParent());
             tmp = Files.createTempFile(target.getParent(), FILE_NAME, ".tmp");
             Files.copy(src, tmp, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
-            try {
-                Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-            }
+            AtomicFiles.replace(tmp, target);
             LOG.info("Jar für den stdio-Proxy aktualisiert: {}", target);
             return true;
         } catch (IOException e) {

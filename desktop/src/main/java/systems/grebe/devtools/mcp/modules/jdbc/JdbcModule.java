@@ -21,6 +21,7 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.modules.maven.MavenVersions;
 import systems.grebe.devtools.mcp.plugin.store.MavenPluginResolver;
+import systems.grebe.devtools.mcp.core.ConfigChange;
 
 /**
  * Datenbanken über JDBC: hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort) für das LLM freigeben – Struktur
@@ -109,10 +110,9 @@ public class JdbcModule implements ToolModule {
      */
     private static JdbcSessions sessions(ModuleConfig config, ScopeState state) {
         synchronized (state) {
-            if (!config.rawValues().equals(state.lastValues)) {
+            if (state.config.changed(config)) {
                 state.sessions.close();
                 state.sessions = new JdbcSessions();
-                state.lastValues = config.rawValues();
             }
             return state.sessions;
         }
@@ -124,7 +124,7 @@ public class JdbcModule implements ToolModule {
 
     private static final class ScopeState implements AutoCloseable {
         JdbcSessions sessions = new JdbcSessions();
-        Map<String, String> lastValues;
+        final ConfigChange config = new ConfigChange();
 
         @Override
         public synchronized void close() {
@@ -269,9 +269,9 @@ public class JdbcModule implements ToolModule {
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         JdbcEnvironment env = new JdbcEnvironment(config, new JdbcSessions(), drivers);
         if (env.connections().isEmpty()) {

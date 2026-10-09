@@ -2,20 +2,33 @@ package systems.grebe.devtools.mcp.core;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.execution.ToolCallResultConverter;
 import org.springframework.ai.tool.metadata.ToolMetadata;
+import org.springframework.ai.tool.method.MethodToolCallback;
+import org.springframework.ai.tool.support.ToolDefinitions;
+import org.springframework.ai.tool.support.ToolUtils;
+import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.util.ClassUtils;
+import org.springframework.util.ReflectionUtils;
 
 /**
- * Erzeugt Tool-Callbacks aus Objekten mit {@code @Tool}-Methoden wie {@link ToolCallbacks#from}, übernimmt aber
- * zusätzlich die {@link ToolHints} – die App meldet sie dem Client als MCP-Tool-Annotations.
+ * Erzeugt Tool-Callbacks aus Objekten mit {@code @Tool}-Methoden wie {@code ToolCallbacks.from} von Spring AI, übernimmt
+ * aber zusätzlich die {@link ToolHints} – die App meldet sie dem Client als MCP-Tool-Annotations. Die Tool-Definitionen
+ * (JSON-Schemas der Parameter, per Reflection erzeugt und teuer) werden je Klasse nur einmal gebaut; jeder Aufruf
+ * erzeugt nur noch die Callbacks für das jeweilige Objekt.
  *
  * <pre>{@code
  * public List<ToolCallback> createTools(ModuleConfig config) {
@@ -42,17 +55,70 @@ public final class ToolBeans {
         }
     }
 
+    /** Eine {@code @Tool}-Methode einer Klasse mit allem, was nicht vom Objekt abhängt. */
+    private record Template(Method method, ToolDefinition definition, ToolMetadata metadata,
+                            ToolCallResultConverter converter, Hints hints) {
+    }
+
+    private static final ClassValue<List<Template>> TEMPLATES = new ClassValue<>() {
+        @Override
+        protected List<Template> computeValue(Class<?> type) {
+            return templates(type);
+        }
+    };
+
     /** Callbacks aller {@code @Tool}-Methoden der Objekte, mit Hinweisen aus {@link ToolHints}. */
     public static List<ToolCallback> callbacks(Object... beans) {
         List<ToolCallback> out = new ArrayList<>();
+        Set<String> names = new HashSet<>();
         for (Object bean : beans) {
-            Map<String, ToolHints> hints = hints(bean.getClass());
-            for (ToolCallback cb : ToolCallbacks.from(bean)) {
-                ToolHints h = hints.get(cb.getToolDefinition().name());
-                out.add(h == null ? cb : new Hinted(cb, Hints.of(h)));
+            for (Template t : TEMPLATES.get(bean.getClass())) {
+                if (beans.length > 1 && !names.add(t.definition.name())) {
+                    throw new IllegalArgumentException("Multiple tools with the same name (" + t.definition.name()
+                            + ") found in sources: " + Arrays.stream(beans).map(b -> b.getClass().getName())
+                            .collect(Collectors.joining(", ")));
+                }
+                ToolCallback cb = new MethodToolCallback(t.definition, t.metadata, t.method, bean, t.converter);
+                out.add(t.hints == null ? cb : new Hinted(cb, t.hints));
             }
         }
         return out;
+    }
+
+    /** Wie Spring AIs {@code MethodToolCallbackProvider}: {@code @Tool}-Methoden, die keinen Funktionstyp liefern. */
+    private static List<Template> templates(Class<?> type) {
+        ToolHints classHints = type.getAnnotation(ToolHints.class);
+        List<Template> out = new ArrayList<>();
+        for (Method m : ReflectionUtils.getDeclaredMethods(type)) {
+            if (AnnotationUtils.findAnnotation(m, Tool.class) == null || isFunctional(m)
+                    || !ReflectionUtils.USER_DECLARED_METHODS.matches(m)) {
+                continue;
+            }
+            ToolHints h = m.getAnnotation(ToolHints.class);
+            if (h == null) {
+                h = classHints;
+            }
+            out.add(new Template(m, ToolDefinitions.from(m), ToolMetadata.from(m),
+                    ToolUtils.getToolCallResultConverter(m), h == null ? null : Hints.of(h)));
+        }
+        if (out.isEmpty()) {
+            throw new IllegalArgumentException("No @Tool annotated methods found in " + type.getName()
+                    + ". Did you mean to pass a ToolCallback or ToolCallbackProvider?");
+        }
+        Set<String> names = new HashSet<>();
+        for (Template t : out) {
+            if (!names.add(t.definition.name())) {
+                throw new IllegalArgumentException("Multiple tools with the same name (" + t.definition.name()
+                        + ") found in sources: " + type.getName());
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static boolean isFunctional(Method m) {
+        Class<?> r = m.getReturnType();
+        return ClassUtils.isAssignable(Function.class, r) || ClassUtils.isAssignable(Supplier.class, r)
+                || ClassUtils.isAssignable(Consumer.class, r);
     }
 
     /**
@@ -74,46 +140,7 @@ public final class ToolBeans {
         return null;
     }
 
-    private static Map<String, ToolHints> hints(Class<?> type) {
-        ToolHints classHints = type.getAnnotation(ToolHints.class);
-        Map<String, ToolHints> out = new HashMap<>();
-        for (Method m : type.getMethods()) {
-            Tool tool = m.getAnnotation(Tool.class);
-            if (tool == null) {
-                continue;
-            }
-            ToolHints h = m.getAnnotation(ToolHints.class);
-            if (h == null) {
-                h = classHints;
-            }
-            if (h != null) {
-                out.put(tool.name().isBlank() ? m.getName() : tool.name(), h);
-            }
-        }
-        return out;
-    }
-
     /** Callback mit Hinweisen; ansonsten unverändert. */
-    private record Hinted(ToolCallback delegate, Hints hints) implements ToolCallback {
-
-        @Override
-        public ToolDefinition getToolDefinition() {
-            return delegate.getToolDefinition();
-        }
-
-        @Override
-        public ToolMetadata getToolMetadata() {
-            return delegate.getToolMetadata();
-        }
-
-        @Override
-        public String call(String toolInput) {
-            return delegate.call(toolInput);
-        }
-
-        @Override
-        public String call(String toolInput, ToolContext toolContext) {
-            return delegate.call(toolInput, toolContext);
-        }
+    private record Hinted(ToolCallback delegate, Hints hints) implements ForwardingToolCallback {
     }
 }

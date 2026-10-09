@@ -1,20 +1,11 @@
 package systems.grebe.devtools.mcp.modules.chat;
 
-import java.awt.Desktop;
-import java.awt.GraphicsEnvironment;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.annotation.Tool;
@@ -35,6 +26,8 @@ import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatProvider;
 import systems.grebe.devtools.mcp.modules.chat.spi.ChatSystem;
+import systems.grebe.devtools.mcp.core.BrowserLogin;
+import systems.grebe.devtools.mcp.core.ProviderSchema;
 
 /**
  * Chat-Systeme über austauschbare Provider ({@link ChatProvider}, per ServiceLoader): Nachrichten senden, Fragen stellen
@@ -55,8 +48,6 @@ public class ChatModule implements ToolModule {
     static final String MAX_LINES = "maxOutputLines";
 
     private static final String STATE = "chat";
-    private static final Pattern URL = Pattern.compile("https://\\S+[^\\s.,;)]");
-
     private final ChatProviders providers;
     private final ChatState chatState;
 
@@ -129,22 +120,11 @@ public class ChatModule implements ToolModule {
         return 175;
     }
 
-    static String key(String providerId, String field) {
-        return providerId + "." + field;
-    }
-
-    static String enabledKey(String providerId) {
-        return key(providerId, "enabled");
-    }
-
     @Override
     public List<ConfigField> configSchema() {
-        List<String> options = new ArrayList<>(List.of("auto"));
-        providers.providers().forEach(p -> options.add(p.id()));
         List<ConfigField> fields = new ArrayList<>();
-        fields.add(ConfigField.of(DEFAULT_PROVIDER, "Standard-System", FieldType.ENUM).withDefault("auto")
-                .withOptions(options.toArray(String[]::new))
-                .withHelp("Für Aufrufe ohne 'provider', deren Unterhaltung keinem System eindeutig gehört. "
+        fields.add(ProviderSchema.defaultProviderField(DEFAULT_PROVIDER, "Standard-System", providers.providers(),
+                "Für Aufrufe ohne 'provider', deren Unterhaltung keinem System eindeutig gehört. "
                         + "'auto' = das einzige aktive System."));
         for (ChatProvider p : providers.providers()) {
             List<ConfigField> own = new ArrayList<>(p.configFields());
@@ -180,14 +160,14 @@ public class ChatModule implements ToolModule {
         }
         Map<String, String> out = new LinkedHashMap<>();
         for (String k : List.of("homeserverUrl", "accessToken", "user", "password", "rooms", "trustedSenders", "autoJoin")) {
-            copy(old, k, out, key("matrix", k));
+            copy(old, k, out, ProviderSchema.key("matrix", k));
         }
-        copy(old, "defaultRoom", out, key("matrix", DEFAULT_CONVERSATION));
+        copy(old, "defaultRoom", out, ProviderSchema.key("matrix", DEFAULT_CONVERSATION));
         for (String k : List.of(PREFIX, READ_RECEIPTS, ASK_WAIT, MAX_WAIT, TIMEOUT, MAX_LINES)) {
             copy(old, k, out, k);
         }
-        if (out.containsKey(key("matrix", "homeserverUrl"))) {
-            out.put(enabledKey("matrix"), "true");
+        if (out.containsKey(ProviderSchema.key("matrix", "homeserverUrl"))) {
+            out.put(ProviderSchema.enabledKey("matrix"), "true");
         }
         return out;
     }
@@ -216,9 +196,9 @@ public class ChatModule implements ToolModule {
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         // eigener Zustand: ein Test soll weder Sitzung noch Eingang der laufenden Tools ersetzen
         ChatEnvironment env = new ChatEnvironment(providers, config, new ChatEnvironment.State(), chatState);
@@ -276,7 +256,7 @@ public class ChatModule implements ToolModule {
 
         @Override
         public List<String> targets(ModuleConfig config) {
-            return config.getBoolean(enabledKey(provider.id())) ? List.of(provider.displayName()) : List.of();
+            return config.getBoolean(ProviderSchema.enabledKey(provider.id())) ? List.of(provider.displayName()) : List.of();
         }
 
         @Override
@@ -293,7 +273,7 @@ public class ChatModule implements ToolModule {
             }
             String result = e.system().login(prompt -> {
                 progress.update(prompt, -1);
-                openBrowser(prompt);
+                BrowserLogin.open(prompt);
             });
             return ActionResult.ok(result);
         }
@@ -301,21 +281,6 @@ public class ChatModule implements ToolModule {
         private ChatEnvironment.Entry entry(ModuleConfig config) {
             return environment(config, ToolScope.LOCAL).entries().stream()
                     .filter(e -> e.id().equals(provider.id())).findFirst().orElse(null);
-        }
-    }
-
-    /** Öffnet die erste Adresse der Anweisung im Browser, wenn das geht (nicht im Headless-Betrieb). */
-    private static void openBrowser(String prompt) {
-        Matcher m = URL.matcher(prompt);
-        if (!m.find() || GraphicsEnvironment.isHeadless()) {
-            return;
-        }
-        try {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                Desktop.getDesktop().browse(URI.create(m.group()));
-            }
-        } catch (Exception ignored) {
-            // Adresse steht in der Anzeige
         }
     }
 
@@ -349,27 +314,10 @@ public class ChatModule implements ToolModule {
                             + "Browser – Zugangsdaten stehen in der DevTools-App.");
                 }
             }
-            CompletableFuture<String> prompt = new CompletableFuture<>();
             ChatSystem system = e.system();
-            Thread.ofVirtual().name("chat-login-" + e.id()).start(() -> {
-                try {
-                    String result = system.login(prompt::complete);
-                    prompt.complete(result);
-                } catch (RuntimeException ex) {
-                    prompt.completeExceptionally(ex);
-                }
-            });
-            try {
-                return prompt.get(60, TimeUnit.SECONDS) + "\nDem Nutzer Adresse und Code nennen. Nach der Anmeldung "
-                        + "stehen die chat_*-Tools sofort zur Verfügung (Stand: chat_conversations).";
-            } catch (ExecutionException ex) {
-                throw ex.getCause() instanceof RuntimeException r ? r : new IllegalStateException(ex.getCause());
-            } catch (TimeoutException ex) {
-                throw new IllegalStateException("Anmeldung konnte nicht gestartet werden (keine Antwort in 60 s).");
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Abgebrochen", ex);
-            }
+            return BrowserLogin.start("chat-login-" + e.id(), system::login)
+                    + "\nDem Nutzer Adresse und Code nennen. Nach der Anmeldung stehen die chat_*-Tools sofort zur "
+                    + "Verfügung (Stand: chat_conversations).";
         }
     }
 }

@@ -456,14 +456,7 @@ public class SkillsView extends BorderPane {
 
     /** Datenbankzugriff außerhalb des FX-Threads, Ergebnis im FX-Thread. */
     private <T> void background(Supplier<T> work, Consumer<T> onFx) {
-        Thread.ofVirtual().start(() -> {
-            try {
-                T result = work.get();
-                Platform.runLater(() -> onFx.accept(result));
-            } catch (RuntimeException e) {
-                Platform.runLater(() -> error(e.getMessage()));
-            }
-        });
+        FxTasks.background(work, onFx, e -> error(e.getMessage()));
     }
 
     private void error(String msg) {

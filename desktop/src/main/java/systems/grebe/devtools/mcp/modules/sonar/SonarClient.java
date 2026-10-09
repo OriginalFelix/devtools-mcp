@@ -8,18 +8,18 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
 
 /** Minimaler Client für die SonarQube/SonarCloud Web-API. */
 public class SonarClient {
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.shared();
 
     private final String baseUrl;
     private final String token;
@@ -32,10 +32,7 @@ public class SonarClient {
         this.token = token;
         this.organization = organization;
         this.timeout = timeout;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        this.http = HttpJson.sharedClient();
     }
 
     public String baseUrl() {
@@ -59,7 +56,7 @@ public class SonarClient {
         try {
             return JSON.readTree(body);
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Unerwartete Antwort von SonarQube (" + path + "): " + abbreviate(body), e);
+            throw new IllegalStateException("Unerwartete Antwort von SonarQube (" + path + "): " + HttpJson.abbreviate(body), e);
         }
     }
 
@@ -75,8 +72,7 @@ public class SonarClient {
         HttpRequest.Builder req = HttpRequest.newBuilder(uri).timeout(timeout).header("Accept", "application/json").GET();
         if (token != null && !token.isBlank()) {
             // Basic mit Token als Benutzername funktioniert mit SonarQube (alle Versionen) und SonarCloud
-            req.header("Authorization", "Basic "
-                    + Base64.getEncoder().encodeToString((token + ":").getBytes(StandardCharsets.UTF_8)));
+            req.header("Authorization", HttpJson.basicAuth(token, ""));
         }
         HttpResponse<String> res;
         try {
@@ -112,11 +108,7 @@ public class SonarClient {
         } catch (RuntimeException ignored) {
             // kein JSON
         }
-        return abbreviate(body);
-    }
-
-    private static String abbreviate(String s) {
-        return s == null ? "" : s.length() > 300 ? s.substring(0, 300) + "…" : s;
+        return HttpJson.abbreviate(body);
     }
 
     private static String enc(String s) {

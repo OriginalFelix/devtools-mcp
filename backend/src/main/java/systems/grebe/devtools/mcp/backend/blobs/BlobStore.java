@@ -15,9 +15,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
@@ -30,6 +28,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.backend.BackendHome;
 import systems.grebe.devtools.mcp.backend.skills.SkillOwner;
+import systems.grebe.devtools.mcp.api.Sha256;
 
 /**
  * Dateiablage für Anhänge von Skills und Memories: Der Inhalt liegt als Datei im Datenverzeichnis des Backends unter
@@ -105,7 +104,7 @@ public class BlobStore {
         Files.createDirectories(dir);
         Path tmp = Files.createTempFile(dir, TEMP_PREFIX, "");
         try {
-            MessageDigest md = sha256();
+            MessageDigest md = Sha256.newDigest();
             try (OutputStream out = Files.newOutputStream(tmp)) {
                 new DigestInputStream(in, md).transferTo(out);
             }
@@ -150,7 +149,7 @@ public class BlobStore {
     /** Schließt einen Upload in Teilen ab: Inhalt prüfen (Hash) und ablegen. */
     public Blob complete(String owner, String uploadId) throws IOException {
         Path file = upload(owner, uploadId);
-        MessageDigest md = sha256();
+        MessageDigest md = Sha256.newDigest();
         try (InputStream in = new DigestInputStream(Files.newInputStream(file), md)) {
             in.transferTo(OutputStream.nullOutputStream());
         }
@@ -174,7 +173,7 @@ public class BlobStore {
 
     /** Legt die fertige Datei unter ihrem Hash ab; gab es den Inhalt schon, bleibt der vorhandene (frisch datiert). */
     private Blob finish(Path dir, Path tmp, MessageDigest md) throws IOException {
-        String sha = HexFormat.of().formatHex(md.digest());
+        String sha = Sha256.hex(md);
         long size = Files.size(tmp);
         Path target = dir.resolve(sha);
         if (Files.exists(target)) {
@@ -339,11 +338,4 @@ public class BlobStore {
         Files.setLastModifiedTime(p, FileTime.from(Instant.now()));
     }
 
-    private static MessageDigest sha256() {
-        try {
-            return MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
 }

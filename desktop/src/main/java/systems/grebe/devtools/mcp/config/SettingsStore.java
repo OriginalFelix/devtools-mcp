@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.config;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -228,14 +227,7 @@ public class SettingsStore implements DataHome {
             });
         });
         try {
-            Files.createDirectories(file.getParent());
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            json.writeValue(tmp.toFile(), root);
-            try {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
+            AtomicFiles.write(file, tmp -> json.writeValue(tmp.toFile(), root));
         } catch (IOException e) {
             throw new UncheckedIOException("Einstellungen konnten nicht gespeichert werden: " + file, e);
         }

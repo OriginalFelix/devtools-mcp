@@ -17,23 +17,21 @@ import systems.grebe.devtools.mcp.plugin.PluginManager;
 @Component
 public class ContainerRuntimes extends ProviderRegistry<ContainerRuntimeProvider> {
 
+    private static final String KIND = "Container-Laufzeit";
+
     /** Nur die eingebauten Provider (Tests, Verbindungsprüfungen). */
     public ContainerRuntimes() {
-        this(builtin());
+        super(KIND, ContainerRuntimeProvider.class, List::of);
     }
 
     /** Für Tests: eigene Provider-Quelle. */
     public ContainerRuntimes(Iterable<ContainerRuntimeProvider> source) {
-        super("Container-Laufzeit", source, List::of);
+        super(KIND, source, List::of);
     }
 
     /** In der App: eingebaute Provider plus die aus aktiven Plugins. */
     @Autowired
     public ContainerRuntimes(ObjectProvider<PluginManager> plugins) {
-        super("Container-Laufzeit", builtin(), PluginManager.providers(plugins, ContainerRuntimeProvider.class));
-    }
-
-    private static Iterable<ContainerRuntimeProvider> builtin() {
-        return ServiceLoader.load(ContainerRuntimeProvider.class, ContainerRuntimeProvider.class.getClassLoader());
+        super(KIND, ContainerRuntimeProvider.class, plugins);
     }
 }

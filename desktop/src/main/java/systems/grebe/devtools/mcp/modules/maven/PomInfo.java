@@ -10,10 +10,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.w3c.dom.Element;
+import systems.grebe.devtools.mcp.core.Xml;
 
-import static systems.grebe.devtools.mcp.modules.maven.MavenRepositoryClient.child;
-import static systems.grebe.devtools.mcp.modules.maven.MavenRepositoryClient.children;
-import static systems.grebe.devtools.mcp.modules.maven.MavenRepositoryClient.text;
+import static systems.grebe.devtools.mcp.core.Xml.child;
+import static systems.grebe.devtools.mcp.core.Xml.children;
+import static systems.grebe.devtools.mcp.core.Xml.text;
 
 /**
  * Die für Nutzer interessanten Angaben eines POMs, inklusive der von Parent-POMs geerbten (Lizenzen, URL, SCM,
@@ -40,7 +41,7 @@ record PomInfo(String groupId, String artifactId, String version, String packagi
      */
     static PomInfo read(byte[] pom, BiFunction<Coordinates, String, Optional<byte[]>> loadPom) {
         List<Element> chain = new ArrayList<>();
-        Element current = MavenRepositoryClient.parseXml(pom).getDocumentElement();
+        Element current = Xml.parse(pom).getDocumentElement();
         chain.add(current);
         for (int i = 0; i < MAX_PARENTS; i++) {
             Element parent = child(current, "parent");
@@ -58,7 +59,7 @@ record PomInfo(String groupId, String artifactId, String version, String packagi
             if (parentPom.isEmpty()) {
                 break;
             }
-            current = MavenRepositoryClient.parseXml(parentPom.get()).getDocumentElement();
+            current = Xml.parse(parentPom.get()).getDocumentElement();
             chain.add(current);
         }
         return fromChain(chain);

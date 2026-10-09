@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -15,6 +14,7 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.Workspaces;
+import systems.grebe.devtools.mcp.core.ToolBeans;
 
 /** Git-Integration auf Basis von JGit (kein installiertes git nötig). */
 @Component
@@ -141,34 +141,34 @@ public class GitModule implements ToolModule {
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
         GitSupport git = new GitSupport(config);
-        List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(new GitReadTools(git))));
+        List<ToolCallback> tools = new ArrayList<>(ToolBeans.callbacks(new GitReadTools(git)));
         if (config.getBoolean(ALLOW_WRITE)) {
-            tools.addAll(List.of(ToolCallbacks.from(new GitWriteTools(git))));
+            tools.addAll(ToolBeans.callbacks(new GitWriteTools(git)));
         }
         if (config.getBoolean(ALLOW_SYNC)) {
-            tools.addAll(List.of(ToolCallbacks.from(new GitSyncTools(git))));
+            tools.addAll(ToolBeans.callbacks(new GitSyncTools(git)));
         }
         boolean cherryPick = config.getBoolean(ALLOW_WRITE) && config.getBoolean(ALLOW_CHERRY_PICK);
         if (cherryPick) {
-            tools.addAll(List.of(ToolCallbacks.from(new GitCherryPickTools(git))));
+            tools.addAll(ToolBeans.callbacks(new GitCherryPickTools(git)));
         }
         if (config.getBoolean(ALLOW_INTEGRATE)) {
-            tools.addAll(List.of(ToolCallbacks.from(new GitIntegrateTools(git))));
+            tools.addAll(ToolBeans.callbacks(new GitIntegrateTools(git)));
         }
         if (cherryPick || config.getBoolean(ALLOW_INTEGRATE)) {
-            tools.addAll(List.of(ToolCallbacks.from(new GitResolveTools(git))));
+            tools.addAll(ToolBeans.callbacks(new GitResolveTools(git)));
         }
         if (config.getBoolean(ALLOW_DISCARD)) {
-            tools.addAll(List.of(ToolCallbacks.from(new GitDiscardTools(git))));
+            tools.addAll(ToolBeans.callbacks(new GitDiscardTools(git)));
         }
         return tools;
     }
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        List<String> errors = config.validate();
-        if (!errors.isEmpty()) {
-            return ConnectionTestResult.failed(String.join("\n", errors));
+        ConnectionTestResult invalid = ConnectionTestResult.invalid(config);
+        if (invalid != null) {
+            return invalid;
         }
         GitSupport git = new GitSupport(config);
         Workspaces repos = git.repositories();

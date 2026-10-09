@@ -5,10 +5,8 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.PrivateKey;
 import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.RSAPrivateKey;
@@ -30,6 +28,7 @@ import com.nimbusds.jose.crypto.ECDSASigner;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import systems.grebe.devtools.mcp.config.AtomicFiles;
 
 /**
  * Signiert Plugin-Jars: schreibt {@code plugin.jwt} ({@link PluginDescriptor#SIGNATURE_FILE_NAME}) mit Name und
@@ -132,11 +131,7 @@ public final class PluginSigner {
                 out.write(token);
                 out.closeEntry();
             }
-            try {
-                Files.move(tmp, jar, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, jar, StandardCopyOption.REPLACE_EXISTING);
-            }
+            AtomicFiles.replace(tmp, jar);
         } catch (IOException e) {
             throw new UncheckedIOException("Jar nicht signierbar: " + jar, e);
         } finally {
