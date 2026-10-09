@@ -28,12 +28,17 @@ public class GraphQlErrors extends DataFetcherExceptionResolverAdapter {
         }
     }
 
-    @Override
-    protected GraphQLError resolveToSingleError(Throwable ex, DataFetchingEnvironment env) {
-        ErrorType type = ex instanceof Unauthorized ? ErrorType.UNAUTHORIZED
+    /** Fehlertyp für fachliche Ausnahmen; {@code null} = Standardbehandlung (INTERNAL_ERROR, ohne Details). */
+    static ErrorType typeOf(Throwable ex) {
+        return ex instanceof Unauthorized ? ErrorType.UNAUTHORIZED
                 : ex instanceof Forbidden ? ErrorType.FORBIDDEN
                 : ex instanceof IllegalArgumentException || ex instanceof IllegalStateException ? ErrorType.BAD_REQUEST
                 : null;
+    }
+
+    @Override
+    protected GraphQLError resolveToSingleError(Throwable ex, DataFetchingEnvironment env) {
+        ErrorType type = typeOf(ex);
         if (type == null) {
             return null; // Standardbehandlung (INTERNAL_ERROR, ohne Details)
         }

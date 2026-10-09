@@ -103,6 +103,25 @@ class InvocationServiceTest {
     }
 
     @Test
+    void undeliveredInvocationIsNotDeliveredTwiceWhenTheBridgeReconnectsWithLastEventId() throws Exception {
+        long m = invocationMemory("x", "y");
+        channel.subscribe(e -> {
+            throw new IllegalStateException("Verbindung weg");
+        }, -1);
+
+        service.notify(m, "share", "k", "Label", "Ergebnis", Map.of());
+        Thread.sleep(300);
+        assertThat(service.list()).hasSize(1);
+
+        // die Brücke verbindet sich neu und holt mit Last-Event-ID alles nach, was noch im Puffer liegt
+        List<ChannelEvents.Event> ok = new CopyOnWriteArrayList<>();
+        channel.subscribe(ok::add, 0);
+        await(() -> service.list().isEmpty());
+        Thread.sleep(300);
+        assertThat(ok).hasSize(1);
+    }
+
+    @Test
     void sharedMemoryIsDeletedAfterTheLastInvocation() throws Exception {
         long m = invocationMemory("Zwei Aktionen", "Beide abwarten.");
         session();

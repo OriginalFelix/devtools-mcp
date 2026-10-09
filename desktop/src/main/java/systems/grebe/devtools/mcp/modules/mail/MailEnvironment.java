@@ -214,7 +214,11 @@ final class MailEnvironment {
 
     // ------------------------------------------------------------------ Zugriff
 
-    /** Führt {@code action} mit dem geöffneten Ordner aus; eine abgerissene Verbindung wird einmal neu aufgebaut. */
+    /**
+     * Führt {@code action} mit dem geöffneten Ordner aus; eine abgerissene Verbindung wird einmal neu aufgebaut. Das gilt
+     * nur bis zum Start der Aktion und für lesende Aktionen: Reißt die Verbindung bei einer ändernden Aktion ab, kann sie
+     * schon (teilweise) ausgeführt sein – ein zweiter Versuch legte Kopien und Entwürfe doppelt an.
+     */
     <T> T inFolder(MailAccount a, String folder, boolean write, FolderAction<T> action) {
         requireAllowed(a, folder);
         return withStore(a, store -> {
@@ -226,12 +230,30 @@ final class MailEnvironment {
             f.open(write ? Folder.READ_WRITE : Folder.READ_ONLY);
             try {
                 return action.run(f);
-            } finally {
-                if (f.isOpen()) {
-                    f.close(false);
+            } catch (MessagingException e) {
+                if (write && (e instanceof FolderClosedException || e instanceof StoreClosedException
+                        || !store.isConnected())) {
+                    sessions.evict(a.name(), store);
+                    throw new IllegalStateException("Verbindung während der Änderung abgerissen – mit mail_list "
+                            + "prüfen, was schon angekommen ist, bevor es wiederholt wird: "
+                            + MailConnector.describe(a, e), e);
                 }
+                throw e;
+            } finally {
+                closeQuietly(f);
             }
         });
+    }
+
+    /** Schließen ohne Expunge ändert nichts am Postfach; scheitert es, ist die Verbindung ohnehin weg. */
+    private static void closeQuietly(Folder f) {
+        try {
+            if (f.isOpen()) {
+                f.close(false);
+            }
+        } catch (MessagingException ignored) {
+            // wird beim nächsten Zugriff über den Pool neu aufgebaut
+        }
     }
 
     <T> T withStore(MailAccount a, StoreAction<T> action) {
@@ -240,14 +262,14 @@ final class MailEnvironment {
             try {
                 return action.run(store);
             } catch (FolderClosedException | StoreClosedException e) {
-                sessions.evict(a.name());
+                sessions.evict(a.name(), store);
                 if (attempt == 0) {
                     continue;
                 }
                 throw new IllegalStateException(MailConnector.describe(a, e), e);
             } catch (MessagingException e) {
                 if (!store.isConnected()) {
-                    sessions.evict(a.name());
+                    sessions.evict(a.name(), store);
                     if (attempt == 0) {
                         continue;
                     }
@@ -282,11 +304,16 @@ final class MailEnvironment {
             return store;
         }
 
-        synchronized void evict(String name) {
-            Pooled p = pool.remove(name);
-            if (p != null) {
-                close(p.store());
+        /**
+         * Schließt die gescheiterte Verbindung und nimmt sie aus dem Pool – aber nur, wenn sie noch dort liegt: Hat ein
+         * anderer Thread sie schon ersetzt, bleibt dessen frische Verbindung unberührt.
+         */
+        synchronized void evict(String name, Store failed) {
+            Pooled p = pool.get(name);
+            if (p != null && p.store() == failed) {
+                pool.remove(name);
             }
+            close(failed);
         }
 
         synchronized boolean isOpen(String name) {

@@ -2,6 +2,7 @@ package systems.grebe.devtools.mcp.modules.jfr;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -55,6 +56,32 @@ class JfrToolsTest {
         Path html = env.artifacts().latest("html", "flamegraph");
         assertThat(Files.readString(html)).contains("hotMethod");
         assertThat(tools.flamegraph(file.getFileName().toString(), "alloc", null, null)).contains("Allokationen-Profil");
+    }
+
+    @Test
+    void interruptedRecordStopsTheRunningRecording() throws Exception {
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread recorder = new Thread(() -> {
+            try {
+                tools.record(null, 30, null);
+            } catch (RuntimeException e) {
+                failure.set(e);
+            }
+        }, "jfr-record-test");
+        recorder.start();
+        long deadline = System.currentTimeMillis() + 20_000;
+        while (!tools.status(null).contains("devtools-mcp-")) {
+            assertThat(System.currentTimeMillis()).isLessThan(deadline);
+            Thread.sleep(200);
+        }
+
+        recorder.interrupt();
+        recorder.join(20_000);
+
+        assertThat(recorder.isAlive()).isFalse();
+        assertThat(failure.get()).isInstanceOf(IllegalStateException.class).hasMessageContaining("Abgebrochen")
+                .hasMessageContaining("gestoppt");
+        assertThat(tools.status(null)).doesNotContain("devtools-mcp-");
     }
 
     @Test

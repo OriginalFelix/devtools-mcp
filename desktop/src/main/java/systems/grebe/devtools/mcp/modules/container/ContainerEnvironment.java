@@ -1,7 +1,9 @@
 package systems.grebe.devtools.mcp.modules.container;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -200,7 +202,11 @@ public final class ContainerEnvironment {
         }
     }
 
-    /** Host-Pfad muss in einem freigegebenen Verzeichnis liegen. */
+    /**
+     * Host-Pfad muss in einem freigegebenen Verzeichnis liegen. Geprüft wird auch der echte Pfad des nächsten
+     * vorhandenen Vorfahren: Ein Symlink in der Freigabe (docker/podman cp behält Symlinks) darf nicht aus ihr
+     * herausführen – sonst könnte {@code run -v <Freigabe>/link:/x} z.B. {@code /} oder {@code C:\} einhängen.
+     */
     public Path checkHostPath(String path) {
         if (hostDirs.isEmpty()) {
             throw new IllegalStateException("Keine Host-Verzeichnisse freigegeben (Container-Modul → Freigegebene Host-Verzeichnisse).");
@@ -212,11 +218,31 @@ public final class ContainerEnvironment {
             throw new IllegalArgumentException("Ungültiger Pfad: " + path);
         }
         for (Path d : hostDirs) {
-            if (p.startsWith(d)) {
+            if (p.startsWith(d) && realPathInside(p, d)) {
                 return p;
             }
         }
         throw new IllegalArgumentException("Pfad '" + p + "' liegt nicht in einem freigegebenen Host-Verzeichnis: " + hostDirs);
+    }
+
+    /**
+     * Liegt der echte Pfad des nächsten vorhandenen Vorfahren von {@code target} im echten Pfad von {@code root}? Ein
+     * ins Leere zeigender Symlink zählt als vorhanden (und scheitert), damit die Laufzeit kein Ziel außerhalb anlegt.
+     * Existiert die Freigabe selbst noch nicht, kann in ihr auch kein Symlink liegen.
+     */
+    private static boolean realPathInside(Path target, Path root) {
+        if (!Files.exists(root)) {
+            return true;
+        }
+        try {
+            Path existing = target;
+            while (existing != null && !Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
+                existing = existing.getParent();
+            }
+            return existing != null && existing.toRealPath().startsWith(root.toRealPath());
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /** Portangabe prüfen und ggf. an 127.0.0.1 binden. */

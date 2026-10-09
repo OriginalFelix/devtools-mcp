@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -23,6 +24,8 @@ import systems.grebe.devtools.mcp.backend.BackendChanged;
 import systems.grebe.devtools.mcp.backend.catalog.ModuleCatalog;
 import systems.grebe.devtools.mcp.config.SecretCipher;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.FieldType;
+import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.profile.Overrides;
 
 /**
@@ -206,6 +209,7 @@ public class ProfileService {
     private void save(Overrides.Level level, long levelId, ModuleDescriptor module, Overrides o, Set<String> locks) {
         Map<String, ConfigField> fields = module.schema().stream()
                 .collect(Collectors.toMap(ConfigField::key, Function.identity()));
+        requireValid(fields, o.values());
         List<ProfileRepository.OverrideRow> rows = new ArrayList<>();
         if (o.enabled() != null) {
             requireUnlocked(locks, Overrides.ENABLED, "Modul an/aus");
@@ -225,6 +229,38 @@ public class ProfileService {
             rows.add(new ProfileRepository.OverrideRow(k, f.secret() ? cipher.encrypt(v) : v, f.secret()));
         });
         tx.executeWithoutResult(s -> repo.replaceOverrides(level, levelId, module.id(), rows));
+    }
+
+    /**
+     * Prüft Typen und Formate der überschriebenen Werte (Zahl, URL, Auswahl, Datensätze) – sonst landete etwa „abc“ in
+     * einem Zahlenfeld und würde an alle Desktop-Apps des Benutzers verteilt. Unbekannte Felder meldet {@link #save}
+     * selbst. Leere Werte sind erlaubt (Überschreibung mit „nicht gesetzt“), deshalb zählen Pflichtfelder hier nicht.
+     */
+    private static void requireValid(Map<String, ConfigField> fields, Map<String, String> values) {
+        List<ConfigField> checked = values.keySet().stream().map(fields::get).filter(Objects::nonNull)
+                .map(ProfileService::serverSide).toList();
+        List<String> errors = ModuleConfig.of(checked, values).validate();
+        if (!errors.isEmpty()) {
+            throw new IllegalArgumentException(String.join("\n", errors));
+        }
+    }
+
+    /** Verzeichnisse liegen auf dem Rechner der Desktop-App – hier nur als Text prüfen. */
+    private static ConfigField serverSide(ConfigField f) {
+        FieldType type = switch (f.type()) {
+            case DIRECTORY -> FieldType.STRING;
+            case DIRECTORY_LIST -> FieldType.STRING_LIST;
+            default -> f.type();
+        };
+        return new ConfigField(f.key(), f.label(), type, false, f.defaultValue(), f.help(), f.options(),
+                f.columns().stream().map(c -> serverSideColumn(c)).toList(), f.group());
+    }
+
+    /** Wie {@link #serverSide}, aber die Pflichtfelder der Spalten bleiben erhalten. */
+    private static ConfigField serverSideColumn(ConfigField f) {
+        ConfigField c = serverSide(f);
+        return new ConfigField(c.key(), c.label(), c.type(), f.required(), c.defaultValue(), c.help(), c.options(),
+                c.columns(), c.group());
     }
 
     private ModuleDescriptor module(String moduleId) {

@@ -207,6 +207,36 @@ class GitToolsExtendedTest {
     }
 
     @Test
+    void abortKeepsUnrelatedUnstagedChanges() throws Exception {
+        try (Git git = open()) {
+            commit(git, "Notes.txt", "alt\n", "Notizen");
+            commit(git, "Gone.txt", "weg\n", "Zum Löschen");
+            git.checkout().setCreateBranch(true).setName("other").call();
+            commit(git, "App.java", "class App {\n  int a = 99;\n}\n", "Andere Änderung");
+            git.checkout().setName("main").call();
+            commit(git, "App.java", "class App {\n  int a = 3;\n}\n", "Haupt-Änderung");
+        }
+        Files.writeString(repo.resolve("Notes.txt"), "neu, nicht gestaged\n");
+        Files.delete(repo.resolve("Gone.txt"));
+        assertThat(integrate.merge(null, "other", null, null)).contains("Konflikte in:", "App.java");
+
+        assertThat(resolve.abort(null)).contains("abgebrochen", "2 Datei(en) beibehalten");
+        assertThat(Files.readString(repo.resolve("App.java"))).contains("int a = 3");
+        assertThat(Files.readString(repo.resolve("Notes.txt"))).isEqualTo("neu, nicht gestaged\n");
+        assertThat(repo.resolve("Gone.txt")).doesNotExist();
+        assertThat(read.status(null)).doesNotContain("Zustand").contains("Notes.txt", "Gone.txt");
+    }
+
+    @Test
+    void bisectIsNotContinuedOrAbortedHere() throws Exception {
+        Files.writeString(repo.resolve(".git").resolve("BISECT_LOG"), "git bisect start\n");
+        Files.writeString(repo.resolve("App.java"), "class App {\n  int a = 7;\n}\n");
+        assertThatThrownBy(() -> resolve.abort(null)).hasMessageContaining("Es läuft: Bisect").hasMessageContaining("git bisect reset");
+        assertThatThrownBy(() -> resolve.continueOperation(null, "x")).hasMessageContaining("Es läuft: Bisect");
+        assertThat(Files.readString(repo.resolve("App.java"))).contains("int a = 7");
+    }
+
+    @Test
     void mergeConflictResolvedAndContinued() throws Exception {
         try (Git git = open()) {
             git.checkout().setCreateBranch(true).setName("other").call();

@@ -25,7 +25,6 @@ import jakarta.annotation.security.RolesAllowed;
 import systems.grebe.devtools.mcp.api.ModuleDescriptor;
 import systems.grebe.devtools.mcp.backend.catalog.ModuleCatalog;
 import systems.grebe.devtools.mcp.core.ConfigField;
-import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.profile.Overrides;
 import systems.grebe.devtools.mcp.backend.profile.ProfileService;
 
@@ -125,12 +124,6 @@ public class GlobalSettingsView extends HorizontalLayout {
                     values.put(k, editors.get(k).value());
                 }
             });
-            List<ConfigField> preset = m.schema().stream().filter(f -> values.containsKey(f.key())).toList();
-            List<String> errors = ModuleConfig.of(preset, values).validate();
-            if (!errors.isEmpty()) {
-                Ui.error(String.join("\n", errors));
-                return;
-            }
             Set<String> newLocks = new LinkedHashSet<>();
             lockBoxes.forEach((k, cb) -> {
                 if (cb.getValue()) {

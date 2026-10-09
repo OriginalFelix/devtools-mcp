@@ -11,8 +11,7 @@ import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.graphql.data.method.annotation.SubscriptionMapping;
 import org.springframework.stereotype.Controller;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
+import systems.grebe.devtools.mcp.backend.account.TokenService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.api.Catalog;
 import systems.grebe.devtools.mcp.api.Me;
@@ -504,43 +503,35 @@ public class BackendGraphQlController {
 
     @SubscriptionMapping
     public Flux<SettingsSnapshot> settingsChanged(
-            @ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
-        UserAccount u = require(user);
-        return stream(bus.changes(BackendChanged.Topic.SETTINGS, u.id()), () -> snapshot(u));
+            @ContextValue(name = GraphQlAuth.TOKEN, required = false) TokenService.TokenUser token) {
+        return bus.stateStream(BackendChanged.Topic.SETTINGS, GraphQlAuth.require(token), this::snapshot);
     }
 
     @SubscriptionMapping
     public Flux<List<ProjectInfo>> projectsChanged(
-            @ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
-        UserAccount u = require(user);
-        return stream(bus.changes(BackendChanged.Topic.PROJECTS, u.id()), () -> projectsOf(u));
+            @ContextValue(name = GraphQlAuth.TOKEN, required = false) TokenService.TokenUser token) {
+        return bus.stateStream(BackendChanged.Topic.PROJECTS, GraphQlAuth.require(token), this::projectsOf);
     }
 
     @SubscriptionMapping
-    public Flux<Integer> skillsChanged(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
-        UserAccount u = require(user);
-        return stream(bus.changes(BackendChanged.Topic.SKILLS, u.id()),
-                () -> SkillCaller.as(u, skills::visibleCount));
+    public Flux<Integer> skillsChanged(
+            @ContextValue(name = GraphQlAuth.TOKEN, required = false) TokenService.TokenUser token) {
+        return bus.stateStream(BackendChanged.Topic.SKILLS, GraphQlAuth.require(token),
+                u -> SkillCaller.as(u, skills::visibleCount));
     }
 
     @SubscriptionMapping
-    public Flux<Integer> memoriesChanged(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
-        UserAccount u = require(user);
-        return stream(bus.changes(BackendChanged.Topic.MEMORIES, u.id()), () -> SkillCaller.as(u, memories::count));
+    public Flux<Integer> memoriesChanged(
+            @ContextValue(name = GraphQlAuth.TOKEN, required = false) TokenService.TokenUser token) {
+        return bus.stateStream(BackendChanged.Topic.MEMORIES, GraphQlAuth.require(token),
+                u -> SkillCaller.as(u, memories::count));
     }
 
     @SubscriptionMapping
-    public Flux<Integer> scriptsChanged(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user) {
-        UserAccount u = require(user);
-        return stream(bus.changes(BackendChanged.Topic.SCRIPTS, u.id()),
-                () -> SkillCaller.as(u, () -> scripts.overview().size()));
-    }
-
-    /** Aktueller Stand, danach bei jedem Ereignis neu gelesen (Datenbankzugriffe außerhalb der Event-Threads). */
-    private static <T> Flux<T> stream(Flux<BackendChanged> events, Supplier<T> load) {
-        return Flux.concat(Mono.just(true), events.map(e -> true))
-                .publishOn(Schedulers.boundedElastic())
-                .map(x -> load.get());
+    public Flux<Integer> scriptsChanged(
+            @ContextValue(name = GraphQlAuth.TOKEN, required = false) TokenService.TokenUser token) {
+        return bus.stateStream(BackendChanged.Topic.SCRIPTS, GraphQlAuth.require(token),
+                u -> SkillCaller.as(u, () -> scripts.overview().size()));
     }
 
     private static UserAccount require(UserAccount user) {

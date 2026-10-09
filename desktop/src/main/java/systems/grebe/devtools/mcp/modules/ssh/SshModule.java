@@ -2,6 +2,7 @@ package systems.grebe.devtools.mcp.modules.ssh;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -48,6 +49,8 @@ public class SshModule implements ToolModule {
     private static final String STATE = ID + ".state";
 
     private final Path defaultKnownHosts;
+    /** Ein Store je known_hosts-Datei für alle Umgebungen (Tools, Scopes, Verbindungstest). */
+    private final Map<Path, KnownHostsStore> knownHosts = new HashMap<>();
 
     @Autowired
     public SshModule(SettingsStore store) {
@@ -65,7 +68,20 @@ public class SshModule implements ToolModule {
     }
 
     private SshEnvironment environment(ModuleConfig config, ScopeState state) {
-        return new SshEnvironment(config, state.sessions, state.shells, defaultKnownHosts);
+        return new SshEnvironment(config, state.sessions, state.shells, defaultKnownHosts, this::knownHosts);
+    }
+
+    /** Der gemeinsame Store zur Datei; wird beim ersten Zugriff angelegt. */
+    KnownHostsStore knownHosts(Path file) throws JSchException {
+        Path key = file.toAbsolutePath().normalize();
+        synchronized (knownHosts) {
+            KnownHostsStore store = knownHosts.get(key);
+            if (store == null) {
+                store = new KnownHostsStore(key);
+                knownHosts.put(key, store);
+            }
+            return store;
+        }
     }
 
     /**

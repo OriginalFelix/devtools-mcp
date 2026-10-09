@@ -237,6 +237,7 @@ public class InvocationService implements AutoCloseable {
             if (d.delivered() == 0) {
                 LOG.debug("Rückruf {} nicht zugestellt ({} Sitzungen) – neuer Versuch bei der nächsten", inv.id(),
                         d.listeners());
+                channel.forget(d.id()); // sonst käme er beim Nachholen der Brücke zusätzlich zum neuen Versuch an
                 continue;
             }
             remove(inv);

@@ -16,6 +16,7 @@ import systems.grebe.devtools.mcp.core.DelegatingToolCallback;
 import systems.grebe.devtools.mcp.core.ModuleAction;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.ToolScope;
 
 /**
  * Hülle um ein Modul aus einem Plugin: merkt sich das Plugin (für die Anzeige) und setzt bei jedem Aufruf in
@@ -80,9 +81,28 @@ public final class PluginToolModule implements ToolModule {
     }
 
     @Override
+    public String parentModule() {
+        return withLoader(delegate::parentModule);
+    }
+
+    @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return withLoader(() -> delegate.createTools(config)).stream()
-                .<ToolCallback>map(cb -> new LoaderToolCallback(cb, loader)).toList();
+        return wrap(withLoader(() -> delegate.createTools(config)));
+    }
+
+    @Override
+    public List<ToolCallback> createTools(ModuleConfig config, ToolScope scope) {
+        return wrap(withLoader(() -> delegate.createTools(config, scope)));
+    }
+
+    private List<ToolCallback> wrap(List<ToolCallback> tools) {
+        return tools.stream().<ToolCallback>map(cb -> new LoaderToolCallback(cb, loader)).toList();
+    }
+
+    @Override
+    public Set<String> sharedDirectoryFields() {
+        Set<String> fields = withLoader(delegate::sharedDirectoryFields);
+        return fields == null ? Set.of() : fields;
     }
 
     @Override
