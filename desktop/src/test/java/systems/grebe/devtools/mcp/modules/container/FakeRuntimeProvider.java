@@ -5,9 +5,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+import systems.grebe.container4j.ContainerRuntime;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
-import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
 import systems.grebe.devtools.mcp.modules.container.spi.RuntimeSettings;
 

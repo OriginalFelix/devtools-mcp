@@ -1,11 +1,11 @@
 package systems.grebe.devtools.mcp.modules.container.cli;
 
-import java.util.ArrayList;
 import java.util.List;
 
+import systems.grebe.container4j.ContainerRuntime;
+import systems.grebe.container4j.cli.DockerRuntime;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
-import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
 import systems.grebe.devtools.mcp.modules.container.spi.RuntimeSettings;
 
@@ -44,15 +44,6 @@ public class DockerRuntimeProvider implements ContainerRuntimeProvider {
 
     @Override
     public ContainerRuntime create(RuntimeSettings s) {
-        List<String> global = new ArrayList<>();
-        s.get(CONTEXT).ifPresent(c -> global.addAll(List.of("--context", c)));
-        s.get(HOST).ifPresent(h -> global.addAll(List.of("-H", h)));
-        return new Runtime(s.getString(BINARY, "docker"), global);
-    }
-
-    static final class Runtime extends CliContainerRuntime {
-        Runtime(String binary, List<String> global) {
-            super("docker", binary, global);
-        }
+        return new DockerRuntime(s.getString(BINARY, "docker"), s.get(CONTEXT).orElse(null), s.get(HOST).orElse(null));
     }
 }
