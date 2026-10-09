@@ -19,6 +19,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
 | **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions`, `ticket_worklogs` (gebuchte Zeiten mit Summe) · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_link`/`ticket_unlink` (Tickets verknüpfen), `ticket_log_time` (Zeit buchen), `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), `ticket_classify` (Pre-Classifier: Komplexität einschätzen, Modell für die Umsetzung empfehlen), einschränkbar auf Projekte (Modul Standard: aus) |
 | **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
+| **CI/CD** (Jenkins, GitLab CI/CD, GitHub Actions; erweiterbar per ServiceLoader) | `ci_providers`, `ci_list` (Builds/Pipelines/Läufe nach Status, Branch, Workflow), `ci_get` (Status, Branch, Commit, Auslöser, Dauer, Parameter, Jobs/Stages mit fehlgeschlagenen Schritten), `ci_log` (Log eines Jobs, ohne Angabe der erste fehlgeschlagene; letzte Zeilen oder `grep`), `ci_workflows` (startbare Jenkins-Jobs, GitHub-Workflows) · je Schalter (Standard aus): `ci_start` (Branch, Parameter/Variablen/Inputs), `ci_cancel`, `ci_retry` (nur fehlgeschlagene Jobs oder ganzer Lauf), einschränkbar auf Projekte; System und Projekt aus dem Remote des lokalen Repositories (Jenkins über eine Job-Zuordnung) (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
@@ -208,6 +209,35 @@ Repositories ein (`github:octo/*`, `PROJ/app`); geprüft wird das Repository aus
 `commentSuffix` kennzeichnet Kommentare und Antworten. Ein weiterer Server (z.B. Gitea) braucht eine
 `GitServerProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider`.
+
+### CI/CD (ServiceLoader)
+
+Das Modul **CI/CD** folgt demselben Muster über `modules/ci/spi`: `CiProvider` (ID, Felder, Hilfetexte) erzeugt ein
+`CiSystem` mit `builds`, `get`, `log`, `projectOf` und optional `projectOfRemote`, `ownsKey` und `workflows`;
+Steuern (`start`, `cancel`, `retry`) sind `default`-Methoden. Der Status ist über alle Systeme vereinheitlicht
+(`queued`, `running`, `success`, `failed`, `unstable`, `canceled`, `skipped`, `manual`), daneben steht der Wortlaut
+des Systems. Einstellungen und `HttpJson` teilt es mit den Ticket- und Git-Server-Providern. Mitgeliefert sind
+
+| Provider | Anbindung | Projekt | Build | Jobs | Wiederholen |
+|---|---|---|---|---|---|
+| `github` | REST (Actions) | `owner/repo` | `owner/repo#<Lauf-ID>`, Lauf-/Job-URL | Jobs mit fehlgeschlagenen Schritten, Log je Job | fehlgeschlagene Jobs oder ganzer Lauf |
+| `gitlab` | REST v4 (Pipelines, Jobs) | `gruppe/projekt` | `gruppe/projekt#<Pipeline-ID>`, Pipeline-/Job-URL | Jobs nach Stage, Log je Job | fehlgeschlagene Jobs oder neue Pipeline auf dem Branch |
+| `jenkins` | Remote-API (`api/json`), Stages über Pipeline Stage View (`wfapi`) | Job-Pfad über Ordner `team/app`, Multibranch `team/app/main` | `team/app#42`, `lastBuild`, Build-URL | Stages; Log je Build (`consoleText`) | Neustart mit denselben Parametern |
+
+System und Projekt ergeben sich aus dem Remote (`remote`, Standard `origin`) des lokalen Repositories – wie bei Pull
+Requests. Jenkins kennt keine Repositories; dafür ordnet *Job-Zuordnung* Repository-Pfade aus dem Remote Jobs zu
+(`octo/app = team/app`). Ohne `build` beziehen sich `ci_get` und `ci_log` auf den neuesten Build des aktuellen Branches;
+`ci_list branch=current` filtert auf ihn. In Multibranch-Projekten wählt `branch` den Branch-Job, bei anderen
+Jenkins-Jobs setzt er einen Parameter `BRANCH`, `BRANCH_NAME`, `GIT_BRANCH` oder `REF`. GitHub startet Workflows per
+`workflow_dispatch` (Parameter `workflow`: Dateiname, ID oder Name aus `ci_workflows`); die Job-Logs holt der Provider
+über die Weiterleitung der API, ohne das Token an den Speicherdienst zu schicken. Jenkins meldet sich mit Benutzer und
+API-Token an (Basic), damit braucht es kein CSRF-Crumb.
+
+Typischer Ablauf „roten Build untersuchen“: `ci_get` → `ci_log` (erster fehlgeschlagener Job, `grep=error`) → Ursache
+im Code beheben, committen, pushen → `ci_list branch=current`. `writeProjects` schränkt Starten, Abbrechen und
+Wiederholen auf Projekte ein (`github:octo/*`, `jenkins:team/*`); geprüft wird das Projekt aus dem Build-Schlüssel. Ein
+weiteres System (z.B. Azure Pipelines, Bamboo) braucht eine `CiProvider`-Klasse und eine Zeile in
+`src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ci.spi.CiProvider` – auch aus einem Plugin.
 
 ### SSH
 

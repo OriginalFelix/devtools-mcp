@@ -3,9 +3,9 @@ package systems.grebe.devtools.mcp.core;
 import java.util.List;
 
 /**
- * Gemeinsame Basis der austauschbaren Provider (Ticket-Systeme, Chat-Systeme, Git-Server, Container-Laufzeiten).
- * Das jeweilige Modul macht aus jedem Provider eine Gruppe in seinem Formular (Schalter {@code <id>.enabled}, Felder
- * {@code <id>.<feld>}) und bietet ihn in seinen Tools an.
+ * Gemeinsame Basis der austauschbaren Provider (Ticket-Systeme, Chat-Systeme, Git-Server, CI-Systeme,
+ * Container-Laufzeiten). Das jeweilige Modul macht aus jedem Provider eine Gruppe in seinem Formular (Schalter
+ * {@code <id>.enabled}, Felder {@code <id>.<feld>}) und bietet ihn in seinen Tools an.
  *
  * <p>Gefunden werden Provider über {@link java.util.ServiceLoader}: eine Klasse mit öffentlichem No-Arg-Konstruktor
  * und eine Zeile in {@code META-INF/services/<voll qualifizierte SPI-Schnittstelle>} – in der App wie in Plugin-Jars.
