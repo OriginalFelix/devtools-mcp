@@ -34,6 +34,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.socket.client.StandardWebSocketClient;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+import systems.grebe.devtools.mcp.api.ApiVersions;
 import systems.grebe.devtools.mcp.api.BrokerInfo;
 import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.api.ModuleDescriptor;
@@ -49,6 +50,8 @@ import systems.grebe.devtools.mcp.backend.account.Role;
 import systems.grebe.devtools.mcp.backend.account.RoleService;
 import systems.grebe.devtools.mcp.backend.account.TokenService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
+import systems.grebe.devtools.mcp.backend.api.ApiSchemas;
+import systems.grebe.devtools.mcp.backend.api.VersionedGraphQl;
 import systems.grebe.devtools.mcp.backend.profile.Profile;
 import systems.grebe.devtools.mcp.backend.profile.ProfileService;
 import systems.grebe.devtools.mcp.backend.project.Project;
@@ -107,6 +110,9 @@ class GraphQlApiIntegrationTest {
     @Autowired
     ApplicationContext context;
 
+    @Autowired
+    VersionedGraphQl api;
+
     static final List<ModuleDescriptor> CATALOG = List.of(
             new ModuleDescriptor("sonar", "SonarQube", "Befunde", false, true, 10, List.of(
                     ConfigField.of("organization", "Organisation", FieldType.STRING),
@@ -154,8 +160,13 @@ class GraphQlApiIntegrationTest {
     }
 
     private HttpSyncGraphQlClient client(String jwt) {
+        return client(jwt, "");
+    }
+
+    /** Client für die API unter {@code base} ({@code /api/v<n>}, leer = Pfad ohne Version). */
+    private HttpSyncGraphQlClient client(String jwt, String base) {
         HttpSyncGraphQlClient.Builder<?> b = HttpSyncGraphQlClient.builder(RestClient.create(
-                "http://127.0.0.1:" + port + "/graphql"));
+                "http://127.0.0.1:" + port + base + "/graphql"));
         if (jwt != null) {
             b.header("Authorization", "Bearer " + jwt);
         }
@@ -591,9 +602,14 @@ class GraphQlApiIntegrationTest {
 
     /** Lädt Text in einem Teil in die Dateiablage des Benutzers und liefert den SHA-256. */
     private String upload(String jwt, String text) throws Exception {
+        return upload(jwt, text, "");
+    }
+
+    /** Wie {@link #upload(String, String)} über die API unter {@code base} ({@code /api/v<n>}, leer = ohne Version). */
+    private String upload(String jwt, String text, String base) throws Exception {
         java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
         java.util.function.Function<String, java.net.http.HttpRequest.Builder> req = path -> java.net.http.HttpRequest
-                .newBuilder(URI.create("http://127.0.0.1:" + port + "/blobs" + path))
+                .newBuilder(URI.create("http://127.0.0.1:" + port + base + "/blobs" + path))
                 .header("Authorization", "Bearer " + jwt);
         var string = java.net.http.HttpResponse.BodyHandlers.ofString();
         var noBody = java.net.http.HttpRequest.BodyPublishers.noBody();
@@ -720,5 +736,114 @@ class GraphQlApiIntegrationTest {
                         .toEntity(Integer.class))
                 .expectError()
                 .verify(Duration.ofSeconds(20));
+    }
+
+    // ---------------------------------------------------------------- API-Versionen
+
+    @Test
+    void versionsAreListedWithoutSignIn() throws Exception {
+        var r = java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port + ApiVersions.VERSIONS_PATH)).GET().build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(r.statusCode()).isEqualTo(200);
+        ApiVersions.Info info = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readValue(r.body(), ApiVersions.Info.class);
+        assertThat(info).isEqualTo(ApiSchemas.info());
+        assertThat(info.current()).isEqualTo(ApiVersions.CURRENT);
+    }
+
+    @Test
+    void everyVersionIsServedUnderItsPathAndLegacyPathsAreVersionZero() {
+        String jwt = token(newUser());
+        for (int version : ApiSchemas.versions()) {
+            assertThat(client(jwt, ApiVersions.base(version)).document("{ me { username } }")
+                    .retrieveSync("me.username").toEntity(String.class)).startsWith("gqluser");
+        }
+        assertThat(client(jwt).document("{ me { username } }").retrieveSync("me.username").toEntity(String.class))
+                .startsWith("gqluser");
+    }
+
+    /** Versioniert ist nur die Schnittstelle: was über eine Version gespeichert wird, sehen alle anderen. */
+    @Test
+    void allVersionsShareOneDatabase() {
+        String jwt = token(newUser());
+        String create = """
+                mutation($n: String!, $d: String!, $c: String!) { createSkill(name: $n, description: $d, content: $c) }""";
+        client(jwt).document(create).variables(Map.of("n", "eine-db", "d", "Eine Datenbank", "c", "über /graphql"))
+                .executeSync();
+        for (int version : ApiSchemas.versions()) {
+            assertThat(client(jwt, ApiVersions.base(version)).document("{ skill(name: \"eine-db\") { content } }")
+                    .retrieveSync("skill.content").toEntity(String.class)).isEqualTo("über /graphql");
+        }
+        client(jwt, ApiVersions.base(ApiVersions.CURRENT)).document(create)
+                .variables(Map.of("n", "eine-db-2", "d", "Eine Datenbank", "c", "über /api")).executeSync();
+        assertThat(client(jwt).document("{ skill(name: \"eine-db-2\") { content } }")
+                .retrieveSync("skill.content").toEntity(String.class)).isEqualTo("über /api");
+    }
+
+    @Test
+    void unknownVersionIsNotFound() throws Exception {
+        var http = java.net.http.HttpClient.newHttpClient();
+        int next = ApiSchemas.current() + 1;
+        var graphQl = http.send(java.net.http.HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port
+                                + ApiVersions.base(next) + "/graphql")).header("Content-Type", "application/json")
+                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"query\":\"{ __typename }\"}"))
+                        .build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(graphQl.statusCode()).isEqualTo(404);
+        var blobs = http.send(java.net.http.HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port
+                        + ApiVersions.base(next) + "/blobs/uploads")).header("Authorization", "Bearer "
+                        + token(newUser())).POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(blobs.statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void blobsUnderTheVersionedPath() throws Exception {
+        String jwt = token(newUser());
+        String sha = upload(jwt, "versioniert", ApiVersions.base(ApiVersions.CURRENT));
+        var r = java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(URI.create(
+                        "http://127.0.0.1:" + port + ApiVersions.base(ApiVersions.CURRENT) + "/blobs/" + sha))
+                .header("Authorization", "Bearer " + jwt).GET().build(), java.net.http.HttpResponse.BodyHandlers
+                .ofString());
+        assertThat(r.body()).isEqualTo("versioniert");
+        assertThat(upload(jwt, "versioniert")).isEqualTo(sha); // Pfad ohne Version: dieselbe Ablage
+    }
+
+    @Test
+    void subscriptionUnderTheVersionedPath() {
+        String jwt = token(newUser());
+        WebSocketGraphQlClient ws = WebSocketGraphQlClient.builder(URI.create("ws://127.0.0.1:" + port
+                        + ApiVersions.base(ApiVersions.CURRENT) + "/graphql"), new StandardWebSocketClient())
+                .interceptor(new WebSocketGraphQlClientInterceptor() {
+                    @Override
+                    public Mono<Object> connectionInitPayload() {
+                        return Mono.just(Map.of("Authorization", "Bearer " + jwt));
+                    }
+                }).build();
+        try {
+            StepVerifier.create(ws.document("subscription { settingsChanged { profileId profileName modules { "
+                                    + "moduleId values { key value } } revision } }")
+                            .retrieveSubscription("settingsChanged").toEntity(SettingsSnapshot.class))
+                    .assertNext(s -> assertThat(s).isNotNull())
+                    .thenCancel()
+                    .verify(Duration.ofSeconds(20));
+        } finally {
+            ws.stop().block(Duration.ofSeconds(5));
+        }
+    }
+
+    /**
+     * Typen, die die Controller als {@code Map} liefern – deren Felder kann der Abgleich Schema ↔ Controller nicht
+     * prüfen, er meldet sie immer als ungebunden.
+     */
+    static final Set<String> MAP_TYPES = Set.of("GraphHead", "GraphState", "GraphCount", "GraphQueryResult");
+
+    /** Jedes Feld jeder angebotenen Version hat einen Controller – auch, wenn neuere Versionen es nicht mehr haben. */
+    @Test
+    void everyFieldOfEveryVersionIsServed() {
+        for (int version : ApiSchemas.versions()) {
+            assertThat(api.report(version).unmappedFields()).as("Felder ohne Controller in Version " + version)
+                    .allMatch(f -> MAP_TYPES.contains(f.getTypeName()));
+        }
     }
 }

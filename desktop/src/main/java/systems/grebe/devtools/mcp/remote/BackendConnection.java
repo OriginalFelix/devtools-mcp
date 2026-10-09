@@ -3,6 +3,8 @@ package systems.grebe.devtools.mcp.remote;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -47,6 +49,7 @@ import org.springframework.web.reactive.socket.client.StandardWebSocketClient;
 import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
+import systems.grebe.devtools.mcp.api.ApiVersions;
 import systems.grebe.devtools.mcp.api.Grants;
 import systems.grebe.devtools.mcp.api.LoginResult;
 import systems.grebe.devtools.mcp.api.Me;
@@ -86,6 +89,10 @@ import tools.jackson.databind.json.JsonMapper;
  * Neustart (verschlüsselte Cache-Datei {@code team-cache.json} mit dem Stand und dem Passwort-Hash der letzten
  * Anmeldung): Ist der Server beim Start nicht erreichbar, prüft die App das Passwort dagegen, arbeitet mit dem letzten
  * Stand weiter und meldet sich an, sobald er wieder antwortet (das Passwort bleibt nur so lange im Speicher).
+ *
+ * <p><b>API-Version:</b> Die App spricht {@link ApiVersions#CURRENT} unter {@code /api/v<n>/…}. Beim Team-Server
+ * fragt sie vorher {@code /api/versions} ab; bietet er die Version nicht (mehr) an, sagt die Anmeldung, ob Server oder
+ * App zu aktualisieren ist. Ein Server von vor der Versionierung spricht Version 0 unter {@code /graphql}.
  *
  * <p>Beim ersten eingebetteten Start übernimmt das Backend die bisherigen Modul-Einstellungen aus
  * {@code settings.json} als globale Vorgaben (sobald sich ein Benutzer mit dem Recht „Globale Einstellungen“
@@ -178,6 +185,15 @@ public class BackendConnection {
         return t;
     });
 
+    /**
+     * Basisadresse und Pfadpräfix der API-Version beim Backend ({@link #apiUrl()}).
+     *
+     * @param base z.B. {@code /api/v0}; leer bei einem Backend ohne Versionierung
+     */
+    private record Api(String url, String base) {
+    }
+
+    private volatile Api api;
     private volatile HttpSyncGraphQlClient http;
     private volatile WebSocketGraphQlClient ws;
     private volatile State state;
@@ -300,7 +316,8 @@ public class BackendConnection {
                 vars.put("u", name);
                 vars.put("p", password);
                 vars.put("c", "Desktop-App (" + hostName() + ")");
-                r = extract(execute(httpClient(url(), null), LOGIN, vars), "login", LoginResult.class, null);
+                api = null; // Version neu aushandeln – der Server kann inzwischen ein anderer sein
+                r = extract(execute(httpClient(apiUrl(), null), LOGIN, vars), "login", LoginResult.class, null);
             } catch (UnreachableException e) {
                 if (!embedded() && offlineLogin(name, password)) {
                     return LoginOutcome.SIGNED_IN_OFFLINE;
@@ -355,6 +372,7 @@ public class BackendConnection {
         offlinePassword = null;
         session = new Session(null, token.strip(), true);
         verifier = null;
+        api = null;
         status = Status.CONNECTING;
         try {
             connect();
@@ -387,7 +405,7 @@ public class BackendConnection {
             Map<String, Object> vars = new LinkedHashMap<>();
             vars.put("c", current);
             vars.put("n", next);
-            extract(execute(httpClient(url(), s.token()), "mutation($c: String!, $n: String!) { "
+            extract(execute(httpClient(apiUrl(), s.token()), "mutation($c: String!, $n: String!) { "
                     + "changePassword(currentPassword: $c, newPassword: $n) }", vars), "changePassword", Boolean.class,
                     s);
             if (!embedded() && !s.personal()) {
@@ -415,7 +433,7 @@ public class BackendConnection {
             return;
         }
         try {
-            execute(httpClient(url(), s.token()), "mutation { logout }", Map.of());
+            execute(httpClient(apiUrl(), s.token()), "mutation { logout }", Map.of());
         } catch (RuntimeException e) {
             LOG.debug("Abmelden im Backend: {}", e.getMessage());
         }
@@ -474,11 +492,12 @@ public class BackendConnection {
             return;
         }
         try {
+            api = null; // der Server kann inzwischen aktualisiert sein
             String password = offlinePassword;
             if (password != null) { // nach der Anmeldung ohne Server: jetzt richtig anmelden
                 LoginResult r;
                 try {
-                    r = extract(execute(httpClient(url(), null), LOGIN, Map.of("u", s.username(), "p", password,
+                    r = extract(execute(httpClient(apiUrl(), null), LOGIN, Map.of("u", s.username(), "p", password,
                             "c", "Desktop-App (" + hostName() + ")")), "login", LoginResult.class, null);
                 } catch (IllegalArgumentException e) {
                     signedOut(e.getMessage() + " – bitte neu anmelden.");
@@ -515,9 +534,10 @@ public class BackendConnection {
         }
         String url = url();
         try {
-            http = httpClient(url, s.token());
+            String endpoint = apiUrl();
+            http = httpClient(endpoint, s.token());
             WebSocketGraphQlClient previous = ws;
-            ws = WebSocketGraphQlClient.builder(URI.create(url.replaceFirst("^http", "ws") + "/graphql"),
+            ws = WebSocketGraphQlClient.builder(URI.create(endpoint.replaceFirst("^http", "ws") + "/graphql"),
                     new StandardWebSocketClient()).keepAlive(WS_KEEP_ALIVE)
                     .interceptor(new WebSocketGraphQlClientInterceptor() {
                         @Override
@@ -680,6 +700,23 @@ public class BackendConnection {
         return embedded() ? "http://127.0.0.1:" + env.getProperty("local.server.port", "8765") : store.team().url();
     }
 
+    /**
+     * Adresse der API in der Version dieser App, z.B. {@code http://127.0.0.1:8765/api/v0} – davor {@code /graphql}
+     * bzw. {@code /blobs}. Beim Team-Server einmal ausgehandelt ({@code /api/versions}).
+     *
+     * @throws UnreachableException  wenn der Team-Server nicht antwortet
+     * @throws IllegalStateException wenn er die Version dieser App nicht anbietet
+     */
+    public String apiUrl() {
+        String url = url();
+        Api a = api;
+        if (a == null || !a.url().equals(url)) {
+            a = new Api(url, embedded() ? ApiVersions.base(ApiVersions.CURRENT) : negotiate(url));
+            api = a;
+        }
+        return url + a.base();
+    }
+
     /** Token der laufenden Anmeldung (Sitzungs- oder Desktop-Token), z.B. als Passwort beim Broker des Backends. */
     public Optional<String> token() {
         Session s = session;
@@ -807,7 +844,15 @@ public class BackendConnection {
         if (!next.url().matches("https?://.+")) {
             throw new IllegalArgumentException("Adresse mit http:// oder https:// angeben.");
         }
-        ClientGraphQlResponse r = execute(httpClient(next.url(), null), "{ __typename }", Map.of());
+        String endpoint;
+        try {
+            endpoint = next.url() + negotiate(next.url());
+        } catch (UnreachableException e) {
+            throw e;
+        } catch (IllegalStateException e) {
+            throw new IllegalArgumentException(e.getMessage(), e);
+        }
+        ClientGraphQlResponse r = execute(httpClient(endpoint, null), "{ __typename }", Map.of());
         if (!r.isValid()) {
             throw new IllegalArgumentException("Unter " + next.url() + " antwortet kein DevTools-Backend.");
         }
@@ -968,12 +1013,51 @@ public class BackendConnection {
         return c;
     }
 
-    /** Client mit Token ({@code null} = ohne, für {@code login}); HTTP/1.1, Zeitlimits gegen hängende Server. */
-    private static HttpSyncGraphQlClient httpClient(String url, String token) {
+    /**
+     * Pfadpräfix der API-Version dieser App beim Backend unter {@code url}.
+     *
+     * @throws IllegalStateException wenn das Backend sie nicht anbietet
+     */
+    static String negotiate(String url) {
+        return ApiVersions.negotiate(ApiVersions.CURRENT, offered(url));
+    }
+
+    /**
+     * Angebotene API-Versionen ({@code GET /api/versions}); {@code null} = Backend ohne Versionierung – dort fehlt der
+     * Pfad (404, beim Team-Server die Anmeldeseite der Web-UI, beim eingebetteten Backend einer anderen App 403).
+     */
+    static ApiVersions.Info offered(String url) {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url + ApiVersions.VERSIONS_PATH))
+                .timeout(Duration.ofSeconds(30)).GET().build();
+        HttpResponse<String> r;
+        try (HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10)).build()) {
+            r = client.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (IOException | IllegalArgumentException e) {
+            throw new UnreachableException("Backend nicht erreichbar (" + url + "): " + describe(e), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new UnreachableException("Backend nicht erreichbar (" + url + "): abgebrochen", e);
+        }
+        if (r.statusCode() != 200) {
+            return null;
+        }
+        try {
+            return JsonMapper.builder().build().readValue(r.body(), ApiVersions.Info.class);
+        } catch (RuntimeException e) {
+            return null; // keine Versionsliste (z.B. HTML einer vorgeschalteten Seite)
+        }
+    }
+
+    /**
+     * Client mit Token ({@code null} = ohne, für {@code login}) für die API unter {@code api} ({@link #apiUrl()});
+     * HTTP/1.1, Zeitlimits gegen hängende Server.
+     */
+    private static HttpSyncGraphQlClient httpClient(String api, String token) {
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(10)).build());
         factory.setReadTimeout(Duration.ofMinutes(2));
-        RestClient.Builder rest = RestClient.builder().baseUrl(url + "/graphql").requestFactory(factory);
+        RestClient.Builder rest = RestClient.builder().baseUrl(api + "/graphql").requestFactory(factory);
         if (token != null) {
             rest.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token);
         }

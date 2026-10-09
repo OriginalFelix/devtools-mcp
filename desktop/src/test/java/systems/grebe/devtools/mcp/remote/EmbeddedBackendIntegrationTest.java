@@ -17,6 +17,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.annotation.DirtiesContext;
+import systems.grebe.devtools.mcp.api.ApiVersions;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
 import systems.grebe.devtools.mcp.backend.account.Role;
@@ -202,11 +203,14 @@ class EmbeddedBackendIntegrationTest {
 
         assertThatThrownBy(() -> files.download("0".repeat(64), dir.resolve("x")))
                 .hasMessageContaining("gibt es nicht");
-        // ohne Token kein Zugriff auf die Ablage
-        var anonymous = java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(
-                java.net.URI.create(backend.url() + "/blobs/" + f.blob())).build(),
-                java.net.http.HttpResponse.BodyHandlers.ofString());
-        assertThat(anonymous.statusCode()).isEqualTo(401);
+        // ohne Token kein Zugriff auf die Ablage – weder in der API-Version der App noch unter dem Pfad ohne Version
+        assertThat(backend.apiUrl()).isEqualTo(backend.url() + ApiVersions.base(ApiVersions.CURRENT));
+        for (String api : List.of(backend.apiUrl(), backend.url())) {
+            var anonymous = java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(
+                    java.net.URI.create(api + "/blobs/" + f.blob())).build(),
+                    java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertThat(anonymous.statusCode()).isEqualTo(401);
+        }
     }
 
     @Test

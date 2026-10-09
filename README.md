@@ -866,8 +866,8 @@ Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der S
 ### Backend und Team-Server
 
 Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills, Memories und die Code-Graphen und
-bietet dafür eine **GraphQL-API** unter `/graphql` (Schema: `backend/src/main/resources/backend-graphql/schema.graphqls`
-und `graph.graphqls`; Queries/Mutations über
+bietet dafür eine **GraphQL-API** unter `/api/v<n>/graphql` (je [API-Version](#api-versionen) ein Schema in
+`backend/src/main/resources/backend-graphql/v<n>/`, `schema.graphqls` und `graph.graphqls`; Queries/Mutations über
 HTTP, Subscriptions über WebSocket).
 
 * **Eingebettet** (Standard, kein Team-Server eingetragen): Das Backend läuft in der Desktop-App auf
@@ -888,14 +888,14 @@ HTTP, Subscriptions über WebSocket).
     Optional `devtools.discovery.name` (Standard Rechnername) und `devtools.discovery.port` (UDP).
   * Desktop-App mit eingebettetem Backend: Tab *Backend* → *Advertise-Endpunkt aktivieren* (wirksam nach Neustart).
     Die App lauscht dann auf allen Adressen statt nur `127.0.0.1`, damit andere Desktop-Apps ihr Backend nutzen
-    können; von anderen Rechnern erreichbar sind nur `/graphql` und `/blobs` (eigene Anmeldung mit einem Konto
+    können; von anderen Rechnern erreichbar sind nur `/api/…`, `/graphql` und `/blobs` (eigene Anmeldung mit einem Konto
     dieser App), MCP-Endpunkt und Channel bleiben lokal (`LocalOnlyFilter`). Ohne TLS – nur in vertrauenswürdigen
     Netzen einschalten.
 
   Firewalls müssen UDP `47913` (eingehend beim Backend) durchlassen.
 
 ```bash
-java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL unter /graphql
+java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL unter /api/v<n>/graphql
 ```
 
 * **Abgleich:** Nach der Anmeldung meldet die App dem Backend ihre Module samt Feldern und Tools (`reportCatalog`;
@@ -926,8 +926,48 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
   *Mein Konto* persönliche Tokens (Gültigkeit 30/90/365 Tage oder unbegrenzt; nur einmal angezeigt). Dort stehen auch
   die Anmeldungen der Desktop-Apps, einzeln abmeldbar.
 * Die Vorgaben enthalten entschlüsselte Geheimnisse – den Team-Server deshalb nur über HTTPS erreichbar machen. TLS
-  übernimmt ein Reverse-Proxy (`server.forward-headers-strategy=native`; WebSocket-Upgrade für `/graphql` durchreichen).
+  übernimmt ein Reverse-Proxy (`server.forward-headers-strategy=native`; `/api/`, `/graphql` und `/blobs`
+  weiterleiten, WebSocket-Upgrade für `/api/v<n>/graphql` und `/graphql` durchreichen).
 * Entwicklung der Web-UI mit Hot-Reload: `./gradlew :server:bootRun -Pvaadin.productionMode=false`.
+
+#### API-Versionen
+
+Das Protokoll zwischen Desktop-App und Backend (GraphQL-API und Dateiablage) ist versioniert, damit ein Team-Server
+Desktop-Apps verschiedener Stände bedienen kann: **Jede Änderung am Protokoll ergibt eine neue Version**, die älteren
+bietet das Backend weiter an. Die Versionen sind ganze Zahlen (`ApiVersions.CURRENT` in `shared`, heute 0).
+
+| Pfad | |
+|---|---|
+| `GET /api/versions` | angebotene Versionen, ohne Anmeldung: `{"current": 1, "versions": [0, 1]}` |
+| `/api/v<n>/graphql` | GraphQL der Version `n` (HTTP und WebSocket) |
+| `/api/v<n>/blobs/…` | Dateiablage der Version `n` |
+| `/graphql`, `/blobs/…` | Version 0 – so sprechen Desktop-Apps von vor der Versionierung |
+
+**Eine Datenbank für alle Versionen:** Versioniert ist nur die Schnittstelle. Alle Versionen laufen über dieselben
+Controller und Services auf denselben Daten – Core- und Skill-Datenbank, Graph-Storage, Dateiablage, Broker. Was eine
+App über v0 speichert, liest eine andere über v1 und umgekehrt. Änderungen am Datenmodell laufen wie bisher einmal über
+Flyway bzw. die Schema-Migration; ältere Versionen werden aus dem aktuellen Datenmodell bedient (ein entfallenes Feld
+z.B. von einer Controller-Methode, die es aus den neuen Daten ableitet).
+
+Eine nicht angebotene Version ist 404. Die Desktop-App spricht immer ihre eigene Version; beim Team-Server fragt sie
+vorher `/api/versions` ab. Bietet er die Version nicht an, sagt die Anmeldung bzw. *Backend ändern…*, ob der Server
+(„Das Backend ist zu alt“) oder die App („Diese App ist zu alt“) zu aktualisieren ist. Ein Server von vor der
+Versionierung (ohne `/api/versions`) gilt als Version 0 unter `/graphql`.
+
+**Protokoll ändern** (neues Feld, andere Argumente, geänderte Dateiablage …):
+
+1. `backend/src/main/resources/backend-graphql/v<n>/` nach `v<n+1>/` kopieren und nur dort ändern.
+2. Die Version in `ApiSchemas` (Backend) eintragen und `ApiVersions.CURRENT` auf `n+1` heben – die Desktop-App spricht
+   dann die neue Version.
+3. Was die neue Version entfernt oder umbenennt, bleibt in den Controllern für die älteren stehen; eine Änderung der
+   Dateiablage unterscheidet im `BlobController` nach `apiVersion`.
+4. Die Prüfsumme der neuen Version in `backend/src/test/resources/api-versions.sha256` eintragen (`ApiSchemasTest`
+   nennt sie).
+
+Abgesichert durch Tests: `ApiSchemasTest` schlägt fehl, sobald sich das Schema einer eingetragenen Version ändert
+(veröffentlichte Versionen sind eingefroren), und `GraphQlApiIntegrationTest` prüft, dass jede angebotene Version
+erreichbar ist und jedes ihrer Felder einen Controller hat. Eine alte Version fällt erst weg, wenn sie aus `ApiSchemas`
+(und der Prüfsummen-Datei) entfernt wird.
 
 #### MQTT-Broker für die Kooperation
 
@@ -987,7 +1027,7 @@ Desktop-App z.B. als `-Ddevtools.graph.mode=remote …` bzw. Umgebungsvariablen 
 
 * **Zugriff der Desktop-App:** über das Interface `GraphProvider` (`shared`). Im **Local-Mode** (eingebettetes
   Backend) verwendet die App die Graph-Storage direkt im selben Prozess. Mit **Team-Server** gehen alle Lese- und
-  Schreibzugriffe über die GraphQL-API des Backends (`backend-graphql/graph.graphqls`, `GraphQlGraphProvider` in der
+  Schreibzugriffe über die GraphQL-API des Backends (`backend-graphql/v<n>/graph.graphqls`, `GraphQlGraphProvider` in der
   App): `graph(key)` liefert Kopfdaten und die ID der aktuellen Generation, `graphNodes`, `graphEdges`, `graphSearch`,
   `graphShortestPath`, `graphQuery` (lesendes OpenCypher) … lesen damit; gespeichert wird in Portionen
   (`beginGraph` → `writeGraphFiles`/`-Nodes`/`-Edges` → `publishGraph`). `BackendGraphs` entscheidet bei jedem Zugriff.
@@ -1369,7 +1409,8 @@ Die Datenbank hält nur Pfad, Größe, Medientyp und Hash; gleicher Inhalt liegt
 möglich). Nicht mehr verwendete Inhalte löscht das Backend nach dem Commit; abgebrochene Uploads und verwaiste Inhalte
 räumt es kurz nach dem Start und dann täglich auf (ab einem Tag Alter). **Backup:** `blobs/` gehört zur Datenbank dazu.
 
-Übertragen wird über HTTP statt GraphQL (`Authorization: Bearer <Token>` wie bei `/graphql`): `POST /blobs/uploads`,
+Übertragen wird über HTTP statt GraphQL (`Authorization: Bearer <Token>` wie bei GraphQL, Pfade je
+[API-Version](#api-versionen) unter `/api/v<n>/blobs`, hier ohne Präfix): `POST /blobs/uploads`,
 dann Teile zu 4 MB per `PUT /blobs/uploads/<id>?offset=<n>`, abgeschlossen mit `POST /blobs/uploads/<id>/complete`
 (liefert den SHA-256); angehängt wird anschließend per GraphQL (`attachSkillFile`, `attachMemoryFile`). `GET
 /blobs/<sha256>` liefert den Inhalt – eigene Dateien, die der globalen Vorlagen und die Anhänge der für den Benutzer
@@ -2073,6 +2114,7 @@ desktop/
 backend/
   backend/BackendConfig   ── Einstieg (Component-Scan des Backends)
   backend/BackendGraphQlController, GraphQlAuth, GraphQlErrors, ChangeBus ── GraphQL-API, Token, Fehler, Subscriptions
+  backend/api/            ── API-Versionen: ApiSchemas (Schema je Version), ApiConfig + VersionedGraphQl (Pfade, Auswahl)
   backend/{account,profile,project,catalog,skills,memories,scripts} ── Benutzer + Tokens, Profile + Ebenen, Projekte,
                              Katalog, Skills, Memories, Skripte (Ablage + Syntaxprüfung ohne Ausführung,
                              GherkinScripts liest Gherkin auch für die Desktop-App)
@@ -2080,7 +2122,7 @@ server/
   DevToolsServerApplication ── Spring Boot (Jetty) · WildFlyInitializer (WAR)
   server/SecurityConfig, web/ ── Web-Login und Vaadin-Web-UI
 shared/
-  api/                    ── Datenklassen der GraphQL-API
+  api/                    ── Datenklassen der GraphQL-API, ApiVersions (Protokollversion, Pfade, Aushandeln)
   config/ModuleSettings, profile/Overrides, modules/{skills,memories,scripts}/{…Backend,…Views}
 plugin-api/
   core/                   ── ToolModule, ModuleAction, ConnectionTestResult, ToolScope, ConfigField, ConfigGroup,
