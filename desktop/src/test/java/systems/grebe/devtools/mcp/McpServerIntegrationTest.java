@@ -623,6 +623,21 @@ class McpServerIntegrationTest {
     }
 
     @Test
+    void savingSharesWarnsAboutOverriddenWindowExclusions(@TempDir Path tools) throws Exception {
+        boolean windows = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
+        Files.writeString(tools.resolve(windows ? "foo.exe" : "foo"), "x").toFile().setExecutable(true);
+        registry.updateConfig("window", Map.of("excludeProcesses", "foo"));
+        try {
+            assertThat(registry.saveWarnings("access", Map.of("directories", tools.toString())))
+                    .anyMatch(l -> l.contains("Prozesse ausschließen"));
+            assertThat(registry.saveWarnings("access", Map.of())).isEmpty();
+            assertThat(registry.saveWarnings("window", Map.of("excludeProcesses", "foo"))).isEmpty(); // keine Freigaben
+        } finally {
+            registry.updateConfig("window", Map.of());
+        }
+    }
+
+    @Test
     void toolErrorsAreReportedAsErrorResult() {
         McpSchema.CallToolResult result = client.callTool(
                 callRequest("git_status", Map.of("repository", "gibt-es-nicht")));

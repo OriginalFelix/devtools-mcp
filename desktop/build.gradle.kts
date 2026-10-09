@@ -90,6 +90,9 @@ dependencies {
     // Ticket-Klassifizierung: Einschätzung der Komplexität über die Claude API (offizielles Java-SDK)
     implementation("com.anthropic:anthropic-java:2.68.0")
 
+    // Fenstersteuerung: Fenstersysteme, zweiter KI-Zeiger und Programmstart im eigenen Projekt (siehe natives)
+    implementation(project(":natives"))
+
     listOf("base", "graphics", "controls").forEach {
         implementation("org.openjfx:javafx-$it:$javafxVersion:$javafxPlatform")
     }

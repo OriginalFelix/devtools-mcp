@@ -10,6 +10,8 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -195,7 +197,45 @@ public class ModuleDetailPane extends ScrollPane {
             a.showAndWait();
             return;
         }
-        if (!apply(() -> registry.updateConfig(module.id(), form.values()))) {
+        // Warnungen (z.B. Freigaben heben Ausschlüsse auf) können eine Ordnersuche brauchen – im Hintergrund holen
+        Map<String, String> values = form.values();
+        save.setDisable(true);
+        showStatus(null, "Prüfe Freigaben …");
+        Task<List<String>> task = new Task<>() {
+            @Override
+            protected List<String> call() {
+                return registry.saveWarnings(module.id(), values);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            if (task.getValue().isEmpty() || confirm(task.getValue())) {
+                store(values);
+            } else {
+                updateDirty();
+                showStatus(null, "Nicht gespeichert.");
+            }
+        });
+        task.setOnFailed(e -> {
+            updateDirty();
+            showStatus(false, String.valueOf(task.getException().getMessage()));
+        });
+        Thread.ofVirtual().start(task);
+    }
+
+    /** „Trotzdem speichern“ bestätigt die Warnungen. */
+    private boolean confirm(List<String> warnings) {
+        ButtonType anyway = new ButtonType("Trotzdem speichern", ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType("Abbrechen", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert a = new Alert(Alert.AlertType.WARNING, String.join("\n", warnings), anyway, cancel);
+        a.setHeaderText("Freigaben heben Ausschlüsse auf");
+        a.initOwner(getScene().getWindow());
+        a.getDialogPane().setMinWidth(760);
+        return a.showAndWait().filter(anyway::equals).isPresent();
+    }
+
+    private void store(Map<String, String> values) {
+        if (!apply(() -> registry.updateConfig(module.id(), values))) {
+            updateDirty();
             return;
         }
         savedValues = registry.settings(module.id()).values();

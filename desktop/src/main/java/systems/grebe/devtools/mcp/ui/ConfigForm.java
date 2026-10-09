@@ -39,6 +39,8 @@ import javafx.stage.Window;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.modules.window.ProcessPatterns;
+import systems.grebe.devtools.mcp.modules.window.WindowCandidates;
 
 /**
  * Erzeugt aus einem {@link ConfigField}-Schema ein Formular. Neue Module brauchen dadurch keinen eigenen UI-Code.
@@ -299,6 +301,21 @@ public class ConfigForm {
                 ta.textProperty().addListener(changed);
                 getters.put(f.key(), ta::getText);
                 yield ta;
+            }
+            case PROCESS_PATTERN -> {
+                TextField tf = new TextField(value);
+                HBox.setHgrow(tf, Priority.ALWAYS);
+                Button pick = new Button("Fenster wählen…");
+                WindowCandidates candidates = WindowCandidates.current();
+                candidates.unsupportedReason().ifPresentOrElse(r -> {
+                    pick.setDisable(true);
+                    tf.setTooltip(new Tooltip("Fensterauswahl nicht verfügbar: " + r));
+                }, () -> pick.setTooltip(new Tooltip("Programm über sein Fenster auswählen")));
+                pick.setOnAction(e -> WindowPickerDialog.choose(tf.getScene().getWindow(), candidates, f.label())
+                        .ifPresent(c -> tf.setText(ProcessPatterns.append(tf.getText(), c.processName()))));
+                tf.textProperty().addListener(changed);
+                getters.put(f.key(), tf::getText);
+                yield new HBox(6, tf, pick);
             }
             default -> { // STRING, URL
                 TextField tf = new TextField(value);

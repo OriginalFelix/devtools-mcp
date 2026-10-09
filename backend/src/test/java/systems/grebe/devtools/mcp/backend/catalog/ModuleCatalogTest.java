@@ -45,7 +45,7 @@ class ModuleCatalogTest {
         // von einem anderen Branch gemeldet: Feldtyp, den diese Version nicht kennt
         store("window", """
                 {"id":"window","displayName":"Fenster","description":"","enabledByDefault":false,"hasTools":true,
-                 "order":205,"schema":[{"key":"processFilter","label":"Prozessfilter","type":"PROCESS_PATTERN",
+                 "order":205,"schema":[{"key":"processFilter","label":"Prozessfilter","type":"COLOR_PICKER",
                  "required":false,"options":[],"columns":[]}],"tools":[{"name":"window_list","description":"x"}]}""");
         store("kaputt", "{nicht json");
 

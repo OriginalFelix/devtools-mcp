@@ -86,6 +86,9 @@ public final class ShellHints {
     public static final String PROJECTS = " Welche Projekte (Repositories, Build-, Graph-Projekte) zur Verfügung stehen, "
             + "immer über projects_list ermitteln, nicht durch Durchsuchen des Dateisystems in der Shell.";
 
+    public static final String WINDOW = " Fenster anderer Anwendungen immer über die window_*-Tools sehen und bedienen, "
+            + "nicht per PowerShell, AppleScript, xdotool oder Skripten in der Shell.";
+
     public static final String CONTEXT = " Gekürzte Ergebnisse über context_slice nachlesen, statt das Tool mit höherem "
             + "Limit erneut aufzurufen oder Ausgaben per Shell in Dateien umzuleiten.";
 
@@ -108,7 +111,8 @@ public final class ShellHints {
             java.util.Map.entry("jdbc", JDBC), java.util.Map.entry("dolt", DOLT), java.util.Map.entry("chat", CHAT),
             java.util.Map.entry("invocations", INVOCATIONS), java.util.Map.entry("share", SHARE),
             java.util.Map.entry("mail", MAIL), java.util.Map.entry("projects", PROJECTS),
-            java.util.Map.entry("permissions", PERMISSIONS), java.util.Map.entry("context", CONTEXT));
+            java.util.Map.entry("permissions", PERMISSIONS), java.util.Map.entry("context", CONTEXT),
+            java.util.Map.entry("window", WINDOW));
 
     private ShellHints() {
     }

@@ -339,6 +339,28 @@ public class ToolRegistry {
         }
     }
 
+    /**
+     * Warnungen vor dem Speichern von {@code values} für das Modul (siehe {@link ToolModule#saveWarnings}). Beim Modul
+     * „Freigaben“ die Warnungen aller Module mit Projektlisten – mit ihren gespeicherten Werten und den neuen
+     * Verzeichnissen. Kann dauern; nicht auf dem UI-Thread aufrufen.
+     */
+    public List<String> saveWarnings(String moduleId, Map<String, String> values) {
+        ToolModule m = state(moduleId).module;
+        if (!AccessModule.ID.equals(moduleId)) {
+            return m.saveWarnings(ModuleConfig.of(m.configSchema(), withSharedDirectories(m, values)));
+        }
+        List<String> dirs = ModuleConfig.of(m.configSchema(), values).getList(AccessModule.DIRECTORIES);
+        List<String> out = new ArrayList<>();
+        for (ToolModule other : modules()) {
+            if (!other.sharedDirectoryFields().isEmpty()) {
+                Map<String, String> saved = effective(state(other.id())).values();
+                out.addAll(other.saveWarnings(ModuleConfig.of(other.configSchema(),
+                        withSharedDirectories(other, saved, dirs))));
+            }
+        }
+        return out;
+    }
+
     // ------------------------------------------------------------------ Modul-Aktionen (UI)
 
     public List<ModuleAction> actions(String moduleId) {
@@ -455,8 +477,13 @@ public class ToolRegistry {
         if (module.sharedDirectoryFields().isEmpty() || AccessModule.ID.equals(module.id())) {
             return values;
         }
-        List<String> shared = accessConfig().getList(AccessModule.DIRECTORIES);
-        if (shared.isEmpty()) {
+        return withSharedDirectories(module, values, accessConfig().getList(AccessModule.DIRECTORIES));
+    }
+
+    /** Hängt {@code shared} an die Projektlisten des Moduls an (ohne Dubletten). */
+    private static Map<String, String> withSharedDirectories(ToolModule module, Map<String, String> values,
+                                                             List<String> shared) {
+        if (module.sharedDirectoryFields().isEmpty() || AccessModule.ID.equals(module.id()) || shared.isEmpty()) {
             return values;
         }
         Map<String, String> out = new LinkedHashMap<>(values);

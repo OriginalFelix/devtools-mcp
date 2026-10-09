@@ -205,8 +205,8 @@ public final class McpRuntime implements AutoCloseable {
 
     /** Meldet das Tool an oder tauscht bei gleicher Definition nur den Aufruf aus. */
     private void expose(String name, ManagedToolCallback cb) {
-        McpServerFeatures.SyncToolSpecification spec = inScope(McpProgress.wrap(withAnnotations(
-                McpToolUtils.toSyncToolSpecification(cb), McpToolHints.annotations(cb))));
+        McpServerFeatures.SyncToolSpecification spec = inScope(McpProgress.wrap(ToolImages.wrap(withAnnotations(
+                McpToolUtils.toSyncToolSpecification(cb), McpToolHints.annotations(cb)))));
         McpSchema.Tool tool = context.shellHintsOnce() ? withDescription(spec.tool(),
                 ShellHints.strip(spec.tool().description())) : spec.tool();
         Slot slot = slots.get(name);

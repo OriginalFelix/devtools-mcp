@@ -29,6 +29,11 @@ public enum FieldType {
     /** Freie Liste von Texten (eine Zeile je Eintrag). */
     STRING_LIST,
     /**
+     * Regulärer Ausdruck auf Prozessname und Kommandozeile. Die Desktop-App bietet dazu eine grafische Fensterauswahl,
+     * der Team-Server ein Textfeld.
+     */
+    PROCESS_PATTERN,
+    /**
      * Liste gleichartiger Datensätze (z.B. Verbindungen), Felder aus {@link ConfigField#columns()}. Gespeichert als
      * JSON-Array von Objekten; enthält eine Spalte ein {@link #SECRET}, wird der ganze Wert verschlüsselt abgelegt.
      */
