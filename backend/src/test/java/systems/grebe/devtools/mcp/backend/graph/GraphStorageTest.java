@@ -186,6 +186,16 @@ class GraphStorageTest {
     }
 
     @Test
+    void stopsWalkingGenerationsWhenIndexIsOutOfOrder() {
+        Map<String, String> sorted = Map.of("", "a", "a", "b", "b", "c");
+        assertThat(storage.ascendingKeys(sorted::get)).containsExactly("a", "b", "c");
+
+        // Beschädigter Index: auf "> c" kommt "b" zurück – ohne Abbruch liefe der Sprung endlos im Kreis
+        Map<String, String> cycling = Map.of("", "a", "a", "c", "c", "b", "b", "c");
+        assertThat(storage.ascendingKeys(cycling::get)).isNull();
+    }
+
+    @Test
     void startsReportsStatusAndSwitchesToOtherSettings() {
         List<String> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
         storage.addStatusListener(() -> seen.add(storage.status()));
