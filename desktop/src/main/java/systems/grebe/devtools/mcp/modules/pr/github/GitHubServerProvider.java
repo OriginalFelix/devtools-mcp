@@ -465,7 +465,8 @@ public class GitHubServerProvider implements GitServerProvider {
                 String description = title == null ? summary : summary == null ? title : title + "\n" + summary;
                 out.add(new Insight(text(c.path("id")), text(c.path("name")), text(c.path("app").path("name")),
                         HttpJson.first(text(c.path("conclusion")), text(c.path("status"))), description,
-                        text(c.path("html_url")), null, annotations, count));
+                        text(c.path("html_url")), HttpJson.first(text(c.path("completed_at")), text(c.path("started_at"))),
+                        null, annotations, count));
             }
             return out;
         }

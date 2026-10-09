@@ -1,7 +1,12 @@
 package systems.grebe.devtools.mcp.modules.pr;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -114,7 +119,8 @@ public class PrTools {
     }
 
     @Tool(name = "get", description = "Liest einen Pull/Merge Request: Titel, Status, Autor, Branches, Reviewer, Freigaben, "
-            + "Merge-Status (Konflikte, fehlende Freigaben), CI-Checks des letzten Commits und Beschreibung. Ohne 'pr': "
+            + "Merge-Status (Konflikte, fehlende Freigaben), CI-Checks des letzten Commits, Kurzfassung der Berichte von "
+            + "Integrationen und Beschreibung. Ohne 'pr': "
             + "der offene Pull Request zum aktuellen Branch des lokalen Repositories." + ShellHints.PR)
     public String get(
             @ToolParam(required = false, description = PR + ". Leer = zum aktuellen Branch.") String pr,
@@ -133,6 +139,7 @@ public class PrTools {
         row(sb, "Reviewer", d.reviewers().isEmpty() ? null : String.join(", ", d.reviewers()));
         row(sb, "Freigaben", d.approvedBy().isEmpty() ? "keine" : String.join(", ", d.approvedBy()));
         row(sb, "Merge", d.mergeStatus());
+        row(sb, "Integrationen", integrations(t.server(), ref, t.project()));
         for (Map.Entry<String, String> f : d.fields().entrySet()) {
             row(sb, f.getKey(), f.getValue());
         }
@@ -264,8 +271,18 @@ public class PrTools {
                 sb.append("  ").append(in.result());
             }
             sb.append('\n');
+            List<String> meta = new ArrayList<>();
+            if (in.id() != null) {
+                meta.add("Schlüssel " + in.id());
+            }
             if (in.source() != null && !in.source().equals(in.title())) {
-                sb.append("Quelle: ").append(in.source()).append('\n');
+                meta.add("Quelle " + in.source());
+            }
+            if (in.created() != null) {
+                meta.add("erstellt " + in.created());
+            }
+            if (!meta.isEmpty()) {
+                sb.append(String.join(" · ", meta)).append('\n');
             }
             if (in.url() != null) {
                 sb.append(in.url()).append('\n');
@@ -275,10 +292,12 @@ public class PrTools {
             }
             in.data().forEach((k, v) -> sb.append("- ").append(k).append(": ").append(Text.orDash(v)).append('\n'));
             List<Annotation> shown = in.annotations().stream()
-                    .filter(a -> filter == null || a.path() != null && a.path().contains(filter)).toList();
+                    .filter(a -> filter == null || a.path() != null && a.path().contains(filter))
+                    .sorted(Comparator.comparingInt(a -> Annotation.severityRank(a.severity()))).toList();
             if (!shown.isEmpty() || in.annotationCount() > 0) {
+                String bySeverity = severities(in.annotations());
                 sb.append("Befunde (").append(filter == null ? "" : shown.size() + " von ").append(in.annotationCount())
-                        .append("):\n");
+                        .append(bySeverity.isEmpty() ? "" : ": " + bySeverity).append("):\n");
             }
             for (Annotation a : shown) {
                 sb.append("- ").append(a.path() == null ? "(allgemein)" : a.path() + (a.line() == null ? "" : ":" + a.line()));
@@ -307,6 +326,44 @@ public class PrTools {
     }
 
     // ------------------------------------------------------------------ Hilfen
+
+    private static final Set<String> FAILED = Set.of("fail", "failed", "failure", "error", "timed_out",
+            "action_required", "cancelled", "canceled");
+
+    /**
+     * Kurzfassung der Berichte für pr_get, z.B. „4 Bericht(e), 1 fehlgeschlagen: API-Scanner (6 Befunde: 1 HIGH, 5 LOW)
+     * – Details mit pr_insights“; {@code null}, wenn keine Integration berichtet hat oder der Server es nicht kann.
+     */
+    static String integrations(GitServer server, String ref, String project) {
+        List<Insight> insights;
+        try {
+            insights = server.insights(ref, project);
+        } catch (RuntimeException e) {
+            // Zusatzinfo – fehlende Code-Insights-Rechte oder ältere Server sollen pr_get nicht verhindern
+            return null;
+        }
+        if (insights.isEmpty()) {
+            return null;
+        }
+        List<String> failed = insights.stream()
+                .filter(in -> in.result() != null && FAILED.contains(in.result().toLowerCase(Locale.ROOT)))
+                .map(in -> {
+                    String bySeverity = severities(in.annotations());
+                    return Text.orDash(in.title()) + (in.annotationCount() == 0 ? "" : " (" + in.annotationCount()
+                            + " Befund(e)" + (bySeverity.isEmpty() ? "" : ": " + bySeverity) + ")");
+                })
+                .toList();
+        return insights.size() + " Bericht(e)" + (failed.isEmpty() ? ", keiner fehlgeschlagen"
+                : ", " + failed.size() + " fehlgeschlagen: " + String.join(", ", failed)) + " – Details mit pr_insights";
+    }
+
+    /** Befunde je Schwere, schwerste zuerst, z.B. „1 HIGH, 5 LOW“. */
+    static String severities(List<Annotation> annotations) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        annotations.stream().sorted(Comparator.comparingInt(a -> Annotation.severityRank(a.severity())))
+                .forEach(a -> counts.merge(a.severity() == null ? "ohne Schwere" : a.severity(), 1, Integer::sum));
+        return String.join(", ", counts.entrySet().stream().map(e -> e.getValue() + " " + e.getKey()).toList());
+    }
 
     /**
      * Pull-Request-Angabe oder – ohne Angabe – der offene Pull Request zum aktuellen Branch des lokalen Repositories.

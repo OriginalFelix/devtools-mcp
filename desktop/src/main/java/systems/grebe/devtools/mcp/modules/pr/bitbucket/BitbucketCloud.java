@@ -316,7 +316,8 @@ final class BitbucketCloud implements GitServer {
                         text(a.path("link"))));
             }
             out.add(new Insight(id, text(rep.path("title")), text(rep.path("reporter")), text(rep.path("result")),
-                    text(rep.path("details")), text(rep.path("link")), CodeInsights.data(rep.path("data")), annotations,
+                    text(rep.path("details")), text(rep.path("link")), text(rep.path("created_on")),
+                    CodeInsights.data(rep.path("data")), annotations,
                     annotations.size()));
         }
         return out;

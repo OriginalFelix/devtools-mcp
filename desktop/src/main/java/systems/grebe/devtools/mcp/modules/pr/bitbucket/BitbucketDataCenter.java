@@ -420,7 +420,8 @@ final class BitbucketDataCenter implements GitServer {
                         text(a.path("link"))));
             }
             out.add(new Insight(id, text(rep.path("title")), text(rep.path("reporter")), text(rep.path("result")),
-                    text(rep.path("details")), text(rep.path("link")), CodeInsights.data(rep.path("data")), annotations,
+                    text(rep.path("details")), text(rep.path("link")), date(rep.path("createdDate")),
+                    CodeInsights.data(rep.path("data")), annotations,
                     res.path("totalCount").asInt(annotations.size())));
         }
         return out;

@@ -80,7 +80,8 @@ public class PrModule implements ToolModule {
                 Nummer, ein voller Schlüssel (owner/repo#12, gruppe/projekt!12) oder seine URL.
                 - `pr_providers`: aktive Server, angemeldeter Benutzer, Formate; `pr_list`: Pull Requests filtern \
                 (Status, Autor `me`, Quell-/Ziel-Branch – z.B. den PR zum aktuellen Branch finden).
-                - `pr_get`: Titel, Beschreibung, Branches, Reviewer, Freigaben, Merge-Status und CI-Checks; `pr_diff`: \
+                - `pr_get`: Titel, Beschreibung, Branches, Reviewer, Freigaben, Merge-Status, CI-Checks und Kurzfassung der \
+                Integrationen; `pr_diff`: \
                 geänderte Dateien mit Diff; `pr_comments`: alle Kommentare als Threads mit ID, Datei/Zeile und Status \
                 (`unresolved=true` für die offenen), Kommentare von Apps/Bots als [Integration]; `pr_insights`: Berichte \
                 von Integrationen (SonarQube, Tests, Scans) mit Befunden an Datei und Zeile.

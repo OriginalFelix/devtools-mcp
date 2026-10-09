@@ -161,10 +161,10 @@ class GitHubServerProviderTest {
         PrTools tools = new PrTools(env(Map.of()));
         String out = tools.insights("octo/app#7", null, null, null, null);
         assertThat(out).contains("octo/app#7 (github): 1 Bericht(e) von Integrationen, 2 Befund(e)",
-                "### SonarCloud Code Analysis  failure", "Quelle: SonarCloud", "Quality Gate failed\n2 Bugs",
-                "Befunde (2):", "- src/A.java:12  failure  Bug: NPE möglich  https://github.com/octo/app/blob/abc123/src/A.java",
+                "### SonarCloud Code Analysis  failure", "Schlüssel 2 · Quelle SonarCloud", "Quality Gate failed\n2 Bugs",
+                "Befunde (2: 1 failure, 1 warning):", "- src/A.java:12  failure  Bug: NPE möglich  https://github.com/octo/app/blob/abc123/src/A.java",
                 "- src/B.java:3  warning  Unbenutzt").doesNotContain("### build");
-        assertThat(tools.insights("octo/app#7", "B.java", null, null, null)).contains("Befunde (1 von 2):", "src/B.java:3")
+        assertThat(tools.insights("octo/app#7", "B.java", null, null, null)).contains("Befunde (1 von 2: 1 failure, 1 warning):", "src/B.java:3")
                 .doesNotContain("src/A.java");
     }
 

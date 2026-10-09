@@ -210,15 +210,34 @@ class BitbucketServerProviderTest {
         bb.on(DC_PR, "{\"id\":5,\"fromRef\":{\"latestCommit\":\"c0ffee\"}}");
         bb.on(insights, """
                 {"isLastPage":true,"values":[{"key":"sonar","title":"SonarQube","reporter":"SonarQube","result":"FAIL",
-                  "link":"https://sonar/p","data":[{"title":"Laufzeit","type":"DURATION","value":90000},
+                  "link":"https://sonar/p","createdDate":1759190400000,"data":[{"title":"Laufzeit","type":"DURATION","value":90000},
                   {"title":"Bericht","type":"LINK","value":{"linktext":"öffnen","href":"https://sonar/r"}}]}]}""");
         bb.on(insights + "/sonar/annotations", """
                 {"totalCount":3,"annotations":[{"path":"src/A.java","line":0,"severity":"MEDIUM","type":"CODE_SMELL","message":"Zu lang"},
                  {"path":"src/B.java","line":9,"severity":"HIGH","type":"VULNERABILITY","message":"SQL-Injection"}]}""");
         assertThat(new PrTools(env).insights("PROJ/app#5", null, null, null, null)).contains(
-                "1 Bericht(e) von Integrationen, 3 Befund(e)", "### SonarQube  FAIL", "https://sonar/p", "- Laufzeit: 1m30s",
-                "- Bericht: öffnen https://sonar/r", "Befunde (3):", "- src/A.java  MEDIUM CODE_SMELL  Zu lang",
-                "- src/B.java:9  HIGH VULNERABILITY  SQL-Injection", "… 1 weitere beim Server");
+                "1 Bericht(e) von Integrationen, 3 Befund(e)", "### SonarQube  FAIL",
+                "Schlüssel sonar · erstellt 2025-09-30T00:00:00Z", "https://sonar/p", "- Laufzeit: 1m30s",
+                "- Bericht: öffnen https://sonar/r", "Befunde (3: 1 HIGH, 1 MEDIUM):",
+                "- src/B.java:9  HIGH VULNERABILITY  SQL-Injection\n- src/A.java  MEDIUM CODE_SMELL  Zu lang",
+                "… 1 weitere beim Server");
+    }
+
+    @Test
+    void dataCenterGetSummarizesFailedIntegrations() {
+        bb.on(DC_PR, """
+                {"id":5,"title":"API","state":"OPEN","author":{"user":{"name":"felix"}},
+                 "fromRef":{"displayId":"feature/api","latestCommit":"c0ffee"},"toRef":{"displayId":"main"}}""");
+        String insights = "/rest/insights/1.0/projects/PROJ/repos/app/commits/c0ffee/reports";
+        bb.on(insights, """
+                {"isLastPage":true,"values":[{"key":"de.css.api-scanner","title":"API-Scanner","result":"FAIL"},
+                 {"key":"compile","title":"Compile","result":"PASS"}]}""");
+        bb.on(insights + "/de.css.api-scanner/annotations", """
+                {"totalCount":2,"annotations":[{"path":"src/A.java","line":3,"severity":"LOW","message":"GENEHMIGT: …"},
+                 {"path":"src/B.java","line":7,"severity":"HIGH","message":"API-BRUCH: java.method.removed"}]}""");
+        bb.on(insights + "/compile/annotations", "{\"totalCount\":0,\"annotations\":[]}");
+        assertThat(new PrTools(env("datacenter", Map.of())).get("PROJ/app#5", null, null, null)).contains(
+                "Integrationen: 2 Bericht(e), 1 fehlgeschlagen: API-Scanner (2 Befund(e): 1 HIGH, 1 LOW) – Details mit pr_insights");
     }
 
     @Test

@@ -413,7 +413,7 @@ public class GitLabServerProvider implements GitServerProvider {
             return author.path("bot").asBoolean(false) || user != null && BOT_USER.matcher(user).matches();
         }
 
-        /** Testbericht der Pipeline und externe Status-Checks (Premium) des Merge Requests. */
+        /** Testbericht und Code Quality (Premium) der Pipeline sowie externe Status-Checks (Ultimate). */
         @Override
         public List<Insight> insights(String key, String project) {
             Ref r = ref(key, project);
@@ -429,16 +429,60 @@ public class GitLabServerProvider implements GitServerProvider {
                 } catch (HttpJson.StatusException e) {
                     // kein Testbericht (ältere Versionen, Pipeline ohne JUnit-Artefakte)
                 }
+                Insight quality = codeQuality(r, pipeline);
+                if (quality != null) {
+                    out.add(quality);
+                }
             }
             try {
                 for (JsonNode c : http.getJson(r.path() + "/status_checks")) {
                     out.add(new Insight(text(c.path("id")), text(c.path("name")), "Externer Status-Check",
-                            text(c.path("status")), null, text(c.path("external_url")), null, null, 0));
+                            text(c.path("status")), null, text(c.path("external_url")), null, null, null, 0));
                 }
             } catch (HttpJson.StatusException e) {
                 // nur GitLab Ultimate
             }
             return out;
+        }
+
+        private static final String CODE_QUALITY_QUERY = """
+                query($project:ID!,$iid:String!){project(fullPath:$project){mergeRequest(iid:$iid){headPipeline{
+                  codeQualityReports(first:100){nodes{description line path severity}}}}}}""";
+
+        /**
+         * Befunde des Code-Quality-Berichts – nur über GraphQL lesbar; {@code null} ohne Bericht, ohne Premium oder bei
+         * Servern ohne das Feld.
+         */
+        private Insight codeQuality(Ref r, JsonNode pipeline) {
+            JsonNode nodes;
+            try {
+                ObjectNode body = HttpJson.object();
+                body.put("query", CODE_QUALITY_QUERY);
+                ObjectNode vars = body.putObject("variables");
+                vars.put("project", r.project());
+                vars.put("iid", String.valueOf(r.iid()));
+                JsonNode res = http.post(webBase + "/api/graphql", body).body();
+                if (res.path("errors").isArray() && !res.path("errors").isEmpty()) {
+                    return null;
+                }
+                nodes = res.path("data").path("project").path("mergeRequest").path("headPipeline")
+                        .path("codeQualityReports").path("nodes");
+            } catch (RuntimeException e) {
+                return null;
+            }
+            if (!nodes.isArray() || nodes.isEmpty()) {
+                return null;
+            }
+            List<Annotation> annotations = new ArrayList<>();
+            for (JsonNode n : nodes) {
+                JsonNode line = n.path("line");
+                annotations.add(new Annotation(text(n.path("path")), line.isNumber() && line.asInt() > 0 ? line.asInt()
+                        : null, text(n.path("severity")), null, text(n.path("description")), null));
+            }
+            // Code Quality kennt kein Urteil, nur Befunde
+            return new Insight("codequality-" + text(pipeline.path("id")), "Code Quality", "GitLab CI", null, null,
+                    text(pipeline.path("web_url")) + "/codequality_report",
+                    text(pipeline.path("updated_at")), null, annotations, annotations.size());
         }
 
         private static Insight testReport(JsonNode summary, JsonNode pipeline) {
@@ -463,7 +507,8 @@ public class GitLabServerProvider implements GitServerProvider {
             }
             boolean ok = total.path("failed").asInt(0) + total.path("error").asInt(0) == 0;
             return new Insight("tests-" + text(pipeline.path("id")), "Testbericht Pipeline #" + text(pipeline.path("id")),
-                    "GitLab CI", ok ? "success" : "failed", null, text(pipeline.path("web_url")) + "/test_report", data,
+                    "GitLab CI", ok ? "success" : "failed", null, text(pipeline.path("web_url")) + "/test_report",
+                    text(pipeline.path("updated_at")), data,
                     failed, failed.size());
         }
 

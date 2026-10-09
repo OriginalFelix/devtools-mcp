@@ -122,8 +122,18 @@ class GitLabServerProviderTest {
                 {"total":{"time":4.5,"count":10,"success":8,"failed":2,"skipped":0,"error":0},
                  "test_suites":[{"name":"unit","total_count":10,"failed_count":2,"error_count":0}]}""");
         assertThat(new PrTools(env).insights("grp/app!12", null, null, null, null)).contains("1 Bericht(e) von Integrationen",
-                "### Testbericht Pipeline #99  failed", "Quelle: GitLab CI", "https://gl/p/99/test_report",
-                "- Tests: 10", "- Fehlgeschlagen: 2", "Befunde (1):", "(allgemein)  failed  Suite unit: 2 von 10 fehlgeschlagen");
+                "### Testbericht Pipeline #99  failed", "Schlüssel tests-99 · Quelle GitLab CI", "https://gl/p/99/test_report",
+                "- Tests: 10", "- Fehlgeschlagen: 2", "Befunde (1: 1 failed):",
+                "(allgemein)  failed  Suite unit: 2 von 10 fehlgeschlagen").doesNotContain("Code Quality");
+
+        gl.on("/api/graphql", """
+                {"data":{"project":{"mergeRequest":{"headPipeline":{"codeQualityReports":{"nodes":[
+                 {"description":"Methode zu komplex","line":12,"path":"src/A.java","severity":"MINOR"},
+                 {"description":"Doppelter Code","line":3,"path":"src/B.java","severity":"MAJOR"}]}}}}}}""");
+        assertThat(new PrTools(env).insights("grp/app!12", null, null, null, null)).contains("2 Bericht(e) von Integrationen",
+                "### Code Quality\n", "Befunde (2: 1 MAJOR, 1 MINOR):",
+                "- src/B.java:3  MAJOR  Doppelter Code\n- src/A.java:12  MINOR  Methode zu komplex");
+        assertThat(gl.last("/api/graphql").body()).contains("codeQualityReports", "\"project\":\"grp/app\"", "\"iid\":\"12\"");
     }
 
     @Test

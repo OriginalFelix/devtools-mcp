@@ -257,16 +257,17 @@ public interface GitServer {
     /**
      * Bericht einer Integration zum letzten Commit, z.B. SonarQube-Analyse, Testlauf oder Sicherheits-Scan.
      *
-     * @param id ID des Berichts beim Server
+     * @param id Schlüssel bzw. ID des Berichts beim Server (z.B. {@code de.firma.api-scanner})
      * @param source Integration bzw. App, die berichtet hat (z.B. „SonarQube“, „GitHub Actions“); {@code null} = unbekannt
      * @param result z.B. {@code PASS}/{@code FAIL}, {@code success}/{@code failure}; {@code null} = ohne Urteil
      * @param summary Kurzbeschreibung bzw. Zusammenfassung; {@code null} = keine
+     * @param created Zeitpunkt des Berichts (ISO-8601); {@code null} = unbekannt
      * @param data Kennzahlen in Anzeigereihenfolge (Abdeckung, Fehleranzahl …)
      * @param annotations Befunde an Datei und Zeile
      * @param annotationCount Anzahl der Befunde laut Server; größer als {@code annotations.size()}, wenn gekürzt
      */
     record Insight(String id, String title, String source, String result, String summary, String url,
-                   Map<String, String> data, List<Annotation> annotations, int annotationCount) {
+                   String created, Map<String, String> data, List<Annotation> annotations, int annotationCount) {
         public Insight {
             data = data == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(data));
             annotations = annotations == null ? List.of() : List.copyOf(annotations);
@@ -279,10 +280,27 @@ public interface GitServer {
      *
      * @param path Datei; {@code null} = betrifft den ganzen Pull Request
      * @param line Zeile der neuen Fassung; {@code null} = ganze Datei
-     * @param severity z.B. {@code HIGH}, {@code warning}
+     * @param severity z.B. {@code HIGH}, {@code warning} – siehe {@link #severityRank(String)}
      * @param type z.B. {@code BUG}, {@code CODE_SMELL}, {@code VULNERABILITY}; {@code null} = unbekannt
      */
-    record Annotation(String path, Integer line, String severity, String type, String message, String url) { }
+    record Annotation(String path, Integer line, String severity, String type, String message, String url) {
+        /**
+         * Rang einer Schwere über die Server hinweg, kleiner = schwerer: 0 kritisch/blocker, 1 hoch/failure/major,
+         * 2 mittel/warning/minor, 3 niedrig/notice/info, 4 unbekannt.
+         */
+        public static int severityRank(String severity) {
+            if (severity == null) {
+                return 4;
+            }
+            return switch (severity.trim().toLowerCase(Locale.ROOT)) {
+                case "critical", "blocker" -> 0;
+                case "high", "failure", "major", "error" -> 1;
+                case "medium", "warning", "minor" -> 2;
+                case "low", "notice", "info" -> 3;
+                default -> 4;
+            };
+        }
+    }
 
     /**
      * @param method {@code merge}, {@code squash} oder {@code rebase}; {@code null} = Standard des Repositories

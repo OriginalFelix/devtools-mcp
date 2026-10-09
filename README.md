@@ -206,8 +206,11 @@ auf (SSH-Schlüssel, Credential Manager), nicht interaktiv (`GIT_TERMINAL_PROMPT
 (GitHub `subject_type=file`, GitLab ab 16.4 `position_type=file`, Bitbucket Anker ohne Zeile); `pr_comments` zeigt
 solche Threads als „Datei“. Kommentare von Integrationen – GitHub Apps und Bots, GitLab-Projekt-/Gruppen-Bots und
 Dienstkonten, Bitbucket-App-Konten (Cloud) bzw. Dienstkonten (DC) – tragen „[Integration]“. `pr_insights` liest die
-Berichte von Integrationen zum letzten Commit: Bitbucket Code Insights (Berichte mit Kennzahlen und Annotations),
-GitHub Check-Runs mit Ausgabe und Annotations, GitLab Testbericht der Pipeline und externe Status-Checks.
+Berichte von Integrationen zum letzten Commit – in Bitbucket „Qualitätsberichte“/„Integrationen“ am Pull Request:
+Bitbucket Code Insights (Berichte mit Schlüssel, Kennzahlen und Annotations), GitHub Check-Runs mit Ausgabe und
+Annotations, GitLab Testbericht der Pipeline, Code Quality (Premium, über GraphQL) und externe Status-Checks
+(Ultimate). Befunde stehen nach Schwere sortiert; `pr_get` fasst die Berichte in einer Zeile zusammen
+(„4 Bericht(e), 1 fehlgeschlagen: API-Scanner (6 Befund(e): 1 HIGH, 5 LOW)“).
 
 Typischer Ablauf „Review-Kommentare abarbeiten“: `pr_comments unresolved=true` → Code ändern, `git_commit` → `pr_push`
 → je Thread `pr_reply` (was geändert wurde) → `pr_resolve`. `writeProjects` schränkt alle schreibenden Tools auf
