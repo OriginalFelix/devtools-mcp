@@ -1,11 +1,11 @@
 package systems.grebe.devtools.mcp.modules.container.cli;
 
-import java.util.ArrayList;
 import java.util.List;
 
+import systems.grebe.container4j.ContainerRuntime;
+import systems.grebe.container4j.cli.PodmanRuntime;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.FieldType;
-import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntimeProvider;
 import systems.grebe.devtools.mcp.modules.container.spi.RuntimeSettings;
 
@@ -44,15 +44,6 @@ public class PodmanRuntimeProvider implements ContainerRuntimeProvider {
 
     @Override
     public ContainerRuntime create(RuntimeSettings s) {
-        List<String> global = new ArrayList<>();
-        s.get(CONNECTION).ifPresent(c -> global.addAll(List.of("--connection", c)));
-        s.get(URL).ifPresent(u -> global.addAll(List.of("--url", u)));
-        return new Runtime(s.getString(BINARY, "podman"), global);
-    }
-
-    static final class Runtime extends CliContainerRuntime {
-        Runtime(String binary, List<String> global) {
-            super("podman", binary, global);
-        }
+        return new PodmanRuntime(s.getString(BINARY, "podman"), s.get(CONNECTION).orElse(null), s.get(URL).orElse(null));
     }
 }

@@ -9,8 +9,8 @@ import java.util.regex.PatternSyntaxException;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import tools.jackson.databind.JsonNode;
+import systems.grebe.container4j.ContainerRuntime;
 import systems.grebe.devtools.mcp.core.Text;
-import systems.grebe.devtools.mcp.modules.container.spi.ContainerRuntime;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolHints;
 

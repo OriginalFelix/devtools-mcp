@@ -61,8 +61,10 @@ Das Modul **Berechtigungen** zeigt dem LLM, was es darf, und lässt es fehlende 
 
 ### Container-Laufzeiten erweitern (ServiceLoader)
 
-Laufzeiten sind über `modules/container/spi` austauschbar. Docker und Podman liefert die App mit; eine weitere
-Laufzeit (z.B. nerdctl) braucht nur zwei Dinge:
+Laufzeiten sind über `modules/container/spi` austauschbar. Die Laufzeiten selbst (`ContainerRuntime`, die CLI-Basis
+`CliContainerRuntime`, `DockerRuntime`, `PodmanRuntime`) stammen aus der Bibliothek [Container4J](https://github.com/OriginalFelix/Container4J); der
+`ContainerRuntimeProvider` macht eine Laufzeit in der App konfigurierbar. Docker und Podman liefert die App mit; eine
+weitere Laufzeit (z.B. nerdctl) braucht nur zwei Dinge:
 
 ```java
 public class NerdctlRuntimeProvider implements ContainerRuntimeProvider {
@@ -575,7 +577,7 @@ Ergebnisse (`.jfr`, Flame Graphs `.html`, `.hprof`, `.nps`) landen im Ablageordn
 
 ## Projektstruktur
 
-Gradle-Multiprojekt:
+Gradle-Multiprojekt, dazu [Container4J](https://github.com/OriginalFelix/Container4J) als Git-Submodule und eingebundener Build (`includeBuild`):
 
 | Projekt | Inhalt | Artefakt |
 |---|---|---|
@@ -583,6 +585,7 @@ Gradle-Multiprojekt:
 | `backend` | Benutzer, Profile und Einstellungs-Ebenen, Modul-Katalog, Projekte, Skills, Memories, Skripte und die Graph-Storage der Code-Graphen (ArcadeDB, eingebettet oder extern) mit **GraphQL-API** (HTTP + WebSocket-Subscriptions) | – (Bibliothek) |
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
 | `shared` | Gemeinsam: Einstellungs-Ablage, Datenklassen der GraphQL-API (`api`), Zugriff auf die Code-Graphen (`GraphProvider`, `GraphReader`, `CodeGraph`) | – |
+| `container4j` | Eigenständige Bibliothek: OCI-Container (Docker, Podman, …) über die Docker-kompatible CLI steuern – `ContainerRuntime`, `CliContainerRuntime`, `DockerRuntime`, `PodmanRuntime`; ohne Abhängigkeiten | `container4j/build/libs/container4j-<version>.jar`, Maven `systems.grebe:container4j` |
 | `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), Datenbankverbindungen (`DatabaseConnectionProvider`), Projektverzeichnisse (`ProjectProvider`), E-Mail-Konten (`MailAccountProvider`), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
 
 MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
@@ -602,6 +605,9 @@ verbinden. Die App läuft danach im Tray weiter und ist für alle Clients auf di
   für einen anderen Rechner dort bauen.
 
 ### Bauen
+
+[Container4J](https://github.com/OriginalFelix/Container4J) ist als Git-Submodule unter `container4j` eingebunden –
+beim Klonen `git clone --recurse-submodules …`, in einem bestehenden Klon einmal `git submodule update --init`.
 
 ```bash
 ./gradlew :desktop:bootJar          # desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar
@@ -1856,15 +1862,19 @@ Sie enthält, was ein Plugin braucht, und reicht Spring AI (`@Tool`, `ToolCallba
 | Plugin | `DevToolsPlugin`, `PluginContext`, `PluginDescriptor`, `PluginApi` |
 | Module | `ToolModule`, `ModuleAction`, `ConnectionTestResult`, `ToolScope`, `ConfigField`, `ConfigGroup`, `FieldType`, `ModuleConfig` |
 | Tools | `ToolBeans` (Callbacks mit Hinweisen), `@ToolHints`, `ToolProgress` (Fortschritt an den Client), `DelegatingToolCallback` |
-| Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `ContainerRuntimeProvider`/`ContainerRuntime`/`RuntimeSettings` |
+| Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `ContainerRuntimeProvider`/`RuntimeSettings` (die Laufzeit `ContainerRuntime` kommt aus Container4J, Paket `systems.grebe.container4j`) |
 | Datenbanken | `DatabaseConnectionProvider`, `DatabaseConnectionInfo` (Verbindungen des JDBC-Moduls, ab `api-version: 2`) |
 | Projekte | `ProjectProvider`, `ProjectDirectory` (freigegebene Projektverzeichnisse, ab `api-version: 2`) |
 | Mail | `MailAccountProvider`, `MailAccountInfo`, `MailFolderInfo`, `MailSummary`, `MailMessage`, `MailAttachment(Info)`, `MailQuery`, `MailDraft`, `MailSend`, `NewMail` (Konten des Mail-Moduls, ab `api-version: 3`) |
  Die App stellt all das zur Laufzeit bereit, ins Jar
-gehört nur der eigene Code. Die Pakete sind dieselben wie vorher im App-Jar: bereits gebaute Plugins laufen unverändert.
+gehört nur der eigene Code. Die Pakete sind dieselben wie vorher im App-Jar: bereits gebaute Plugins laufen unverändert
+– außer Container-Laufzeiten: `ContainerRuntime` und `CliContainerRuntime` liegen seit der Auslagerung nach Container4J
+in `systems.grebe.container4j` bzw. `systems.grebe.container4j.cli`; solche Plugins einmal neu bauen.
+
+Die Plugin-API hängt an `systems.grebe:container4j` – lokal beide veröffentlichen:
 
 ```bash
-./gradlew :plugin-api:publishToMavenLocal          # oder in ein eigenes Repository:
+./gradlew :container4j:publishToMavenLocal :plugin-api:publishToMavenLocal   # oder in ein eigenes Repository:
 ./gradlew :plugin-api:publish -PpluginApiRepository=https://nexus.acme.de/repository/maven-releases \
     -PpluginApiRepositoryUser=… -PpluginApiRepositoryPassword=…
 ```

@@ -14,6 +14,8 @@ dependencies {
     // Laufzeit-Abhängigkeiten der API-Klassen selbst (ModuleConfig liest JSON, ToolScope loggt)
     api("tools.jackson.core:jackson-databind")
     api("org.slf4j:slf4j-api")
+    // Container-Laufzeiten (ContainerRuntimeProvider.create liefert eine Container4J-Laufzeit)
+    api("systems.grebe:container4j:0.1.0-SNAPSHOT")
 
     // Bringt die App mit: Tools (ToolCallback, @Tool, ToolCallbacks) und der Spring-Kontext je Plugin (@Component,
     // @Bean, @PostConstruct …). Nur zum Kompilieren weitergereicht – Team-Server und Backend bekommen über shared
