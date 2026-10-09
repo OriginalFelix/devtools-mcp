@@ -14,10 +14,12 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
+import systems.grebe.devtools.mcp.core.McpSessionClosed;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolBeans;
 import systems.grebe.devtools.mcp.core.ToolModule;
@@ -77,6 +79,12 @@ public class WindowModule implements ToolModule {
     @Override
     public String id() {
         return "window";
+    }
+
+    /** Beendete MCP-Session (z.B. Neuverbinden des Clients): ihre Bindung sofort freigeben. */
+    @EventListener
+    void sessionClosed(McpSessionClosed event) {
+        sessions.end(event.sessionId());
     }
 
     @Override

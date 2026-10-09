@@ -65,6 +65,21 @@ class WindowSessionsTest {
         assertThatThrownBy(() -> in(claude).require()).hasMessageContaining("Kein Prozess gebunden");
     }
 
+    /** Der Client hat seine MCP-Session beendet (z.B. beim Neuverbinden) – nicht 2 Minuten auf sie warten. */
+    @Test
+    void anEndedMcpSessionFreesItsProcessAndColorAtOnce() {
+        in(claude).bind(me(), false);
+        in(codex);
+
+        sessions.end("s1");
+        sessions.end("unbekannt"); // nichts zu tun
+
+        in(codex).bind(me(), false);
+        assertThat(in(codex).current()).isNotNull();
+        assertThat(sessions.size()).isEqualTo(1);
+        assertThat(in(new ToolSession("s3", null)).color()).isEqualTo(AiColors.color(0)); // Rot ist wieder frei
+    }
+
     @Test
     void idleSessionsAreClosedAndTheirColorIsFreed() {
         in(claude).bind(me(), false);

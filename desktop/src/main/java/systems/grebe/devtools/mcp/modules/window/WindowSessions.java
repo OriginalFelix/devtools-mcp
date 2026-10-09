@@ -82,6 +82,19 @@ final class WindowSessions implements AutoCloseable {
         }
     }
 
+    /**
+     * Der Client hat die MCP-Session beendet: Bindung, Rahmen und Zeiger sofort freigeben und die Farbe zurückgeben –
+     * sonst sperrte die alte Session nach einem Neuverbinden den Prozess noch {@link #TAKEOVER} lang, auch für den
+     * Client selbst. Unbekannte IDs (Session ohne Fenster-Tool) ändern nichts.
+     */
+    void end(String sessionId) {
+        Entry e = sessions.remove(sessionId);
+        if (e != null) {
+            e.session.close();
+            colors.release(sessionId);
+        }
+    }
+
     int size() {
         return sessions.size();
     }

@@ -21,11 +21,13 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.event.EventListener;
 import org.springframework.test.annotation.DirtiesContext;
 import systems.grebe.devtools.mcp.channel.ChannelBridge;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ChannelEvents;
+import systems.grebe.devtools.mcp.core.McpSessionClosed;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
@@ -54,6 +56,20 @@ class McpServerIntegrationTest {
             return new SettingsStore(home);
         }
 
+        @Bean
+        ClosedSessions closedSessions() {
+            return new ClosedSessions();
+        }
+    }
+
+    /** Sammelt die Meldungen über beendete MCP-Sessions. */
+    static class ClosedSessions {
+        final List<String> ids = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        @EventListener
+        void closed(McpSessionClosed event) {
+            ids.add(event.sessionId());
+        }
     }
 
     @LocalServerPort
@@ -73,6 +89,9 @@ class McpServerIntegrationTest {
 
     @Autowired
     ChannelEvents channelEvents;
+
+    @Autowired
+    ClosedSessions closedSessions;
 
     @TempDir
     Path repoDir;
@@ -635,6 +654,22 @@ class McpServerIntegrationTest {
         } finally {
             registry.updateConfig("window", Map.of());
         }
+    }
+
+    /** Ein Client, der seine Session beendet (DELETE /mcp), meldet das – z.B. gibt die Fenstersteuerung dann frei. */
+    @Test
+    void closingAClientReportsTheEndOfItsSession() throws Exception {
+        McpSyncClient fresh = connect(null);
+        int before = closedSessions.ids.size();
+
+        fresh.closeGracefully();
+
+        long end = System.currentTimeMillis() + 5_000;
+        while (closedSessions.ids.size() == before && System.currentTimeMillis() < end) {
+            Thread.sleep(50);
+        }
+        assertThat(closedSessions.ids).hasSize(before + 1);
+        assertThat(closedSessions.ids.getLast()).isNotBlank();
     }
 
     @Test
