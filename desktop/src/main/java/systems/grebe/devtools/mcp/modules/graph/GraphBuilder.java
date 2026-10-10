@@ -1,6 +1,7 @@
 package systems.grebe.devtools.mcp.modules.graph;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -49,12 +50,19 @@ import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.MemberDecl;
 import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.RawEdge;
 import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.TypeDecl;
 
-/** Baut aus allen {@code .java}-Dateien eines Projekts den {@link CodeGraph}. */
+/**
+ * Baut aus allen Dateien eines Projekts den {@link CodeGraph}: {@code .java}-Dateien liest tree-sitter (Typen, Member,
+ * Aufrufe …), alle übrigen – Build-Skripte, Konfiguration, Ressourcen, Doku, auch Binärdateien – werden als
+ * Dateiknoten mit Länge und Prüfsumme aufgenommen, damit {@code graph_files}/{@code graph_read} sie finden.
+ */
 final class GraphBuilder {
 
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(GraphBuilder.class);
 
-    static final String GENERATOR = "devtools-mcp graph (tree-sitter-java) 3";
+    static final String GENERATOR = "devtools-mcp graph (tree-sitter-java, alle Dateien) 4";
+
+    /** So viele Bytes am Anfang einer Datei entscheiden, ob sie binär ist (enthält ein NUL-Byte). */
+    static final int BINARY_PROBE = 8192;
 
     /** Relationen, die für die Community-Erkennung zählen – mit Gewicht. */
     private static final Map<Relation, Double> COMMUNITY_WEIGHT = Map.of(
@@ -106,7 +114,13 @@ final class GraphBuilder {
     record Source(String path, String sha256) {
     }
 
-    /** Relative Pfade aller einzulesenden Java-Dateien, sortiert. */
+    /** Von tree-sitter gelesen? {@code module-info.java}/{@code package-info.java} bleiben reine Dateiknoten. */
+    static boolean isJava(String path) {
+        String name = path.substring(path.lastIndexOf('/') + 1);
+        return name.endsWith(".java") && !name.equals("module-info.java") && !name.equals("package-info.java");
+    }
+
+    /** Relative Pfade aller einzulesenden Dateien, sortiert. */
     List<Path> scan() {
         List<Path> out = new ArrayList<>();
         try {
@@ -122,8 +136,8 @@ final class GraphBuilder {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                     String name = file.getFileName().toString();
-                    if (attrs.isRegularFile() && name.endsWith(".java") && !name.equals("module-info.java")
-                            && !name.equals("package-info.java") && !excluded(root.relativize(file), false)) {
+                    if (attrs.isRegularFile() && !name.startsWith(GraphStore.FILE_PREFIX)
+                            && !excluded(root.relativize(file), false)) {
                         out.add(root.relativize(file));
                     }
                     return FileVisitResult.CONTINUE;
@@ -139,7 +153,7 @@ final class GraphBuilder {
         }
         out.sort(Comparator.comparing(p -> p.toString().replace('\\', '/')));
         if (out.size() > maxFiles) {
-            throw new IllegalStateException(out.size() + " Java-Dateien gefunden, erlaubt sind " + maxFiles
+            throw new IllegalStateException(out.size() + " Dateien gefunden, erlaubt sind " + maxFiles
                     + " (Einstellung 'Max. Dateien' im Graph-Modul). Ausschlüsse ergänzen oder Grenze erhöhen.");
         }
         return out;
@@ -150,6 +164,9 @@ final class GraphBuilder {
         String name = rel.getFileName() == null ? p : rel.getFileName().toString();
         if (dir && name.startsWith(".") && !name.equals(".")) {
             return true; // .git, .gradle, .idea …
+        }
+        if (name.equals(".git")) {
+            return true; // in Worktrees und Submodulen eine Datei mit dem Pfad des Repositories
         }
         if (!includeTests && dir && name.equals("test") && p.contains("src/")) {
             return true;
@@ -175,10 +192,15 @@ final class GraphBuilder {
         return relPath.startsWith("src/") || relPath.contains("/src/");
     }
 
+    /** Prüfsumme gestreamt – auch große Binärdateien landen nicht ganz im Heap. */
     Source read(Path rel) {
-        try {
-            byte[] bytes = Files.readAllBytes(root.resolve(rel));
-            return new Source(rel.toString().replace('\\', '/'), sha256(bytes));
+        try (InputStream in = Files.newInputStream(root.resolve(rel))) {
+            MessageDigest md = sha256();
+            byte[] buf = new byte[64 * 1024];
+            for (int r; (r = in.read(buf)) > 0; ) {
+                md.update(buf, 0, r);
+            }
+            return new Source(rel.toString().replace('\\', '/'), HexFormat.of().formatHex(md.digest()));
         } catch (IOException e) {
             throw new UncheckedIOException("Datei nicht lesbar: " + rel, e);
         }
@@ -203,10 +225,38 @@ final class GraphBuilder {
     }
 
     static String sha256(byte[] bytes) {
+        return HexFormat.of().formatHex(sha256().digest(bytes));
+    }
+
+    private static MessageDigest sha256() {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Zeilen einer Nicht-Java-Datei, gezählt wie bei {@code graph_read} (Zeilenumbrüche + 1); 0 = Binärdatei
+     * (NUL-Byte in den ersten {@value #BINARY_PROBE} Bytes).
+     */
+    int lines(Source s) {
+        try (InputStream in = Files.newInputStream(root.resolve(s.path()))) {
+            byte[] buf = new byte[64 * 1024];
+            long read = 0;
+            int lines = 1;
+            for (int r; (r = in.read(buf)) > 0; read += r) {
+                for (int i = 0; i < r; i++) {
+                    if (buf[i] == '\n') {
+                        lines++;
+                    } else if (buf[i] == 0 && read + i < BINARY_PROBE) {
+                        return 0;
+                    }
+                }
+            }
+            return lines;
+        } catch (IOException e) {
+            throw new UncheckedIOException("Datei nicht lesbar: " + s.path(), e);
         }
     }
 
@@ -265,6 +315,9 @@ final class GraphBuilder {
                 ParseCache.CachedFile c = previous.get(s.path());
                 if (c != null && c.sha256().equals(s.sha256())) {
                     declFutures.add(CompletableFuture.completedFuture(c.decl()));
+                } else if (!isJava(s.path())) {
+                    declFutures.add(pool.submit(() -> plainFile(s)));
+                    parsedDecls++;
                 } else {
                     declFutures.add(pool.submit(() -> declarationsOrEmpty(s)));
                     parsedDecls++;
@@ -294,7 +347,9 @@ final class GraphBuilder {
                 FileDecl d = decls.get(i);
                 Source s = sources.get(i);
                 ParseCache.CachedFile c = previous.get(s.path());
-                if (sameDeclarations && c != null && c.decl() == d && c.refs() != null) {
+                if (!isJava(s.path())) {
+                    futures.add(CompletableFuture.completedFuture(List.of())); // kein Quelltext mit Referenzen
+                } else if (sameDeclarations && c != null && c.decl() == d && c.refs() != null) {
                     futures.add(CompletableFuture.completedFuture(c.refs()));
                 } else {
                     futures.add(pool.submit(() -> referencesOrEmpty(d, s, resolver)));
@@ -365,6 +420,16 @@ final class GraphBuilder {
         return HexFormat.of().formatHex(md.digest());
     }
 
+    /** Nicht-Java-Datei: nur Pfad und Länge, keine Deklarationen; Binärdateien mit 0 Zeilen. */
+    private FileDecl plainFile(Source s) {
+        try {
+            return new FileDecl(s.path(), "", List.of(), List.of(), lines(s), false);
+        } catch (UncheckedIOException e) {
+            LOG.warn("Graph: {} nicht lesbar – Datei ohne Länge übernommen", s.path(), e);
+            return new FileDecl(s.path(), "", List.of(), List.of(), 0, true);
+        }
+    }
+
     /**
      * Ein Fehler in einer einzelnen Datei (Randfall im Extractor) darf nicht den ganzen Aufbau abbrechen: die Datei
      * wird ohne Inhalt übernommen, als fehlerhaft markiert und im Bericht genannt. Abbruch (Interrupt) geht durch.
@@ -422,10 +487,16 @@ final class GraphBuilder {
             FileDecl d = decls.get(i);
             Source s = sources.get(i);
             files.add(new FileEntry(d.path(), s.sha256(), d.lines(), d.errors() ? Boolean.TRUE : null));
+            String fId = fileId(d.path());
+            if (!isJava(d.path())) {
+                // ohne Paket: Ressourcen, Build-Skripte, Doku … – über Pfad und Dateinamen auffindbar
+                nodes.put(fId, new Node(fId, Kind.FILE, d.path(), d.path(), null, d.lines() > 0 ? d.lines() : null,
+                        null, null, null, null));
+                continue;
+            }
             String pkgId = packageId(d.pkg());
             nodes.putIfAbsent(pkgId, new Node(pkgId, Kind.PACKAGE, d.pkg().isEmpty() ? "(default)" : d.pkg(),
                     null, null, null, null, null, null, null));
-            String fId = fileId(d.path());
             nodes.put(fId, new Node(fId, Kind.FILE, d.path(), d.path(), null, d.lines(), null, null, null, null));
             edge(edges, pkgId, fId, Relation.CONTAINS, Confidence.EXTRACTED, 1, null);
             for (TypeDecl t : d.types()) {
