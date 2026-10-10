@@ -98,10 +98,11 @@ record GitState(String branch, String commit, Set<String> branches) {
     }
 
     /**
-     * Keine Änderungen an Java-Dateien im Arbeitsverzeichnis gegenüber HEAD (auch keine neuen) – dann entspricht der
-     * Graph des ausgecheckten Branches genau seinem Commit.
+     * Keine Änderungen an Dateien des Graphen im Arbeitsverzeichnis gegenüber HEAD (auch keine neuen; versteckte Ordner
+     * wie {@code .idea} und die Graph-Ablage zählen nicht) – dann entspricht der Graph des ausgecheckten Branches genau
+     * seinem Commit.
      */
-    static boolean javaClean(Path root) {
+    static boolean clean(Path root) {
         FileRepositoryBuilder builder = new FileRepositoryBuilder().findGitDir(root.toFile());
         if (builder.getGitDir() == null) {
             return false;
@@ -116,9 +117,20 @@ record GitState(String branch, String commit, Set<String> branches) {
             Status st = cmd.call();
             return Stream.of(st.getAdded(), st.getChanged(), st.getModified(), st.getMissing(),
                             st.getRemoved(), st.getUntracked(), st.getConflicting())
-                    .flatMap(Set::stream).noneMatch(p -> p.endsWith(".java"));
+                    .flatMap(Set::stream).noneMatch(GitState::inGraph);
         } catch (IOException | GitAPIException | RuntimeException e) {
             return false;
         }
+    }
+
+    /** Käme die Datei (Pfad relativ zum Repository) in den Graphen – nicht in versteckten Ordnern, keine Ablage? */
+    private static boolean inGraph(String path) {
+        String[] parts = path.split("/");
+        for (int i = 0; i < parts.length - 1; i++) {
+            if (parts[i].startsWith(".")) {
+                return false;
+            }
+        }
+        return !parts[parts.length - 1].startsWith(GraphStore.FILE_PREFIX);
     }
 }

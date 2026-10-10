@@ -64,7 +64,8 @@ final class GraphFiles {
     // ------------------------------------------------------------------ Suche nach Name, Stichworten oder Pfad
 
     /**
-     * Dateien zu einem Suchtext: Pfad bzw. Pfadmuster (enthält {@code /} oder endet auf {@code .java}), Namensmuster
+     * Dateien zu einem Suchtext: Pfad bzw. Pfadmuster (enthält {@code /} oder ist ein Dateiname mit Endung wie
+     * {@code Order.java}, {@code build.gradle} oder {@code *.yml}), Namensmuster
      * mit {@code *} oder Stichworte/Namen (CamelCase, Wortstämme, Javadoc wie bei {@code graph_query}).
      */
     String search(String query, boolean includeTests, int limit) {
@@ -75,9 +76,8 @@ final class GraphFiles {
         }
         Map<String, FileHit> files = new LinkedHashMap<>();
         String lower = text.replace('\\', '/').toLowerCase(Locale.ROOT);
-        String how;
-        if (lower.contains("/") || lower.endsWith(".java")) {
-            how = "Pfad";
+        String how = null;
+        if (lower.contains("/") || GraphQueries.looksLikeFileName(lower)) {
             String[] glob = lower.contains("*") ? lower.split("\\*", -1) : null;
             NodeSearch search = glob != null
                     ? new NodeSearch(EnumSet.of(Kind.FILE), null, false, null, GraphQueries.globRegex(glob, false),
@@ -90,14 +90,19 @@ final class GraphFiles {
                         : path.equals(lower) || path.endsWith("/" + lower);
                 add(files, f.file(), null, whole ? 2 : 1);
             }
-        } else if (lower.contains("*")) {
+            // ohne '/' kann ein Punkt auch 'Typ.methode' sein: ohne Dateitreffer wie Name/Stichworte weitersuchen
+            if (!files.isEmpty() || lower.contains("/")) {
+                how = "Pfad";
+            }
+        }
+        if (how == null && lower.contains("*")) {
             how = "Namensmuster";
             List<Node> hits = q.find(text, null, GraphQueries.MAX_CANDIDATES);
             for (int i = 0; i < hits.size(); i++) {
                 Node n = hits.get(i);
                 add(files, n.file(), n.kind() == Kind.FILE ? null : n, 1 + (double) (hits.size() - i) / hits.size());
             }
-        } else {
+        } else if (how == null) {
             List<String> terms = GraphQueries.terms(text);
             if (terms.isEmpty()) {
                 throw new IllegalArgumentException("Keine Suchbegriffe erkannt (mind. 3 Zeichen, keine Füllwörter).");

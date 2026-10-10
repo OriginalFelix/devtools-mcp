@@ -262,7 +262,7 @@ final class GraphService {
         try {
             long start = System.nanoTime();
             GraphBuilder builder = new GraphBuilder(root, excludes, includeTests, maxFiles);
-            progress.update("Suche Java-Dateien …", -1);
+            progress.update("Suche Dateien …", -1);
             List<Path> paths = builder.scan();
             List<GraphBuilder.Source> sources = new ArrayList<>(paths.size());
             for (int i = 0; i < paths.size(); i++) {
@@ -354,14 +354,14 @@ final class GraphService {
     /**
      * Ein eben angelegter, nicht ausgecheckter Branch, der auf dem ausgecheckten Commit steht: übernimmt den Graphen des
      * ausgecheckten Branches (vorher auf den aktuellen Stand gebracht), wenn das Arbeitsverzeichnis keine Änderungen an
-     * Java-Dateien hat – sonst gehörten sie nicht zu seinem Commit. Gebaut wird er dann beim Auschecken.
+     * Dateien hat – sonst gehörten sie nicht zu seinem Commit. Gebaut wird er dann beim Auschecken.
      *
      * @return Ergebnis oder {@code null}, wenn nichts übernommen wurde
      */
     BuildResult adopt(String project, String newBranch) {
         BuildResult current = build(project, null, false, ModuleAction.Progress.NONE);
         Path root = resolve(project);
-        if (current.key().branch() == null || current.key().branch().equals(newBranch) || !GitState.javaClean(root)) {
+        if (current.key().branch() == null || current.key().branch().equals(newBranch) || !GitState.clean(root)) {
             return null;
         }
         Key target = key(root, newBranch);
