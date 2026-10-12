@@ -3,8 +3,15 @@ package systems.grebe.devtools.mcp.modules.visualvm;
 import java.io.DataInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -55,6 +62,39 @@ class VisualVmToolsTest {
         String spec = hashMap.substring(hashMap.indexOf("java.util.HashMap#")).split("\\s")[0];
         String detail = tools.heapAnalyze(null, null, null, null, spec);
         assertThat(detail).contains("Felder:").contains("table =").contains("Pfad zur GC-Wurzel");
+    }
+
+    @Test
+    void parallelAnalysesOfTheSameDumpShareOneHeapOneAfterAnother() throws Exception {
+        // #95: zwei Heaps auf demselben Dump zerstören sich gegenseitig den Index-Cache (<dump>.hwcache) –
+        // gleichzeitige Aufrufe müssen sich einen Heap teilen und nacheinander darauf zugreifen
+        Path dump = env.target(null).heapDump(true, env.artifacts());
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger maxActive = new AtomicInteger();
+        Set<HeapAnalyzer> heaps = ConcurrentHashMap.newKeySet();
+        var pool = Executors.newFixedThreadPool(4);
+        try {
+            List<Future<String>> runs = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                runs.add(pool.submit(() -> HeapAnalyzer.analyze(dump, a -> {
+                    maxActive.accumulateAndGet(active.incrementAndGet(), Math::max);
+                    heaps.add(a);
+                    try {
+                        return a.overview(5, 3, null);
+                    } finally {
+                        active.decrementAndGet();
+                    }
+                })));
+            }
+            for (Future<String> run : runs) {
+                assertThat(run.get(5, TimeUnit.MINUTES)).contains("static systems.grebe.devtools.mcp.testjvm.FixtureApp.CACHE");
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(maxActive).hasValue(1);
+        assertThat(heaps).hasSize(1);
+        assertThat(dump.resolveSibling(dump.getFileName() + ".hwcache").resolve("dirty.lck")).doesNotExist();
     }
 
     @Test

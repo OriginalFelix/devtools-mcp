@@ -43,10 +43,9 @@ public class VisualVmTools {
         JavaEnvironment e = env.get();
         ArtifactStore s = e.artifacts();
         Path f = file == null || file.isBlank() ? s.latest("hprof", null) : s.resolve(file);
-        HeapAnalyzer a = new HeapAnalyzer(f);
-        String out = instance != null && !instance.isBlank()
+        String out = HeapAnalyzer.analyze(f, a -> instance != null && !instance.isBlank()
                 ? a.instance(instance)
-                : a.overview(topClasses == null ? 25 : Math.max(1, topClasses), topObjects == null ? 8 : Math.max(0, topObjects), classFilter);
+                : a.overview(topClasses == null ? 25 : Math.max(1, topClasses), topObjects == null ? 8 : Math.max(0, topObjects), classFilter));
         return Text.limitLines(out, e.maxLines());
     }
 
