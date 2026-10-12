@@ -73,8 +73,17 @@ public class PrCreateTools {
         GitServer.WriteResult r = t.server().create(t.project(), new GitServer.NewPullRequest(title.strip(),
                 blankToNull(description), src, tgt, Boolean.TRUE.equals(draft), reviewers,
                 Boolean.TRUE.equals(deleteSourceBranch)));
-        return PrTools.written(r) + note;
+        return PrTools.written(r) + note + (r.url() == null ? "" : BIND_HINT);
     }
+
+    /**
+     * Der MCP-Server kann den neuen PR nicht selbst an die Client-Sitzung binden; Clients wie Claude Code Desktop
+     * erkennen PRs, die über diesen Server angelegt wurden, nicht von selbst – das Modell holt es mit dem Werkzeug des
+     * Clients nach.
+     */
+    static final String BIND_HINT = "\nAn die Sitzung binden: Bietet der Client ein Werkzeug dafür an (z.B. bind_pr in "
+            + "Claude Code), den Pull Request jetzt mit dieser URL binden – sonst zeigt die App ihn nicht an und "
+            + "überwacht seine CI nicht.";
 
     @Tool(name = "update", description = "Ändert Titel, Beschreibung oder Ziel-Branch eines Pull/Merge Requests; nicht "
             + "angegebene Felder bleiben. Nur auf Anweisung des Nutzers." + ShellHints.PR)
