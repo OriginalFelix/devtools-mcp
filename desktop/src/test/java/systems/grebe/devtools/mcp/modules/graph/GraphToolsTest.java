@@ -174,9 +174,9 @@ class GraphToolsTest {
         values.put(GraphModule.PROJECTS, empty.toString());
         values.put(GraphModule.STORAGE, GraphModule.STORAGE_FILE);
         GraphTools t = new GraphTools(new GraphService(ModuleConfig.of(new GraphModule().configSchema(), values)));
-        assertThat(t.build(null, false)).startsWith("Graph gebaut").contains("0 Dateien, 0 Knoten");
+        assertThat(t.build(null, false)).startsWith("Graph gebaut").contains("1 Dateien, 1 Knoten");
         GraphStore.clearCache();
-        assertThat(GraphStore.load(empty).nodes()).isEmpty();
+        assertThat(GraphStore.load(empty).nodes()).extracting(CodeGraph.Node::id).containsExactly("file:pom.xml");
 
         Files.writeString(empty.resolve(GraphStore.FILE_NAME), "{\n  \"format\": \"etwas-anderes\",\n  \"nodes\": [\n  ]\n}\n");
         GraphStore.clearCache();
@@ -267,12 +267,57 @@ class GraphToolsTest {
     }
 
     @Test
+    void graphContainsAllProjectFilesNotOnlyJava() throws Exception {
+        Path res = Files.createDirectories(project.resolve("src/main/resources"));
+        Files.writeString(res.resolve("application.yml"), "server:\n  port: 8080\n");
+        Files.write(res.resolve("logo.png"), new byte[] {(byte) 0x89, 'P', 'N', 'G', 0, 0, 1});
+        Files.writeString(project.resolve("Dockerfile"), "FROM eclipse-temurin:25\n");
+        Files.writeString(project.resolve("src/main/java/com/acme/shop/package-info.java"), "package com.acme.shop;\n");
+        Files.createDirectories(project.resolve(".idea"));
+        Files.writeString(project.resolve(".idea/workspace.xml"), "<project/>");
+        Files.createDirectories(project.resolve("build/libs"));
+        Files.writeString(project.resolve("build/libs/app.jar"), "x");
+
+        GraphTools t = tools();
+        CodeGraph g = graph();
+        assertThat(g.data().files()).extracting(CodeGraph.FileEntry::path)
+                .contains("build.gradle", "Dockerfile", "src/main/resources/application.yml",
+                        "src/main/resources/logo.png", "src/main/java/com/acme/shop/package-info.java",
+                        "src/main/java/com/acme/shop/Order.java")
+                .noneMatch(p -> p.startsWith(".idea/") || p.startsWith("build/") || p.startsWith("devtools-fileinfo"));
+        CodeGraph.Node yml = g.node("file:src/main/resources/application.yml");
+        assertThat(yml.kind()).isEqualTo(Kind.FILE);
+        assertThat(yml.endLine()).isEqualTo(3);
+        assertThat(g.incoming(yml.id())).isEmpty(); // kein Paket
+        assertThat(g.node("file:src/main/resources/logo.png").endLine()).isNull(); // binär
+        // Java weiterhin mit Paket und Typen
+        edge(g, "pkg:com.acme.shop", "file:src/main/java/com/acme/shop/Order.java", Relation.CONTAINS);
+
+        assertThat(t.files(null, "application.yml", null, null, null, null, null, null, null))
+                .startsWith("1 Datei (Pfad):\nsrc/main/resources/application.yml  (3 Z.)");
+        assertThat(t.files(null, "*.yml", null, null, null, null, null, null, null)).contains("application.yml");
+        assertThat(t.files(null, "Dockerfile", null, null, null, null, null, null, null)).contains("Dockerfile");
+        assertThat(t.read(null, List.of("application.yml"), null, null, null, null)).contains("2\t  port: 8080");
+        assertThat(t.read(null, List.of("Dockerfile"), null, null, null, null)).contains("1\tFROM eclipse-temurin:25");
+        assertThatThrownBy(() -> t.read(null, List.of("logo.png"), null, null, null, null))
+                .hasMessageContaining("binär");
+        // 'Typ.methode' bleibt ein Member, kein Dateiname
+        assertThat(t.read(null, List.of("OrderRepository.save"), null, null, null, null))
+                .contains("void save(Order o);");
+
+        // Änderungen an Nicht-Java-Dateien lösen einen Neuaufbau aus
+        assertThat(t.build(null, false)).startsWith("Graph ist aktuell");
+        Files.writeString(res.resolve("application.yml"), "server:\n  port: 9090\n");
+        assertThat(t.build(null, false)).startsWith("Graph gebaut").contains("geändert 1, neu 0, entfernt 0");
+    }
+
+    @Test
     void searchBuildsMissingGraphFirstAndSaysSo() {
         GraphTools t = tools();
         assertThat(GraphStore.files(project)).isEmpty();
         String first = t.files(null, "OrderRepository", null, null, null, null, null, null, null);
         assertThat(first).startsWith("Noch kein Graph für " + project.getFileName() + " (Branch ")
-                .contains(" – eben gebaut in ", " ms, 4 Dateien.\n\n4 Dateien (Stichworte ")
+                .contains(" – eben gebaut in ", " ms, 5 Dateien.\n\n4 Dateien (Stichworte ")
                 .contains("src/main/java/com/acme/shop/repo/OrderRepository.java  (10 Z.)");
         // danach ohne Hinweis – der Graph ist gespeichert
         assertThat(t.files(null, "OrderRepository", null, null, null, null, null, null, null)).startsWith("4 Dateien");
@@ -440,13 +485,13 @@ class GraphToolsTest {
             fractions.add(f);
         });
         assertThat(first.success()).isTrue();
-        assertThat(first.message()).startsWith("Graph gebaut").contains("4 Dateien", GraphStore.FILE_NAME);
+        assertThat(first.message()).startsWith("Graph gebaut").contains("5 Dateien", GraphStore.FILE_NAME);
         assertThat(messages).anyMatch(m -> m.startsWith("Deklarationen"))
                 .anyMatch(m -> m.startsWith("Aufrufe und Referenzen")).contains("Fertig");
         assertThat(fractions.getLast()).isEqualTo(1.0);
         assertThat(fractions.stream().filter(f -> f >= 0).toList()).isSorted();
 
-        assertThat(action.describe(cfg, target)).contains("Graph vom", "4 Dateien", "Knoten");
+        assertThat(action.describe(cfg, target)).contains("Graph vom", "5 Dateien", "Knoten");
         assertThat(action.run(cfg, target, Set.of(), ModuleAction.Progress.NONE).message()).startsWith("Graph ist aktuell");
         assertThat(action.run(cfg, target, Set.of(GraphIndexAction.FORCE), ModuleAction.Progress.NONE).message())
                 .startsWith("Graph gebaut");

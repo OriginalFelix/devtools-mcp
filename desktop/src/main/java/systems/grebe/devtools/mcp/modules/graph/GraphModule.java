@@ -76,7 +76,8 @@ public class GraphModule implements ToolModule {
 
     @Override
     public String description() {
-        return "Baut per tree-sitter einen Graphen aus Klassen, Methoden, Imports, Vererbung und Aufrufen – je Projekt "
+        return "Baut per tree-sitter einen Graphen aus Klassen, Methoden, Imports, Vererbung und Aufrufen, dazu allen "
+                + "übrigen Dateien des Projekts – je Projekt "
                 + "und Git-Branch in der Graph-Datenbank des Backends (ArcadeDB) oder als Datei im Projekt – und "
                 + "beantwortet Struktur- und Aufruffragen daraus per OpenCypher.";
     }
@@ -88,8 +89,11 @@ public class GraphModule implements ToolModule {
                 werden – auch bei scheinbar einfachen Fragen wie „wo steht X?“ oder „welche Datei macht Y?“ –, zuerst \
                 `graph_files`, `graph_query` oder `graph_find` aufrufen und danach mit `graph_read` nur die nötigen \
                 Stellen lesen. `grep`, `rg`, `find`, Glob oder das Öffnen ganzer Dateien erst, wenn der Graph nichts \
-                liefert (z.B. Nicht-Java-Dateien, Konfiguration, Texte in Strings oder Kommentaren) – dann kurz sagen, \
-                warum.
+                liefert (z.B. Texte in Strings, Kommentaren oder im Inhalt von Nicht-Java-Dateien) – dann kurz sagen, \
+                warum. Der Graph kennt alle Dateien des Projekts (außer Ausschlüssen und versteckten Ordnern): Java \
+                mit Typen, Membern und Aufrufen, alle übrigen (Build-Skripte, Konfiguration, Ressourcen, Doku …) als \
+                Dateiknoten – auch sie per `graph_files` (Name, Pfad, Muster wie `*.yml`) finden und per `graph_read` \
+                lesen.
                 Für Struktur- und Architekturfragen ebenso den Code-Graphen verwenden:
                 - `graph_report`: Überblick (God Nodes, Communities, überraschende Verbindungen) – vor Architekturfragen.
                 - `graph_query`: Frage in Stichworten → passende Typen/Methoden und ihr Zusammenhang.
@@ -144,8 +148,9 @@ public class GraphModule implements ToolModule {
                 ConfigField.of(EXCLUDES, "Ausschlüsse", FieldType.STRING_LIST)
                         .withDefault("build\ntarget\nout\nbin\nnode_modules")
                         .withHelp("Eine Zeile je Eintrag: Ordnername (außerhalb von src/, z.B. Build-Ausgaben), relativer "
-                                + "Pfad (z.B. src/gen) oder Dateimuster (*.gen.java). Versteckte Ordner (.git, .gradle …) "
-                                + "sind immer ausgeschlossen."),
+                                + "Pfad (z.B. src/gen) oder Dateimuster (*.gen.java, *.log). Versteckte Ordner (.git, "
+                                + ".gradle …) sind immer ausgeschlossen. Alle übrigen Dateien kommen in den Graphen – Java "
+                                + "mit Typen und Aufrufen, der Rest als Dateiknoten."),
                 ConfigField.of(INCLUDE_TESTS, "Tests einbeziehen", FieldType.BOOLEAN).withDefault("true")
                         .withHelp("Aus = Ordner src/test/… werden übersprungen."),
                 ConfigField.of(MAX_FILES, "Max. Dateien", FieldType.INT).withDefault("30000")

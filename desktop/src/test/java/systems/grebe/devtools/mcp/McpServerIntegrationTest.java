@@ -557,7 +557,7 @@ class McpServerIntegrationTest {
             assertThat(result.success()).as(result.message()).isTrue();
             assertThat(Files.exists(repoDir.resolve("devtools-fileinfo@main.graph"))).isTrue();
             assertThat(changes[0]).isGreaterThan(before);
-            assertThat(registry.describeActionTarget("graph", "index", project)).contains("Graph vom", "1 Dateien");
+            assertThat(registry.describeActionTarget("graph", "index", project)).contains("Graph vom", "2 Dateien"); // A.java + README.md
             assertThat(registry.runAction("graph", "index", "gibt-es-nicht", java.util.Set.of(), null).message())
                     .contains("nicht freigegeben");
             assertThat(registry.actions("git")).isEmpty();

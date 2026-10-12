@@ -462,8 +462,8 @@ class DatabaseGraphStorageTest {
         assertThat(action.describe(cfg, target)).contains("Branch main").endsWith("noch kein Graph");
         ModuleAction.ActionResult r = action.run(cfg, target, Set.of(), ModuleAction.Progress.NONE);
         assertThat(r.success()).isTrue();
-        assertThat(r.message()).startsWith("Graph gebaut").contains("(Branch main)", "4 Dateien", "ArcadeDB");
-        assertThat(action.describe(cfg, target)).contains("Branch main", "Graph vom", "4 Dateien");
+        assertThat(r.message()).startsWith("Graph gebaut").contains("(Branch main)", "5 Dateien", "ArcadeDB");
+        assertThat(action.describe(cfg, target)).contains("Branch main", "Graph vom", "5 Dateien");
 
         assertThat(module.testConnection(cfg).message()).contains("Verbunden: ArcadeDB eingebettet", "ArcadeDB 26.",
                 "[Graph: main]");
