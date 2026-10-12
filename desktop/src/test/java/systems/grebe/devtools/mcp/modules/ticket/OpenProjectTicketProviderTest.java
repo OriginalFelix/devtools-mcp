@@ -185,7 +185,7 @@ class OpenProjectTicketProviderTest {
         assertThat(tools().transitions("#1", null, null)).contains("[status:12]  Status → Closed  → Closed (DONE)  – Workflow")
                 .doesNotContain("[status:7]");
         assertThat(op.last("/api/v3/work_packages/1/form").body()).isEqualTo("{\"lockVersion\":3}");
-        assertThat(new TicketTransitionTools(env, false).transition("1", "closed", null, null, null)).startsWith("#1: Status → Closed");
+        assertThat(new TicketTransitionTools(env, false).transition("1", "closed", null, null, null, null, null)).startsWith("#1: Status → Closed");
         assertThat(op.last("/api/v3/work_packages/1").body())
                 .isEqualTo("{\"lockVersion\":3,\"_links\":{\"status\":{\"href\":\"/api/v3/statuses/12\"}}}");
 
@@ -197,20 +197,20 @@ class OpenProjectTicketProviderTest {
         new TicketAssignTools(env).assign("#1", List.of(), null, null);
         assertThat(op.last("/api/v3/work_packages/1").body()).contains("\"assignee\":{\"href\":null}");
 
-        assertThat(new TicketEditTools(env).update("#1", "Neu", "Text", null, null, null, null)).contains("geändert: Titel, Beschreibung");
+        assertThat(new TicketEditTools(env).update("#1", "Neu", "Text", null, null, null, null, null, null)).contains("geändert: Titel, Beschreibung");
         assertThat(op.last("/api/v3/work_packages/1").body())
                 .isEqualTo("{\"lockVersion\":3,\"subject\":\"Neu\",\"description\":{\"raw\":\"Text\"}}");
-        assertThatThrownBy(() -> new TicketEditTools(env).update("#1", null, null, List.of("x"), null, null, null))
+        assertThatThrownBy(() -> new TicketEditTools(env).update("#1", null, null, List.of("x"), null, null, null, null, null))
                 .hasMessageContaining("kennt keine Labels");
 
-        assertThat(new TicketCommentTools(env).comment("#1", "Hallo", null, null)).startsWith("#1: Kommentar 77 hinzugefügt");
+        assertThat(new TicketCommentTools(env).comment("#1", "Hallo", null, null, null, null)).startsWith("#1: Kommentar 77 hinzugefügt");
         assertThat(op.last("/api/v3/work_packages/1/activities").body()).isEqualTo("{\"comment\":{\"raw\":\"Hallo\"}}");
 
         // Projekt kommt aus dem Arbeitspaket, nicht aus dem Parameter oder einer URL
         TicketEnvironment restricted = env("writeProjects", "openproject:other");
         assertThatThrownBy(() -> new TicketCommentTools(restricted).comment(op.url() + "/projects/other/work_packages/1",
-                "x", "other", null)).hasMessageContaining("in 'demo' (openproject) ist nicht freigegeben");
-        assertThat(new TicketCommentTools(env("writeProjects", "openproject:demo")).comment("#1", "y", null, null))
+                "x", "other", null, null, null)).hasMessageContaining("in 'demo' (openproject) ist nicht freigegeben");
+        assertThat(new TicketCommentTools(env("writeProjects", "openproject:demo")).comment("#1", "y", null, null, null, null))
                 .startsWith("#1: Kommentar");
     }
 
@@ -227,13 +227,13 @@ class OpenProjectTicketProviderTest {
                 + "\"_links\":{\"children\":[{\"href\":\"/api/v3/work_packages/9\"}]}}");
         TicketEnvironment env = env();
 
-        assertThat(new TicketCreateTools(env).create("Neu", "Text", null, "bug", null, null, null, null))
+        assertThat(new TicketCreateTools(env).create("Neu", "Text", null, "bug", null, null, null, null, null, null))
                 .startsWith("#60: angelegt (Bug)\n" + op.url() + "/work_packages/60");
         assertThat(op.last("/api/v3/projects/demo/work_packages").body())
                 .isEqualTo("{\"subject\":\"Neu\",\"description\":{\"raw\":\"Text\"},\"_links\":{\"type\":{\"href\":\"/api/v3/types/2\"}}}");
-        assertThatThrownBy(() -> new TicketCreateTools(env).create("Neu", null, null, "Epic", null, null, null, null))
+        assertThatThrownBy(() -> new TicketCreateTools(env).create("Neu", null, null, "Epic", null, null, null, null, null, null))
                 .hasMessageContaining("Typ 'Epic'").hasMessageContaining("Gültig: Task, Bug");
-        assertThatThrownBy(() -> new TicketCreateTools(env).create("Neu", null, null, null, List.of("x"), null, null, null))
+        assertThatThrownBy(() -> new TicketCreateTools(env).create("Neu", null, null, null, List.of("x"), null, null, null, null, null))
                 .hasMessageContaining("kennt keine Labels");
 
         TicketDeleteTools own = new TicketDeleteTools(env, true);

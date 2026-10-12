@@ -1,8 +1,11 @@
 package systems.grebe.devtools.mcp.modules.ticket;
 
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.Signature;
+import systems.grebe.devtools.mcp.core.SignatureModule;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 
 import static systems.grebe.devtools.mcp.modules.ticket.TicketTools.PROJECT;
@@ -28,7 +31,9 @@ public class TicketTransitionTools {
             @ToolParam(description = "Ziel: ID, Name oder Zielstatus aus ticket_transitions, z.B. 'In Arbeit' oder 'close:completed'") String to,
             @ToolParam(required = false, description = "Kommentar zum Wechsel (braucht zusätzlich die Freigabe Kommentieren)") String comment,
             @ToolParam(required = false, description = PROJECT) String project,
-            @ToolParam(required = false, description = PROVIDER) String provider) {
+            @ToolParam(required = false, description = PROVIDER) String provider,
+            @ToolParam(required = false, description = Signature.MODEL_PARAM) String aiModel,
+            ToolContext toolContext) {
         TicketEnvironment.Entry e = env.resolve(provider, key);
         String k = key.trim();
         String p = e.project(project);
@@ -44,6 +49,7 @@ public class TicketTransitionTools {
             return TicketTools.written(e.system().transition(k, p, t));
         }
         // in einem Aufruf: manche Workflows (Jira-Validatoren) lassen den Wechsel nur mit Kommentar zu
-        return TicketTools.written(env.remember(e, e.system().transition(k, p, t, env.commentBody(comment)), false));
+        return TicketTools.written(env.remember(e, e.system().transition(k, p, t,
+                env.commentBody(comment, SignatureModule.modelName(aiModel, toolContext))), false));
     }
 }

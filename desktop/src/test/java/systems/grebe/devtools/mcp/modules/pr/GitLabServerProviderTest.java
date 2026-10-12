@@ -86,12 +86,12 @@ class GitLabServerProviderTest {
         gl.on(MR + "/discussions/d2", "{\"id\":\"d2\"}");
         PrEnvironment env = env();
 
-        String out = new PrCommentTools(env).comment("Bitte prüfen", "grp/app!12", "src/A.java", 7, null, null, null);
+        String out = new PrCommentTools(env).comment("Bitte prüfen", "grp/app!12", "src/A.java", 7, null, null, null, null, null);
         assertThat(out).contains("Code-Kommentar an src/A.java:7", "Thread d9", "/grp/app/-/merge_requests/12#note_50");
         assertThat(gl.last(MR + "/discussions").body()).contains("\"base_sha\":\"b\"", "\"head_sha\":\"h\"",
                 "\"start_sha\":\"s\"", "\"new_line\":7", "\"position_type\":\"text\"");
 
-        assertThat(new PrCommentTools(env).reply("d2", "Umgesetzt", "grp/app!12", null, null, null)).contains("#note_51");
+        assertThat(new PrCommentTools(env).reply("d2", "Umgesetzt", "grp/app!12", null, null, null, null, null)).contains("#note_51");
         new PrResolveTools(env).resolve("d2", true, "grp/app!12", null, null, null);
         StubServer.Request r = gl.last(MR + "/discussions/d2");
         assertThat(r.method()).isEqualTo("PUT");
@@ -113,7 +113,7 @@ class GitLabServerProviderTest {
         gl.on(MR, """
                 {"iid":12,"diff_refs":{"base_sha":"b","head_sha":"h","start_sha":"s"},
                  "head_pipeline":{"id":99,"project_id":5,"status":"failed","web_url":"https://gl/p/99"}}""");
-        assertThat(new PrCommentTools(env).comment("Bitte verschieben", "grp/app!12", "src/C.java", null, null, null, null))
+        assertThat(new PrCommentTools(env).comment("Bitte verschieben", "grp/app!12", "src/C.java", null, null, null, null, null, null))
                 .contains("Datei-Kommentar an src/C.java hinzugefügt (Thread d8)");
         assertThat(gl.last(MR + "/discussions").body()).contains("\"position_type\":\"file\"", "\"new_path\":\"src/C.java\"")
                 .doesNotContain("new_line");
@@ -143,7 +143,7 @@ class GitLabServerProviderTest {
         gl.on("/api/v4/projects/grp%2Fapp/merge_requests", r -> new StubServer.Reply(201,
                 "{\"iid\":13,\"web_url\":\"https://gl/mr/13\"}", Map.of()));
         String out = new PrCreateTools(env()).create("Export", null, "feature/export", null, true, List.of("anna", "nobody"),
-                true, null, "grp/app", null);
+                true, null, "grp/app", null, null, null);
         assertThat(out).contains("grp/app!13: Entwurf angelegt: feature/export → main – unbekannte Reviewer ignoriert: nobody");
         assertThat(gl.last("/api/v4/projects/grp%2Fapp/merge_requests").body()).contains("\"title\":\"Draft: Export\"",
                 "\"target_branch\":\"main\"", "\"reviewer_ids\":[3]", "\"remove_source_branch\":true");

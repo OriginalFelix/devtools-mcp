@@ -3,9 +3,12 @@ package systems.grebe.devtools.mcp.modules.pr;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.Signature;
+import systems.grebe.devtools.mcp.core.SignatureModule;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer;
 
 import static systems.grebe.devtools.mcp.modules.pr.PrTools.PR;
@@ -37,7 +40,9 @@ public class PrCreateTools {
             @ToolParam(required = false, description = "true = Quell-Branch nach dem Merge löschen (GitLab, Bitbucket Cloud)") Boolean deleteSourceBranch,
             @ToolParam(required = false, description = REPOSITORY) String repository,
             @ToolParam(required = false, description = PROJECT) String project,
-            @ToolParam(required = false, description = PROVIDER) String provider) {
+            @ToolParam(required = false, description = PROVIDER) String provider,
+            @ToolParam(required = false, description = Signature.MODEL_PARAM) String aiModel,
+            ToolContext toolContext) {
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("Titel fehlt ('title').");
         }
@@ -71,8 +76,9 @@ public class PrCreateTools {
             }
         }
         env.checkWrite(t, null, "Pull Request anlegen");
+        String body = env.signed(description, SignatureModule.modelName(aiModel, toolContext));
         GitServer.WriteResult r = t.server().create(t.project(), new GitServer.NewPullRequest(title.strip(),
-                blankToNull(description), src, tgt, Boolean.TRUE.equals(draft), reviewers,
+                blankToNull(body), src, tgt, Boolean.TRUE.equals(draft), reviewers,
                 Boolean.TRUE.equals(deleteSourceBranch)));
         return PrTools.written(r) + note + bindHint(r.url());
     }
@@ -102,8 +108,11 @@ public class PrCreateTools {
             @ToolParam(required = false, description = "Neuer Ziel-Branch") String target,
             @ToolParam(required = false, description = REPOSITORY) String repository,
             @ToolParam(required = false, description = PROJECT) String project,
-            @ToolParam(required = false, description = PROVIDER) String provider) {
-        GitServer.PrUpdate u = new GitServer.PrUpdate(blankToNull(title), description, blankToNull(target));
+            @ToolParam(required = false, description = PROVIDER) String provider,
+            @ToolParam(required = false, description = Signature.MODEL_PARAM) String aiModel,
+            ToolContext toolContext) {
+        GitServer.PrUpdate u = new GitServer.PrUpdate(blankToNull(title), description == null ? null
+                : env.signed(description, SignatureModule.modelName(aiModel, toolContext)), blankToNull(target));
         if (u.isEmpty()) {
             throw new IllegalArgumentException("Nichts zu ändern – title, description oder target angeben.");
         }

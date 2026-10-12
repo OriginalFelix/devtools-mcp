@@ -73,18 +73,18 @@ class TicketWriteGuardTest {
     @Test
     void transitionPicksByNameOrTargetAndCommentNeedsItsOwnSwitch() {
         TicketTransitionTools withoutComment = new TicketTransitionTools(env(Map.of()), false);
-        assertThat(withoutComment.transition("ABC-1", "in arbeit", null, null, null))
+        assertThat(withoutComment.transition("ABC-1", "in arbeit", null, null, null, null, null))
                 .startsWith("ABC-1: Status → In Arbeit ('Start')");
         assertThat(jira.last("/rest/api/2/issue/ABC-1/transitions").body()).isEqualTo("{\"transition\":{\"id\":\"11\"}}");
 
         int before = jira.requests.size();
-        assertThatThrownBy(() -> withoutComment.transition("ABC-1", "Done", "fertig", null, null))
+        assertThatThrownBy(() -> withoutComment.transition("ABC-1", "Done", "fertig", null, null, null, null))
                 .hasMessageContaining("Kommentieren ist in der DevTools-App abgeschaltet");
         // abgelehnt, BEVOR irgendetwas geschrieben wurde
         assertThat(jira.requests.subList(before, jira.requests.size())).noneMatch(r -> "POST".equals(r.method()));
 
         TicketTransitionTools withComment = new TicketTransitionTools(env(Map.of("commentSuffix", "(via MCP)")), true);
-        assertThat(withComment.transition("ABC-1", "31", "fertig", null, null))
+        assertThat(withComment.transition("ABC-1", "31", "fertig", null, null, null, null))
                 .contains("Status → Done ('Erledigt') mit Kommentar 1002", "focusedCommentId=1002");
         // Jira: Kommentar im Übergang selbst, damit Validatoren mit Pflichtkommentar ihn sehen
         assertThat(jira.last("/rest/api/2/issue/ABC-1/transitions").body()).isEqualTo("{\"transition\":{\"id\":\"31\"},"
@@ -92,7 +92,7 @@ class TicketWriteGuardTest {
         assertThat(jira.requests).noneMatch(r -> r.path().endsWith("/comment") && "POST".equals(r.method()));
         assertThat(jira.last("/rest/api/2/issue/ABC-1/comment").decodedQuery()).isEqualTo("orderBy=-created&maxResults=1");
 
-        assertThatThrownBy(() -> withoutComment.transition("ABC-1", "Review", null, null, null))
+        assertThatThrownBy(() -> withoutComment.transition("ABC-1", "Review", null, null, null, null, null))
                 .hasMessageContaining("nicht eindeutig oder nicht möglich").hasMessageContaining("'Start' → In Arbeit [11]");
     }
 
@@ -101,10 +101,10 @@ class TicketWriteGuardTest {
         TicketEnvironment env = env(Map.of("writeProjects", "jira:ABC\ngithub:octo/*\nXYZ"));
         TicketCommentTools tools = new TicketCommentTools(env);
 
-        assertThat(tools.comment("ABC-1", "hallo", null, null)).startsWith("ABC-1: Kommentar 1001");
+        assertThat(tools.comment("ABC-1", "hallo", null, null, null, null)).startsWith("ABC-1: Kommentar 1001");
         // Projekt im Parameter freigegeben, Schlüssel aber aus einem anderen Projekt → abgelehnt
         int before = jira.requests.size();
-        assertThatThrownBy(() -> tools.comment("DEF-9", "hallo", "ABC", null))
+        assertThatThrownBy(() -> tools.comment("DEF-9", "hallo", "ABC", null, null, null))
                 .hasMessageContaining("'DEF' (jira) ist nicht freigegeben").hasMessageContaining("Module → Tickets");
         assertThat(jira.requests).hasSize(before); // kein Aufruf an Jira
 
@@ -117,7 +117,7 @@ class TicketWriteGuardTest {
 
         TicketEnvironment open = env(Map.of());
         assertThat(open.checkWrite(open.resolve("jira", null), "DEF-9", null, "Kommentieren")).isEqualTo("DEF");
-        assertThatThrownBy(() -> new TicketCommentTools(open).comment("ABC-1", "  ", null, null))
+        assertThatThrownBy(() -> new TicketCommentTools(open).comment("ABC-1", "  ", null, null, null, null))
                 .hasMessageContaining("Leerer Kommentar");
     }
 

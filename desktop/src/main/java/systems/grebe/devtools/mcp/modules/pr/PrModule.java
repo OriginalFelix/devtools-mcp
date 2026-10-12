@@ -15,6 +15,7 @@ import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.core.Signature;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
@@ -94,7 +95,9 @@ public class PrModule implements ToolModule {
                 Thread mit `pr_reply` erklären, was geändert wurde → `pr_resolve`. Nur auflösen, was wirklich erledigt ist; \
                 Rückfragen beantworten statt auflösen.
                 - Schreiben (`pr_create`, `pr_update`, `pr_comment`, `pr_reply`, `pr_resolve`, `pr_merge`, `pr_push`) nur \
-                auf Anweisung des Nutzers und das Ergebnis mit Link melden. Fehlt ein Tool, ist es in der App abgeschaltet: \
+                auf Anweisung des Nutzers und das Ergebnis mit Link melden. Die Kennzeichnung („Generated with …“) setzt \
+                der Server selbst unter Kommentare und Beschreibungen – nicht selbst schreiben, aber `aiModel` mit dem \
+                eigenen Modellnamen füllen. Fehlt ein Tool, ist es in der App abgeschaltet: \
                 den Schalter nennen, nicht per `gh`/`glab`/`curl`/`git push` ausweichen. `pr_merge` nur auf ausdrücklichen \
                 Auftrag.""";
     }
@@ -121,6 +124,11 @@ public class PrModule implements ToolModule {
     @Override
     public Set<String> sharedDirectoryFields() {
         return Set.of(REPOSITORIES);
+    }
+
+    @Override
+    public boolean signsTexts() {
+        return true;
     }
 
     @Override
@@ -160,9 +168,10 @@ public class PrModule implements ToolModule {
                 ConfigField.of(WRITE_PROJECTS, "Schreiben nur in diesen Repositories", FieldType.STRING_LIST)
                         .withHelp("Ein Repository je Zeile, optional mit Server: owner/repo, github:owner/*, "
                                 + "gitlab:gruppe/*, bitbucket:PROJ/repo; * am Ende als Präfix. Leer = alle."),
-                ConfigField.of(COMMENT_SUFFIX, "Kennzeichnung von Kommentaren", FieldType.STRING)
-                        .withHelp("Wird an jeden Kommentar und jede Antwort angehängt, z.B. „(via DevTools MCP)“. "
-                                + "Leer = keine.")));
+                ConfigField.of(COMMENT_SUFFIX, "Eigene Kennzeichnung", FieldType.STRING)
+                        .withHelp("Ersetzt für Pull Requests die Kennzeichnung aus dem Modul „Kennzeichnung“ unter "
+                                + "Kommentaren, Antworten und Beschreibungen, z.B. „(via DevTools MCP)“; "
+                                + Signature.MODEL + " = Name des KI-Modells. Leer = die aus dem Modul „Kennzeichnung“.")));
         return fields;
     }
 

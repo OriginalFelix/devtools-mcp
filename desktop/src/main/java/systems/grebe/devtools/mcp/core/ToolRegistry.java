@@ -410,8 +410,8 @@ public class ToolRegistry {
             store.saveModule(moduleId, s.settings, secretKeys(s.module));
         }
         if (AccessModule.ID.equals(moduleId) || ContextSettings.ID.equals(moduleId)
-                || CredentialsModule.ID.equals(moduleId)) {
-            refreshAll(); // globale Freigaben, Zugangsdaten bzw. Angebot und Beschreibungen betreffen alle Module
+                || CredentialsModule.ID.equals(moduleId) || SignatureModule.ID.equals(moduleId)) {
+            refreshAll(); // globale Freigaben, Zugangsdaten, Kennzeichnung bzw. Angebot und Beschreibungen betreffen alle Module
         } else {
             rebuild(moduleId);
         }
@@ -444,14 +444,30 @@ public class ToolRegistry {
     }
 
     /**
-     * Wirksame Einstellungen plus global freigegebene Verzeichnisse und zentrale Zugangsdaten für leere Geheimnisse –
-     * damit werden die Tools gebaut.
+     * Wirksame Einstellungen plus global freigegebene Verzeichnisse, zentrale Zugangsdaten für leere Geheimnisse und
+     * die Kennzeichnung – damit werden die Tools gebaut.
      */
     private ModuleSettings toolSettings(ModuleState s) {
         ModuleSettings settings = effective(s);
-        Map<String, String> values = credentials(s.module).apply(s.module,
-                withSharedDirectories(s.module, settings.values()));
+        Map<String, String> values = withSignature(s.module, credentials(s.module).apply(s.module,
+                withSharedDirectories(s.module, settings.values())));
         return values == settings.values() ? settings : settings.withValues(values);
+    }
+
+    /** Vorlage aus dem Modul „Kennzeichnung“ für Module, die Texte veröffentlichen ({@link ToolModule#signsTexts}). */
+    private Map<String, String> withSignature(ToolModule module, Map<String, String> values) {
+        if (!module.signsTexts()) {
+            return values;
+        }
+        ModuleState sig;
+        synchronized (states) {
+            sig = states.get(SignatureModule.ID);
+        }
+        String template = sig == null ? ""
+                : SignatureModule.template(ModuleConfig.of(sig.module.configSchema(), effective(sig).values()));
+        Map<String, String> out = new LinkedHashMap<>(values);
+        out.put(Signature.CONFIG_KEY, template);
+        return out;
     }
 
     /**

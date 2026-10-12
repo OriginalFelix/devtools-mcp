@@ -30,6 +30,7 @@ import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ChannelEvents;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.Signature;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.UserConfirmation;
@@ -658,6 +659,22 @@ class McpServerIntegrationTest {
         McpSchema.CallToolResult again = client.callTool(
                 callRequest("git_status", Map.of("repository", other.toString())));
         assertThat(again.isError()).isTrue();
+    }
+
+    @Test
+    void signatureTemplateReachesModulesThatPublishTexts() {
+        assertThat(registry.config("pr").getString(Signature.CONFIG_KEY, "")).isEqualTo(Signature.DEFAULT_TEMPLATE);
+        assertThat(registry.config("ticket").getString(Signature.CONFIG_KEY, "")).isEqualTo(Signature.DEFAULT_TEMPLATE);
+        assertThat(registry.config("git").get(Signature.CONFIG_KEY)).isEmpty();
+        try {
+            registry.updateConfig("signature", Map.of("template", "_via {AI_MODEL_NAME}_"));
+            assertThat(registry.config("pr").getString(Signature.CONFIG_KEY, "")).isEqualTo("_via {AI_MODEL_NAME}_");
+            registry.updateConfig("signature", Map.of("active", "false"));
+            assertThat(registry.config("ticket").get(Signature.CONFIG_KEY)).isEmpty();
+            assertThat(registry.settings("ticket").values()).doesNotContainKey(Signature.CONFIG_KEY); // Formular unverändert
+        } finally {
+            registry.updateConfig("signature", Map.of());
+        }
     }
 
     @Test
