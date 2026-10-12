@@ -26,6 +26,7 @@ import systems.grebe.devtools.mcp.channel.ChannelBridge;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ChannelEvents;
+import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ShellHints;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
@@ -127,6 +128,29 @@ class McpServerIntegrationTest {
     void listsPrefixedToolsOfEnabledModules() {
         assertThat(toolNames()).contains("git_status", "git_log", "git_diff", "git_commit")
                 .noneMatch(n -> n.startsWith("sonar_")); // Sonar standardmäßig aus
+    }
+
+    @Test
+    void centralCredentialsFillEmptySecretsWithoutStoringThemInTheModule() {
+        registry.updateConfig("credentials", Map.of("entries", ModuleConfig.formatRecords(List.of(
+                Map.of("name", "GitHub", "url", "https://github.com", "secret", "gh-zentral"),
+                Map.of("name", "Sonar", "url", "https://sonar.example.com", "secret", "sonar-zentral")))));
+        try {
+            registry.updateConfig("sonar", Map.of("baseUrl", "https://sonar.example.com"));
+            assertThat(registry.config("sonar").get("token")).contains("sonar-zentral");
+            assertThat(registry.config("ticket").get("github.token")).contains("gh-zentral"); // api.github.com
+            assertThat(registry.config("maven").get("githubToken")).contains("gh-zentral");
+            assertThat(registry.settings("sonar").values()).doesNotContainKey("token");
+            assertThat(registry.credentialSources("sonar", Map.of("baseUrl", "https://sonar.example.com")))
+                    .containsEntry("token", "Sonar");
+
+            registry.updateConfig("sonar", Map.of("baseUrl", "https://sonar.example.com", "token", "eigenes"));
+            assertThat(registry.config("sonar").get("token")).contains("eigenes");
+        } finally {
+            registry.updateConfig("sonar", Map.of());
+            registry.updateConfig("credentials", Map.of());
+        }
+        assertThat(registry.config("ticket").get("github.token")).isEmpty();
     }
 
     @Test

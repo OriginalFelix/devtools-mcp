@@ -114,6 +114,16 @@ public interface ToolModule {
         return Set.of();
     }
 
+    /**
+     * Geheimnisse, die aus den zentralen Zugangsdaten (Modul „Zugangsdaten“) kommen dürfen, wenn sie im Modul leer
+     * bleiben – passend zur Server-URL des Moduls. Standard: aus dem Schema abgeleitet (siehe
+     * {@link CredentialField#derive}); Module mit mehreren URLs oder ohne URL-Feld ordnen selbst zu, {@code List.of()}
+     * schaltet es ab.
+     */
+    default List<CredentialField> credentialFields() {
+        return CredentialField.derive(configSchema());
+    }
+
     /** Sortierung in der Modulliste (aufsteigend, danach Anzeigename). */
     default int order() {
         return 100;

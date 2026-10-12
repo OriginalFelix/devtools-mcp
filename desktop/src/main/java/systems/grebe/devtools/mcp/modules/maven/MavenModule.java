@@ -7,6 +7,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
+import systems.grebe.devtools.mcp.core.CredentialField;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolBeans;
@@ -66,6 +67,13 @@ public class MavenModule implements ToolModule {
                 ConfigField.of(GITHUB_API_URL, "GitHub-API-URL", FieldType.URL).withDefault("https://api.github.com"),
                 ConfigField.of(MAX_JAR_MB, "Max. JAR-Größe für API-Vergleich (MB)", FieldType.INT).withDefault("64"),
                 ConfigField.of(TIMEOUT, "Timeout (Sekunden)", FieldType.INT).withDefault("30"));
+    }
+
+    /** Zwei URLs – Repository und GitHub –, je mit eigenem Geheimnis. */
+    @Override
+    public List<CredentialField> credentialFields() {
+        return List.of(CredentialField.of(REPOSITORY_URL, USERNAME, PASSWORD),
+                CredentialField.of(GITHUB_API_URL, null, GITHUB_TOKEN));
     }
 
     @Override

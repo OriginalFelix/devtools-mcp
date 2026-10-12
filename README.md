@@ -45,6 +45,22 @@ jedes Modul übernimmt, was zu ihm passt (Git-Repositories, Gradle-/Maven-Projek
 aufheben* lässt die Tools jeden absoluten Pfad verwenden (aufgelöst zum nächsten passenden Verzeichnis darüber, z.B.
 dem Repository); nur lesend freigegebene Projekte des Team-Servers und die Schalter der Module gelten weiter.
 
+Das Modul **Zugangsdaten** hat ebenfalls keine eigenen Tools. Wie beim Git Credential Manager werden Tokens und
+Passwörter dort einmal je Server hinterlegt (Name, URL, optional Benutzer, Token/Passwort, Beschreibung) statt in jedem
+Modul erneut: Bleibt das Token- bzw. Passwortfeld eines Moduls leer, setzt die App beim Bauen der Tools (und beim
+*Verbindung testen*) das des Eintrags ein, dessen URL zur Server-URL des Moduls passt – ist auch der Benutzer leer,
+zusätzlich dessen Benutzer (z.B. die E-Mail zum Jira-Cloud-Token). Ein GitHub-Token unter `https://github.com` gilt so
+für Tickets, Pull Requests, CI und die Release Notes im Maven-Modul zugleich. Zuordnung:
+
+* Schema und Port müssen stimmen, der Host gleich oder eine Subdomain sein (`https://github.com` gilt auch für
+  `https://api.github.com`), der Pfad des Eintrags ein Präfix (`https://gitlab.firma.de/gruppe`). Der genaueste Eintrag
+  gewinnt: gleicher Host vor Subdomain, dann längerer Pfad, dann der weiter oben.
+* Ein eigenes Geheimnis im Modul hat immer Vorrang; ins Modul kopiert wird nichts. Das Formular zeigt in einem leeren
+  Feld, welcher Eintrag greift („leer = aus Zugangsdaten „GitHub““).
+* Gilt für Tickets, Pull Requests, CI/CD, Chat (Matrix), SonarQube, Maven (Repository und GitHub) und Modellwahl
+  (Claude API: `https://api.anthropic.com`, solange keine eigene API-URL gesetzt ist) – nicht für Verbindungslisten
+  (SSH, JDBC, Dolt, Mail), die je Eintrag eigene Zugangsdaten haben.
+
 ### Berechtigungen an das LLM übermitteln
 
 Das Modul **Berechtigungen** zeigt dem LLM, was es darf, und lässt es fehlende Rechte beim Nutzer anfragen:
@@ -862,6 +878,9 @@ Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der S
   Eingaben, die das LLM wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Mitglied
   einer freigegebenen Unterhaltung Anweisungen geben), für Matrix ein eigenes Bot-Konto verwenden und Unterhaltungen
   einschränken. Einladungen nimmt das Modul nur von freigegebenen Absendern an.
+* Zugangsdaten: verschlüsselt wie alle Geheimnisse und nie an das LLM (`permissions_overview` zeigt nur gesetzt/leer).
+  Ein Eintrag geht an jedes Modul, dessen Server-URL passt – auch an Subdomains; Einträge daher so genau wie nötig
+  fassen (`https://jira.firma.de` statt `https://firma.de`).
 
 ### Backend und Team-Server
 
@@ -1870,7 +1889,12 @@ Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die C
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
 zerstörerisch. Bisher annotiert: SSH, Datenbanken (JDBC), Datenbank-Branches, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
-Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`.
+Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`. Leere Geheimnisse füllt die
+App aus dem Modul **Zugangsdaten**: `credentialFields()` leitet die Zuordnung standardmäßig aus
+dem Schema ab (je Provider-Gruppe bzw. für die Felder ohne Gruppe: genau ein URL-Feld → erstes Geheimnis, dazu ein Feld
+`user`/`username`/`email`/`login`); bei mehreren URLs oder ohne URL-Feld gibt das Modul sie selbst an, z.B.
+`CredentialField.of("repositoryUrl", "username", "password")` oder
+`CredentialField.of(null, null, "apiKey").withDefaultUrl("https://api.anthropic.com")`; `List.of()` schaltet es ab.
 
 ## Plugins
 
