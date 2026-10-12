@@ -177,7 +177,7 @@ class GitHubServerProviderTest {
         String out = new PrCreateTools(env(Map.of())).create("Neues Feature", "Text", "feature/x", null, true,
                 List.of("bob", "team:core"), null, null, "octo/app", null);
         assertThat(out).contains("octo/app#8: Entwurf angelegt: feature/x → develop, Reviewer angefragt: bob, team:core",
-                "https://github.com/octo/app/pull/8");
+                "https://github.com/octo/app/pull/8", "bind_pr");
         assertThat(gh.last("/repos/octo/app/pulls").body()).contains("\"head\":\"feature/x\"", "\"base\":\"develop\"",
                 "\"draft\":true");
         assertThat(gh.last("/repos/octo/app/pulls/8/requested_reviewers").body())

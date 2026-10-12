@@ -87,7 +87,9 @@ public class PrModule implements ToolModule {
                 von Integrationen (SonarQube, Tests, Scans) mit Befunden an Datei und Zeile.
                 - `pr_comment` mit `path` und `line` kommentiert eine Codezeile, mit `path` ohne `line` die ganze Datei.
                 - Pull Request anlegen (`pr_create`, falls angeboten): Branch mit git_* committen, mit `pr_push` pushen \
-                (falls angeboten, sonst den Nutzer bitten), Titel und Beschreibung aus git_log/git_diff zusammenfassen.
+                (falls angeboten, sonst den Nutzer bitten), Titel und Beschreibung aus git_log/git_diff zusammenfassen. \
+                Bietet der Client ein Werkzeug zum Binden eines PRs an die Sitzung an (z.B. `bind_pr` in Claude Code), \
+                den neuen PR danach mit seiner URL binden.
                 - Review-Kommentare abarbeiten: `pr_comments unresolved=true` → Code ändern und committen → `pr_push` → je \
                 Thread mit `pr_reply` erklären, was geändert wurde → `pr_resolve`. Nur auflösen, was wirklich erledigt ist; \
                 Rückfragen beantworten statt auflösen.
