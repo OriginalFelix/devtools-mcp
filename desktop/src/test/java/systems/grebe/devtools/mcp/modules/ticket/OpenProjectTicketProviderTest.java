@@ -89,6 +89,13 @@ class OpenProjectTicketProviderTest {
     }
 
     @Test
+    void oauthTokenFromCredentialsGoesAsBearer() {
+        op.on("/api/v3/projects/demo/work_packages", "{\"total\":1,\"count\":1,\"_embedded\":{\"elements\":[" + WP_1 + "]}}");
+        new TicketTools(env("openproject.token@oauth", "true")).search(null, null, null, null, null, null, 1, null, null);
+        assertThat(op.last("/api/v3/projects/demo/work_packages").headers().get("authorization")).isEqualTo("Bearer k123");
+    }
+
+    @Test
     void getShowsFieldsStatusCategoryAndNewestComments() {
         op.on("/api/v3/work_packages/7", """
                 {"id":7,"subject":"Export","updatedAt":"2026-09-02T08:00:00Z","createdAt":"2026-09-01T08:00:00Z",

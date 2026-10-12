@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.api.CredentialInfo;
 import systems.grebe.devtools.mcp.oauth.OAuthClient;
+import systems.grebe.devtools.mcp.oauth.OAuthOptions;
 import systems.grebe.devtools.mcp.oauth.OAuthServer;
 import systems.grebe.devtools.mcp.oauth.OAuthTokens;
 
@@ -49,6 +50,7 @@ public class CredentialsModule implements ToolModule {
     public static final String CLIENT_ID = "clientId";
     public static final String CLIENT_SECRET = "clientSecret";
     public static final String SCOPES = "scopes";
+    public static final String OPTIONS = "options";
     public static final String DESCRIPTION = "description";
     /** Werte von {@link #AUTH} im Formular. */
     public static final String AUTH_TOKEN = "token";
@@ -137,8 +139,17 @@ public class CredentialsModule implements ToolModule {
                         ConfigField.of(CLIENT_SECRET, "OAuth: Client-Geheimnis", FieldType.SECRET)
                                 .withHelp("Nur für vertrauliche Clients; öffentliche Clients brauchen keins."),
                         ConfigField.of(SCOPES, "OAuth: Scopes", FieldType.STRING)
-                                .withHelp("Durch Leerzeichen getrennt. Leer = GitHub: repo read:org; sonst die Vorgabe "
-                                        + "des Servers (GitLab: api)."),
+                                .withHelp("Durch Leerzeichen getrennt. Leer = GitHub: repo read:org; Jira Cloud: "
+                                        + "read:jira-work write:jira-work read:jira-user offline_access; sonst die "
+                                        + "Vorgabe des Servers (GitLab: api)."),
+                        ConfigField.of(OPTIONS, "OAuth: Optionen", FieldType.STRING)
+                                .withHelp("Nur nötig für Server ohne Discovery oder mit Besonderheiten, name=wert durch "
+                                        + "; getrennt: authorization_endpoint, token_endpoint, "
+                                        + "device_authorization_endpoint (RFC 8414), redirect_uri=http://127.0.0.1:"
+                                        + "<port>/callback (feste Rückleitung), sonst weitere Anmelde-Parameter. Jira "
+                                        + "Cloud ist vorgegeben; Jira Data Center z.B. authorization_endpoint=https://"
+                                        + "jira.firma.de/rest/oauth2/latest/authorize; token_endpoint=https://"
+                                        + "jira.firma.de/rest/oauth2/latest/token"),
                         ConfigField.of(DESCRIPTION, "Beschreibung", FieldType.STRING))
                 .withHelp("Ein eigenes Token im Modul hat immer Vorrang. Gespeichert im Backend je Benutzer "
                         + "(verschlüsselt, für alle Profile); geht nie an das LLM."));
@@ -238,9 +249,10 @@ public class CredentialsModule implements ToolModule {
                         + "Einstellungen speichern.");
             }
             progress.update("Suche den Anmeldeserver …", -1);
-            OAuthServer server = oauth.discover(OAuthServer.issuerFor(c.issuer(), c.url()));
+            OAuthOptions options = OAuthOptions.parse(c.options());
+            OAuthServer server = oauth.resolve(c.issuer(), c.url(), options);
             String scopes = c.scopes() == null || c.scopes().isBlank() ? server.defaultScopes() : c.scopes();
-            OAuthTokens t = oauth.login(server, c.clientId(), c.clientSecret(), scopes,
+            OAuthTokens t = oauth.login(server, c.clientId(), c.clientSecret(), scopes, options,
                     prompt -> progress.update(prompt, -1), browser);
             String expires = t.expiresAt() == null ? null : t.expiresAt().toString();
             s.save(s.credentials().stream()

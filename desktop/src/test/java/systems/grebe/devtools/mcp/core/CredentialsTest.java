@@ -118,6 +118,19 @@ class CredentialsTest {
     }
 
     @Test
+    void marksOAuthTokensSoProvidersSendThemAsBearer() {
+        Map<String, String> oauth = new java.util.HashMap<>(entry("Jira", "https://firma.atlassian.net", "", "at-3lo"));
+        oauth.put(CredentialsModule.AUTH, CredentialsModule.AUTH_OAUTH);
+        Credentials c = credentials(oauth, entry("Sonar", "https://sonar.example.com", "", "sonar-token"));
+
+        Map<String, String> applied = c.apply(module(SCHEMA), Map.of("jira.baseUrl", "https://firma.atlassian.net"));
+
+        assertThat(applied).containsEntry("jira.token", "at-3lo").containsEntry("jira.token@oauth", "true")
+                .containsEntry("token", "sonar-token").doesNotContainKey("token@oauth");
+        assertThat(CredentialField.oauthKey("token")).isEqualTo("token@oauth");
+    }
+
+    @Test
     void usesDefaultUrlWhenUrlFieldIsEmpty() {
         ToolModule m = new ToolModule() {
             @Override

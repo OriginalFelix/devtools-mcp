@@ -108,6 +108,10 @@ class CredentialsPanel extends VerticalLayout {
         clientSecret.setHelperText("Nur für vertrauliche Clients");
         TextField scopes = new TextField("Scopes");
         scopes.setHelperText("Durch Leerzeichen getrennt; leer = GitHub: repo read:org, sonst Vorgabe des Servers");
+        TextField options = new TextField("OAuth-Optionen");
+        options.setHelperText("Nur für Server ohne Discovery oder mit Besonderheiten: name=wert; … – "
+                + "authorization_endpoint, token_endpoint, device_authorization_endpoint, "
+                + "redirect_uri=http://127.0.0.1:<port>/callback, weitere Parameter der Anmeldung");
         TextField description = new TextField("Beschreibung");
         if (c != null) {
             name.setValue(c.name());
@@ -117,6 +121,7 @@ class CredentialsPanel extends VerticalLayout {
             issuer.setValue(nz(c.issuer()));
             clientId.setValue(nz(c.clientId()));
             scopes.setValue(nz(c.scopes()));
+            options.setValue(nz(c.options()));
             secret.setHelperText("Leer lassen, um das bisherige zu behalten");
             clientSecret.setHelperText("Leer lassen, um das bisherige zu behalten");
         }
@@ -127,15 +132,18 @@ class CredentialsPanel extends VerticalLayout {
             clientId.setVisible(oauth);
             clientSecret.setVisible(oauth);
             scopes.setVisible(oauth);
+            options.setVisible(oauth);
         };
         auth.addValueChangeListener(e -> showAuth.run());
         showAuth.run();
-        d.add(new FormLayout(name, url, auth, username, secret, issuer, clientId, clientSecret, scopes, description));
+        d.add(new FormLayout(name, url, auth, username, secret, issuer, clientId, clientSecret, scopes, options,
+                description));
         Button save = new Button("Speichern", e -> {
             boolean oauth = CredentialInfo.OAUTH.equals(auth.getValue());
             CredentialInfo edited = new CredentialInfo(c == null ? null : c.id(), name.getValue(), url.getValue(),
                     username.getValue(), oauth ? null : secret.getValue(), description.getValue(), auth.getValue(),
-                    issuer.getValue(), clientId.getValue(), clientSecret.getValue(), scopes.getValue(), null, null);
+                    issuer.getValue(), clientId.getValue(), clientSecret.getValue(), scopes.getValue(), null, null,
+                    options.getValue());
             List<CredentialInfo> next = new ArrayList<>(entries);
             if (c == null) {
                 next.add(edited);

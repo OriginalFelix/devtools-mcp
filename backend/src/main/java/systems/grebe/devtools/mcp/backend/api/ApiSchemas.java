@@ -29,7 +29,8 @@ public final class ApiSchemas {
             new TreeMap<>(Map.of(
                     0, List.of("schema.graphqls", "graph.graphqls"),
                     1, List.of("schema.graphqls", "graph.graphqls"),
-                    2, List.of("schema.graphqls", "graph.graphqls"))));
+                    2, List.of("schema.graphqls", "graph.graphqls"),
+                    3, List.of("schema.graphqls", "graph.graphqls"))));
 
     private ApiSchemas() {
     }

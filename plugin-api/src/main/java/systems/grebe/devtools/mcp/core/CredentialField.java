@@ -25,11 +25,26 @@ import java.util.Set;
  */
 public record CredentialField(String urlKey, String userKey, String secretKey, String defaultUrl) {
 
+    /**
+     * Endung des Schlüssels, unter dem die App {@code "true"} neben ein eingesetztes Geheimnis legt, wenn es ein
+     * OAuth-Access-Token ist (Anmeldung im Browser) – siehe {@link #oauthKey}. Provider schicken es dann als
+     * {@code Authorization: Bearer}, auch wenn sie sonst Basic mit Benutzer oder API-Schlüssel verwenden.
+     */
+    public static final String OAUTH_SUFFIX = "@oauth";
+
     /** Feldnamen (ohne Gruppen-Präfix), die {@link #derive} als Benutzer erkennt. */
     private static final Set<String> USER_KEYS = Set.of("user", "username", "email", "login");
 
     public CredentialField {
         Objects.requireNonNull(secretKey, "secretKey");
+    }
+
+    /**
+     * Schlüssel der Markierung „ist ein OAuth-Access-Token“ zu einem Geheimnis, z.B. {@code token@oauth}; in einem
+     * Provider ({@code ProviderSettings}) ohne Gruppen-Präfix abfragen: {@code s.get(CredentialField.oauthKey(TOKEN))}.
+     */
+    public static String oauthKey(String secretKey) {
+        return secretKey + OAUTH_SUFFIX;
     }
 
     public static CredentialField of(String urlKey, String userKey, String secretKey) {

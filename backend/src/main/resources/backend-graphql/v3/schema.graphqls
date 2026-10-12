@@ -1,0 +1,504 @@
+# GraphQL-API des Backends (Team-Server oder eingebettet in der Desktop-App).
+# Anmeldung: Mutation login (Benutzername + Passwort) liefert ein Sitzungs-Token; alternativ ein persönliches
+# Desktop-Token aus „Mein Konto“. Das Token geht als Header „Authorization: Bearer <Token>“ (HTTP) bzw. gleichnamiger
+# Eintrag im Payload von connection_init (WebSocket) mit. Ohne gültiges Token antwortet jede Operation außer login
+# mit einem Fehler vom Typ UNAUTHORIZED, ohne nötiges Recht mit FORBIDDEN. Solange ein vom Administrator gesetztes
+# Passwort nicht geändert ist, gehen nur me, changePassword und logout.
+# Zeitpunkte sind ISO-8601-Strings (UTC).
+
+type Query {
+    "Der angemeldete Benutzer mit seinen Profilen."
+    me: Me!
+    "Von den Desktop-Apps gemeldete Module (Felder, Tools)."
+    catalog: [Module!]!
+    "Vorgaben für das aktive Profil des Benutzers."
+    settings: Settings!
+    "Überschreibungen einer Ebene des Benutzers: USER (alle Profile), PROFILE (aktives Profil) oder GLOBAL."
+    overrides(level: Level!, moduleId: String!): Overlay!
+    "Eigene und freigegebene Projekte."
+    projects: [Project!]!
+    "MQTT-Broker des Backends für die Kooperation der Desktop-Apps (Anmeldung mit dem Token als Passwort)."
+    broker: Broker!
+
+    "Sichtbare Skills (eigene, nicht verdeckte Vorlagen und für den Benutzer geteilte)."
+    skills: [SkillSummary!]!
+    skill(name: String!): SkillDetails
+    skillCount: Int!
+    "Texte für das LLM wie die Tools skills_list, skills_view, skills_history."
+    skillList(query: String, category: String): String!
+    skillView(name: String!, filePath: String): String!
+    skillHistory(name: String!, revision: Int): String!
+    "Metadaten einer Zusatzdatei (Text oder Anhang) des sichtbaren Skills."
+    skillFile(name: String!, filePath: String!): SkillFile
+    "Freigaben eines eigenen Skills."
+    skillShares(name: String!): [Share!]!
+
+    "Memories des Benutzers und für ihn geteilte (frühere Aktionen), beste Treffer bzw. neueste zuerst."
+    memories(query: String, project: String, skill: String, limit: Int): [MemoryEntry!]!
+    memory(id: Int!): MemoryEntry
+    memoryCount: Int!
+    "Texte für das LLM wie die Tools memories_search und memories_view."
+    memorySearch(query: String, project: String, skill: String, tag: String, type: MemoryType, days: Int,
+                 limit: Int): String!
+    memoryView(id: Int!): String!
+    "Metadaten bzw. Text (für das LLM) einer an eine Memory angehängten Datei."
+    memoryFile(id: Int!, filePath: String!): MemoryFile
+    memoryFileView(id: Int!, filePath: String!): String!
+    "Bezüge aller Memories (klein geschrieben) – die App erkennt damit Ticket-Keys o.ä. in Tool-Aufrufen."
+    memoryReferences: [String!]!
+    "Neueste Memories mit einem der Bezüge oder zu einem Skill (ohne Inhalt)."
+    relatedMemories(references: [String!], skill: String, limit: Int): [MemoryEntry!]!
+    "Freigaben einer eigenen Memory."
+    memoryShares(id: Int!): [Share!]!
+    "Mögliche Ziele einer Freigabe: aktive Benutzer mit E-Mail, Rollen und – mit dem Recht shares.all – alle."
+    shareTargets: [ShareCandidate!]!
+
+    "Sichtbare Skripte, Groovy oder Java (eigene und nicht verdeckte globale Vorlagen)."
+    scripts: [ScriptSummary!]!
+    script(name: String!): ScriptDetails
+
+    "Alle Benutzer (Recht users.manage)."
+    users: [User!]!
+    "Alle Rollen mit ihren Rechten (Recht users.manage)."
+    roles: [Role!]!
+    "Die Systemrechte, die Rollen vergeben können (dazu module:*, module:<id>, tool:<name>)."
+    permissionCatalog: [PermissionInfo!]!
+}
+
+type Mutation {
+    "Anmeldung mit Benutzername und Passwort – ohne Token aufrufbar. client: Bezeichnung des Geräts, z.B. Desktop-App (rechner)."
+    login(username: String!, password: String!, client: String): LoginResult!
+    "Beendet die Anmeldung des verwendeten Sitzungs-Tokens."
+    logout: Boolean!
+    changePassword(currentPassword: String!, newPassword: String!): Boolean!
+
+    "Verwaltung (Recht users.manage). Ohne passwordChangeRequired muss der neue Benutzer das Passwort zuerst ändern."
+    createUser(username: String!, displayName: String, email: String, roles: [String!]!, password: String!,
+               passwordChangeRequired: Boolean): User!
+    "roles: Namen der Rollen; ersetzt die bisherigen."
+    updateUser(id: Int!, displayName: String, email: String, roles: [String!]!, enabled: Boolean!): User!
+    setUserPassword(id: Int!, password: String!, passwordChangeRequired: Boolean): Boolean!
+    deleteUser(id: Int!): Boolean!
+    "permissions: Systemrechte (users.manage …), module:*, module:<id>, tool:<name>."
+    createRole(name: String!, description: String, permissions: [String!]!): Role!
+    updateRole(id: Int!, name: String!, description: String, permissions: [String!]!): Role!
+    deleteRole(id: Int!): Boolean!
+
+    "Meldet die Module einer Desktop-App; ersetzt deren bisherige Beschreibung."
+    reportCatalog(modules: [ModuleInput!]!): Boolean!
+    activateProfile(profileId: Int!): Settings!
+    "Ersetzt die Überschreibungen eines Moduls auf einer Ebene (GLOBAL nur Administratoren)."
+    saveOverrides(level: Level!, moduleId: String!, input: OverlayInput!): Settings!
+    "Ersetzt die eigenen Zugangsdaten (Reihenfolge = Liste). Ohne secret behält ein Eintrag mit id sein Geheimnis."
+    saveCredentials(entries: [CredentialInput!]!): Settings!
+    "Erneuert das Access-Token eines OAuth-Eintrags, wenn es bald abläuft (sonst unverändert); Ergebnis im Stand."
+    refreshCredential(id: Int!): Settings!
+    createProject(name: String!, description: String, sonarKey: String, ticketProject: String): Project!
+
+    "triggers: Tool-Namen oder Präfixe mit * (z.B. ticket_get, pr_*), für die der Skill registriert ist."
+    createSkill(name: String!, description: String!, content: String!, category: String, tags: [String!],
+                triggers: [String!], maxContentChars: Int): String!
+    updateSkill(name: String!, description: String, content: String, category: String, tags: [String!],
+                triggers: [String!], note: String, expectedRevision: Int, maxContentChars: Int): String!
+    patchSkill(name: String!, oldString: String!, newString: String!, replaceAll: Boolean, filePath: String,
+               note: String, expectedRevision: Int, maxContentChars: Int): String!
+    writeSkillFile(name: String!, filePath: String!, content: String!, note: String, maxContentChars: Int): String!
+    "Hängt einen über /blobs hochgeladenen Inhalt (blob = SHA-256) als Zusatzdatei an bzw. ersetzt sie; Recht wie writeSkillFile."
+    attachSkillFile(name: String!, filePath: String!, blob: String!, mediaType: String, note: String): String!
+    removeSkillFile(name: String!, filePath: String!, note: String): String!
+    deleteSkill(name: String!): String!
+    publishSkill(name: String!): String!
+    unpublishSkill(name: String!): String!
+    "Gibt einen eigenen Skill frei (revoke: nimmt zurück) – users: Anmeldenamen oder E-Mails, roles: Rollennamen, everyone: alle (Recht shares.all). Ohne Ziele nur der Stand. Recht auf das Tool skills_share."
+    shareSkill(name: String!, users: [String!], roles: [String!], everyone: Boolean, revoke: Boolean): String!
+
+    "Ohne type dauerhaft. Temporäre Memories brauchen kein Recht auf das Tool memories_save."
+    saveMemory(title: String!, content: String!, project: String, skill: String, reference: String, tags: [String!],
+               type: MemoryType, maxContentChars: Int): String!
+    "Nicht angegebene Felder bleiben; leerer Text entfernt Projekt, Skill, Bezug bzw. Tags. Temporäre Memories auch ohne Recht auf das Tool memories_update; temporaryOnly lehnt dauerhafte ab (Aufrufer ohne Freigabe)."
+    updateMemory(id: Int!, title: String, content: String, append: String, project: String, skill: String,
+                 reference: String, tags: [String!], type: MemoryType, temporaryOnly: Boolean,
+                 maxContentChars: Int): String!
+    "Temporäre Memories auch ohne Recht auf das Tool memories_delete; temporaryOnly lehnt dauerhafte ab."
+    deleteMemory(id: Int!, temporaryOnly: Boolean): String!
+    "Hängt einen über /blobs hochgeladenen Inhalt (blob = SHA-256) an eine Memory an bzw. ersetzt die Datei gleichen Pfads; Recht wie updateMemory."
+    attachMemoryFile(id: Int!, filePath: String!, blob: String!, mediaType: String, temporaryOnly: Boolean): String!
+    removeMemoryFile(id: Int!, filePath: String!, temporaryOnly: Boolean): String!
+    "Gibt eine eigene Memory frei bzw. nimmt zurück (wie shareSkill). Recht auf das Tool memories_share."
+    shareMemory(id: Int!, users: [String!], roles: [String!], everyone: Boolean, revoke: Boolean): String!
+
+    "Legt ein eigenes Skript an oder ändert es. Das Backend prüft die Syntax (ohne Ausführung); ohne description gilt der feste Text aus dem Quelltext, ohne language die bisherige Sprache (neu: GROOVY)."
+    saveScript(name: String!, language: ScriptLanguage, description: String, content: String!, note: String,
+               expectedRevision: Int): String!
+    deleteScript(name: String!): String!
+    publishScript(name: String!): String!
+    unpublishScript(name: String!): String!
+}
+
+type Subscription {
+    "Liefert sofort den aktuellen Stand und danach bei jeder Änderung (Vorgaben, Sperren, Profilwechsel)."
+    settingsChanged: Settings!
+    "Liefert sofort die Projekte und danach bei jeder Änderung an Projekten oder Freigaben."
+    projectsChanged: [Project!]!
+    "Meldet Änderungen an Skills (Anzahl sichtbarer Skills)."
+    skillsChanged: Int!
+    "Meldet Änderungen an Memories (Anzahl eigener Memories)."
+    memoriesChanged: Int!
+    "Meldet Änderungen an Skripten (Anzahl sichtbarer Skripte)."
+    scriptsChanged: Int!
+}
+
+enum Level { GLOBAL USER PROFILE }
+
+type Me {
+    id: Int!
+    username: String!
+    displayName: String
+    email: String
+    "Hat alle Rechte (Rolle Administrator)."
+    admin: Boolean!
+    profiles: [Profile!]!
+    activeProfileId: Int!
+    roles: [String!]!
+    "Wirksame Rechte aller Rollen: *, Systemrechte, module:*, module:<id>, tool:<name>."
+    permissions: [String!]!
+    passwordChangeRequired: Boolean!
+}
+
+type LoginResult {
+    token: String!
+    expiresAt: String
+    passwordChangeRequired: Boolean!
+}
+
+type User {
+    id: Int!
+    username: String!
+    displayName: String
+    email: String
+    enabled: Boolean!
+    passwordChangeRequired: Boolean!
+    createdAt: String
+    roles: [String!]!
+}
+
+type Role {
+    id: Int!
+    name: String!
+    description: String
+    "Eingebaut (Administrator): alle Rechte, nicht änderbar."
+    builtin: Boolean!
+    permissions: [String!]!
+    "Anzahl der Benutzer mit dieser Rolle."
+    users: Int!
+}
+
+type PermissionInfo {
+    key: String!
+    name: String!
+    label: String!
+    description: String
+}
+
+type Profile {
+    id: Int!
+    name: String!
+    description: String
+}
+
+enum FieldType { STRING SECRET INT BOOLEAN URL DIRECTORY DIRECTORY_LIST ENUM STRING_LIST RECORD_LIST }
+
+type Field {
+    key: String!
+    label: String!
+    type: FieldType!
+    required: Boolean!
+    defaultValue: String
+    help: String
+    options: [String!]!
+    columns: [Field!]!
+}
+
+type Tool {
+    name: String!
+    description: String
+}
+
+type Module {
+    id: String!
+    displayName: String!
+    description: String
+    enabledByDefault: Boolean!
+    hasTools: Boolean!
+    order: Int!
+    schema: [Field!]!
+    tools: [Tool!]!
+}
+
+input FieldInput {
+    key: String!
+    label: String!
+    type: FieldType!
+    required: Boolean!
+    defaultValue: String
+    help: String
+    options: [String!]
+    columns: [FieldInput!]
+}
+
+input ToolInput {
+    name: String!
+    description: String
+}
+
+input ModuleInput {
+    id: String!
+    displayName: String!
+    description: String
+    enabledByDefault: Boolean!
+    hasTools: Boolean!
+    order: Int!
+    schema: [FieldInput!]
+    tools: [ToolInput!]
+}
+
+type Settings {
+    profileId: Int!
+    profileName: String!
+    modules: [Overlay!]!
+    "Änderungszähler des Backends beim Lesen – kleinere Revision = älterer Stand."
+    revision: Int!
+    "Eigene Zugangsdaten (Modul „Zugangsdaten“), entschlüsselt – nur für den Benutzer selbst."
+    credentials: [Credential!]!
+}
+
+"Zugangsdaten für einen Server (wie beim Git Credential Manager); im Backend verschlüsselt gespeichert."
+type Credential {
+    id: Int!
+    name: String!
+    "Server, für den sie gelten (http/https), auch für Subdomains und Pfade darunter."
+    url: String!
+    username: String
+    "Token, Passwort bzw. OAuth-Access-Token; leer bei OAuth ohne Anmeldung."
+    secret: String
+    description: String
+    auth: CredentialAuth!
+    "OAuth: Aussteller für die Discovery (RFC 8414 / OIDC); leer = Herkunft der URL."
+    issuer: String
+    clientId: String
+    "Nur vertrauliche Clients – für die Anmeldung in der Desktop-App."
+    clientSecret: String
+    "Durch Leerzeichen getrennt."
+    scopes: String
+    "OAuth: Ablauf des Access-Tokens; leer = läuft nicht ab."
+    expiresAt: String
+    "OAuth: Angaben von Hand (name=wert; …) – Endpunkte nach RFC 8414 für Server ohne Discovery, redirect_uri, weitere Parameter."
+    options: String
+}
+
+"TOKEN: Token/Passwort von Hand; OAUTH: Anmeldung im Browser (OAuth 2.0 / OpenID Connect)."
+enum CredentialAuth { TOKEN OAUTH }
+
+input CredentialInput {
+    "Bestehender Eintrag – nötig, um ohne secret das bisherige Geheimnis (samt Refresh-Token) zu behalten."
+    id: Int
+    name: String!
+    url: String!
+    username: String
+    secret: String
+    description: String
+    auth: CredentialAuth
+    issuer: String
+    clientId: String
+    "Nur vertrauliche Clients; leer = bisheriges."
+    clientSecret: String
+    scopes: String
+    "Nach der Anmeldung im Browser; wird nie ausgegeben."
+    refreshToken: String
+    expiresAt: String
+    options: String
+}
+
+"Vorgaben bzw. Überschreibungen eines Moduls; nur gesetzte Werte."
+type Overlay {
+    moduleId: String
+    enabled: Boolean
+    tools: [ToolSwitch!]!
+    values: [Entry!]!
+    locked: [String!]!
+}
+
+type ToolSwitch {
+    name: String!
+    enabled: Boolean!
+}
+
+type Entry {
+    key: String!
+    value: String
+}
+
+input OverlayInput {
+    enabled: Boolean
+    tools: [ToolSwitchInput!]
+    values: [EntryInput!]
+}
+
+input ToolSwitchInput {
+    name: String!
+    enabled: Boolean!
+}
+
+input EntryInput {
+    key: String!
+    value: String
+}
+
+type Project {
+    id: Int!
+    name: String!
+    owner: String!
+    toolName: String!
+    writable: Boolean!
+    access: String!
+    description: String
+    sonarKey: String
+    ticketProject: String
+}
+
+"OWN eigener Skill, COPY Kopie einer Vorlage, GLOBAL Vorlage, SHARED von einem anderen Benutzer geteilt (schreibgeschützt)."
+enum SkillScope { OWN COPY GLOBAL SHARED }
+
+type SkillSummary {
+    name: String!
+    description: String
+    category: String
+    tags: [String!]!
+    revision: Int!
+    useCount: Int!
+    lastUsedAt: String
+    updatedAt: String
+    fileCount: Int!
+    scope: SkillScope!
+    templateRevision: Int
+    currentTemplateRevision: Int
+    triggers: [String!]!
+    "Bei SHARED die E-Mail des Eigentümers."
+    owner: String
+}
+
+"Zusatzdatei: Text im Skill (content) oder Anhang in der Dateiablage (blob = SHA-256, Inhalt über GET /blobs/<blob>)."
+type SkillFile {
+    path: String!
+    "Leer bei Anhängen."
+    content: String
+    updatedAt: String
+    "Bytes."
+    size: Float!
+    mediaType: String!
+    blob: String
+}
+
+type SkillRevision {
+    revision: Int!
+    action: String
+    note: String
+    changedBy: String
+    changedAt: String
+    description: String
+    content: String
+}
+
+type SkillDetails {
+    summary: SkillSummary!
+    content: String
+    createdAt: String
+    files: [SkillFile!]!
+    revisions: [SkillRevision!]!
+}
+
+enum ScriptScope { OWN GLOBAL }
+
+enum ScriptLanguage { GROOVY JAVA GHERKIN }
+
+type ScriptSummary {
+    name: String!
+    description: String
+    scope: ScriptScope!
+    language: ScriptLanguage!
+    revision: Int!
+    updatedAt: String
+    updatedBy: String
+}
+
+type ScriptRevision {
+    revision: Int!
+    action: String
+    note: String
+    changedBy: String
+    changedAt: String
+    content: String
+}
+
+type ScriptDetails {
+    summary: ScriptSummary!
+    content: String
+    createdAt: String
+    revisions: [ScriptRevision!]!
+}
+
+"Eine frühere Aktion des Benutzers (was passiert ist), optional mit Bezug auf Projekt, Skill und Ticket/PR."
+type MemoryEntry {
+    id: Int!
+    title: String!
+    "Leer bei relatedMemories."
+    content: String
+    project: String
+    skill: String
+    reference: String
+    tags: [String!]!
+    type: MemoryType!
+    createdAt: String
+    updatedAt: String
+    files: [MemoryFile!]!
+    "Bei einer geteilten Memory die E-Mail des Eigentümers, sonst leer."
+    owner: String
+}
+
+"Für wen freigegeben ist: USER (name = E-Mail), ROLE (name = Rollenname) oder ALL (name = *)."
+enum ShareTarget { USER ROLE ALL }
+
+type Share {
+    target: ShareTarget!
+    name: String!
+    createdAt: String
+}
+
+type ShareCandidate {
+    target: ShareTarget!
+    name: String!
+    label: String!
+}
+
+"An eine Memory angehängte Datei; Inhalt über GET /blobs/<blob>."
+type MemoryFile {
+    path: String!
+    "Bytes."
+    size: Float!
+    mediaType: String!
+    blob: String!
+    updatedAt: String
+}
+
+"Lebensdauer einer Memory: PERMANENT (Standard), TEMPORARY (ausdrücklich angegeben) oder INVOCATION (Rückruf nach einer lang laufenden Aktion, nach der Zustellung gelöscht); TEMPORARY und INVOCATION ohne Freigabe änderbar und löschbar."
+enum MemoryType { PERMANENT TEMPORARY INVOCATION }
+
+"MQTT-Broker des Backends (HiveMQ CE). Ports 0 = Listener aus; host leer = Host der Backend-Adresse."
+type Broker {
+    enabled: Boolean!
+    host: String
+    port: Int!
+    tlsPort: Int!
+    websocketPort: Int!
+    topicPrefix: String!
+}

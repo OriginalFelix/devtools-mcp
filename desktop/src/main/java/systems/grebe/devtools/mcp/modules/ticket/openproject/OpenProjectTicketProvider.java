@@ -19,6 +19,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.CredentialField;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
@@ -89,7 +90,9 @@ public class OpenProjectTicketProvider implements TicketProvider {
             base = base.substring(0, base.length() - 7);
         }
         Map<String, String> headers = new LinkedHashMap<>();
-        s.get(TOKEN).ifPresent(t -> headers.put("Authorization", "Basic "
+        // API-Schlüssel als Basic apikey:<Schlüssel>, ein OAuth-Access-Token (Anmeldung im Browser) als Bearer
+        boolean oauth = s.get(CredentialField.oauthKey(TOKEN)).map(Boolean::parseBoolean).orElse(false);
+        s.get(TOKEN).ifPresent(t -> headers.put("Authorization", oauth ? "Bearer " + t : "Basic "
                 + Base64.getEncoder().encodeToString(("apikey:" + t).getBytes(StandardCharsets.UTF_8))));
         return new OpenProject(base.isEmpty() ? null : new HttpJson("OpenProject", base + "/api/v3", headers, s.timeout()), base);
     }

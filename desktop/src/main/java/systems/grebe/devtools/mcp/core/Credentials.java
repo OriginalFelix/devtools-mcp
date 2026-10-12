@@ -16,8 +16,12 @@ import java.util.Optional;
  */
 public final class Credentials {
 
-    /** Ein hinterlegter Eintrag; {@code user} ist leer, wenn keiner angegeben ist. */
-    public record Entry(String name, String url, String user, String secret) {
+    /**
+     * Ein hinterlegter Eintrag; {@code user} ist leer, wenn keiner angegeben ist.
+     *
+     * @param oauth {@code secret} ist ein OAuth-Access-Token (Anmeldung im Browser)
+     */
+    public record Entry(String name, String url, String user, String secret, boolean oauth) {
     }
 
     public static final Credentials NONE = new Credentials(List.of());
@@ -32,7 +36,8 @@ public final class Credentials {
     public static Credentials of(ModuleConfig config) {
         return new Credentials(config.getRecords(CredentialsModule.ENTRIES).stream()
                 .map(r -> new Entry(r.getOrDefault(CredentialsModule.NAME, ""), r.getOrDefault(CredentialsModule.URL, ""),
-                        r.getOrDefault(CredentialsModule.USER, "").trim(), r.getOrDefault(CredentialsModule.SECRET, "")))
+                        r.getOrDefault(CredentialsModule.USER, "").trim(), r.getOrDefault(CredentialsModule.SECRET, ""),
+                        CredentialsModule.AUTH_OAUTH.equals(r.get(CredentialsModule.AUTH))))
                 .filter(e -> !e.url().isBlank() && !e.secret().isBlank())
                 .toList());
     }
@@ -61,7 +66,8 @@ public final class Credentials {
 
     /**
      * Setzt in leere Geheimnisse des Moduls die passenden Zugangsdaten ein (und den Benutzer, falls der auch leer ist).
-     * Eigene Werte des Moduls bleiben unangetastet.
+     * Eigene Werte des Moduls bleiben unangetastet. Ein OAuth-Access-Token bekommt die Markierung
+     * {@link CredentialField#oauthKey} – Provider schicken es dann als Bearer.
      */
     public Map<String, String> apply(ToolModule module, Map<String, String> values) {
         if (entries.isEmpty()) {
@@ -74,6 +80,9 @@ public final class Credentials {
             }
             CredentialField f = m.getKey();
             out.put(f.secretKey(), m.getValue().secret());
+            if (m.getValue().oauth()) {
+                out.put(CredentialField.oauthKey(f.secretKey()), "true");
+            }
             if (f.userKey() != null && blank(values.get(f.userKey())) && !m.getValue().user().isEmpty()) {
                 out.put(f.userKey(), m.getValue().user());
             }

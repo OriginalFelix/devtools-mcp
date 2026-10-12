@@ -85,6 +85,7 @@ public class BackendSettingsResolver implements SettingsResolver {
             r.put(CredentialsModule.CLIENT_ID, e.clientId());
             r.put(CredentialsModule.CLIENT_SECRET, e.clientSecret());
             r.put(CredentialsModule.SCOPES, e.scopes());
+            r.put(CredentialsModule.OPTIONS, e.options());
             r.put(CredentialsModule.DESCRIPTION, e.description());
             records.add(r);
         }
@@ -109,7 +110,7 @@ public class BackendSettingsResolver implements SettingsResolver {
                             oauth ? null : r.get(CredentialsModule.SECRET), r.get(CredentialsModule.DESCRIPTION),
                             oauth ? CredentialInfo.OAUTH : CredentialInfo.TOKEN, r.get(CredentialsModule.ISSUER),
                             r.get(CredentialsModule.CLIENT_ID), r.get(CredentialsModule.CLIENT_SECRET),
-                            r.get(CredentialsModule.SCOPES), null, null);
+                            r.get(CredentialsModule.SCOPES), null, null, r.get(CredentialsModule.OPTIONS));
                 })
                 .toList();
     }

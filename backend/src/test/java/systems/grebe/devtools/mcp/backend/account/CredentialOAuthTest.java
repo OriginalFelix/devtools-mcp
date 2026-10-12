@@ -162,6 +162,31 @@ class CredentialOAuthTest {
     }
 
     @Test
+    void manualEndpointsAreKeptValidatedAndUsedForRefreshWithoutDiscovery() {
+        String options = "token_endpoint=" + issuer + "/token; authorization_endpoint=" + issuer + "/authorize";
+        credentials.replace(alice, List.of(new CredentialInfo(null, "Jira DC", "https://jira.example.com", null, null,
+                null, CredentialInfo.OAUTH, null, "app-id", null, null, null, null, options)));
+        CredentialInfo c = credentials.list(alice).getFirst();
+        assertThat(c.options()).isEqualTo(options);
+
+        // Anmeldung über die API-Version 2 (kennt options nicht, null): die Angaben bleiben
+        credentials.replace(alice, List.of(new CredentialInfo(c.id(), c.name(), c.url(), null, "at-0", null,
+                CredentialInfo.OAUTH, null, "app-id", null, null, "rt-0", NOW.plusSeconds(60).toString())));
+        long id = credentials.list(alice).getFirst().id();
+        assertThat(credentials.list(alice).getFirst().options()).isEqualTo(options);
+        // ungültige Angaben werden abgelehnt
+        assertThatThrownBy(() -> credentials.replace(alice, List.of(new CredentialInfo(id, "Jira DC",
+                "https://jira.example.com", null, null, null, CredentialInfo.OAUTH, null, "app-id", null, null, null,
+                null, "redirect_uri=https://evil.example.com/cb"))))
+                .hasMessageContaining("Eintrag 1").hasMessageContaining("Loopback");
+
+        // jira.example.com hat keine Discovery – erneuert wird direkt am token_endpoint
+        credentials.refresh(alice, id);
+        assertThat(credentials.list(alice).getFirst().secret()).isEqualTo("at-1");
+        assertThat(refreshTokensSeen).containsExactly("rt-0");
+    }
+
+    @Test
     void rejectedRefreshAsksToLogInAgain() {
         long id = loggedIn("widerrufen", NOW.minusSeconds(1));
         assertThatThrownBy(() -> credentials.refresh(alice, id))

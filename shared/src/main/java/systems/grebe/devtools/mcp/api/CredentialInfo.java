@@ -22,10 +22,12 @@ import java.time.Duration;
  * @param scopes       OAuth: angeforderte Scopes, durch Leerzeichen getrennt
  * @param refreshToken OAuth: nur beim Speichern nach der Anmeldung; geht nie aus dem Backend heraus
  * @param expiresAt    OAuth: Ablauf des Access-Tokens (ISO-8601), {@code null} = läuft nicht ab
+ * @param options      OAuth: Angaben von Hand ({@code systems.grebe.devtools.mcp.oauth.OAuthOptions}) – Endpunkte für
+ *                     Server ohne Discovery, feste Rückleitung, weitere Parameter
  */
 public record CredentialInfo(Long id, String name, String url, String username, String secret, String description,
                              String auth, String issuer, String clientId, String clientSecret, String scopes,
-                             String refreshToken, String expiresAt) {
+                             String refreshToken, String expiresAt, String options) {
 
     public static final String TOKEN = "TOKEN";
     public static final String OAUTH = "OAUTH";
@@ -34,7 +36,15 @@ public record CredentialInfo(Long id, String name, String url, String username, 
 
     /** Zugangsdaten mit Token bzw. Passwort (API-Version 1). */
     public CredentialInfo(Long id, String name, String url, String username, String secret, String description) {
-        this(id, name, url, username, secret, description, null, null, null, null, null, null, null);
+        this(id, name, url, username, secret, description, null, null, null, null, null, null, null, null);
+    }
+
+    /** Zugangsdaten ohne OAuth-Optionen (API-Version 2). */
+    public CredentialInfo(Long id, String name, String url, String username, String secret, String description,
+                          String auth, String issuer, String clientId, String clientSecret, String scopes,
+                          String refreshToken, String expiresAt) {
+        this(id, name, url, username, secret, description, auth, issuer, clientId, clientSecret, scopes, refreshToken,
+                expiresAt, null);
     }
 
     public boolean oauth() {
@@ -44,6 +54,6 @@ public record CredentialInfo(Long id, String name, String url, String username, 
     /** Dieselben Zugangsdaten mit neuem Access-Token (nach Anmeldung oder Erneuern). */
     public CredentialInfo withTokens(String accessToken, String refresh, String expires) {
         return new CredentialInfo(id, name, url, username, accessToken, description, auth, issuer, clientId,
-                clientSecret, scopes, refresh, expires);
+                clientSecret, scopes, refresh, expires, options);
     }
 }

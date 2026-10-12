@@ -99,7 +99,22 @@ Anbieters (`shared/oauth/OAuthClient`):
 |---|---|---|
 | GitHub / GitHub Enterprise | *Settings → Developer settings → OAuth Apps* (bzw. der Organisation), **Enable Device Flow**; Callback-URL beliebig, z.B. `http://127.0.0.1/callback` | Device Flow, kein Client-Geheimnis nötig. Scopes leer = `repo read:org`. Tokens von OAuth-Apps laufen nicht ab. |
 | GitLab (ab 17.x mit Device Flow) | *Benutzer- bzw. Gruppeneinstellungen → Applications*, **nicht vertraulich**, Redirect-URI `http://127.0.0.1/callback`, Scope `api` | Discovery über OIDC; Scopes `api`. Ältere Versionen ohne Device Flow melden sich per Authorization Code + PKCE an. |
+| Jira Cloud (Atlassian) | *developer.atlassian.com → Console → OAuth 2.0 integration*, Jira-API-Rechte, Callback-URL mit festem Port, z.B. `http://127.0.0.1:53682/callback` | Endpunkte und `audience=api.atlassian.com` sind vorgegeben; **Client-Geheimnis** nötig, in den Optionen `redirect_uri=http://127.0.0.1:53682/callback` (Atlassian vergleicht exakt). Scopes leer = `read:jira-work write:jira-work read:jira-user offline_access`. Das Ticket-Modul ruft dann über `api.atlassian.com/ex/jira/<cloudId>` auf (cloudId aus `accessible-resources`), Links zeigen weiter auf die Site. |
+| Jira Data Center (ab 8.22) | *Administration → Anwendungen → Anwendungslinks → Externe Anwendung erstellen (eingehend)*, Redirect-URL mit festem Port | Keine Discovery: in den Optionen `authorization_endpoint=https://jira.firma.de/rest/oauth2/latest/authorize; token_endpoint=https://jira.firma.de/rest/oauth2/latest/token; redirect_uri=http://127.0.0.1:53682/callback`. |
+| YouTrack | in JetBrains Hub (*Services*) einen Dienst mit Redirect-URI anlegen | Bietet Hub keine Discovery an, die Endpunkte (`…/hub/api/rest/oauth2/auth`, `…/hub/api/rest/oauth2/token`) in den Optionen angeben. Ungetestet. |
+| OpenProject | *Administration → Authentifizierung → OAuth-Anwendungen*, Redirect-URI mit festem Port | In den Optionen `authorization_endpoint=https://op.firma.de/oauth/authorize; token_endpoint=https://op.firma.de/oauth/token; redirect_uri=http://127.0.0.1:53682/callback`. |
 | Andere OAuth-/OIDC-Server (Keycloak, Entra ID, …) | öffentlicher Client mit Device Flow oder Redirect-URI `http://127.0.0.1/callback` | Aussteller angeben; Scopes nach dem Ziel-API. |
+
+**OAuth-Optionen** (Spalte *OAuth: Optionen*, `name=wert`, getrennt durch `;`) – nur für Server ohne Discovery oder mit
+Besonderheiten: `authorization_endpoint`, `token_endpoint`, `device_authorization_endpoint` wie in den Metadaten nach
+RFC 8414 (mit `token_endpoint` entfällt die Discovery), `redirect_uri` für eine feste Rückleitung
+`http://127.0.0.1:<port>/…` (manche Server vergleichen die Callback-URL samt Port exakt, obwohl RFC 8252 den Port
+freigibt; mit fester Rückleitung meldet sich die App über die Anmeldeseite statt per Device Flow an), alles andere geht
+als zusätzlicher Parameter in die Anmeldung (z.B. `prompt=consent`).
+
+**Token als Bearer:** Setzt die App ein OAuth-Access-Token aus den Zugangsdaten ein, legt sie die Markierung
+`<schlüssel>@oauth=true` daneben (`CredentialField.oauthKey`). Jira schickt das Token dann als Bearer statt Basic mit
+Benutzer, OpenProject als Bearer statt `apikey`; GitHub, GitLab und YouTrack verwenden ohnehin Bearer.
 
 Bitbucket Cloud kennt keinen Device Flow und verlangt vertrauliche Clients, Bitbucket Data Center nur HTTP Access
 Tokens – dort bleibt das Token von Hand der einfachere Weg.
@@ -206,7 +221,9 @@ den Schlüssel als seinen erkennt (Jira-/YouTrack-Schlüssel, URL seines Hosts),
 einzige aktive. Sind Jira und YouTrack beide aktiv, ist `ABC-123` mehrdeutig – dann entscheidet das Standard-System oder
 der Parameter `provider`. Ein weiteres System (z.B. Redmine) braucht eine `TicketProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`; `spi/HttpJson`
-(JSON über HTTP mit verständlichen Fehlermeldungen) steht Providern – auch aus Plugins – zur Verfügung.
+(JSON über HTTP mit verständlichen Fehlermeldungen) steht Providern – auch aus Plugins – zur Verfügung. Kommt das Token
+aus einer Anmeldung im Browser, steht unter `CredentialField.oauthKey(TOKEN)` der Wert `true` – dann als
+`Authorization: Bearer` schicken.
 
 ### Modellwahl: Komplexität einschätzen (`classify_task`, `ticket_classify`)
 
@@ -999,7 +1016,7 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
 
 Das Protokoll zwischen Desktop-App und Backend (GraphQL-API und Dateiablage) ist versioniert, damit ein Team-Server
 Desktop-Apps verschiedener Stände bedienen kann: **Jede Änderung am Protokoll ergibt eine neue Version**, die älteren
-bietet das Backend weiter an. Die Versionen sind ganze Zahlen (`ApiVersions.CURRENT` in `shared`, heute 2 – Version 1 bringt die Zugangsdaten je Benutzer, Version 2 deren Anmeldung per OAuth).
+bietet das Backend weiter an. Die Versionen sind ganze Zahlen (`ApiVersions.CURRENT` in `shared`, heute 3 – Version 1 bringt die Zugangsdaten je Benutzer, Version 2 deren Anmeldung per OAuth, Version 3 die OAuth-Optionen).
 
 | Pfad | |
 |---|---|

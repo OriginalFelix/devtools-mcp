@@ -62,6 +62,14 @@ class JiraTicketProviderTest {
     }
 
     @Test
+    void oauthTokenFromCredentialsGoesAsBearerEvenWithAUser() {
+        jira.on("/rest/api/2/search", "{\"startAt\":0,\"maxResults\":1,\"total\":1,\"issues\":[" + ISSUE_1 + "]}");
+        tools(Map.of("jira.user", "fgrebe", "jira.token@oauth", "true")).search(null, null, null, null, null, null, 1,
+                null, null);
+        assertThat(jira.last("/rest/api/2/search").headers().get("authorization")).isEqualTo("Bearer pat-123");
+    }
+
+    @Test
     void cloudSearchUsesEnhancedEndpointWithTokenPagingAndBasicAuth() {
         jira.on("/rest/api/2/search/jql", "{\"issues\":[" + ISSUE_1 + "],\"nextPageToken\":\"tok-2\",\"isLast\":false}");
         TicketTools t = tools(Map.of("jira.deployment", "cloud", "jira.user", "felix@example.com"));

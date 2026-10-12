@@ -2,6 +2,8 @@ package systems.grebe.devtools.mcp.oauth;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * Endpunkte eines Autorisierungsservers – aus der Discovery (RFC 8414 bzw. OpenID Connect Discovery) oder für GitHub,
@@ -10,12 +12,49 @@ import java.util.List;
  * @param deviceAuthorizationEndpoint {@code null}, wenn der Server keinen Device Authorization Grant (RFC 8628) kann
  * @param authorizationEndpoint       {@code null}, wenn der Server keinen Authorization Code Grant kann
  * @param tokenAuthMethods            {@code token_endpoint_auth_methods_supported}; leer = nicht angegeben
+ * @param authorizationParameters     Parameter, die der Server bei der Anmeldung zusätzlich verlangt (Atlassian:
+ *                                    {@code audience})
  */
 public record OAuthServer(String issuer, String authorizationEndpoint, String tokenEndpoint,
-                          String deviceAuthorizationEndpoint, List<String> tokenAuthMethods) {
+                          String deviceAuthorizationEndpoint, List<String> tokenAuthMethods,
+                          Map<String, String> authorizationParameters) {
+
+    /** Atlassian Cloud (Jira, Confluence): OAuth 2.0 (3LO) ohne Discovery und ohne Device Flow. */
+    static final String ATLASSIAN = "https://auth.atlassian.com";
 
     public OAuthServer {
         tokenAuthMethods = tokenAuthMethods == null ? List.of() : List.copyOf(tokenAuthMethods);
+        authorizationParameters = authorizationParameters == null ? Map.of() : Map.copyOf(authorizationParameters);
+    }
+
+    public OAuthServer(String issuer, String authorizationEndpoint, String tokenEndpoint,
+                       String deviceAuthorizationEndpoint, List<String> tokenAuthMethods) {
+        this(issuer, authorizationEndpoint, tokenEndpoint, deviceAuthorizationEndpoint, tokenAuthMethods, Map.of());
+    }
+
+    /**
+     * Atlassian Cloud: Anmeldung mit {@code audience=api.atlassian.com} und {@code prompt=consent}; die Tokens gelten für
+     * {@code https://api.atlassian.com/ex/jira/<cloudId>}. Atlassian verlangt ein Client-Geheimnis und vergleicht die
+     * Callback-URL exakt – in den OAuth-Optionen eine feste {@code redirect_uri} angeben.
+     */
+    public static OAuthServer atlassian() {
+        return new OAuthServer(ATLASSIAN, ATLASSIAN + "/authorize", ATLASSIAN + "/oauth/token", null,
+                List.of("client_secret_post"), Map.of("audience", "api.atlassian.com", "prompt", "consent"));
+    }
+
+    /** Ob Aussteller bzw. URL zu Atlassian Cloud gehören ({@code auth.atlassian.com} bzw. {@code *.atlassian.net}). */
+    public static boolean isAtlassian(String issuer, String url) {
+        String host = host(issuer != null && !issuer.isBlank() ? issuer : url);
+        return host != null && (host.equals("auth.atlassian.com") || host.endsWith(".atlassian.net"));
+    }
+
+    private static String host(String url) {
+        try {
+            String h = URI.create(url.strip()).getHost();
+            return h == null ? null : h.toLowerCase(Locale.ROOT);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            return null;
+        }
     }
 
     /**
@@ -25,7 +64,7 @@ public record OAuthServer(String issuer, String authorizationEndpoint, String to
     public static OAuthServer github(String webBase) {
         String base = webBase.endsWith("/") ? webBase.substring(0, webBase.length() - 1) : webBase;
         return new OAuthServer(base, base + "/login/oauth/authorize", base + "/login/oauth/access_token",
-                base + "/login/device/code", List.of("client_secret_post"));
+                base + "/login/device/code", List.of("client_secret_post"), Map.of());
     }
 
     /**
@@ -62,9 +101,15 @@ public record OAuthServer(String issuer, String authorizationEndpoint, String to
         return uri.getScheme() + "://" + uri.getRawAuthority();
     }
 
-    /** Scopes, wenn keine angegeben sind: für GitHub Lesen und Schreiben von Repositories (Pull Requests, Issues, Actions); sonst keine. */
+    /**
+     * Scopes, wenn keine angegeben sind: für GitHub Lesen und Schreiben von Repositories (Pull Requests, Issues,
+     * Actions), für Atlassian Jira lesen/schreiben mit Refresh-Token; sonst keine (Vorgabe des Servers).
+     */
     public String defaultScopes() {
-        return tokenEndpoint.endsWith("/login/oauth/access_token") ? "repo read:org" : "";
+        if (tokenEndpoint.endsWith("/login/oauth/access_token")) {
+            return "repo read:org";
+        }
+        return ATLASSIAN.equals(issuer) ? "read:jira-work write:jira-work read:jira-user offline_access" : "";
     }
 
     public boolean supportsDeviceFlow() {

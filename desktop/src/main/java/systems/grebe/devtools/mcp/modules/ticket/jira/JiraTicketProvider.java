@@ -11,10 +11,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.CredentialField;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.modules.ticket.spi.HttpJson;
@@ -84,16 +86,49 @@ public class JiraTicketProvider implements TicketProvider {
         return "JQL, z.B. sprint in openSprints() AND priority = High (ohne ORDER BY wird nach updated sortiert)";
     }
 
+    /** REST-API von Atlassian für OAuth-2.0-Tokens (3LO) – Paketsichtbar für Tests. */
+    static String atlassianApi = "https://api.atlassian.com";
+
     @Override
     public TicketSystem create(ProviderSettings s) {
         String base = HttpJson.stripSlash(s.getString(BASE_URL, ""));
+        // Anmeldung im Browser (Zugangsdaten mit OAuth): Access-Token immer als Bearer, nie Basic mit Benutzer
+        boolean oauth = s.get(CredentialField.oauthKey(TOKEN)).map(Boolean::parseBoolean).orElse(false);
         Map<String, String> headers = new LinkedHashMap<>();
-        s.get(TOKEN).ifPresent(token -> headers.put("Authorization", s.get(USER)
+        s.get(TOKEN).ifPresent(token -> headers.put("Authorization", s.get(USER).filter(u -> !oauth)
                 .map(u -> "Basic " + Base64.getEncoder().encodeToString((u + ":" + token).getBytes(StandardCharsets.UTF_8)))
                 .orElse("Bearer " + token)));
         String deployment = s.getString(DEPLOYMENT, "auto");
         boolean cloud = "cloud".equals(deployment) || "auto".equals(deployment) && base.toLowerCase(Locale.ROOT).contains(".atlassian.net");
-        return new Jira(base.isEmpty() ? null : new HttpJson("Jira", base, headers, s.timeout()), cloud);
+        if (base.isEmpty()) {
+            return new Jira(null, null, cloud);
+        }
+        if (oauth && cloud) {
+            String api = atlassianApi;
+            return new Jira(base, () -> cloudApi(base, headers, s.timeout(), api), cloud);
+        }
+        HttpJson http = new HttpJson("Jira", base, headers, s.timeout());
+        return new Jira(base, () -> http, cloud);
+    }
+
+    /**
+     * Jira Cloud mit OAuth-2.0-Token (3LO): Die REST-API liegt dann nicht unter der Site, sondern unter
+     * {@code https://api.atlassian.com/ex/jira/<cloudId>} – die cloudId der Site kommt aus
+     * {@code /oauth/token/accessible-resources}.
+     */
+    static HttpJson cloudApi(String site, Map<String, String> headers, Duration timeout, String api) {
+        JsonNode resources = new HttpJson("Jira", api, headers, timeout).getJson("/oauth/token/accessible-resources");
+        List<String> available = new ArrayList<>();
+        for (JsonNode r : resources) {
+            String url = HttpJson.stripSlash(text(r.path("url")));
+            if (url.equalsIgnoreCase(site)) {
+                return new HttpJson("Jira", api + "/ex/jira/" + HttpJson.enc(text(r.path("id"))), headers, timeout);
+            }
+            available.add(url);
+        }
+        throw new IllegalStateException("Jira: Das OAuth-Token hat keinen Zugriff auf " + site + " (zugänglich: "
+                + (available.isEmpty() ? "keine Site" : String.join(", ", available)) + ") – bei der Anmeldung im "
+                + "Browser diese Site freigeben bzw. die Server-URL prüfen.");
     }
 
     /** Jira-Anbindung. Paketsichtbar für Tests. */
@@ -107,12 +142,21 @@ public class JiraTicketProvider implements TicketProvider {
         /** Format von {@code started} – Jira lehnt ISO-Offsets mit Doppelpunkt ab. */
         private static final DateTimeFormatter STARTED = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
 
-        private final HttpJson http;
+        /** Adresse der Jira-Site – für Links auf Tickets und Boards; {@code null} = nicht konfiguriert. */
+        private final String site;
+        private final Supplier<HttpJson> connect;
         private final boolean cloud;
+        private volatile HttpJson http;
         private volatile Map<String, String> storyPointFields;
 
         Jira(HttpJson http, boolean cloud) {
-            this.http = http;
+            this(http == null ? null : http.baseUrl(), http == null ? null : () -> http, cloud);
+        }
+
+        /** @param connect REST-Zugang, erst beim ersten Aufruf gebaut (Jira Cloud mit OAuth fragt dafür die cloudId ab) */
+        Jira(String site, Supplier<HttpJson> connect, boolean cloud) {
+            this.site = site;
+            this.connect = connect;
             this.cloud = cloud;
         }
 
@@ -122,22 +166,31 @@ public class JiraTicketProvider implements TicketProvider {
         }
 
         private HttpJson http() {
-            if (http == null) {
+            if (site == null) {
                 throw new IllegalStateException("Jira: keine Server-URL konfiguriert – in der DevTools-App unter "
                         + "Module → Tickets eintragen.");
             }
-            return http;
+            HttpJson h = http;
+            if (h == null) {
+                synchronized (this) {
+                    if (http == null) {
+                        http = connect.get(); // ein Fehler wird nicht gemerkt – der nächste Aufruf versucht es neu
+                    }
+                    h = http;
+                }
+            }
+            return h;
         }
 
         @Override
         public Availability probe() {
-            if (http == null) {
+            if (site == null) {
                 return Availability.unavailable("keine Server-URL konfiguriert");
             }
             try {
-                JsonNode info = http.getJson("/rest/api/2/serverInfo");
+                JsonNode info = http().getJson("/rest/api/2/serverInfo");
                 String version = text(info.path("version")) + " (" + (cloud ? "Cloud" : text(info.path("deploymentType"))) + ")";
-                JsonNode me = http.getJson("/rest/api/2/myself");
+                JsonNode me = http().getJson("/rest/api/2/myself");
                 return Availability.ok(version, HttpJson.first(text(me.path("displayName")), text(me.path("name"))));
             } catch (RuntimeException e) {
                 return Availability.unavailable(e.getMessage());
@@ -150,7 +203,7 @@ public class JiraTicketProvider implements TicketProvider {
                 return false;
             }
             String k = key.trim();
-            if (http != null && k.startsWith(http.baseUrl() + "/")) {
+            if (site != null && k.startsWith(site + "/")) {
                 return true;
             }
             return k.matches("[A-Z][A-Z0-9_]*-\\d+");
@@ -184,7 +237,7 @@ public class JiraTicketProvider implements TicketProvider {
                 for (JsonNode b : res.path("values")) {
                     String proj = HttpJson.first(text(b.path("location").path("projectKey")), project);
                     out.add(new Board(text(b.path("id")), text(b.path("name")), text(b.path("type")), proj,
-                            http.baseUrl() + "/secure/RapidBoard.jspa?rapidView=" + text(b.path("id"))));
+                            site + "/secure/RapidBoard.jspa?rapidView=" + text(b.path("id"))));
                 }
                 if (res.path("isLast").asBoolean(true) || res.path("values").isEmpty()) {
                     break;
@@ -215,7 +268,7 @@ public class JiraTicketProvider implements TicketProvider {
             String path;
             List<String> jql = new ArrayList<>();
             if ("scrum".equalsIgnoreCase(board.type())) {
-                JsonNode sprints = http.getJson("/rest/agile/1.0/board/" + board.id() + "/sprint" + query("state", "active"));
+                JsonNode sprints = http().getJson("/rest/agile/1.0/board/" + board.id() + "/sprint" + query("state", "active"));
                 JsonNode sprint = sprints.path("values").path(0);
                 if (sprint.isMissingNode()) {
                     scope = "kein aktiver Sprint – offene Tickets des Boards";
@@ -241,7 +294,7 @@ public class JiraTicketProvider implements TicketProvider {
             int loaded = 0;
             boolean truncated = false;
             while (true) {
-                JsonNode res = http.getJson(path + query("jql", jql.isEmpty() ? null : String.join(" AND ", jql),
+                JsonNode res = http().getJson(path + query("jql", jql.isEmpty() ? null : String.join(" AND ", jql),
                         "fields", LIST_FIELDS, "startAt", startAt, "maxResults", BOARD_PAGE));
                 JsonNode issues = res.path("issues");
                 for (JsonNode i : issues) {
@@ -270,7 +323,7 @@ public class JiraTicketProvider implements TicketProvider {
             JsonNode b = http().getJson("/rest/agile/1.0/board/" + id);
             return new Board(text(b.path("id")), text(b.path("name")), text(b.path("type")),
                     text(b.path("location").path("projectKey")),
-                    http.baseUrl() + "/secure/RapidBoard.jspa?rapidView=" + text(b.path("id")));
+                    site + "/secure/RapidBoard.jspa?rapidView=" + text(b.path("id")));
         }
 
         private static String dateRange(JsonNode sprint) {
@@ -403,7 +456,7 @@ public class JiraTicketProvider implements TicketProvider {
             // Unteraufgaben eines Epics (Cloud: parent = EPIC, Data Center: "Epic Link")
             String children = cloud ? "parent = " + k : "\"Epic Link\" = " + k;
             try {
-                JsonNode res = http.getJson((cloud ? "/rest/api/2/search/jql" : "/rest/api/2/search")
+                JsonNode res = http().getJson((cloud ? "/rest/api/2/search/jql" : "/rest/api/2/search")
                         + query("jql", children + " ORDER BY rank", "fields", "summary,status", "maxResults", 50));
                 res.path("issues").forEach(i -> {
                     if (out.stream().noneMatch(o -> o.key().equals(text(i.path("key"))))) {
@@ -419,7 +472,7 @@ public class JiraTicketProvider implements TicketProvider {
         private Link link(String relation, JsonNode issue) {
             String key = text(issue.path("key"));
             return new Link(relation, key, text(issue.path("fields").path("summary")),
-                    text(issue.path("fields").path("status").path("name")), http.baseUrl() + "/browse/" + key);
+                    text(issue.path("fields").path("status").path("name")), site + "/browse/" + key);
         }
 
         /** Linktypen der Instanz, je Richtung ein Eintrag ({@code <Typ>:outward}/{@code <Typ>:inward}); ungerichtete einmal. */
@@ -453,7 +506,7 @@ public class JiraTicketProvider implements TicketProvider {
             body.putObject("inwardIssue").put("key", outward ? k : t);
             body.putObject("outwardIssue").put("key", outward ? t : k);
             http().post("/rest/api/2/issueLink", body);
-            return new WriteResult(k, "verknüpft: " + k + " " + type.name() + " " + t, http.baseUrl() + "/browse/" + k);
+            return new WriteResult(k, "verknüpft: " + k + " " + type.name() + " " + t, site + "/browse/" + k);
         }
 
         @Override
@@ -470,9 +523,9 @@ public class JiraTicketProvider implements TicketProvider {
                 }
             }
             Found hit = TicketSystem.pickLink(found, Found::relation, relation, "Jira", k, t);
-            http.delete("/rest/api/2/issueLink/" + HttpJson.enc(hit.id()));
+            http().delete("/rest/api/2/issueLink/" + HttpJson.enc(hit.id()));
             return new WriteResult(k, "Verknüpfung entfernt: " + k + " " + hit.relation() + " " + t,
-                    http.baseUrl() + "/browse/" + k);
+                    site + "/browse/" + k);
         }
 
         @Override
@@ -493,7 +546,7 @@ public class JiraTicketProvider implements TicketProvider {
             body.putObject("transition").put("id", transition.id());
             http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/transitions", body);
             return new WriteResult(k, "Status → " + transition.to() + " ('" + transition.name() + "')",
-                    http.baseUrl() + "/browse/" + k);
+                    site + "/browse/" + k);
         }
 
         /**
@@ -519,14 +572,14 @@ public class JiraTicketProvider implements TicketProvider {
             }
             String id = newestCommentId(k, comment);
             return new WriteResult(k, "Status → " + transition.to() + " ('" + transition.name() + "') mit Kommentar"
-                    + (id == null ? "" : " " + id), http.baseUrl() + "/browse/" + k
+                    + (id == null ? "" : " " + id), site + "/browse/" + k
                     + (id == null ? "" : "?focusedCommentId=" + id), id);
         }
 
         /** ID des neuesten Kommentars, wenn er den gesendeten Text trägt – der Übergang selbst liefert sie nicht. */
         private String newestCommentId(String k, String body) {
             try {
-                JsonNode newest = http.getJson("/rest/api/2/issue/" + HttpJson.enc(k) + "/comment"
+                JsonNode newest = http().getJson("/rest/api/2/issue/" + HttpJson.enc(k) + "/comment"
                         + query("orderBy", "-created", "maxResults", 1)).path("comments").path(0);
                 String text = text(newest.path("body"));
                 return text != null && text.strip().equals(body.strip()) ? text(newest.path("id")) : null;
@@ -543,7 +596,7 @@ public class JiraTicketProvider implements TicketProvider {
             JsonNode res = http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/comment", req).body();
             String id = text(res.path("id"));
             return new WriteResult(k, "Kommentar " + Text.orDash(id) + " hinzugefügt",
-                    http.baseUrl() + "/browse/" + k + (id == null ? "" : "?focusedCommentId=" + id), id);
+                    site + "/browse/" + k + (id == null ? "" : "?focusedCommentId=" + id), id);
         }
 
         @Override
@@ -568,7 +621,7 @@ public class JiraTicketProvider implements TicketProvider {
                 who = user(user);
             }
             http().put("/rest/api/2/issue/" + HttpJson.enc(k) + "/assignee", body);
-            return new WriteResult(k, "zugewiesen an " + who, http.baseUrl() + "/browse/" + k);
+            return new WriteResult(k, "zugewiesen an " + who, site + "/browse/" + k);
         }
 
         /** Sucht unter den für das Ticket zuweisbaren Benutzern – braucht nur Projektrechte, nicht „Browse Users“. */
@@ -582,7 +635,7 @@ public class JiraTicketProvider implements TicketProvider {
          */
         private JsonNode assignableUser(String scope, String target, String who) {
             String q = who.trim().replaceFirst("^@", "");
-            JsonNode users = http.getJson("/rest/api/2/user/assignable/search"
+            JsonNode users = http().getJson("/rest/api/2/user/assignable/search"
                     + query(scope, target, cloud ? "query" : "username", q, "maxResults", 20));
             List<JsonNode> list = new ArrayList<>();
             users.forEach(list::add);
@@ -622,7 +675,7 @@ public class JiraTicketProvider implements TicketProvider {
             var body = HttpJson.object();
             body.set("fields", fields);
             http().put("/rest/api/2/issue/" + HttpJson.enc(k), body);
-            return new WriteResult(k, "geändert: " + update.summary(), http.baseUrl() + "/browse/" + k);
+            return new WriteResult(k, "geändert: " + update.summary(), site + "/browse/" + k);
         }
 
         /** Felder per ID oder Anzeigename aus der Editmeta des Tickets; der Text wird passend zum Feldtyp umgewandelt. */
@@ -651,7 +704,7 @@ public class JiraTicketProvider implements TicketProvider {
             var body = HttpJson.object();
             body.set("fields", fields);
             http().put("/rest/api/2/issue/" + HttpJson.enc(k), body);
-            return new WriteResult(k, "Felder geändert: " + String.join(", ", done), http.baseUrl() + "/browse/" + k);
+            return new WriteResult(k, "Felder geändert: " + String.join(", ", done), site + "/browse/" + k);
         }
 
         /**
@@ -826,7 +879,7 @@ public class JiraTicketProvider implements TicketProvider {
                     msg += ", Zuweisung fehlgeschlagen: " + e.getMessage();
                 }
             }
-            return new WriteResult(newKey, msg, http.baseUrl() + "/browse/" + newKey);
+            return new WriteResult(newKey, msg, site + "/browse/" + newKey);
         }
 
         @Override
@@ -867,7 +920,7 @@ public class JiraTicketProvider implements TicketProvider {
             String id = text(http().post("/rest/api/2/issue/" + HttpJson.enc(k) + "/worklog", body).body().path("id"));
             return new WriteResult(k, TicketSystem.formatDuration(work.duration()) + " gebucht am " + work.date()
                     + (id == null ? "" : " (Buchung " + id + ")"),
-                    http.baseUrl() + "/browse/" + k + (id == null ? "" : "?focusedWorklogId=" + id), id);
+                    site + "/browse/" + k + (id == null ? "" : "?focusedWorklogId=" + id), id);
         }
 
         @Override
@@ -877,14 +930,14 @@ public class JiraTicketProvider implements TicketProvider {
 
         @Override
         public String instance() {
-            return http == null ? id() : http.baseUrl();
+            return site == null ? id() : site;
         }
 
         @Override
         public WriteResult deleteComment(String key, String project, String commentId) {
             String k = issueKey(key);
             http().delete("/rest/api/2/issue/" + HttpJson.enc(k) + "/comment/" + HttpJson.enc(commentId.trim()));
-            return new WriteResult(k, "Kommentar " + commentId.trim() + " gelöscht", http.baseUrl() + "/browse/" + k);
+            return new WriteResult(k, "Kommentar " + commentId.trim() + " gelöscht", site + "/browse/" + k);
         }
 
         @Override
@@ -905,7 +958,7 @@ public class JiraTicketProvider implements TicketProvider {
 
         private String issueTypes(String project) {
             try {
-                return String.join(", ", texts(http.getJson("/rest/api/2/project/" + HttpJson.enc(project.trim()))
+                return String.join(", ", texts(http().getJson("/rest/api/2/project/" + HttpJson.enc(project.trim()))
                         .path("issueTypes"), "name"));
             } catch (RuntimeException e) {
                 return "(nicht abrufbar)";
@@ -1063,7 +1116,7 @@ public class JiraTicketProvider implements TicketProvider {
                     category(text(f.path("status").path("statusCategory").path("key"))),
                     text(f.path("issuetype").path("name")), text(f.path("priority").path("name")),
                     assignee == null ? List.of() : List.of(assignee), texts(f.path("labels"), null),
-                    text(f.path("updated")), http == null ? null : http.baseUrl() + "/browse/" + key);
+                    text(f.path("updated")), site == null ? null : site + "/browse/" + key);
         }
 
         private static String user(JsonNode u) {

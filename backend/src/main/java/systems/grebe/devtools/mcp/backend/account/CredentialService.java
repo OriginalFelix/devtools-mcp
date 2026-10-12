@@ -26,6 +26,7 @@ import systems.grebe.devtools.mcp.backend.BackendChanged;
 import systems.grebe.devtools.mcp.config.SecretCipher;
 import systems.grebe.devtools.mcp.oauth.OAuthClient;
 import systems.grebe.devtools.mcp.oauth.OAuthException;
+import systems.grebe.devtools.mcp.oauth.OAuthOptions;
 import systems.grebe.devtools.mcp.oauth.OAuthServer;
 import systems.grebe.devtools.mcp.oauth.OAuthTokens;
 
@@ -51,6 +52,7 @@ public class CredentialService {
     static final int MAX_DESCRIPTION = 500;
     static final int MAX_CLIENT_ID = 500;
     static final int MAX_SCOPES = 1000;
+    static final int MAX_OPTIONS = 2000;
     static final int MAX_ENTRIES = 200;
 
     private final CredentialRepository repo;
@@ -99,7 +101,7 @@ public class CredentialService {
     private static CredentialInfo info(CredentialRepository.Row r, String secret, String clientSecret) {
         return new CredentialInfo(r.id(), r.name(), r.url(), r.username(), secret, r.description(), r.auth(),
                 r.issuer(), r.clientId(), clientSecret, r.scopes(), null,
-                r.expiresAt() == null ? null : r.expiresAt().toString());
+                r.expiresAt() == null ? null : r.expiresAt().toString(), r.options());
     }
 
     /**
@@ -149,7 +151,7 @@ public class CredentialService {
             }
             OAuthTokens t;
             try {
-                OAuthServer server = oauth.discover(OAuthServer.issuerFor(r.issuer(), r.url()));
+                OAuthServer server = oauth.resolve(r.issuer(), r.url(), OAuthOptions.parse(r.options()));
                 t = oauth.refresh(server, r.clientId(), cipher.decrypt(r.clientSecret()),
                         cipher.decrypt(r.refreshToken()));
             } catch (OAuthException e) {
@@ -190,6 +192,12 @@ public class CredentialService {
         }
         String clientId = keep(e.clientId(), old == null ? null : old.clientId(), MAX_CLIENT_ID, prefix + "Client-ID");
         String scopes = keep(e.scopes(), old == null ? null : old.scopes(), MAX_SCOPES, prefix + "Scopes");
+        String options = keep(e.options(), old == null ? null : old.options(), MAX_OPTIONS, prefix + "OAuth-Optionen");
+        try {
+            OAuthOptions.parse(options);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException(prefix + ex.getMessage(), ex);
+        }
         String clientSecret = e.clientSecret() != null && !e.clientSecret().isEmpty()
                 ? cipher.encrypt(limit(e.clientSecret(), MAX_SECRET, prefix + "Client-Geheimnis"))
                 : old == null ? null : old.clientSecret();
@@ -223,7 +231,7 @@ public class CredentialService {
         return new CredentialRepository.Row(0, name, url, keep(e.username(), old == null ? null : old.username(),
                 MAX_USERNAME, prefix + "Benutzer"), secret, keep(e.description(), old == null ? null : old.description(),
                 MAX_DESCRIPTION, prefix + "Beschreibung"), auth, issuer, clientId, clientSecret, scopes, refresh,
-                CredentialInfo.OAUTH.equals(auth) ? expires : null);
+                CredentialInfo.OAUTH.equals(auth) ? expires : null, options);
     }
 
     /** Neuer Wert, {@code null} = bisheriger (ältere API-Versionen kennen das Feld nicht), leer = keiner. */
