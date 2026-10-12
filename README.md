@@ -65,6 +65,9 @@ für Tickets, Pull Requests, CI und die Release Notes im Maven-Modul zugleich. Z
   nicht als Einstellung eines Profils: sie gelten in allen Profilen des Benutzers, Vorgaben des Administrators gibt es
   dafür nicht. Über die API (ab Version 1: `Settings.credentials`, Mutation `saveCredentials`) bekommt nur der Benutzer
   selbst seine Einträge; Änderungen kommen wie Einstellungen sofort bei seinen anderen Desktop-Apps an.
+* **Pflege:** in der Desktop-App (Module → Zugangsdaten) oder in der Web-UI des Team-Servers unter *Mein Konto* →
+  *Zugangsdaten* (anlegen, bearbeiten, Reihenfolge, löschen; Recht „Eigene Einstellungen“). Die Web-UI zeigt Tokens nur
+  maskiert und bekommt sie nie zu sehen – beim Bearbeiten bleibt ein leeres Feld beim bisherigen Token.
 
 ### Berechtigungen an das LLM übermitteln
 

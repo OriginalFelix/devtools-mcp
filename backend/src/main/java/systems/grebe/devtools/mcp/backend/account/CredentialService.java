@@ -58,6 +58,16 @@ public class CredentialService {
     }
 
     /**
+     * Zugangsdaten des Benutzers ohne Geheimnisse ({@code secret = null}) – für Oberflächen, die sie nur anzeigen und
+     * über {@link #replace} mit {@code id} ändern.
+     */
+    public List<CredentialInfo> summaries(long userId) {
+        return repo.list(userId).stream()
+                .map(r -> new CredentialInfo(r.id(), r.name(), r.url(), r.username(), null, r.description()))
+                .toList();
+    }
+
+    /**
      * Ersetzt alle Zugangsdaten des Benutzers durch {@code entries} (deren Reihenfolge gilt). Ein Eintrag ohne Geheimnis
      * behält das des bisherigen Eintrags mit seiner {@code id}.
      *

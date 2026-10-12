@@ -25,14 +25,16 @@ import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
 import systems.grebe.devtools.mcp.api.Permission;
 import systems.grebe.devtools.mcp.backend.account.AccountService;
+import systems.grebe.devtools.mcp.backend.account.CredentialService;
 import systems.grebe.devtools.mcp.web.WebLogin.AccountPrincipal;
 import systems.grebe.devtools.mcp.backend.account.ApiToken;
 import systems.grebe.devtools.mcp.backend.account.TokenService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 
 /**
- * Eigenes Konto: Name/E-Mail, Rollen, Passwort, die Anmeldungen der Desktop-Apps und persönliche Desktop-Tokens (für
- * den Start ohne Anmeldedialog, Recht „Desktop-Tokens erzeugen“).
+ * Eigenes Konto: Name/E-Mail, Rollen, Passwort, die Anmeldungen der Desktop-Apps, persönliche Desktop-Tokens (für
+ * den Start ohne Anmeldedialog, Recht „Desktop-Tokens erzeugen“) und die eigenen Zugangsdaten für die Module der
+ * Desktop-App ({@link CredentialsPanel}, Recht „Eigene Einstellungen“ zum Ändern).
  */
 @Route("konto")
 @PageTitle("Mein Konto – DevTools MCP")
@@ -54,7 +56,8 @@ public class AccountView extends VerticalLayout {
     private final long userId;
     private final Grid<ApiToken> grid = new Grid<>();
 
-    public AccountView(AccountService accounts, TokenService tokens, AuthenticationContext auth) {
+    public AccountView(AccountService accounts, TokenService tokens, CredentialService credentials,
+                       AuthenticationContext auth) {
         this.accounts = accounts;
         this.tokens = tokens;
         this.serverUrl = Ui.serverUrl();
@@ -73,7 +76,8 @@ public class AccountView extends VerticalLayout {
                         + serverUrl + "); jede Anmeldung steht hier, bis sich die App abmeldet. Persönliche Tokens "
                         + "braucht nur ein Start ohne Anmeldedialog (headless: Umgebungsvariable DEVTOOLS_MCP_TOKEN). "
                         + "Ein Token wird nur beim Erzeugen angezeigt; verlorene Tokens widerrufen und neu erzeugen."),
-                tokenGrid(me.has(Permission.TOKENS_CREATE)));
+                tokenGrid(me.has(Permission.TOKENS_CREATE)),
+                new H2("Zugangsdaten"), new CredentialsPanel(credentials, userId, me.has(Permission.SETTINGS_OWN)));
         refresh();
     }
 

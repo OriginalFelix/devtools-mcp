@@ -89,6 +89,18 @@ class CredentialServiceTest {
     }
 
     @Test
+    void summariesLeaveOutSecrets() {
+        credentials.replace(alice, List.of(entry(null, "GitHub", "https://github.com", "gh-geheim")));
+
+        assertThat(credentials.summaries(alice)).singleElement()
+                .satisfies(c -> assertThat(c.secret()).isNull())
+                .satisfies(c -> assertThat(c.name()).isEqualTo("GitHub"));
+        // so speichert die Web-UI: ohne Geheimnis, das bisherige bleibt
+        credentials.replace(alice, credentials.summaries(alice));
+        assertThat(credentials.list(alice).getFirst().secret()).isEqualTo("gh-geheim");
+    }
+
+    @Test
     void rejectsInvalidEntriesWithoutChangingAnything() {
         credentials.replace(alice, List.of(entry(null, "GitHub", "https://github.com", "gh")));
 
