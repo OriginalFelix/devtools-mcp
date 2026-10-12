@@ -248,6 +248,7 @@ class BitbucketServerProviderTest {
         String out = new PrCreateTools(env("datacenter", Map.of())).create("Login", "Text", "feature/login", null, null,
                 java.util.List.of("anna"), null, null, "proj/app", null);
         assertThat(out).contains("PROJ/app#6: Pull Request angelegt: feature/login → develop", "https://bb/pr/6");
+        assertThat(out).doesNotContain("bind_pr");
         assertThat(bb.last("/rest/api/1.0/projects/PROJ/repos/app/pull-requests").body())
                 .contains("\"id\":\"refs/heads/feature/login\"", "\"id\":\"refs/heads/develop\"", "\"key\":\"PROJ\"",
                         "\"slug\":\"app\"", "\"name\":\"anna\"");
