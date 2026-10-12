@@ -118,7 +118,17 @@ tasks.named<Jar>("bootJar") {
     manifest.attributes("Enable-Native-Access" to "ALL-UNNAMED")
 }
 
+// Vector API (Modul Entscheidungen, SIMD): Inkubator-Modul zum Übersetzen, in Tests und bootRun; die App nutzt es
+// zur Laufzeit nur, wenn sie mit --add-modules jdk.incubator.vector gestartet wird (sonst skalare Schleifen)
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.addAll(listOf("--add-modules", "jdk.incubator.vector"))
+}
+
 tasks.test {
+    jvmArgs("--add-modules", "jdk.incubator.vector")
+    // Standard 512 MB reichen knapp für die zwischengespeicherten Spring-Kontexte; die Modelltests des Moduls
+    // Entscheidungen brauchen kurzzeitig ~140 MB zusätzlich (Tokenizer mit ~1 Mio. Einträgen)
+    maxHeapSize = "1g"
     inputs.files(pluginApiClasspath).withPropertyName("pluginApiClasspath").withNormalizer(ClasspathNormalizer::class)
     jvmArgumentProviders.add(CommandLineArgumentProvider {
         listOf("-Ddevtools.test.pluginApiClasspath=${pluginApiClasspath.asPath}")
@@ -128,5 +138,5 @@ tasks.test {
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "--add-modules", "jdk.incubator.vector")
 }

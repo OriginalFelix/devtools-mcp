@@ -26,6 +26,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
 | **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort), `mail_send` (SMTP, auch als Antwort; Rückfrage beim Nutzer, erlaubte Empfänger, Grenze pro Stunde) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über den stdio-Proxy (Channel) an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
+| **Entscheidungen (System One)** (lokal, reines Java) | `decide_run` (typisierte Entscheidung: je Feld ein Wert aus dem Schema mit Wahrscheinlichkeiten – `choice`, `score`, `boolean`, `multi`), `decide_batch` (bis 100 Eingaben, Map-Reduce), `decide_feedback` (richtige Antwort melden: Beispiel + Kalibrierung), `decide_tasks`, `decide_task_save` (wiederkehrende Entscheidungen als Aufgabe), `decide_status` · Schalter (Standard aus): `decide_task_delete` – gerechnet mit [Laya](https://github.com/NandhaKishorM/laya) (Encoder, Apache-2.0) in reinem Java auf der CPU, optional zusätzlich mit einem LLM im GGUF-Format; ohne API und ohne native Bibliotheken (siehe [Entscheidungen](#entscheidungen-system-one--typisierte-entscheidungen-lokal)) (Modul Standard: aus) |
 | **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
@@ -266,6 +267,87 @@ für beide Tools liegen im Modul Modellwahl (Standard aus): Ausführung, „Clau
 Standard `high`), die Modelle je Stufe und eigene **Regeln** des Teams (eine je Zeile, z.B. „Änderungen am Lohnmodul sind
 immer komplex“), die den allgemeinen Kriterien vorgehen. „Verbindung testen“ prüft im Modus `api`/`auto` Key und Modell,
 ohne Token zu verbrauchen.
+
+### Entscheidungen (System One) – typisierte Entscheidungen lokal
+
+Kleine, klar umrissene Entscheidungen über einen Text oder Zustand – Kategorie, Priorität, ja/nein, passende Labels,
+Stufe auf einer Skala – ohne API und ohne Textgenerierung: unstrukturierte Eingabe rein, **typisierte Entscheidung mit
+Wahrscheinlichkeiten** raus. Die Idee stammt von „System One“-Modellen wie Jev (TypeSafe AI); lokal rechnet das Modul mit
+[Laya](https://github.com/NandhaKishorM/laya) (Apache-2.0), einem Encoder (ModernBERT/mmBERT, 322 M Parameter) mit
+Entscheidungskopf, trainiert auf kalibrierte Entscheidungen. Das Ergebnis ist immer ein Wert aus dem Schema – es gibt
+keine Typfehler und keine erfundenen Werte.
+
+```json
+decide_run(input="Seit dem Update stürzt die App beim Speichern ab, bitte sofort beheben!", fields=[
+  {"name": "category", "type": "choice", "question": "Um welche Art von Anliegen geht es?",
+   "options": ["fehler", "wunsch", "frage"], "descriptions": {"fehler": "etwas funktioniert nicht"}},
+  {"name": "urgent", "type": "boolean", "question": "Das Anliegen ist dringend."},
+  {"name": "severity", "type": "score", "options": ["gering", "mittel", "hoch", "kritisch"]},
+  {"name": "topics", "type": "multi", "options": ["speichern", "anmeldung", "rechnung"]}])
+→ {"decisionId": "…", "decisions": {
+     "category": {"type": "choice", "value": "fehler", "probabilities": {"fehler": 0.9997, …}, "confidence": 0.9997,
+                  "certainty": 0.9975, "engine": "laya", "calibrated": false},
+     "urgent":   {"type": "boolean", "value": true, "probability": 0.9346, …},
+     "severity": {"type": "score", "value": "mittel", "level": 1, "expected": 1.31, …},
+     "topics":   {"type": "multi", "values": ["speichern"], "probabilities": {"speichern": 0.99, …}, …}},
+   "uncertain": true, "millis": 420}
+```
+
+| Feldtyp | Ergebnis | Hinweis |
+|---|---|---|
+| `choice` | `value` (eine Option), `probabilities` | `descriptions` je Option machen es deutlich genauer |
+| `score` | `value`, `level` (ab 0), `expected` (Erwartungswert), `probabilities` | `options` von niedrig nach hoch |
+| `boolean` | `value`, `probability` (für „ja“) | `question` als Aussage formulieren („Der Kunde wurde doppelt belastet.“) |
+| `multi` | `values` (alle mit p ≥ 0,5), `probabilities` je Option | je Option eine Ja/Nein-Frage |
+
+`confidence` ist die Wahrscheinlichkeit der Antwort, `certainty` 1 − normierte Entropie; liegt eine Antwort unter der
+**Schwelle** (Standard 80 %), steht `uncertain: true` im Ergebnis – das aufrufende LLM prüft dann selbst oder fragt nach.
+
+**Lernen aus Rückmeldungen.** Wiederkehrende Entscheidungen als Aufgabe speichern (`decide_task_save`, Aufruf mit
+`task`). Ist die richtige Antwort bekannt, meldet `decide_feedback` sie (mit der `decisionId` oder mit `input` – dann
+rechnen alle Modelle neu). Das Modul speichert Eingabe und Antwort als Beispiel und die Roh-Logits der Entscheidung; ab
+6 Rückmeldungen je Feld und Modell fittet es eine **Temperatur** (Temperature Scaling, minimale negative
+Log-Likelihood) – die ausgelieferten Laya-Checkpoints sind laut ihren Autoren deutlich zu selbstsicher. `decide_tasks`
+zeigt je Feld Anzahl, Trefferquote und Temperatur. Ablage: `~/.devtools-mcp/decide/<benutzer/profil>/<aufgabe>.json`.
+
+**Modi** (Einstellung *Modus*, je Aufruf mit `mode` änderbar):
+
+| Modus | Rechnet | Wann |
+|---|---|---|
+| `laya` (Standard) | nur Laya | empfohlen |
+| `hybrid` | Laya; ist eine Antwort unter der Schwelle, bewertet zusätzlich ein LLM die Optionen, beide werden kombiniert (gewichtetes geometrisches Mittel, das Gewicht lernt jede Aufgabe aus Rückmeldungen mit beiden Modellen) | mit einem größeren GGUF-LLM |
+| `llm` | nur das LLM | Vergleich, Sonderfälle |
+
+Das LLM generiert nichts: es vergleicht die Logits der Antwort-Tokens (Buchstaben bzw. „Yes“/„No“), gemittelt über
+zyklisch vertauschte Optionsreihenfolgen, weil kleine Modelle sonst vor allem die Position wählen. Standard ist
+Qwen2.5-0.5B-Instruct (Q8_0, 676 MB); in Messungen auf deutschen Support-Tickets (36 Entscheidungen) lag Laya allein bei
+83 %, Qwen2.5-0.5B bei 64 % – `hybrid` lohnt sich daher erst mit einem größeren Modell (Einstellung *LLM (GGUF-URL)*,
+unterstützt: `qwen2`, `qwen3`, `llama` in F32/F16/BF16/Q8_0/Q4_0).
+
+**Modelle.** *Laya-Modell* `multilingual` (mmBERT, 100+ Sprachen inkl. Deutsch, 644 MB, Standard), `english`
+(ModernBERT-large, 843 MB) oder `typed-decisions` (english, feinjustiert auf vier Workflows). Heruntergeladen wird
+einmalig nach `~/.devtools-mcp/models` – über die Aktion **Modelle herunterladen** (lädt, was der Modus braucht) oder
+automatisch beim ersten Aufruf (Schalter, Standard aus); Standardquellen sind auf eine Revision gepinnt und
+SHA-256-geprüft, für einen Mirror lassen sich die URLs ändern. *Verbindung testen* lädt die Modelle und trifft eine
+Probe-Entscheidung.
+
+**Umsetzung.** Alles reines Java ohne native Bibliotheken (wie tree-sitter über Chicory): Modelldateien per mmap
+(`safetensors`, GGUF), Gewichte zeilenweise in `float` entpackt, Matrixmultiplikation parallel über alle Kerne.
+Tokenizer (BPE mit Metaspace/Byte-Fallback bzw. Byte-Level), ModernBERT-Encoder (RoPE, lokale/globale Attention,
+GeGLU), Laya-Kopf und Qwen/Llama-Decoder (GQA, KV-Cache mit gemeinsamem Prompt-Anfang) sind nachgebaut; Tokenizer und
+Wahrscheinlichkeiten stimmen mit den Referenzwerten des Laya-Projekts überein (`LayaParityTest`, Abweichung < 0,002).
+Mit `--add-modules jdk.incubator.vector` beim Start rechnen die heißen Schleifen über die **Java Vector API** (SIMD,
+FMA; `decide_status` zeigt, womit gerechnet wird), sonst skalar. Rechenzeit (Laya, Apple-Silicon-Notebook):
+
+| Entscheidung | Tokens | skalar | Vector API |
+|---|---|---|---|
+| 1 Frage, kurzer Text | 29 | 89 ms | 41 ms |
+| 3 Fragen zu einem Satz | 141 | 518 ms | 151 ms |
+| Ticket mit 4 Feldern (6 Fragen, davon 3 aus `multi`) | – | ~1,4 s | 378 ms |
+| 1 Frage, maximale Eingabe | 1024 | 3,3 s | 1,2 s |
+
+Jede Frage ist eine eigene Sequenz aus Frage, Optionen und Eingabe (max. 1024 Tokens) – die Rechenzeit wächst mit
+Fragen × Länge der Eingabe; jede Option eines `multi`-Feldes ist eine Frage.
 
 ### Git-Server und Pull Requests (ServiceLoader)
 
@@ -751,6 +833,10 @@ aus.
 ```bash
 java -jar desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar
 ```
+
+Wer das Modul [Entscheidungen](#entscheidungen-system-one--typisierte-entscheidungen-lokal) nutzt, startet mit
+`java --add-modules jdk.incubator.vector -jar …`: dann rechnet es mit der Java Vector API (SIMD), etwa 2,5- bis 3,5-mal
+schneller. Ohne die Option läuft alles genauso, nur mit skalaren Schleifen (`bootRun` und die Tests setzen sie selbst).
 
 1. Beim allerersten Start legt man im Anmeldefenster das Administrator-Konto des eingebetteten Backends an, danach
    meldet man sich bei jedem Start an (oder trägt unter *Backend ändern…* einen Team-Server ein).
