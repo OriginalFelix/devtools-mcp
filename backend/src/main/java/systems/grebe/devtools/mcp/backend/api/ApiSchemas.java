@@ -27,7 +27,8 @@ public final class ApiSchemas {
     /** Schema-Dateien je Version, relativ zu {@code backend-graphql/v<n>/}. */
     private static final NavigableMap<Integer, List<String>> FILES = Collections.unmodifiableNavigableMap(
             new TreeMap<>(Map.of(
-                    0, List.of("schema.graphqls", "graph.graphqls"))));
+                    0, List.of("schema.graphqls", "graph.graphqls"),
+                    1, List.of("schema.graphqls", "graph.graphqls"))));
 
     private ApiSchemas() {
     }

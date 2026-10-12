@@ -60,6 +60,11 @@ für Tickets, Pull Requests, CI und die Release Notes im Maven-Modul zugleich. Z
 * Gilt für Tickets, Pull Requests, CI/CD, Chat (Matrix), SonarQube, Maven (Repository und GitHub) und Modellwahl
   (Claude API: `https://api.anthropic.com`, solange keine eigene API-URL gesetzt ist) – nicht für Verbindungslisten
   (SSH, JDBC, Dolt, Mail), die je Eintrag eigene Zugangsdaten haben.
+* **Ablage:** je Benutzer in der Core-Datenbank des Backends (eingebettet oder Team-Server), Tabelle `credential`, das
+  Geheimnis je Eintrag mit AES-GCM verschlüsselt (Schlüssel `secret.key` des Backends) – nicht in `settings.json` und
+  nicht als Einstellung eines Profils: sie gelten in allen Profilen des Benutzers, Vorgaben des Administrators gibt es
+  dafür nicht. Über die API (ab Version 1: `Settings.credentials`, Mutation `saveCredentials`) bekommt nur der Benutzer
+  selbst seine Einträge; Änderungen kommen wie Einstellungen sofort bei seinen anderen Desktop-Apps an.
 
 ### Berechtigungen an das LLM übermitteln
 
@@ -878,7 +883,8 @@ Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der S
   Eingaben, die das LLM wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Mitglied
   einer freigegebenen Unterhaltung Anweisungen geben), für Matrix ein eigenes Bot-Konto verwenden und Unterhaltungen
   einschränken. Einladungen nimmt das Modul nur von freigegebenen Absendern an.
-* Zugangsdaten: verschlüsselt wie alle Geheimnisse und nie an das LLM (`permissions_overview` zeigt nur gesetzt/leer).
+* Zugangsdaten: im Backend je Benutzer verschlüsselt (Tabelle `credential`), nur dem Benutzer selbst zugänglich und nie
+  an das LLM (`permissions_overview` zeigt nur gesetzt/leer).
   Ein Eintrag geht an jedes Modul, dessen Server-URL passt – auch an Subdomains; Einträge daher so genau wie nötig
   fassen (`https://jira.firma.de` statt `https://firma.de`).
 
@@ -931,7 +937,8 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
   Rechner laufen; H2, Schema per Flyway aus `db/core`; andere Datenbank über
   `devtools.core.datasource.url/username/password`). Beim ersten Start des Servers wird `admin` (Rolle Administrator)
   angelegt – Passwort aus `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log; ein zufälliges muss bei
-  der ersten Anmeldung geändert werden.
+  der ersten Anmeldung geändert werden. Dort liegen auch die **Zugangsdaten** der Benutzer
+  (Tabelle `credential`, Geheimnisse verschlüsselt mit `secret.key`).
 * **Passwörter:** PBKDF2 mit HMAC-SHA3-512, 16 Byte Zufalls-Salt, 210.000 Iterationen
   (`pbkdf2-sha3-512$<iterationen>$<salt>$<hash>`); wird die Iterationszahl angehoben, rechnet die nächste Anmeldung
   den Hash neu.
@@ -953,7 +960,7 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
 
 Das Protokoll zwischen Desktop-App und Backend (GraphQL-API und Dateiablage) ist versioniert, damit ein Team-Server
 Desktop-Apps verschiedener Stände bedienen kann: **Jede Änderung am Protokoll ergibt eine neue Version**, die älteren
-bietet das Backend weiter an. Die Versionen sind ganze Zahlen (`ApiVersions.CURRENT` in `shared`, heute 0).
+bietet das Backend weiter an. Die Versionen sind ganze Zahlen (`ApiVersions.CURRENT` in `shared`, heute 1 – Version 1 bringt die Zugangsdaten je Benutzer).
 
 | Pfad | |
 |---|---|

@@ -16,11 +16,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
 import systems.grebe.devtools.mcp.channel.ChannelBridge;
 import systems.grebe.devtools.mcp.config.ServerSettings;
@@ -74,6 +76,10 @@ class McpServerIntegrationTest {
 
     @Autowired
     ChannelEvents channelEvents;
+
+    @Autowired
+    @Qualifier("coreJdbc")
+    JdbcClient coreDb;
 
     @TempDir
     Path repoDir;
@@ -141,6 +147,13 @@ class McpServerIntegrationTest {
             assertThat(registry.config("ticket").get("github.token")).contains("gh-zentral"); // api.github.com
             assertThat(registry.config("maven").get("githubToken")).contains("gh-zentral");
             assertThat(registry.settings("sonar").values()).doesNotContainKey("token");
+            // eigene Tabelle im Backend, je Eintrag verschlüsselt – keine Überschreibung eines Profils
+            assertThat(coreDb.sql("SELECT secret FROM credential ORDER BY sort_order").query(String.class).list())
+                    .hasSize(2).allMatch(v -> v.startsWith("enc:v1:")).noneMatch(v -> v.contains("zentral"));
+            assertThat(coreDb.sql("SELECT COUNT(*) FROM module_override WHERE module_id = 'credentials'")
+                    .query(Long.class).single()).isZero();
+            assertThat(registry.config("credentials").getRecords("entries")).extracting(r -> r.get("name"))
+                    .containsExactly("GitHub", "Sonar");
             assertThat(registry.credentialSources("sonar", Map.of("baseUrl", "https://sonar.example.com")))
                     .containsEntry("token", "Sonar");
 
@@ -151,6 +164,7 @@ class McpServerIntegrationTest {
             registry.updateConfig("credentials", Map.of());
         }
         assertThat(registry.config("ticket").get("github.token")).isEmpty();
+        assertThat(coreDb.sql("SELECT COUNT(*) FROM credential").query(Long.class).single()).isZero();
     }
 
     @Test

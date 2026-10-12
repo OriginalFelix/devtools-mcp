@@ -8,10 +8,12 @@ import java.util.Map;
 import java.util.Set;
 
 import org.springframework.stereotype.Component;
+import systems.grebe.devtools.mcp.api.CredentialInfo;
 import systems.grebe.devtools.mcp.api.Grants;
 import systems.grebe.devtools.mcp.api.ProjectInfo;
 import systems.grebe.devtools.mcp.api.SettingsSnapshot;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
+import systems.grebe.devtools.mcp.core.CredentialsModule;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.SettingsResolver;
 import systems.grebe.devtools.mcp.core.ToolModule;
@@ -20,7 +22,8 @@ import systems.grebe.devtools.mcp.core.ToolModule;
  * Wirksame Einstellungen aus dem Backend: Vorbelegung des Moduls, darüber die Vorgaben Global → Benutzer → aktives
  * Profil. Git, Build und Code-Graph bekommen zusätzlich die Projekte, denen in dieser App ein Verzeichnis zugeordnet
  * ist – unter dem Namen, den die Tools kennen ({@code name} bzw. {@code name@eigentümer}). Änderungen gehen als
- * Überschreibung ins aktive Profil.
+ * Überschreibung ins aktive Profil – außer beim Modul {@link CredentialsModule „Zugangsdaten“}: dessen Einträge liegen
+ * je Benutzer verschlüsselt in einer eigenen Tabelle des Backends und kommen mit dem Settings-Stand.
  *
  * <p>Ohne Anmeldung ist jedes Modul aus. Welche Tools registriert werden, bestimmen außerdem die Rechte des Benutzers
  * ({@link #permitted}: {@code module:*}, {@code module:<id>} – auch das übergeordnete Modul, z.B. {@code scripts} –
@@ -40,6 +43,9 @@ public class BackendSettingsResolver implements SettingsResolver {
         if (!backend.signedIn()) {
             return defaults(module).withEnabled(false); // niemand angemeldet: keine Tools
         }
+        if (CredentialsModule.ID.equals(module.id())) {
+            return backend.settings().map(snapshot -> credentials(module, snapshot.credentials())).orElse(local);
+        }
         ModuleSettings s = backend.settings()
                 .map((SettingsSnapshot snapshot) -> snapshot.module(module.id()).applyTo(defaults(module)))
                 .orElse(local);
@@ -57,7 +63,37 @@ public class BackendSettingsResolver implements SettingsResolver {
         if (!backend.signedIn()) {
             throw new IllegalStateException("Nicht angemeldet.");
         }
+        if (CredentialsModule.ID.equals(module.id())) {
+            backend.saveCredentials(credentials(module, after));
+            return;
+        }
         backend.save(module, before, after);
+    }
+
+    /** Zugangsdaten aus dem Backend als Wert des Moduls (Datensatzliste wie im Formular). */
+    static ModuleSettings credentials(ToolModule module, List<CredentialInfo> entries) {
+        List<Map<String, String>> records = new ArrayList<>();
+        for (CredentialInfo e : entries) {
+            Map<String, String> r = new LinkedHashMap<>();
+            r.put(CredentialsModule.NAME, e.name());
+            r.put(CredentialsModule.URL, e.url());
+            r.put(CredentialsModule.USER, e.username());
+            r.put(CredentialsModule.SECRET, e.secret());
+            r.put(CredentialsModule.DESCRIPTION, e.description());
+            records.add(r);
+        }
+        return defaults(module).withValues(records.isEmpty() ? Map.of()
+                : Map.of(CredentialsModule.ENTRIES, ModuleConfig.formatRecords(records)));
+    }
+
+    /** Gegenstück zu {@link #credentials(ToolModule, List)}: die Datensätze aus dem Formular. */
+    static List<CredentialInfo> credentials(ToolModule module, ModuleSettings settings) {
+        ModuleConfig config = ModuleConfig.of(module.configSchema(), settings.values());
+        return config.getRecords(CredentialsModule.ENTRIES).stream()
+                .map(r -> new CredentialInfo(null, r.get(CredentialsModule.NAME), r.get(CredentialsModule.URL),
+                        r.get(CredentialsModule.USER), r.get(CredentialsModule.SECRET),
+                        r.get(CredentialsModule.DESCRIPTION)))
+                .toList();
     }
 
     @Override

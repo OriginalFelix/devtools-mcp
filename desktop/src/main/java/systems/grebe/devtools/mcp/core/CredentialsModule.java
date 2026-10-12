@@ -11,6 +11,9 @@ import org.springframework.stereotype.Component;
  * Zentrale Zugangsdaten wie beim Git Credential Manager: Tokens und Passwörter je Server-URL, einmal hinterlegt.
  * Module, deren Geheimnis leer bleibt, bekommen das des passenden Eintrags (siehe {@link Credentials} und
  * {@link ToolModule#credentialFields()}). Stellt selbst keine Tools bereit; angewendet von der {@link ToolRegistry}.
+ *
+ * <p>Die Einträge liegen nicht in den Moduleinstellungen, sondern je Benutzer verschlüsselt im Backend (Tabelle
+ * {@code credential}); {@code BackendSettingsResolver} liest und speichert sie dort.
  */
 @Component
 public class CredentialsModule implements ToolModule {
@@ -68,8 +71,8 @@ public class CredentialsModule implements ToolModule {
                                         + "das Modul keinen eigenen Benutzer hat."),
                         ConfigField.of(SECRET, "Token / Passwort", FieldType.SECRET).asRequired(),
                         ConfigField.of(DESCRIPTION, "Beschreibung", FieldType.STRING))
-                .withHelp("Ein eigenes Token im Modul hat immer Vorrang. Die Liste wird verschlüsselt gespeichert und "
-                        + "geht nie an das LLM."));
+                .withHelp("Ein eigenes Token im Modul hat immer Vorrang. Gespeichert im Backend je Benutzer "
+                        + "(verschlüsselt, für alle Profile); geht nie an das LLM."));
     }
 
     @Override
