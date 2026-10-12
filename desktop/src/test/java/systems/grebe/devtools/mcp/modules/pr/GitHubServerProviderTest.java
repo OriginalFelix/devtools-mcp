@@ -9,6 +9,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.core.Signature;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -104,7 +105,7 @@ class GitHubServerProviderTest {
         gh.on("/repos/octo/app/pulls/7/comments", "{\"id\":5,\"html_url\":\"https://github.com/c/5\"}");
         PrEnvironment env = env(Map.of());
 
-        assertThat(new PrCommentTools(env).reply("[PRRT_a]", "Erledigt in abc", "octo/app#7", null, null, null))
+        assertThat(new PrCommentTools(env).reply("[PRRT_a]", "Erledigt in abc", "octo/app#7", null, null, null, null, null))
                 .contains("Antwort in Thread PRRT_a", "https://github.com/c/99");
         assertThat(gh.last("/graphql").body()).contains("PRRT_a", "Erledigt in abc\\n\\n(via DevTools)");
 
@@ -114,9 +115,58 @@ class GitHubServerProviderTest {
         assertThatThrownBy(() -> new PrResolveTools(env).resolve("c11", null, "octo/app#7", null, null, null))
                 .hasMessageContaining("nur Code-Threads");
 
-        new PrCommentTools(env).comment("Hier fehlt was", "octo/app#7", "src\\A.java", 12, null, null, null);
+        new PrCommentTools(env).comment("Hier fehlt was", "octo/app#7", "src\\A.java", 12, null, null, null, null, null);
         assertThat(gh.last("/repos/octo/app/pulls/7/comments").body())
                 .contains("\"commit_id\":\"abc123\"", "\"path\":\"src/A.java\"", "\"line\":12", "\"side\":\"RIGHT\"");
+    }
+
+    @Test
+    void fileCommentsAndBotAuthors() {
+        gh.on("/repos/octo/app/issues/7/comments", """
+                [{"id":13,"user":{"login":"dependabot[bot]","type":"Bot"},"created_at":"2026-09-29T01:00:00Z","body":"Bump"},
+                 {"id":14,"user":{"login":"anna","type":"User"},"created_at":"2026-09-29T01:30:00Z","body":"Danke"}]""");
+        gh.on("/repos/octo/app/pulls/7/reviews", "[]");
+        gh.on("/graphql", """
+                {"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[
+                 {"id":"PRRT_f","isResolved":false,"isOutdated":false,"path":"src/C.java","line":null,"originalLine":null,
+                  "subjectType":"FILE","comments":{"nodes":[{"databaseId":31,"author":{"__typename":"Bot","login":"sonar"},
+                  "createdAt":"2026-09-29T02:00:00Z","body":"Datei zu lang"}]}}]}}}}}""");
+        String out = new PrTools(env(Map.of())).comments("octo/app#7", null, null, null, null, null);
+        assertThat(out).contains("- dependabot[bot] [Integration], ", "- anna, ", "### [PRRT_f] Datei  src/C.java  OFFEN",
+                "- sonar [Integration], ");
+        assertThat(gh.last("/graphql").body()).contains("subjectType", "__typename");
+
+        gh.on("/repos/octo/app/pulls/7", pr(7, "open", null, "feature/x"));
+        gh.on("/repos/octo/app/pulls/7/comments", "{\"id\":6,\"html_url\":\"https://github.com/c/6\"}");
+        assertThat(new PrCommentTools(env(Map.of())).comment("Bitte aufteilen", "octo/app#7", "src/C.java", null, null,
+                null, null, null, null)).contains("Datei-Kommentar an src/C.java hinzugefügt", "[ID c6]");
+        assertThat(gh.last("/repos/octo/app/pulls/7/comments").body())
+                .contains("\"subject_type\":\"file\"", "\"path\":\"src/C.java\"").doesNotContain("\"line\"", "\"side\"");
+        assertThatThrownBy(() -> new PrCommentTools(env(Map.of())).comment("x", "octo/app#7", null, 3, null, null, null, null, null))
+                .hasMessageContaining("'line' braucht 'path'");
+    }
+
+    @Test
+    void insightsFromCheckRunsWithOutputAndAnnotations() {
+        gh.on("/repos/octo/app/pulls/7", pr(7, "open", null, "feature/x"));
+        gh.on("/repos/octo/app/commits/abc123/check-runs", """
+                {"check_runs":[
+                 {"id":1,"name":"build","status":"completed","conclusion":"success","output":{"annotations_count":0}},
+                 {"id":2,"name":"SonarCloud Code Analysis","status":"completed","conclusion":"failure",
+                  "html_url":"https://github.com/octo/app/runs/2","app":{"name":"SonarCloud"},
+                  "output":{"title":"Quality Gate failed","summary":"2 Bugs","annotations_count":2}}]}""");
+        gh.on("/repos/octo/app/check-runs/2/annotations", """
+                [{"path":"src/A.java","start_line":12,"end_line":12,"annotation_level":"failure","title":"Bug","message":"NPE möglich",
+                  "blob_href":"https://github.com/octo/app/blob/abc123/src/A.java"},
+                 {"path":"src/B.java","start_line":3,"annotation_level":"warning","message":"Unbenutzt"}]""");
+        PrTools tools = new PrTools(env(Map.of()));
+        String out = tools.insights("octo/app#7", null, null, null, null);
+        assertThat(out).contains("octo/app#7 (github): 1 Bericht(e) von Integrationen, 2 Befund(e)",
+                "### SonarCloud Code Analysis  failure", "Schlüssel 2 · Quelle SonarCloud", "Quality Gate failed\n2 Bugs",
+                "Befunde (2: 1 failure, 1 warning):", "- src/A.java:12  failure  Bug: NPE möglich  https://github.com/octo/app/blob/abc123/src/A.java",
+                "- src/B.java:3  warning  Unbenutzt").doesNotContain("### build");
+        assertThat(tools.insights("octo/app#7", "B.java", null, null, null)).contains("Befunde (1 von 2: 1 failure, 1 warning):", "src/B.java:3")
+                .doesNotContain("src/A.java");
     }
 
     @Test
@@ -126,9 +176,9 @@ class GitHubServerProviderTest {
                 "{\"number\":8,\"html_url\":\"https://github.com/octo/app/pull/8\"}", Map.of()));
         gh.on("/repos/octo/app/pulls/8/requested_reviewers", "{}");
         String out = new PrCreateTools(env(Map.of())).create("Neues Feature", "Text", "feature/x", null, true,
-                List.of("bob", "team:core"), null, null, "octo/app", null);
+                List.of("bob", "team:core"), null, null, "octo/app", null, null, null);
         assertThat(out).contains("octo/app#8: Entwurf angelegt: feature/x → develop, Reviewer angefragt: bob, team:core",
-                "https://github.com/octo/app/pull/8");
+                "https://github.com/octo/app/pull/8", "bind_pr");
         assertThat(gh.last("/repos/octo/app/pulls").body()).contains("\"head\":\"feature/x\"", "\"base\":\"develop\"",
                 "\"draft\":true");
         assertThat(gh.last("/repos/octo/app/pulls/8/requested_reviewers").body())
@@ -138,13 +188,35 @@ class GitHubServerProviderTest {
                 "{\"message\":\"Validation Failed\",\"errors\":[{\"message\":\"A pull request already exists for octo:feature/x.\"}]}",
                 Map.of()));
         assertThatThrownBy(() -> new PrCreateTools(env(Map.of())).create("T", null, "feature/x", "main", null, null,
-                null, null, "octo/app", null)).hasMessageContaining("schon einen offenen Pull Request");
+                null, null, "octo/app", null, null, null)).hasMessageContaining("schon einen offenen Pull Request");
+    }
+
+    @Test
+    void globalSignatureWithModelUnlessOwnSuffix() {
+        gh.on("/repos/octo/app/pulls/7", pr(7, "open", null, "feature/x"));
+        gh.on("/repos/octo/app/issues/7/comments", "{\"id\":5,\"html_url\":\"https://github.com/c/5\"}");
+        PrEnvironment global = env(Map.of("commentSuffix", "", Signature.CONFIG_KEY, Signature.DEFAULT_TEMPLATE));
+        new PrCommentTools(global).comment("Sieht gut aus", "octo/app#7", null, null, null, null, null, "Claude Opus 5.5", null);
+        assertThat(gh.last("/repos/octo/app/issues/7/comments").body())
+                .contains("Sieht gut aus\\n\\n🤖 Generated with Claude Opus 5.5");
+
+        gh.on("/repos/octo/app/pulls", r -> new StubServer.Reply(201,
+                "{\"number\":8,\"html_url\":\"https://github.com/octo/app/pull/8\"}", Map.of()));
+        new PrCreateTools(global).create("Feature", "Was und warum\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+                "feature/x", "main", null, null, null, null, "octo/app", null, "Claude Opus 5.5", null);
+        assertThat(gh.last("/repos/octo/app/pulls").body())
+                .contains("Was und warum\\n\\n🤖 Generated with Claude Opus 5.5").doesNotContain("claude.com");
+
+        PrEnvironment own = env(Map.of(Signature.CONFIG_KEY, Signature.DEFAULT_TEMPLATE));
+        new PrCommentTools(own).comment("Danke", "octo/app#7", null, null, null, null, null, "Claude Opus 5.5", null);
+        assertThat(gh.last("/repos/octo/app/issues/7/comments").body()).contains("Danke\\n\\n(via DevTools)")
+                .doesNotContain("Generated");
     }
 
     @Test
     void writesRespectRepositoryRestriction() {
         PrEnvironment env = env(Map.of("writeProjects", "github:octo/allowed"));
-        assertThatThrownBy(() -> new PrCommentTools(env).comment("x", "octo/app#7", null, null, null, null, null))
+        assertThatThrownBy(() -> new PrCommentTools(env).comment("x", "octo/app#7", null, null, null, null, null, null, null))
                 .hasMessageContaining("nicht freigegeben");
         assertThat(gh.requests).isEmpty();
     }

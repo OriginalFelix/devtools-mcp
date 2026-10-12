@@ -16,19 +16,23 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.event.EventListener;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
 import systems.grebe.devtools.mcp.channel.ChannelBridge;
 import systems.grebe.devtools.mcp.config.ServerSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ChannelEvents;
 import systems.grebe.devtools.mcp.core.McpSessionClosed;
+import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.Signature;
 import systems.grebe.devtools.mcp.core.ToolInvocationLog;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.core.UserConfirmation;
@@ -93,6 +97,10 @@ class McpServerIntegrationTest {
     @Autowired
     ClosedSessions closedSessions;
 
+    @Autowired
+    @Qualifier("coreJdbc")
+    JdbcClient coreDb;
+
     @TempDir
     Path repoDir;
 
@@ -146,6 +154,37 @@ class McpServerIntegrationTest {
     void listsPrefixedToolsOfEnabledModules() {
         assertThat(toolNames()).contains("git_status", "git_log", "git_diff", "git_commit")
                 .noneMatch(n -> n.startsWith("sonar_")); // Sonar standardmäßig aus
+    }
+
+    @Test
+    void centralCredentialsFillEmptySecretsWithoutStoringThemInTheModule() {
+        registry.updateConfig("credentials", Map.of("entries", ModuleConfig.formatRecords(List.of(
+                Map.of("name", "GitHub", "url", "https://github.com", "secret", "gh-zentral"),
+                Map.of("name", "Sonar", "url", "https://sonar.example.com", "secret", "sonar-zentral")))));
+        try {
+            registry.updateConfig("sonar", Map.of("baseUrl", "https://sonar.example.com"));
+            assertThat(registry.config("sonar").get("token")).contains("sonar-zentral");
+            assertThat(registry.config("ticket").get("github.token")).contains("gh-zentral"); // api.github.com
+            assertThat(registry.config("maven").get("githubToken")).contains("gh-zentral");
+            assertThat(registry.settings("sonar").values()).doesNotContainKey("token");
+            // eigene Tabelle im Backend, je Eintrag verschlüsselt – keine Überschreibung eines Profils
+            assertThat(coreDb.sql("SELECT secret FROM credential ORDER BY sort_order").query(String.class).list())
+                    .hasSize(2).allMatch(v -> v.startsWith("enc:v1:")).noneMatch(v -> v.contains("zentral"));
+            assertThat(coreDb.sql("SELECT COUNT(*) FROM module_override WHERE module_id = 'credentials'")
+                    .query(Long.class).single()).isZero();
+            assertThat(registry.config("credentials").getRecords("entries")).extracting(r -> r.get("name"))
+                    .containsExactly("GitHub", "Sonar");
+            assertThat(registry.credentialSources("sonar", Map.of("baseUrl", "https://sonar.example.com")))
+                    .containsEntry("token", "Sonar");
+
+            registry.updateConfig("sonar", Map.of("baseUrl", "https://sonar.example.com", "token", "eigenes"));
+            assertThat(registry.config("sonar").get("token")).contains("eigenes");
+        } finally {
+            registry.updateConfig("sonar", Map.of());
+            registry.updateConfig("credentials", Map.of());
+        }
+        assertThat(registry.config("ticket").get("github.token")).isEmpty();
+        assertThat(coreDb.sql("SELECT COUNT(*) FROM credential").query(Long.class).single()).isZero();
     }
 
     @Test
@@ -260,7 +299,7 @@ class McpServerIntegrationTest {
                     Map.entry("invocations_", ShellHints.INVOCATIONS), Map.entry("share_", ShellHints.SHARE),
                     Map.entry("context_", ShellHints.CONTEXT));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(195); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(196); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);
@@ -576,7 +615,7 @@ class McpServerIntegrationTest {
             assertThat(result.success()).as(result.message()).isTrue();
             assertThat(Files.exists(repoDir.resolve("devtools-fileinfo@main.graph"))).isTrue();
             assertThat(changes[0]).isGreaterThan(before);
-            assertThat(registry.describeActionTarget("graph", "index", project)).contains("Graph vom", "1 Dateien");
+            assertThat(registry.describeActionTarget("graph", "index", project)).contains("Graph vom", "2 Dateien"); // A.java + README.md
             assertThat(registry.runAction("graph", "index", "gibt-es-nicht", java.util.Set.of(), null).message())
                     .contains("nicht freigegeben");
             assertThat(registry.actions("git")).isEmpty();
@@ -670,6 +709,29 @@ class McpServerIntegrationTest {
         }
         assertThat(closedSessions.ids).hasSize(before + 1);
         assertThat(closedSessions.ids.getLast()).isNotBlank();
+    }
+
+    /** Die Anmeldung meldet den Katalog – samt Feldtyp PROCESS_PATTERN der Fenstersteuerung (ab API-Version 4). */
+    @Test
+    void catalogWithTheWindowModuleReachesTheBackend() {
+        assertThat(coreDb.sql("SELECT descriptor FROM module_catalog WHERE module_id = 'window'").query(String.class)
+                .optional().orElse("")).contains("\"type\":\"PROCESS_PATTERN\"");
+    }
+
+    @Test
+    void signatureTemplateReachesModulesThatPublishTexts() {
+        assertThat(registry.config("pr").getString(Signature.CONFIG_KEY, "")).isEqualTo(Signature.DEFAULT_TEMPLATE);
+        assertThat(registry.config("ticket").getString(Signature.CONFIG_KEY, "")).isEqualTo(Signature.DEFAULT_TEMPLATE);
+        assertThat(registry.config("git").get(Signature.CONFIG_KEY)).isEmpty();
+        try {
+            registry.updateConfig("signature", Map.of("template", "_via {AI_MODEL_NAME}_"));
+            assertThat(registry.config("pr").getString(Signature.CONFIG_KEY, "")).isEqualTo("_via {AI_MODEL_NAME}_");
+            registry.updateConfig("signature", Map.of("active", "false"));
+            assertThat(registry.config("ticket").get(Signature.CONFIG_KEY)).isEmpty();
+            assertThat(registry.settings("ticket").values()).doesNotContainKey(Signature.CONFIG_KEY); // Formular unverändert
+        } finally {
+            registry.updateConfig("signature", Map.of());
+        }
     }
 
     @Test

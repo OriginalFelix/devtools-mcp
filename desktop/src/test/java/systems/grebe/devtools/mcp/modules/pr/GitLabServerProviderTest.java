@@ -47,7 +47,8 @@ class GitLabServerProviderTest {
         assertThat(out).contains("- grp/app!12  [open]  @felix  feature/export → main  Export  (Entwurf)");
         assertThat(gl.last("/api/v4/projects/grp%2Fapp/merge_requests").decodedQuery()).contains("state=opened",
                 "scope=created_by_me", "source_branch=feature/export", "per_page=5");
-        assertThat(gl.last("/api/v4/projects/grp%2Fapp/merge_requests").headers().get("private-token")).isEqualTo("glpat-x");
+        assertThat(gl.last("/api/v4/projects/grp%2Fapp/merge_requests").headers().get("authorization"))
+                .isEqualTo("Bearer glpat-x"); // auch OAuth-Tokens
     }
 
     @Test
@@ -86,16 +87,54 @@ class GitLabServerProviderTest {
         gl.on(MR + "/discussions/d2", "{\"id\":\"d2\"}");
         PrEnvironment env = env();
 
-        String out = new PrCommentTools(env).comment("Bitte prüfen", "grp/app!12", "src/A.java", 7, null, null, null);
+        String out = new PrCommentTools(env).comment("Bitte prüfen", "grp/app!12", "src/A.java", 7, null, null, null, null, null);
         assertThat(out).contains("Code-Kommentar an src/A.java:7", "Thread d9", "/grp/app/-/merge_requests/12#note_50");
         assertThat(gl.last(MR + "/discussions").body()).contains("\"base_sha\":\"b\"", "\"head_sha\":\"h\"",
                 "\"start_sha\":\"s\"", "\"new_line\":7", "\"position_type\":\"text\"");
 
-        assertThat(new PrCommentTools(env).reply("d2", "Umgesetzt", "grp/app!12", null, null, null)).contains("#note_51");
+        assertThat(new PrCommentTools(env).reply("d2", "Umgesetzt", "grp/app!12", null, null, null, null, null)).contains("#note_51");
         new PrResolveTools(env).resolve("d2", true, "grp/app!12", null, null, null);
         StubServer.Request r = gl.last(MR + "/discussions/d2");
         assertThat(r.method()).isEqualTo("PUT");
         assertThat(r.decodedQuery()).isEqualTo("resolved=true");
+    }
+
+    @Test
+    void fileCommentsBotsAndTestReport() {
+        gl.on(MR + "/discussions", r -> StubServer.Reply.json(r.method().equals("POST")
+                ? "{\"id\":\"d8\",\"notes\":[{\"id\":60}]}"
+                : """
+                [{"id":"d5","notes":[{"id":5,"body":"Datei passt nicht hierher","author":{"username":"project_5_bot_ab12"},
+                   "created_at":"2026-09-29T01:00:00Z","resolvable":true,"resolved":false,
+                   "position":{"position_type":"file","new_path":"src/C.java","old_path":"src/C.java","new_line":null}}]}]"""));
+        PrEnvironment env = env();
+        assertThat(new PrTools(env).comments("grp/app!12", null, null, null, null, null))
+                .contains("### [d5] Datei  src/C.java  OFFEN", "- project_5_bot_ab12 [Integration], ");
+
+        gl.on(MR, """
+                {"iid":12,"diff_refs":{"base_sha":"b","head_sha":"h","start_sha":"s"},
+                 "head_pipeline":{"id":99,"project_id":5,"status":"failed","web_url":"https://gl/p/99"}}""");
+        assertThat(new PrCommentTools(env).comment("Bitte verschieben", "grp/app!12", "src/C.java", null, null, null, null, null, null))
+                .contains("Datei-Kommentar an src/C.java hinzugefügt (Thread d8)");
+        assertThat(gl.last(MR + "/discussions").body()).contains("\"position_type\":\"file\"", "\"new_path\":\"src/C.java\"")
+                .doesNotContain("new_line");
+
+        gl.on("/api/v4/projects/5/pipelines/99/test_report_summary", """
+                {"total":{"time":4.5,"count":10,"success":8,"failed":2,"skipped":0,"error":0},
+                 "test_suites":[{"name":"unit","total_count":10,"failed_count":2,"error_count":0}]}""");
+        assertThat(new PrTools(env).insights("grp/app!12", null, null, null, null)).contains("1 Bericht(e) von Integrationen",
+                "### Testbericht Pipeline #99  failed", "Schlüssel tests-99 · Quelle GitLab CI", "https://gl/p/99/test_report",
+                "- Tests: 10", "- Fehlgeschlagen: 2", "Befunde (1: 1 failed):",
+                "(allgemein)  failed  Suite unit: 2 von 10 fehlgeschlagen").doesNotContain("Code Quality");
+
+        gl.on("/api/graphql", """
+                {"data":{"project":{"mergeRequest":{"headPipeline":{"codeQualityReports":{"nodes":[
+                 {"description":"Methode zu komplex","line":12,"path":"src/A.java","severity":"MINOR"},
+                 {"description":"Doppelter Code","line":3,"path":"src/B.java","severity":"MAJOR"}]}}}}}}""");
+        assertThat(new PrTools(env).insights("grp/app!12", null, null, null, null)).contains("2 Bericht(e) von Integrationen",
+                "### Code Quality\n", "Befunde (2: 1 MAJOR, 1 MINOR):",
+                "- src/B.java:3  MAJOR  Doppelter Code\n- src/A.java:12  MINOR  Methode zu komplex");
+        assertThat(gl.last("/api/graphql").body()).contains("codeQualityReports", "\"project\":\"grp/app\"", "\"iid\":\"12\"");
     }
 
     @Test
@@ -105,7 +144,7 @@ class GitLabServerProviderTest {
         gl.on("/api/v4/projects/grp%2Fapp/merge_requests", r -> new StubServer.Reply(201,
                 "{\"iid\":13,\"web_url\":\"https://gl/mr/13\"}", Map.of()));
         String out = new PrCreateTools(env()).create("Export", null, "feature/export", null, true, List.of("anna", "nobody"),
-                true, null, "grp/app", null);
+                true, null, "grp/app", null, null, null);
         assertThat(out).contains("grp/app!13: Entwurf angelegt: feature/export → main – unbekannte Reviewer ignoriert: nobody");
         assertThat(gl.last("/api/v4/projects/grp%2Fapp/merge_requests").body()).contains("\"title\":\"Draft: Export\"",
                 "\"target_branch\":\"main\"", "\"reviewer_ids\":[3]", "\"remove_source_branch\":true");

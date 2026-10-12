@@ -46,6 +46,7 @@ import org.eclipse.jgit.treewalk.filter.PathFilter;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import systems.grebe.devtools.mcp.core.GitWorktrees;
 import systems.grebe.devtools.mcp.core.Text;
 import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.core.ShellHints;
@@ -76,7 +77,7 @@ public class GitReadTools {
             String branch = git.with(name, (g, root) -> g.getRepository().getBranch());
             sb.append(name).append("  [").append(branch).append("]  ").append(path).append('\n');
         });
-        for (GitSupport.Worktree w : git.worktrees()) {
+        for (GitWorktrees.Worktree w : git.worktrees()) {
             String branch;
             try {
                 branch = git.with(w.name(), (g, root) -> g.getRepository().getBranch());

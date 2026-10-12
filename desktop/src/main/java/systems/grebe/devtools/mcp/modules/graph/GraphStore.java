@@ -50,6 +50,8 @@ import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Relation;
 final class GraphStore {
 
     static final String FILE_NAME = "devtools-fileinfo.graph";
+    /** Gemeinsamer Anfang aller Ablagedateien (auch je Branch und temporär) – nicht Teil des Graphen. */
+    static final String FILE_PREFIX = "devtools-fileinfo";
 
     private static final JsonMapper JSON = JsonMapper.builder()
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)

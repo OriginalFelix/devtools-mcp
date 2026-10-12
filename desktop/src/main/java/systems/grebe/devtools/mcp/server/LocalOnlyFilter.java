@@ -16,7 +16,8 @@ import systems.grebe.devtools.mcp.backend.blobs.BlobController;
 /**
  * Von anderen Rechnern nur das Backend: Mit Advertise-Endpunkt lauscht die App auf allen Adressen, damit andere
  * Desktop-Apps das eingebettete Backend nutzen können ({@code /graphql}, {@code /blobs}, beide mit eigener
- * Anmeldung). Der MCP-Endpunkt, der Channel und alles andere bleiben diesem Rechner vorbehalten.
+ * Anmeldung, und dasselbe je API-Version unter {@code /api/…}). Der MCP-Endpunkt, der Channel und alles andere bleiben
+ * diesem Rechner vorbehalten.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -35,7 +36,7 @@ public class LocalOnlyFilter extends OncePerRequestFilter {
     static boolean backend(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         return path.equals("/graphql") || path.startsWith("/graphql/") || path.equals(BlobController.PATH)
-                || path.startsWith(BlobController.PATH + "/");
+                || path.startsWith(BlobController.PATH + "/") || path.startsWith("/api/");
     }
 
     static boolean local(String address) {

@@ -19,7 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Kleiner JSON-über-HTTP-Client für Ticket- und Git-Server-Provider: feste Kopfzeilen (Anmeldung), Timeout und
+ * Kleiner JSON-über-HTTP-Client für Ticket-, Git-Server- und CI-Provider: feste Kopfzeilen (Anmeldung), Timeout und
  * HTTP-Fehler als verständliche {@link IllegalStateException}. Öffentlich, damit auch Provider aus Plugins ihn verwenden können.
  */
 public final class HttpJson {
@@ -157,6 +157,16 @@ public final class HttpJson {
     /** GET mit Textantwort (z.B. Unified Diff); Fehler wie bei den JSON-Methoden. */
     public String getText(String pathOrUrl) {
         return exchange(HttpRequest.newBuilder(uri(pathOrUrl)).GET(), pathOrUrl, "text/plain").body();
+    }
+
+    /**
+     * Beliebige Methode ohne Body, Antwort als Text samt Kopfzeilen – für Endpunkte, die kein JSON liefern (z.B.
+     * Jenkins: {@code POST …/build} antwortet mit {@code Location}, {@code POST …/stop} leitet auf eine HTML-Seite um).
+     * Fehler wie bei den JSON-Methoden.
+     */
+    public HttpResponse<String> requestText(String method, String pathOrUrl) {
+        return exchange(HttpRequest.newBuilder(uri(pathOrUrl)).method(method, HttpRequest.BodyPublishers.noBody()),
+                pathOrUrl, "*/*");
     }
 
     private Response withBody(String method, String pathOrUrl, JsonNode body) {

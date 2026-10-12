@@ -87,9 +87,9 @@ class PrPushToolsTest {
     void createRefusesUnpushedBranchBeforeCallingServer() {
         // Remote ist kein GitHub – daher project/provider explizit; die Push-Prüfung greift über das lokale Repository
         PrCreateTools tools = new PrCreateTools(env());
-        assertThatThrownBy(() -> tools.create("T", null, null, null, null, null, null, "app", "octo/app", "github"))
+        assertThatThrownBy(() -> tools.create("T", null, null, null, null, null, null, "app", "octo/app", "github", null, null))
                 .hasMessageContaining("nicht auf 'origin'").hasMessageContaining("pr_push");
-        assertThatThrownBy(() -> tools.create("T", null, "main", "main", null, null, null, "app", "octo/app", "github"))
+        assertThatThrownBy(() -> tools.create("T", null, "main", "main", null, null, null, "app", "octo/app", "github", null, null))
                 .hasMessageContaining("beide 'main'");
     }
 }

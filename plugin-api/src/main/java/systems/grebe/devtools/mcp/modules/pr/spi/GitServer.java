@@ -62,9 +62,19 @@ public interface GitServer {
 
     /**
      * Alle Kommentare, gruppiert nach Thread: allgemeine Kommentare (je einer ein Thread), Code-Kommentare mit Datei
-     * und Zeile samt Antworten, Review-Zusammenfassungen. Chronologisch nach erstem Kommentar.
+     * und Zeile bzw. Datei-Kommentare (nur Datei) samt Antworten, Review-Zusammenfassungen. Chronologisch nach erstem
+     * Kommentar. Kommentare von Integrationen (Apps, Bots, Dienstkonten) tragen {@link Comment#integration()}.
      */
     List<Thread> threads(String ref, String project);
+
+    /**
+     * Ergebnisse von Integrationen zum letzten Commit des Pull Requests – Berichte von Code-Analyse, Tests und
+     * Sicherheits-Scans (Bitbucket Code Insights, GitHub Check-Runs mit Ausgabe, GitLab Testberichte) samt Befunden an
+     * Datei und Zeile. Leere Liste, wenn keine Integration berichtet hat.
+     */
+    default List<Insight> insights(String ref, String project) {
+        throw unsupported("Berichte von Integrationen lesen");
+    }
 
     // ------------------------------------------------------------------ Schreiben
     // Die Freigaben prüft das Modul vor dem Aufruf. Server, die eine Aktion nicht können, lassen den Default stehen.
@@ -79,7 +89,10 @@ public interface GitServer {
         throw unsupported("Pull Requests bearbeiten");
     }
 
-    /** Allgemeiner Kommentar oder – mit Datei und Zeile – Code-Kommentar zur neuen Fassung. */
+    /**
+     * Allgemeiner Kommentar, mit Datei und Zeile ein Code-Kommentar zur neuen Fassung, mit Datei ohne Zeile ein
+     * Datei-Kommentar zur Datei als Ganzes.
+     */
     default WriteResult comment(String ref, String project, NewComment comment) {
         throw unsupported("Kommentieren");
     }
@@ -170,15 +183,22 @@ public interface GitServer {
      */
     record FileChange(String path, String oldPath, String status, int additions, int deletions, String patch) { }
 
-    record Comment(String id, String author, String created, String body) { }
+    /** @param integration von einer Integration (App, Bot, Dienstkonto) statt von einer Person geschrieben */
+    record Comment(String id, String author, String created, String body, boolean integration) {
+        public Comment(String id, String author, String created, String body) {
+            this(id, author, created, body, false);
+        }
+    }
 
     /**
      * Kommentar-Thread.
      *
      * @param id Ziel für {@code pr_reply} und {@code pr_resolve}
-     * @param kind „Kommentar“ (allgemein), „Code“ (Datei/Zeile) oder „Review“ (Zusammenfassung mit Urteil)
+     * @param kind „Kommentar“ (allgemein), „Code“ (Datei/Zeile), „Datei“ (Datei als Ganzes) oder „Review“
+     *             (Zusammenfassung mit Urteil); Provider dürfen eigene ergänzen (z.B. „Aufgabe“)
      * @param resolved erledigt; {@code null} = nicht auflösbar (allgemeine Kommentare bei GitHub)
-     * @param line Zeile in der neuen Fassung, bei veralteten Kommentaren die ursprüngliche; {@code null} = allgemein
+     * @param line Zeile in der neuen Fassung, bei veralteten Kommentaren die ursprüngliche; {@code null} = allgemeiner
+     *             oder Datei-Kommentar
      * @param outdated der Code hat sich seit dem Kommentar geändert
      */
     record Thread(String id, String kind, Boolean resolved, String path, Integer line, boolean outdated,
@@ -218,10 +238,67 @@ public interface GitServer {
         }
     }
 
-    /** @param path Datei für einen Code-Kommentar, {@code null} = allgemeiner Kommentar; @param line Zeile der neuen Fassung */
+    /**
+     * @param path Datei für einen Code- oder Datei-Kommentar, {@code null} = allgemeiner Kommentar
+     * @param line Zeile der neuen Fassung; {@code null} mit {@code path} = Kommentar zur ganzen Datei
+     */
     record NewComment(String body, String path, Integer line) {
+        /** An einer Datei – mit oder ohne Zeile. */
         public boolean inline() {
             return path != null && !path.isBlank();
+        }
+
+        /** An der Datei als Ganzes, nicht an einer Zeile. */
+        public boolean fileLevel() {
+            return inline() && line == null;
+        }
+    }
+
+    /**
+     * Bericht einer Integration zum letzten Commit, z.B. SonarQube-Analyse, Testlauf oder Sicherheits-Scan.
+     *
+     * @param id Schlüssel bzw. ID des Berichts beim Server (z.B. {@code de.firma.api-scanner})
+     * @param source Integration bzw. App, die berichtet hat (z.B. „SonarQube“, „GitHub Actions“); {@code null} = unbekannt
+     * @param result z.B. {@code PASS}/{@code FAIL}, {@code success}/{@code failure}; {@code null} = ohne Urteil
+     * @param summary Kurzbeschreibung bzw. Zusammenfassung; {@code null} = keine
+     * @param created Zeitpunkt des Berichts (ISO-8601); {@code null} = unbekannt
+     * @param data Kennzahlen in Anzeigereihenfolge (Abdeckung, Fehleranzahl …)
+     * @param annotations Befunde an Datei und Zeile
+     * @param annotationCount Anzahl der Befunde laut Server; größer als {@code annotations.size()}, wenn gekürzt
+     */
+    record Insight(String id, String title, String source, String result, String summary, String url,
+                   String created, Map<String, String> data, List<Annotation> annotations, int annotationCount) {
+        public Insight {
+            data = data == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(data));
+            annotations = annotations == null ? List.of() : List.copyOf(annotations);
+            annotationCount = Math.max(annotationCount, annotations.size());
+        }
+    }
+
+    /**
+     * Befund einer Integration.
+     *
+     * @param path Datei; {@code null} = betrifft den ganzen Pull Request
+     * @param line Zeile der neuen Fassung; {@code null} = ganze Datei
+     * @param severity z.B. {@code HIGH}, {@code warning} – siehe {@link #severityRank(String)}
+     * @param type z.B. {@code BUG}, {@code CODE_SMELL}, {@code VULNERABILITY}; {@code null} = unbekannt
+     */
+    record Annotation(String path, Integer line, String severity, String type, String message, String url) {
+        /**
+         * Rang einer Schwere über die Server hinweg, kleiner = schwerer: 0 kritisch/blocker, 1 hoch/failure/major,
+         * 2 mittel/warning/minor, 3 niedrig/notice/info, 4 unbekannt.
+         */
+        public static int severityRank(String severity) {
+            if (severity == null) {
+                return 4;
+            }
+            return switch (severity.trim().toLowerCase(Locale.ROOT)) {
+                case "critical", "blocker" -> 0;
+                case "high", "failure", "major", "error" -> 1;
+                case "medium", "warning", "minor" -> 2;
+                case "low", "notice", "info" -> 3;
+                default -> 4;
+            };
         }
     }
 

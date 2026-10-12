@@ -171,6 +171,7 @@ public class ModuleDetailPane extends ScrollPane {
     }
 
     private void updateDirty() {
+        form.showCredentialSources(registry.credentialSources(module.id(), form.values()));
         boolean dirty = !Objects.equals(normalize(form.values()), normalize(savedValues));
         save.setDisable(!dirty);
         revert.setDisable(!dirty);

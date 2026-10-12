@@ -89,6 +89,10 @@ type Mutation {
     activateProfile(profileId: Int!): Settings!
     "Ersetzt die Überschreibungen eines Moduls auf einer Ebene (GLOBAL nur Administratoren)."
     saveOverrides(level: Level!, moduleId: String!, input: OverlayInput!): Settings!
+    "Ersetzt die eigenen Zugangsdaten (Reihenfolge = Liste). Ohne secret behält ein Eintrag mit id sein Geheimnis."
+    saveCredentials(entries: [CredentialInput!]!): Settings!
+    "Erneuert das Access-Token eines OAuth-Eintrags, wenn es bald abläuft (sonst unverändert); Ergebnis im Stand."
+    refreshCredential(id: Int!): Settings!
     createProject(name: String!, description: String, sonarKey: String, ticketProject: String): Project!
 
     "triggers: Tool-Namen oder Präfixe mit * (z.B. ticket_get, pr_*), für die der Skill registriert ist."
@@ -264,6 +268,55 @@ type Settings {
     modules: [Overlay!]!
     "Änderungszähler des Backends beim Lesen – kleinere Revision = älterer Stand."
     revision: Int!
+    "Eigene Zugangsdaten (Modul „Zugangsdaten“), entschlüsselt – nur für den Benutzer selbst."
+    credentials: [Credential!]!
+}
+
+"Zugangsdaten für einen Server (wie beim Git Credential Manager); im Backend verschlüsselt gespeichert."
+type Credential {
+    id: Int!
+    name: String!
+    "Server, für den sie gelten (http/https), auch für Subdomains und Pfade darunter."
+    url: String!
+    username: String
+    "Token, Passwort bzw. OAuth-Access-Token; leer bei OAuth ohne Anmeldung."
+    secret: String
+    description: String
+    auth: CredentialAuth!
+    "OAuth: Aussteller für die Discovery (RFC 8414 / OIDC); leer = Herkunft der URL."
+    issuer: String
+    clientId: String
+    "Nur vertrauliche Clients – für die Anmeldung in der Desktop-App."
+    clientSecret: String
+    "Durch Leerzeichen getrennt."
+    scopes: String
+    "OAuth: Ablauf des Access-Tokens; leer = läuft nicht ab."
+    expiresAt: String
+    "OAuth: Angaben von Hand (name=wert; …) – Endpunkte nach RFC 8414 für Server ohne Discovery, redirect_uri, weitere Parameter."
+    options: String
+}
+
+"TOKEN: Token/Passwort von Hand; OAUTH: Anmeldung im Browser (OAuth 2.0 / OpenID Connect)."
+enum CredentialAuth { TOKEN OAUTH }
+
+input CredentialInput {
+    "Bestehender Eintrag – nötig, um ohne secret das bisherige Geheimnis (samt Refresh-Token) zu behalten."
+    id: Int
+    name: String!
+    url: String!
+    username: String
+    secret: String
+    description: String
+    auth: CredentialAuth
+    issuer: String
+    clientId: String
+    "Nur vertrauliche Clients; leer = bisheriges."
+    clientSecret: String
+    scopes: String
+    "Nach der Anmeldung im Browser; wird nie ausgegeben."
+    refreshToken: String
+    expiresAt: String
+    options: String
 }
 
 "Vorgaben bzw. Überschreibungen eines Moduls; nur gesetzte Werte."

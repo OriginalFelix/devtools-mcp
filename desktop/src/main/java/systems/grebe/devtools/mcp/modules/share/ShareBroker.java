@@ -20,11 +20,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.hivemq.client.mqtt.MqttClient;
 import com.hivemq.client.mqtt.MqttGlobalPublishFilter;
 import com.hivemq.client.mqtt.datatypes.MqttQos;
+import com.hivemq.client.mqtt.lifecycle.MqttClientDisconnectedContext;
 import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient;
 import com.hivemq.client.mqtt.mqtt5.Mqtt5ClientBuilder;
 import com.hivemq.client.mqtt.mqtt5.lifecycle.Mqtt5ClientDisconnectedContext;
@@ -175,6 +177,8 @@ public class ShareBroker implements AutoCloseable {
     private volatile Supplier<String> token = () -> "";
     private volatile Codec codec = Codec.PLAIN;
     private volatile Mqtt5AsyncClient client;
+    /** Rückrufe des aktuellen Clients, beim Trennen gekappt (siehe {@link Callbacks}). */
+    private Callbacks callbacks;
     private volatile String status = "nicht verbunden (Modul aus oder kein Broker eingetragen)";
     private volatile boolean connected;
     private volatile boolean stopped;
@@ -303,22 +307,15 @@ public class ShareBroker implements AutoCloseable {
             case "wss" -> 443;
             default -> tls ? 8883 : 1883;
         };
+        Callbacks cb = new Callbacks(this);
+        callbacks = cb;
         Mqtt5ClientBuilder b = MqttClient.builder().useMqttVersion5()
                 .identifier("devtools-" + state.instanceId())
                 .serverHost(uri.getHost()).serverPort(port)
                 .automaticReconnect().initialDelay(1, TimeUnit.SECONDS).maxDelay(60, TimeUnit.SECONDS)
                 .applyAutomaticReconnect()
-                .addConnectedListener(ctx -> onConnected())
-                .addDisconnectedListener(ctx -> {
-                    connected = false;
-                    status = "nicht verbunden: " + describe(ctx.getCause()) + " – neuer Versuch läuft";
-                    if (s.backend() && ctx instanceof Mqtt5ClientDisconnectedContext c5) {
-                        // Token beim Wiederverbinden neu holen: das alte kann inzwischen abgelaufen sein
-                        Mqtt5ClientReconnector r = c5.getReconnector();
-                        r.connect(r.getConnect().extend().simpleAuth().username(s.username())
-                                .password(token.get().getBytes(StandardCharsets.UTF_8)).applySimpleAuth().build());
-                    }
-                });
+                .addConnectedListener(ctx -> cb.run(ShareBroker::onConnected))
+                .addDisconnectedListener(ctx -> cb.run(t -> t.onDisconnected(s, ctx)));
         if (tls) {
             b = b.sslWithDefaultConfig();
         }
@@ -328,7 +325,7 @@ public class ShareBroker implements AutoCloseable {
         }
         Mqtt5AsyncClient c = b.buildAsync();
         // vor dem Verbinden: Nachrichten, die der Broker für die Sitzung aufgehoben hat, kommen sofort
-        c.publishes(MqttGlobalPublishFilter.ALL, this::onPublish);
+        c.publishes(MqttGlobalPublishFilter.ALL, p -> cb.run(t -> t.onPublish(p)));
         Mqtt5ConnectBuilder.Send<CompletableFuture<Mqtt5ConnAck>> connect = c.connectWith().cleanStart(false).keepAlive(60)
                 .sessionExpiryInterval(TimeUnit.DAYS.toSeconds(s.expiryDays()));
         if (!s.username().isEmpty()) {
@@ -341,11 +338,46 @@ public class ShareBroker implements AutoCloseable {
         status = "verbinde mit " + s.brokerUrl() + " …";
         connect.send().whenComplete((ack, ex) -> {
             if (ex != null) {
-                status = "nicht verbunden: " + describe(ex) + " – neuer Versuch läuft";
+                cb.run(t -> t.status = "nicht verbunden: " + describe(ex) + " – neuer Versuch läuft");
                 LOG.info("Kooperation: Verbindung zu {} fehlgeschlagen: {}", s.brokerUrl(), describe(ex));
             }
         });
         return c;
+    }
+
+    /**
+     * Rückrufe eines Clients an diesen Broker. Nach dem Trennen hält der HiveMQ-Client seine Sitzung samt Listenern
+     * bis zum Ablauf der Session-Expiry (Tage, {@code cleanStart=false}) in seinem Event-Loop fest – ohne Kappen hinge
+     * daran der ganze Broker mit Skill-Ablage, Rückrufen und Einstellungen, bei jedem Neuverbinden ein weiterer.
+     */
+    private static final class Callbacks {
+        private volatile ShareBroker target;
+
+        Callbacks(ShareBroker target) {
+            this.target = target;
+        }
+
+        void run(Consumer<ShareBroker> action) {
+            ShareBroker t = target;
+            if (t != null) {
+                action.accept(t);
+            }
+        }
+
+        void cut() {
+            target = null;
+        }
+    }
+
+    private void onDisconnected(Settings s, MqttClientDisconnectedContext ctx) {
+        connected = false;
+        status = "nicht verbunden: " + describe(ctx.getCause()) + " – neuer Versuch läuft";
+        if (s.backend() && ctx instanceof Mqtt5ClientDisconnectedContext c5) {
+            // Token beim Wiederverbinden neu holen: das alte kann inzwischen abgelaufen sein
+            Mqtt5ClientReconnector r = c5.getReconnector();
+            r.connect(r.getConnect().extend().simpleAuth().username(s.username())
+                    .password(token.get().getBytes(StandardCharsets.UTF_8)).applySimpleAuth().build());
+        }
     }
 
     /** Nach jedem (Wieder-)Verbinden: Eingang und Anwesenheit abonnieren, sich selbst als online melden. */
@@ -389,6 +421,10 @@ public class ShareBroker implements AutoCloseable {
 
     /** Trennt die Verbindung; {@code s}: die Einstellungen, mit denen verbunden wurde. */
     private synchronized void disconnect(Settings s) {
+        if (callbacks != null) {
+            callbacks.cut(); // keine Meldungen des alten Clients mehr, und er hält den Broker nicht fest
+            callbacks = null;
+        }
         Mqtt5AsyncClient c = client;
         client = null;
         connected = false;

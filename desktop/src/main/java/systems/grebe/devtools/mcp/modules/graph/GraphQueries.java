@@ -109,10 +109,10 @@ final class GraphQueries {
         if (file != null) {
             return List.of(file);
         }
-        if (spec.endsWith(".java")) {
+        if (looksLikeFileName(spec)) {
             List<Node> files = g.filesNamed(spec.replace('\\', '/'));
             if (!files.isEmpty()) {
-                return files; // 'OrderService.java' – sonst hielte die Auflösung 'java' für einen Member
+                return files; // 'OrderService.java', 'build.gradle' – sonst hielte die Auflösung die Endung für einen Member
             }
         }
         String typePart;
@@ -819,6 +819,16 @@ final class GraphQueries {
             w = w.substring(0, w.length() - 2); // speicher(n) / gespeicher(t) → speich
         }
         return w.length() >= 3 ? w : null;
+    }
+
+    /**
+     * Dateiname mit Endung wie {@code OrderService.java}, {@code build.gradle.kts} oder {@code application.yml} – nicht
+     * {@code Typ#methode} oder {@code Typ.methode(int)}. Ob es die Datei gibt, entscheidet erst der Graph.
+     */
+    static boolean looksLikeFileName(String spec) {
+        int dot = spec.lastIndexOf('.');
+        return dot >= 0 && dot + 1 < spec.length() && spec.indexOf('#') < 0 && spec.indexOf('(') < 0
+                && spec.indexOf(' ') < 0;
     }
 
     /** Liegt in einem Testquellordner oder heißt wie eine Testklasse. */

@@ -18,7 +18,8 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Debugger** (JDI) | `debug_attach`, `debug_sessions`, `debug_detach`, `debug_set_breakpoint`, `debug_clear_breakpoint`, `debug_wait_for_break`, `debug_threads`, `debug_stack`, `debug_variables`, `debug_step`, `debug_resume` (Standard: aus) |
 | **Container (OCI)** | lesend: `container_runtimes`, `container_list`, `container_inspect` (Geheimnisse maskiert), `container_logs`, `container_stats`, `container_top`, `container_diff`, `container_images`, `container_networks`, `container_volumes` · je Schalter (Standard aus): `container_exec`, `container_start`/`stop`/`restart`, `container_copy_from`/`copy_to`, `container_run`, `container_pull`, `container_rm`, `container_rmi`, `container_compose_up`/`down`/`restart` · mit Compose-Projekten: `container_compose_projects`/`ps`/`logs`/`config` |
 | **Tickets** (Jira, GitHub, GitLab, YouTrack, OpenProject; erweiterbar per ServiceLoader) | `ticket_providers`, `ticket_boards`, `ticket_board` (Board nach Spalten: Jira-Sprint/Kanban, GitHub Project, GitLab-Issue-Board, YouTrack-Agile-Board, OpenProject-Board), `ticket_search`, `ticket_get` (Titel, Status, Zuständige, Beschreibung, Kommentare), `ticket_status` (mehrere Tickets), `ticket_links`, `ticket_transitions`, `ticket_worklogs` (gebuchte Zeiten mit Summe) · je Schalter (Standard aus): `ticket_comment`, `ticket_transition`, `ticket_assign`, `ticket_update`, `ticket_create`, `ticket_link`/`ticket_unlink` (Tickets verknüpfen), `ticket_log_time` (Zeit buchen), `ticket_delete_comment`/`ticket_delete` (standardmäßig nur selbst angelegte), `ticket_classify` (Pre-Classifier: Komplexität einschätzen, Modell für die Umsetzung empfehlen), einschränkbar auf Projekte (Modul Standard: aus) |
-| **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile, offen/erledigt) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
+| **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile bzw. ganze Datei, offen/erledigt, Integrationen gekennzeichnet), `pr_insights` (Berichte von Integrationen mit Befunden) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
+| **CI/CD** (Jenkins, GitLab CI/CD, GitHub Actions; erweiterbar per ServiceLoader) | `ci_providers`, `ci_list` (Builds/Pipelines/Läufe nach Status, Branch, Workflow), `ci_get` (Status, Branch, Commit, Auslöser, Dauer, Parameter, Jobs/Stages mit fehlgeschlagenen Schritten), `ci_log` (Log eines Jobs, ohne Angabe der erste fehlgeschlagene; letzte Zeilen oder `grep`), `ci_workflows` (startbare Jenkins-Jobs, GitHub-Workflows) · je Schalter (Standard aus): `ci_start` (Branch, Parameter/Variablen/Inputs), `ci_cancel`, `ci_retry` (nur fehlgeschlagene Jobs oder ganzer Lauf), einschränkbar auf Projekte; System und Projekt aus dem Remote des lokalen Repositories (Jenkins über eine Job-Zuordnung) (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
@@ -26,6 +27,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort), `mail_send` (SMTP, auch als Antwort; Rückfrage beim Nutzer, erlaubte Empfänger, Grenze pro Stunde) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über den stdio-Proxy (Channel) an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
 | **Fenstersteuerung** (Fenster per FFM: Windows user32, macOS CoreGraphics/AX, Linux X11; eigener KI-Zeiger per JNA) | `window_list` (Prozesse mit Fenstern, PID, UI-Thread nur Windows; UWP-Apps wie der Rechner unter ihrem eigenen Prozess), `window_bind` (Prozess inkl. Kindprozessen – bei Shell-Prozessen wie dem Explorer ohne –, nie der Elternprozess, Geschwister per Schalter und nur mit Fenster-ID, keine unter Shell- und Systemprozessen; Bindung je KI, d.h. je MCP-Session – ein Prozess gehört immer nur einer KI; ruft sie 2 min lang kein Fenster-Tool auf, darf eine andere ihn übernehmen), `window_windows`, `window_screenshot` (PNG als Bild-Content, verkleinert auf max. 1280 px), `window_unbind` · Schalter „Programme starten erlauben“ (Standard aus): `window_launch` – startet ein Programm, das zu „Nur diese Prozesse“ passt (geprüft wird nur das Programm, nicht die Argumente), im Hintergrund und bindet es; das Fenster bekommt keinen Fokus, Eingaben des Nutzers landen erst dort, wenn er es anklickt (Windows: `ShellExecuteEx` mit `SW_SHOWNOACTIVATE`, holt es sich trotzdem den Vordergrund, wird er sofort zurückgegeben; macOS: `open -g`) · Schalter „Eingaben erlauben“ (Standard aus): `window_click`, `window_scroll`, `window_drag` · Schalter „Tastatur erlauben“ (Standard aus, nur zusammen mit Eingaben): `window_type` (Sonderzeichen über die Zwischenablage, wird wiederhergestellt), `window_key` (ohne Windows-/Super-Taste), Klicks mit gehaltenen Tasten · „Maus der KI“: `eigener-zeiger` (Standard) – Klicks, Ziehen und Scrollen mit einem zweiten Zeiger, die Maus des Nutzers bewegt sich nie und das Fenster wird nicht nach vorn geholt (Windows: Nachrichten an das Fenster, bei UWP/WinUI UI Automation bzw. Touch zum Ziehen; macOS: Ereignisse an den Prozess; X11: zweiter Master-Zeiger per XInput2), kein Klick, wenn ein fremdes Fenster darüber liegt; `maus` – echte Maus (Robot), Fenster wird aktiviert, Not-Aus bei Mausbewegung und Abkühlzeit · „Tastatur der KI“ (getrennt einstellbar): `eigene-tastatur` (Standard) – Text und Tasten gehen an das Element, das der Zeiger der KI zuletzt angeklickt hat (eigener Fokus, Strg/Umschalt/Alt nur im Ziel), die Tastatur des Nutzers bleibt unberührt (Windows: Nachrichten an das Element; macOS: Text über die Bedienungshilfen ins fokussierte Element, sonst Ereignisse an den Prozess; X11: eigene Master-Tastatur); ungeprüfte Eingaben im Hintergrund meldet das Tool als solche; `tastatur` – echte Tastatur (Robot), Fenster wird aktiviert. „Nur diese Prozesse“ und „Prozesse ausschließen“ mit Button „Fenster wählen…“: Übersicht aller Fenster mit Vorschau (ohne Vorschau Platzhalter mit Prozessname und PID), Klick zeigt das Fenster groß, „Hinzufügen“ hängt den Prozessnamen an den Ausdruck an · Programme, deren ausführbare Datei in einem Ordner unter „Freigaben“ liegt (auch in Unterordnern), sind freigegeben – auch gegen „Nur diese Prozesse“ und „Prozesse ausschließen“; hebt das einen Ausschluss auf, warnt die App beim Speichern (Suche nach Programmen in den freigegebenen Ordnern). Während der Steuerung Rahmen und Hinweis („Claude Code steuert dieses Fenster“, durchklickbar) um das Fenster, auf seiner Ebene der Fensterreihenfolge (darüberliegende Fenster verdecken auch den Rahmen; Windows `SetWindowPos`, macOS `orderWindow:relativeTo:`, X11 `_NET_RESTACK_WINDOW`) – jede KI in ihrer eigenen Farbe (reine Farbtöne mit größtmöglichem Abstand: Rot, Cyan, Gelbgrün, Violett …; auch der eigene Zeiger, außer unter X11), nach 30 min ohne Fenster-Tool wird ihre Bindung aufgehoben und die Farbe frei; diese App, Anmelde-/Berechtigungsdialoge und Passwortmanager sind nie steuerbar; nicht im Headless-Betrieb (Modul Standard: aus) |
+| **Entscheidungen (System One)** (lokal, reines Java) | `decide_run` (typisierte Entscheidung: je Feld ein Wert aus dem Schema mit Wahrscheinlichkeiten – `choice`, `score`, `boolean`, `multi`), `decide_batch` (bis 100 Eingaben, Map-Reduce), `decide_feedback` (richtige Antwort melden: Beispiel + Kalibrierung), `decide_tasks`, `decide_task_save` (wiederkehrende Entscheidungen als Aufgabe), `decide_status` · Schalter (Standard aus): `decide_task_delete` – gerechnet mit [Laya](https://github.com/NandhaKishorM/laya) (Encoder, Apache-2.0) in reinem Java auf der CPU, optional zusätzlich mit einem LLM im GGUF-Format; ohne API und ohne native Bibliotheken (siehe [Entscheidungen](#entscheidungen-system-one--typisierte-entscheidungen-lokal)) (Modul Standard: aus) |
 | **Berechtigungen** | lesend: `permissions_overview` (Module, Schalter, abgeschaltete Tools; mit `module` je Schalter die Tools, die er freischaltet, und die Einstellungen ohne Geheimnisse), `permissions_check` (Tool oder Pfad: erlaubt? sonst was fehlt) · Schalter (Standard an): `permissions_request` – fragt den Nutzer per MCP-Elicitation oder Dialog der App und erteilt erst nach Zustimmung; vom Administrator Gesperrtes bleibt gesperrt (Modul Standard: an) |
 | **Projekte** (Team-Server) | `projects_list` – eigene und freigegebene Projekte vom Team-Server mit Zugriff, lokalem Verzeichnis, Sonar-Schlüssel und Ticket-Projekt; Verwaltung und Freigaben in der Web-UI des Servers (Modul Standard: an) |
 | **Maven-Artefakte** | `maven_latest_version` (neueste Release-/Vorabversion, Update-Einschätzung nach SemVer), `maven_artifact_info` (POM inkl. Parent: Lizenz, SCM, Java-Ziel, Relocation, Abhängigkeiten), `maven_breaking_changes` (API-Vergleich der JARs, POM-Änderungen, Breaking-Hinweise aus GitHub-Releases) – Maven Central oder eigener Mirror (Modul Standard: an) |
@@ -44,6 +46,89 @@ Sammelordner auf, die Git, Build, Code-Graph, Pull Requests und Compose zusätzl
 jedes Modul übernimmt, was zu ihm passt (Git-Repositories, Gradle-/Maven-Projekte …). Der Schalter *Beschränkung
 aufheben* lässt die Tools jeden absoluten Pfad verwenden (aufgelöst zum nächsten passenden Verzeichnis darüber, z.B.
 dem Repository); nur lesend freigegebene Projekte des Team-Servers und die Schalter der Module gelten weiter.
+
+Das Modul **Kennzeichnung** hat ebenfalls keine eigenen Tools. Sein *Text* (Standard `🤖 Generated with
+{AI_MODEL_NAME}`) steht unter jedem Kommentar, jeder Antwort und jeder Beschreibung, die ein KI-Client über die Tools
+veröffentlicht: `pr_comment`, `pr_reply`, `pr_create`, `pr_update`, `ticket_comment`, `ticket_transition … comment=`,
+`ticket_create`, `ticket_update`. `{AI_MODEL_NAME}` wird durch den Modellnamen ersetzt, den das LLM im Parameter
+`aiModel` mitgibt – fehlt er, durch den Namen des MCP-Clients (z.B. „Claude Code“). Steht schon eine Kennzeichnung
+nach derselben Vorlage am Textende (etwa „🤖 Generated with [Claude Code](…)“ vom Client selbst), wird sie ersetzt statt
+verdoppelt. *Kennzeichnung anhängen* schaltet sie ab; *Eigene Kennzeichnung* in den Modulen Tickets und Pull Requests
+ersetzt sie dort.
+
+Das Modul **Zugangsdaten** hat ebenfalls keine eigenen Tools. Wie beim Git Credential Manager werden Tokens und
+Passwörter dort einmal je Server hinterlegt (Name, URL, optional Benutzer, Token/Passwort, Beschreibung) statt in jedem
+Modul erneut: Bleibt das Token- bzw. Passwortfeld eines Moduls leer, setzt die App beim Bauen der Tools (und beim
+*Verbindung testen*) das des Eintrags ein, dessen URL zur Server-URL des Moduls passt – ist auch der Benutzer leer,
+zusätzlich dessen Benutzer (z.B. die E-Mail zum Jira-Cloud-Token). Ein GitHub-Token unter `https://github.com` gilt so
+für Tickets, Pull Requests, CI und die Release Notes im Maven-Modul zugleich. Zuordnung:
+
+* Schema und Port müssen stimmen, der Host gleich oder eine Subdomain sein (`https://github.com` gilt auch für
+  `https://api.github.com`), der Pfad des Eintrags ein Präfix (`https://gitlab.firma.de/gruppe`). Der genaueste Eintrag
+  gewinnt: gleicher Host vor Subdomain, dann längerer Pfad, dann der weiter oben.
+* Ein eigenes Geheimnis im Modul hat immer Vorrang; ins Modul kopiert wird nichts. Das Formular zeigt in einem leeren
+  Feld, welcher Eintrag greift („leer = aus Zugangsdaten „GitHub““).
+* Gilt für Tickets, Pull Requests, CI/CD, Chat (Matrix), SonarQube, Maven (Repository und GitHub) und Modellwahl
+  (Claude API: `https://api.anthropic.com`, solange keine eigene API-URL gesetzt ist) – nicht für Verbindungslisten
+  (SSH, JDBC, Dolt, Mail), die je Eintrag eigene Zugangsdaten haben.
+* **Ablage:** je Benutzer in der Core-Datenbank des Backends (eingebettet oder Team-Server), Tabelle `credential`, das
+  Geheimnis je Eintrag mit AES-GCM verschlüsselt (Schlüssel `secret.key` des Backends) – nicht in `settings.json` und
+  nicht als Einstellung eines Profils: sie gelten in allen Profilen des Benutzers, Vorgaben des Administrators gibt es
+  dafür nicht. Über die API (ab Version 1: `Settings.credentials`, Mutation `saveCredentials`) bekommt nur der Benutzer
+  selbst seine Einträge; Änderungen kommen wie Einstellungen sofort bei seinen anderen Desktop-Apps an.
+* **Pflege:** in der Desktop-App (Module → Zugangsdaten) oder in der Web-UI des Team-Servers unter *Mein Konto* →
+  *Zugangsdaten* (anlegen, bearbeiten, Reihenfolge, löschen; Recht „Eigene Einstellungen“). Die Web-UI zeigt Tokens nur
+  maskiert und bekommt sie nie zu sehen – beim Bearbeiten bleibt ein leeres Feld beim bisherigen Token.
+
+#### Anmeldung im Browser (OAuth 2.0 / OpenID Connect)
+
+Statt ein Token von Hand einzutragen, kann sich ein Eintrag im Browser anmelden (*Anmeldung* = `oauth`) – so z.B. das
+Modul Pull Requests bei GitHub oder GitLab, ohne persönliches Token. Umgesetzt nach Standard, ohne Bibliothek eines
+Anbieters (`shared/oauth/OAuthClient`):
+
+* **Discovery:** Authorization Server Metadata (RFC 8414) unter `/.well-known/oauth-authorization-server`, sonst OpenID
+  Connect Discovery (`/.well-known/openid-configuration`) beim *Aussteller* – leer = Herkunft der URL, z.B.
+  `https://gitlab.com`; für Keycloak & Co. den Realm angeben (`https://sso.firma.de/realms/dev`). Der in den Metadaten
+  genannte Aussteller muss passen. GitHub hat keine Discovery; für github.com und GitHub Enterprise (`…/api/v3`) gelten
+  dessen feste Endpunkte.
+* **Anmelden:** Device Authorization Grant (RFC 8628), wenn der Server ihn anbietet – die App zeigt Adresse und Code
+  und öffnet den Browser; sonst Authorization Code mit PKCE/S256 (RFC 7636) und Rückleitung an
+  `http://127.0.0.1:<freier Port>/callback` (RFC 8252, mit `state`). Öffentliche Clients brauchen nur die Client-ID,
+  vertrauliche zusätzlich das Client-Geheimnis (`client_secret_post` bzw. `client_secret_basic` laut Metadaten).
+* **Ablauf:** Eintrag mit *Anmeldung* `oauth`, *Client-ID* (und ggf. Aussteller, Scopes) speichern, dann unter der
+  Aktion **Im Browser anmelden** den Eintrag wählen. Access- und Refresh-Token gehen ins Backend.
+* **Erneuern:** Läuft ein Access-Token ab (GitLab: nach 2 Stunden), erneuert es das **Backend** mit dem Refresh-Token
+  (RFC 6749 §6) – die Desktop-App stößt das 5 Minuten vorher an (`CredentialRefresher`), der neue Stand kommt wie
+  Einstellungen bei allen Desktop-Apps des Benutzers an und die Tools werden neu gebaut. Je Benutzer erneuert das
+  Backend nacheinander und nur, was bald abläuft – Server, die Refresh-Tokens bei jeder Verwendung austauschen, melden
+  so keine zweite Desktop-App ab. Das Refresh-Token verlässt das Backend nie; der Team-Server muss dafür den
+  Autorisierungsserver erreichen. Lehnt der Server ab (`invalid_grant`, steht im Log), neu anmelden.
+* **Web-UI:** Einträge mit OAuth lassen sich unter *Mein Konto* einrichten (Ablauf des Tokens sichtbar); angemeldet
+  wird in der Desktop-App, weil der Browser des eigenen Rechners die Anmeldung bestätigt.
+
+| Server | App registrieren | Hinweise |
+|---|---|---|
+| GitHub / GitHub Enterprise | *Settings → Developer settings → OAuth Apps* (bzw. der Organisation), **Enable Device Flow**; Callback-URL beliebig, z.B. `http://127.0.0.1/callback` | Device Flow, kein Client-Geheimnis nötig. Scopes leer = `repo read:org`. Tokens von OAuth-Apps laufen nicht ab. |
+| GitLab (ab 17.x mit Device Flow) | *Benutzer- bzw. Gruppeneinstellungen → Applications*, **nicht vertraulich**, Redirect-URI `http://127.0.0.1/callback`, Scope `api` | Discovery über OIDC; Scopes `api`. Ältere Versionen ohne Device Flow melden sich per Authorization Code + PKCE an. |
+| Jira Cloud (Atlassian) | *developer.atlassian.com → Console → OAuth 2.0 integration*, Jira-API-Rechte, Callback-URL mit festem Port, z.B. `http://127.0.0.1:53682/callback` | Endpunkte und `audience=api.atlassian.com` sind vorgegeben; **Client-Geheimnis** nötig, in den Optionen `redirect_uri=http://127.0.0.1:53682/callback` (Atlassian vergleicht exakt). Scopes leer = `read:jira-work write:jira-work read:jira-user offline_access`. Das Ticket-Modul ruft dann über `api.atlassian.com/ex/jira/<cloudId>` auf (cloudId aus `accessible-resources`), Links zeigen weiter auf die Site. |
+| Jira Data Center (ab 8.22) | *Administration → Anwendungen → Anwendungslinks → Externe Anwendung erstellen (eingehend)*, Redirect-URL mit festem Port | Keine Discovery: in den Optionen `authorization_endpoint=https://jira.firma.de/rest/oauth2/latest/authorize; token_endpoint=https://jira.firma.de/rest/oauth2/latest/token; redirect_uri=http://127.0.0.1:53682/callback`. |
+| YouTrack | in JetBrains Hub (*Services*) einen Dienst mit Redirect-URI anlegen | Bietet Hub keine Discovery an, die Endpunkte (`…/hub/api/rest/oauth2/auth`, `…/hub/api/rest/oauth2/token`) in den Optionen angeben. Ungetestet. |
+| OpenProject | *Administration → Authentifizierung → OAuth-Anwendungen*, Redirect-URI mit festem Port | In den Optionen `authorization_endpoint=https://op.firma.de/oauth/authorize; token_endpoint=https://op.firma.de/oauth/token; redirect_uri=http://127.0.0.1:53682/callback`. |
+| Andere OAuth-/OIDC-Server (Keycloak, Entra ID, …) | öffentlicher Client mit Device Flow oder Redirect-URI `http://127.0.0.1/callback` | Aussteller angeben; Scopes nach dem Ziel-API. |
+
+**OAuth-Optionen** (Spalte *OAuth: Optionen*, `name=wert`, getrennt durch `;`) – nur für Server ohne Discovery oder mit
+Besonderheiten: `authorization_endpoint`, `token_endpoint`, `device_authorization_endpoint` wie in den Metadaten nach
+RFC 8414 (mit `token_endpoint` entfällt die Discovery), `redirect_uri` für eine feste Rückleitung
+`http://127.0.0.1:<port>/…` (manche Server vergleichen die Callback-URL samt Port exakt, obwohl RFC 8252 den Port
+freigibt; mit fester Rückleitung meldet sich die App über die Anmeldeseite statt per Device Flow an), alles andere geht
+als zusätzlicher Parameter in die Anmeldung (z.B. `prompt=consent`).
+
+**Token als Bearer:** Setzt die App ein OAuth-Access-Token aus den Zugangsdaten ein, legt sie die Markierung
+`<schlüssel>@oauth=true` daneben (`CredentialField.oauthKey`). Jira schickt das Token dann als Bearer statt Basic mit
+Benutzer, OpenProject als Bearer statt `apikey`; GitHub, GitLab und YouTrack verwenden ohnehin Bearer.
+
+Bitbucket Cloud kennt keinen Device Flow und verlangt vertrauliche Clients, Bitbucket Data Center nur HTTP Access
+Tokens – dort bleibt das Token von Hand der einfachere Weg.
 
 ### Berechtigungen an das LLM übermitteln
 
@@ -124,8 +209,8 @@ optional mit System (`jira:ABC`, `github:octo/*`); leer = alle. Geprüft wird da
 nicht der Parameter `project` – `DEF-9` mit `project=ABC` wird abgelehnt, bevor ein Request rausgeht. Ausnahme
 OpenProject: Nummern wie `#123` verraten das Projekt nicht, daher wird das Arbeitspaket dafür einmal (lesend) abgerufen
 (`openproject:mein-projekt`). Ein Kommentar beim
-Statuswechsel (`ticket_transition … comment=`) braucht zusätzlich `allowComment`; `commentSuffix` hängt eine Kennzeichnung
-an jeden Kommentar. `ticket_links`, `ticket_transitions` und `ticket_worklogs` sind lesend und immer da.
+Statuswechsel (`ticket_transition … comment=`) braucht zusätzlich `allowComment`; Kommentare und Beschreibungen tragen die
+Kennzeichnung aus dem Modul **Kennzeichnung** (`commentSuffix` = eigene für Tickets). `ticket_links`, `ticket_transitions` und `ticket_worklogs` sind lesend und immer da.
 
 `ticket_link` verknüpft `key <relation> target` (z.B. `ABC-1 blocks ABC-2`, `#1 Parent #2` = #2 wird Parent von #1);
 ohne `relation` listet es die möglichen Arten mit ID, ohne etwas zu ändern. `relation` nimmt Name oder ID, `_`/`-`/Leerzeichen
@@ -147,7 +232,9 @@ den Schlüssel als seinen erkennt (Jira-/YouTrack-Schlüssel, URL seines Hosts),
 einzige aktive. Sind Jira und YouTrack beide aktiv, ist `ABC-123` mehrdeutig – dann entscheidet das Standard-System oder
 der Parameter `provider`. Ein weiteres System (z.B. Redmine) braucht eine `TicketProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider`; `spi/HttpJson`
-(JSON über HTTP mit verständlichen Fehlermeldungen) steht Providern – auch aus Plugins – zur Verfügung.
+(JSON über HTTP mit verständlichen Fehlermeldungen) steht Providern – auch aus Plugins – zur Verfügung. Kommt das Token
+aus einer Anmeldung im Browser, steht unter `CredentialField.oauthKey(TOKEN)` der Wert `true` – dann als
+`Authorization: Bearer` schicken.
 
 ### Modellwahl: Komplexität einschätzen (`classify_task`, `ticket_classify`)
 
@@ -182,6 +269,87 @@ Standard `high`), die Modelle je Stufe und eigene **Regeln** des Teams (eine je 
 immer komplex“), die den allgemeinen Kriterien vorgehen. „Verbindung testen“ prüft im Modus `api`/`auto` Key und Modell,
 ohne Token zu verbrauchen.
 
+### Entscheidungen (System One) – typisierte Entscheidungen lokal
+
+Kleine, klar umrissene Entscheidungen über einen Text oder Zustand – Kategorie, Priorität, ja/nein, passende Labels,
+Stufe auf einer Skala – ohne API und ohne Textgenerierung: unstrukturierte Eingabe rein, **typisierte Entscheidung mit
+Wahrscheinlichkeiten** raus. Die Idee stammt von „System One“-Modellen wie Jev (TypeSafe AI); lokal rechnet das Modul mit
+[Laya](https://github.com/NandhaKishorM/laya) (Apache-2.0), einem Encoder (ModernBERT/mmBERT, 322 M Parameter) mit
+Entscheidungskopf, trainiert auf kalibrierte Entscheidungen. Das Ergebnis ist immer ein Wert aus dem Schema – es gibt
+keine Typfehler und keine erfundenen Werte.
+
+```json
+decide_run(input="Seit dem Update stürzt die App beim Speichern ab, bitte sofort beheben!", fields=[
+  {"name": "category", "type": "choice", "question": "Um welche Art von Anliegen geht es?",
+   "options": ["fehler", "wunsch", "frage"], "descriptions": {"fehler": "etwas funktioniert nicht"}},
+  {"name": "urgent", "type": "boolean", "question": "Das Anliegen ist dringend."},
+  {"name": "severity", "type": "score", "options": ["gering", "mittel", "hoch", "kritisch"]},
+  {"name": "topics", "type": "multi", "options": ["speichern", "anmeldung", "rechnung"]}])
+→ {"decisionId": "…", "decisions": {
+     "category": {"type": "choice", "value": "fehler", "probabilities": {"fehler": 0.9997, …}, "confidence": 0.9997,
+                  "certainty": 0.9975, "engine": "laya", "calibrated": false},
+     "urgent":   {"type": "boolean", "value": true, "probability": 0.9346, …},
+     "severity": {"type": "score", "value": "mittel", "level": 1, "expected": 1.31, …},
+     "topics":   {"type": "multi", "values": ["speichern"], "probabilities": {"speichern": 0.99, …}, …}},
+   "uncertain": true, "millis": 420}
+```
+
+| Feldtyp | Ergebnis | Hinweis |
+|---|---|---|
+| `choice` | `value` (eine Option), `probabilities` | `descriptions` je Option machen es deutlich genauer |
+| `score` | `value`, `level` (ab 0), `expected` (Erwartungswert), `probabilities` | `options` von niedrig nach hoch |
+| `boolean` | `value`, `probability` (für „ja“) | `question` als Aussage formulieren („Der Kunde wurde doppelt belastet.“) |
+| `multi` | `values` (alle mit p ≥ 0,5), `probabilities` je Option | je Option eine Ja/Nein-Frage |
+
+`confidence` ist die Wahrscheinlichkeit der Antwort, `certainty` 1 − normierte Entropie; liegt eine Antwort unter der
+**Schwelle** (Standard 80 %), steht `uncertain: true` im Ergebnis – das aufrufende LLM prüft dann selbst oder fragt nach.
+
+**Lernen aus Rückmeldungen.** Wiederkehrende Entscheidungen als Aufgabe speichern (`decide_task_save`, Aufruf mit
+`task`). Ist die richtige Antwort bekannt, meldet `decide_feedback` sie (mit der `decisionId` oder mit `input` – dann
+rechnen alle Modelle neu). Das Modul speichert Eingabe und Antwort als Beispiel und die Roh-Logits der Entscheidung; ab
+6 Rückmeldungen je Feld und Modell fittet es eine **Temperatur** (Temperature Scaling, minimale negative
+Log-Likelihood) – die ausgelieferten Laya-Checkpoints sind laut ihren Autoren deutlich zu selbstsicher. `decide_tasks`
+zeigt je Feld Anzahl, Trefferquote und Temperatur. Ablage: `~/.devtools-mcp/decide/<benutzer/profil>/<aufgabe>.json`.
+
+**Modi** (Einstellung *Modus*, je Aufruf mit `mode` änderbar):
+
+| Modus | Rechnet | Wann |
+|---|---|---|
+| `laya` (Standard) | nur Laya | empfohlen |
+| `hybrid` | Laya; ist eine Antwort unter der Schwelle, bewertet zusätzlich ein LLM die Optionen, beide werden kombiniert (gewichtetes geometrisches Mittel, das Gewicht lernt jede Aufgabe aus Rückmeldungen mit beiden Modellen) | mit einem größeren GGUF-LLM |
+| `llm` | nur das LLM | Vergleich, Sonderfälle |
+
+Das LLM generiert nichts: es vergleicht die Logits der Antwort-Tokens (Buchstaben bzw. „Yes“/„No“), gemittelt über
+zyklisch vertauschte Optionsreihenfolgen, weil kleine Modelle sonst vor allem die Position wählen. Standard ist
+Qwen2.5-0.5B-Instruct (Q8_0, 676 MB); in Messungen auf deutschen Support-Tickets (36 Entscheidungen) lag Laya allein bei
+83 %, Qwen2.5-0.5B bei 64 % – `hybrid` lohnt sich daher erst mit einem größeren Modell (Einstellung *LLM (GGUF-URL)*,
+unterstützt: `qwen2`, `qwen3`, `llama` in F32/F16/BF16/Q8_0/Q4_0).
+
+**Modelle.** *Laya-Modell* `multilingual` (mmBERT, 100+ Sprachen inkl. Deutsch, 644 MB, Standard), `english`
+(ModernBERT-large, 843 MB) oder `typed-decisions` (english, feinjustiert auf vier Workflows). Heruntergeladen wird
+einmalig nach `~/.devtools-mcp/models` – über die Aktion **Modelle herunterladen** (lädt, was der Modus braucht) oder
+automatisch beim ersten Aufruf (Schalter, Standard aus); Standardquellen sind auf eine Revision gepinnt und
+SHA-256-geprüft, für einen Mirror lassen sich die URLs ändern. *Verbindung testen* lädt die Modelle und trifft eine
+Probe-Entscheidung.
+
+**Umsetzung.** Alles reines Java ohne native Bibliotheken (wie tree-sitter über Chicory): Modelldateien per mmap
+(`safetensors`, GGUF), Gewichte zeilenweise in `float` entpackt, Matrixmultiplikation parallel über alle Kerne.
+Tokenizer (BPE mit Metaspace/Byte-Fallback bzw. Byte-Level), ModernBERT-Encoder (RoPE, lokale/globale Attention,
+GeGLU), Laya-Kopf und Qwen/Llama-Decoder (GQA, KV-Cache mit gemeinsamem Prompt-Anfang) sind nachgebaut; Tokenizer und
+Wahrscheinlichkeiten stimmen mit den Referenzwerten des Laya-Projekts überein (`LayaParityTest`, Abweichung < 0,002).
+Mit `--add-modules jdk.incubator.vector` beim Start rechnen die heißen Schleifen über die **Java Vector API** (SIMD,
+FMA; `decide_status` zeigt, womit gerechnet wird), sonst skalar. Rechenzeit (Laya, Apple-Silicon-Notebook):
+
+| Entscheidung | Tokens | skalar | Vector API |
+|---|---|---|---|
+| 1 Frage, kurzer Text | 29 | 89 ms | 41 ms |
+| 3 Fragen zu einem Satz | 141 | 518 ms | 151 ms |
+| Ticket mit 4 Feldern (6 Fragen, davon 3 aus `multi`) | – | ~1,4 s | 378 ms |
+| 1 Frage, maximale Eingabe | 1024 | 3,3 s | 1,2 s |
+
+Jede Frage ist eine eigene Sequenz aus Frage, Optionen und Eingabe (max. 1024 Tokens) – die Rechenzeit wächst mit
+Fragen × Länge der Eingabe; jede Option eines `multi`-Feldes ist eine Frage.
+
 ### Git-Server und Pull Requests (ServiceLoader)
 
 Das Modul **Pull Requests** folgt demselben Muster über `modules/pr/spi`: `GitServerProvider` (ID, Felder, Hilfetexte)
@@ -203,12 +371,52 @@ Branch nicht gepusht ist. `pr_push` ruft `git push --porcelain -u <remote> <bran
 auf (SSH-Schlüssel, Credential Manager), nicht interaktiv (`GIT_TERMINAL_PROMPT=0`), nie Force und nie auf
 `main`/`master` bzw. den Standard-Branch des Remotes.
 
+`pr_comment` kommentiert mit `path` und `line` eine Zeile der neuen Fassung, mit `path` ohne `line` die Datei als Ganzes
+(GitHub `subject_type=file`, GitLab ab 16.4 `position_type=file`, Bitbucket Anker ohne Zeile); `pr_comments` zeigt
+solche Threads als „Datei“. Kommentare von Integrationen – GitHub Apps und Bots, GitLab-Projekt-/Gruppen-Bots und
+Dienstkonten, Bitbucket-App-Konten (Cloud) bzw. Dienstkonten (DC) – tragen „[Integration]“. `pr_insights` liest die
+Berichte von Integrationen zum letzten Commit – in Bitbucket „Qualitätsberichte“/„Integrationen“ am Pull Request:
+Bitbucket Code Insights (Berichte mit Schlüssel, Kennzahlen und Annotations), GitHub Check-Runs mit Ausgabe und
+Annotations, GitLab Testbericht der Pipeline, Code Quality (Premium, über GraphQL) und externe Status-Checks
+(Ultimate). Befunde stehen nach Schwere sortiert; `pr_get` fasst die Berichte in einer Zeile zusammen
+(„4 Bericht(e), 1 fehlgeschlagen: API-Scanner (6 Befund(e): 1 HIGH, 5 LOW)“).
+
 Typischer Ablauf „Review-Kommentare abarbeiten“: `pr_comments unresolved=true` → Code ändern, `git_commit` → `pr_push`
 → je Thread `pr_reply` (was geändert wurde) → `pr_resolve`. `writeProjects` schränkt alle schreibenden Tools auf
 Repositories ein (`github:octo/*`, `PROJ/app`); geprüft wird das Repository aus dem Pull-Request-Schlüssel.
-`commentSuffix` kennzeichnet Kommentare und Antworten. Ein weiterer Server (z.B. Gitea) braucht eine
+Kommentare, Antworten und Beschreibungen tragen die Kennzeichnung aus dem Modul **Kennzeichnung**
+(`commentSuffix` = eigene für Pull Requests). Ein weiterer Server (z.B. Gitea) braucht eine
 `GitServerProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider`.
+
+### CI/CD (ServiceLoader)
+
+Das Modul **CI/CD** folgt demselben Muster über `modules/ci/spi`: `CiProvider` (ID, Felder, Hilfetexte) erzeugt ein
+`CiSystem` mit `builds`, `get`, `log`, `projectOf` und optional `projectOfRemote`, `ownsKey` und `workflows`;
+Steuern (`start`, `cancel`, `retry`) sind `default`-Methoden. Der Status ist über alle Systeme vereinheitlicht
+(`queued`, `running`, `success`, `failed`, `unstable`, `canceled`, `skipped`, `manual`), daneben steht der Wortlaut
+des Systems. Einstellungen und `HttpJson` teilt es mit den Ticket- und Git-Server-Providern. Mitgeliefert sind
+
+| Provider | Anbindung | Projekt | Build | Jobs | Wiederholen |
+|---|---|---|---|---|---|
+| `github` | REST (Actions) | `owner/repo` | `owner/repo#<Lauf-ID>`, Lauf-/Job-URL | Jobs mit fehlgeschlagenen Schritten, Log je Job | fehlgeschlagene Jobs oder ganzer Lauf |
+| `gitlab` | REST v4 (Pipelines, Jobs) | `gruppe/projekt` | `gruppe/projekt#<Pipeline-ID>`, Pipeline-/Job-URL | Jobs nach Stage, Log je Job | fehlgeschlagene Jobs oder neue Pipeline auf dem Branch |
+| `jenkins` | Remote-API (`api/json`), Stages über Pipeline Stage View (`wfapi`) | Job-Pfad über Ordner `team/app`, Multibranch `team/app/main` | `team/app#42`, `lastBuild`, Build-URL | Stages; Log je Build (`consoleText`) | Neustart mit denselben Parametern |
+
+System und Projekt ergeben sich aus dem Remote (`remote`, Standard `origin`) des lokalen Repositories – wie bei Pull
+Requests. Jenkins kennt keine Repositories; dafür ordnet *Job-Zuordnung* Repository-Pfade aus dem Remote Jobs zu
+(`octo/app = team/app`). Ohne `build` beziehen sich `ci_get` und `ci_log` auf den neuesten Build des aktuellen Branches;
+`ci_list branch=current` filtert auf ihn. In Multibranch-Projekten wählt `branch` den Branch-Job, bei anderen
+Jenkins-Jobs setzt er einen Parameter `BRANCH`, `BRANCH_NAME`, `GIT_BRANCH` oder `REF`. GitHub startet Workflows per
+`workflow_dispatch` (Parameter `workflow`: Dateiname, ID oder Name aus `ci_workflows`); die Job-Logs holt der Provider
+über die Weiterleitung der API, ohne das Token an den Speicherdienst zu schicken. Jenkins meldet sich mit Benutzer und
+API-Token an (Basic), damit braucht es kein CSRF-Crumb.
+
+Typischer Ablauf „roten Build untersuchen“: `ci_get` → `ci_log` (erster fehlgeschlagener Job, `grep=error`) → Ursache
+im Code beheben, committen, pushen → `ci_list branch=current`. `writeProjects` schränkt Starten, Abbrechen und
+Wiederholen auf Projekte ein (`github:octo/*`, `jenkins:team/*`); geprüft wird das Projekt aus dem Build-Schlüssel. Ein
+weiteres System (z.B. Azure Pipelines, Bamboo) braucht eine `CiProvider`-Klasse und eine Zeile in
+`src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ci.spi.CiProvider` – auch aus einem Plugin.
 
 ### SSH
 
@@ -628,6 +836,10 @@ aus.
 java -jar desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar
 ```
 
+Wer das Modul [Entscheidungen](#entscheidungen-system-one--typisierte-entscheidungen-lokal) nutzt, startet mit
+`java --add-modules jdk.incubator.vector -jar …`: dann rechnet es mit der Java Vector API (SIMD), etwa 2,5- bis 3,5-mal
+schneller. Ohne die Option läuft alles genauso, nur mit skalaren Schleifen (`bootRun` und die Tests setzen sie selbst).
+
 1. Beim allerersten Start legt man im Anmeldefenster das Administrator-Konto des eingebetteten Backends an, danach
    meldet man sich bei jedem Start an (oder trägt unter *Backend ändern…* einen Team-Server ein).
 2. Links die gewünschten **Module** einschalten und rechts konfigurieren (*Speichern*, *Verbindung testen*).
@@ -824,12 +1036,17 @@ Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der S
   Eingaben, die das LLM wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Mitglied
   einer freigegebenen Unterhaltung Anweisungen geben), für Matrix ein eigenes Bot-Konto verwenden und Unterhaltungen
   einschränken. Einladungen nimmt das Modul nur von freigegebenen Absendern an.
+* Zugangsdaten: im Backend je Benutzer verschlüsselt (Tabelle `credential`), nur dem Benutzer selbst zugänglich und nie
+  an das LLM (`permissions_overview` zeigt nur gesetzt/leer). OAuth: Refresh-Tokens bleiben im Backend, die Anmeldung
+  nutzt PKCE und `state`, die Rückleitung lauscht nur auf `127.0.0.1` und nur während der Anmeldung.
+  Ein Eintrag geht an jedes Modul, dessen Server-URL passt – auch an Subdomains; Einträge daher so genau wie nötig
+  fassen (`https://jira.firma.de` statt `https://firma.de`).
 
 ### Backend und Team-Server
 
 Das Backend verwaltet Benutzer, Profile, Einstellungs-Vorgaben, Projekte, Skills, Memories und die Code-Graphen und
-bietet dafür eine **GraphQL-API** unter `/graphql` (Schema: `backend/src/main/resources/backend-graphql/schema.graphqls`
-und `graph.graphqls`; Queries/Mutations über
+bietet dafür eine **GraphQL-API** unter `/api/v<n>/graphql` (je [API-Version](#api-versionen) ein Schema in
+`backend/src/main/resources/backend-graphql/v<n>/`, `schema.graphqls` und `graph.graphqls`; Queries/Mutations über
 HTTP, Subscriptions über WebSocket).
 
 * **Eingebettet** (Standard, kein Team-Server eingetragen): Das Backend läuft in der Desktop-App auf
@@ -850,14 +1067,14 @@ HTTP, Subscriptions über WebSocket).
     Optional `devtools.discovery.name` (Standard Rechnername) und `devtools.discovery.port` (UDP).
   * Desktop-App mit eingebettetem Backend: Tab *Backend* → *Advertise-Endpunkt aktivieren* (wirksam nach Neustart).
     Die App lauscht dann auf allen Adressen statt nur `127.0.0.1`, damit andere Desktop-Apps ihr Backend nutzen
-    können; von anderen Rechnern erreichbar sind nur `/graphql` und `/blobs` (eigene Anmeldung mit einem Konto
+    können; von anderen Rechnern erreichbar sind nur `/api/…`, `/graphql` und `/blobs` (eigene Anmeldung mit einem Konto
     dieser App), MCP-Endpunkt und Channel bleiben lokal (`LocalOnlyFilter`). Ohne TLS – nur in vertrauenswürdigen
     Netzen einschalten.
 
   Firewalls müssen UDP `47913` (eingehend beim Backend) durchlassen.
 
 ```bash
-java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL unter /graphql
+java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL unter /api/v<n>/graphql
 ```
 
 * **Abgleich:** Nach der Anmeldung meldet die App dem Backend ihre Module samt Feldern und Tools (`reportCatalog`;
@@ -874,7 +1091,8 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
   Rechner laufen; H2, Schema per Flyway aus `db/core`; andere Datenbank über
   `devtools.core.datasource.url/username/password`). Beim ersten Start des Servers wird `admin` (Rolle Administrator)
   angelegt – Passwort aus `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log; ein zufälliges muss bei
-  der ersten Anmeldung geändert werden.
+  der ersten Anmeldung geändert werden. Dort liegen auch die **Zugangsdaten** der Benutzer
+  (Tabelle `credential`, Geheimnisse verschlüsselt mit `secret.key`).
 * **Passwörter:** PBKDF2 mit HMAC-SHA3-512, 16 Byte Zufalls-Salt, 210.000 Iterationen
   (`pbkdf2-sha3-512$<iterationen>$<salt>$<hash>`); wird die Iterationszahl angehoben, rechnet die nächste Anmeldung
   den Hash neu.
@@ -888,8 +1106,48 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
   *Mein Konto* persönliche Tokens (Gültigkeit 30/90/365 Tage oder unbegrenzt; nur einmal angezeigt). Dort stehen auch
   die Anmeldungen der Desktop-Apps, einzeln abmeldbar.
 * Die Vorgaben enthalten entschlüsselte Geheimnisse – den Team-Server deshalb nur über HTTPS erreichbar machen. TLS
-  übernimmt ein Reverse-Proxy (`server.forward-headers-strategy=native`; WebSocket-Upgrade für `/graphql` durchreichen).
+  übernimmt ein Reverse-Proxy (`server.forward-headers-strategy=native`; `/api/`, `/graphql` und `/blobs`
+  weiterleiten, WebSocket-Upgrade für `/api/v<n>/graphql` und `/graphql` durchreichen).
 * Entwicklung der Web-UI mit Hot-Reload: `./gradlew :server:bootRun -Pvaadin.productionMode=false`.
+
+#### API-Versionen
+
+Das Protokoll zwischen Desktop-App und Backend (GraphQL-API und Dateiablage) ist versioniert, damit ein Team-Server
+Desktop-Apps verschiedener Stände bedienen kann: **Jede Änderung am Protokoll ergibt eine neue Version**, die älteren
+bietet das Backend weiter an. Die Versionen sind ganze Zahlen (`ApiVersions.CURRENT` in `shared`, heute 4 – Version 1 bringt die Zugangsdaten je Benutzer, Version 2 deren Anmeldung per OAuth, Version 3 die OAuth-Optionen, Version 4 den Feldtyp `PROCESS_PATTERN` der Fenstersteuerung).
+
+| Pfad | |
+|---|---|
+| `GET /api/versions` | angebotene Versionen, ohne Anmeldung: `{"current": 1, "versions": [0, 1]}` |
+| `/api/v<n>/graphql` | GraphQL der Version `n` (HTTP und WebSocket) |
+| `/api/v<n>/blobs/…` | Dateiablage der Version `n` |
+| `/graphql`, `/blobs/…` | Version 0 – so sprechen Desktop-Apps von vor der Versionierung |
+
+**Eine Datenbank für alle Versionen:** Versioniert ist nur die Schnittstelle. Alle Versionen laufen über dieselben
+Controller und Services auf denselben Daten – Core- und Skill-Datenbank, Graph-Storage, Dateiablage, Broker. Was eine
+App über v0 speichert, liest eine andere über v1 und umgekehrt. Änderungen am Datenmodell laufen wie bisher einmal über
+Flyway bzw. die Schema-Migration; ältere Versionen werden aus dem aktuellen Datenmodell bedient (ein entfallenes Feld
+z.B. von einer Controller-Methode, die es aus den neuen Daten ableitet).
+
+Eine nicht angebotene Version ist 404. Die Desktop-App spricht immer ihre eigene Version; beim Team-Server fragt sie
+vorher `/api/versions` ab. Bietet er die Version nicht an, sagt die Anmeldung bzw. *Backend ändern…*, ob der Server
+(„Das Backend ist zu alt“) oder die App („Diese App ist zu alt“) zu aktualisieren ist. Ein Server von vor der
+Versionierung (ohne `/api/versions`) gilt als Version 0 unter `/graphql`.
+
+**Protokoll ändern** (neues Feld, andere Argumente, geänderte Dateiablage …):
+
+1. `backend/src/main/resources/backend-graphql/v<n>/` nach `v<n+1>/` kopieren und nur dort ändern.
+2. Die Version in `ApiSchemas` (Backend) eintragen und `ApiVersions.CURRENT` auf `n+1` heben – die Desktop-App spricht
+   dann die neue Version.
+3. Was die neue Version entfernt oder umbenennt, bleibt in den Controllern für die älteren stehen; eine Änderung der
+   Dateiablage unterscheidet im `BlobController` nach `apiVersion`.
+4. Die Prüfsumme der neuen Version in `backend/src/test/resources/api-versions.sha256` eintragen (`ApiSchemasTest`
+   nennt sie).
+
+Abgesichert durch Tests: `ApiSchemasTest` schlägt fehl, sobald sich das Schema einer eingetragenen Version ändert
+(veröffentlichte Versionen sind eingefroren), und `GraphQlApiIntegrationTest` prüft, dass jede angebotene Version
+erreichbar ist und jedes ihrer Felder einen Controller hat. Eine alte Version fällt erst weg, wenn sie aus `ApiSchemas`
+(und der Prüfsummen-Datei) entfernt wird.
 
 #### MQTT-Broker für die Kooperation
 
@@ -949,7 +1207,7 @@ Desktop-App z.B. als `-Ddevtools.graph.mode=remote …` bzw. Umgebungsvariablen 
 
 * **Zugriff der Desktop-App:** über das Interface `GraphProvider` (`shared`). Im **Local-Mode** (eingebettetes
   Backend) verwendet die App die Graph-Storage direkt im selben Prozess. Mit **Team-Server** gehen alle Lese- und
-  Schreibzugriffe über die GraphQL-API des Backends (`backend-graphql/graph.graphqls`, `GraphQlGraphProvider` in der
+  Schreibzugriffe über die GraphQL-API des Backends (`backend-graphql/v<n>/graph.graphqls`, `GraphQlGraphProvider` in der
   App): `graph(key)` liefert Kopfdaten und die ID der aktuellen Generation, `graphNodes`, `graphEdges`, `graphSearch`,
   `graphShortestPath`, `graphQuery` (lesendes OpenCypher) … lesen damit; gespeichert wird in Portionen
   (`beginGraph` → `writeGraphFiles`/`-Nodes`/`-Edges` → `publishGraph`). `BackendGraphs` entscheidet bei jedem Zugriff.
@@ -1331,7 +1589,8 @@ Die Datenbank hält nur Pfad, Größe, Medientyp und Hash; gleicher Inhalt liegt
 möglich). Nicht mehr verwendete Inhalte löscht das Backend nach dem Commit; abgebrochene Uploads und verwaiste Inhalte
 räumt es kurz nach dem Start und dann täglich auf (ab einem Tag Alter). **Backup:** `blobs/` gehört zur Datenbank dazu.
 
-Übertragen wird über HTTP statt GraphQL (`Authorization: Bearer <Token>` wie bei `/graphql`): `POST /blobs/uploads`,
+Übertragen wird über HTTP statt GraphQL (`Authorization: Bearer <Token>` wie bei GraphQL, Pfade je
+[API-Version](#api-versionen) unter `/api/v<n>/blobs`, hier ohne Präfix): `POST /blobs/uploads`,
 dann Teile zu 4 MB per `PUT /blobs/uploads/<id>?offset=<n>`, abgeschlossen mit `POST /blobs/uploads/<id>/complete`
 (liefert den SHA-256); angehängt wird anschließend per GraphQL (`attachSkillFile`, `attachMemoryFile`). `GET
 /blobs/<sha256>` liefert den Inhalt – eigene Dateien, die der globalen Vorlagen und die Anhänge der für den Benutzer
@@ -1791,7 +2050,12 @@ Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die C
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
 zerstörerisch. Bisher annotiert: SSH, Datenbanken (JDBC), Datenbank-Branches, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
-Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`.
+Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`. Leere Geheimnisse füllt die
+App aus dem Modul **Zugangsdaten**: `credentialFields()` leitet die Zuordnung standardmäßig aus
+dem Schema ab (je Provider-Gruppe bzw. für die Felder ohne Gruppe: genau ein URL-Feld → erstes Geheimnis, dazu ein Feld
+`user`/`username`/`email`/`login`); bei mehreren URLs oder ohne URL-Feld gibt das Modul sie selbst an, z.B.
+`CredentialField.of("repositoryUrl", "username", "password")` oder
+`CredentialField.of(null, null, "apiKey").withDefaultUrl("https://api.anthropic.com")`; `List.of()` schaltet es ab.
 
 ## Plugins
 
@@ -2035,6 +2299,7 @@ desktop/
 backend/
   backend/BackendConfig   ── Einstieg (Component-Scan des Backends)
   backend/BackendGraphQlController, GraphQlAuth, GraphQlErrors, ChangeBus ── GraphQL-API, Token, Fehler, Subscriptions
+  backend/api/            ── API-Versionen: ApiSchemas (Schema je Version), ApiConfig + VersionedGraphQl (Pfade, Auswahl)
   backend/{account,profile,project,catalog,skills,memories,scripts} ── Benutzer + Tokens, Profile + Ebenen, Projekte,
                              Katalog, Skills, Memories, Skripte (Ablage + Syntaxprüfung ohne Ausführung,
                              GherkinScripts liest Gherkin auch für die Desktop-App)
@@ -2045,7 +2310,7 @@ natives/
   modules/window/platform/ ── WindowSystem (Win32/macOS/X11 über FFM), ScreenMapper, ProgramLauncher
   modules/window/cursor/   ── CursorProvider/CursorController (SPI): zweiter KI-Zeiger je Betriebssystem (JNA)
 shared/
-  api/                    ── Datenklassen der GraphQL-API
+  api/                    ── Datenklassen der GraphQL-API, ApiVersions (Protokollversion, Pfade, Aushandeln)
   config/ModuleSettings, profile/Overrides, modules/{skills,memories,scripts}/{…Backend,…Views}
 plugin-api/
   core/                   ── ToolModule, ModuleAction, ConnectionTestResult, ToolScope, ConfigField, ConfigGroup,

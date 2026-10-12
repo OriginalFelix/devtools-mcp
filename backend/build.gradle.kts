@@ -13,6 +13,8 @@ dependencies {
     api("org.springframework.boot:spring-boot-starter-graphql")
     api("org.springframework.boot:spring-boot-starter-websocket")
     api("org.springframework.boot:spring-boot-starter-webmvc")
+    // Servlet-API für die Routen der API-Versionen; den Container (Jetty) bringen Server und Desktop-App mit
+    compileOnly("jakarta.servlet:jakarta.servlet-api")
     api("org.springframework.boot:spring-boot-starter-jdbc")
     api("org.springframework.boot:spring-boot-starter-flyway")
     api("org.springframework.boot:spring-boot-starter-data-jpa")

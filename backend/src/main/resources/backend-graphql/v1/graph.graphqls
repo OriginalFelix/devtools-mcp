@@ -1,0 +1,239 @@
+# Code-Graphen in der Graph-Storage des Backends (ArcadeDB) – für Desktop-Apps, die mit einem Team-Server arbeiten
+# (im Local-Mode greift die App direkt auf die Ablage zu). Ein Graph gehört zu Projekt und Branch – unabhängig von Pfad
+# und Rechner: Graphen von Backend-Projekten (projectId) teilen sich alle mit Zugriff auf das Projekt (Lesen: sichtbar,
+# Bauen: Schreibrecht), andere Projekte gelten je Benutzer nach Namen. „graph“ liefert die ID der aktuellen Generation, alle Lese-Operationen nehmen diese ID. Nach einem Neubau ist eine alte ID ungültig (Fehler BAD_REQUEST).
+# Schreiben in Schritten: beginGraph → writeGraphFiles/-Nodes/-Edges (beliebig oft, in Portionen) → publishGraph.
+
+extend type Query {
+    "Beschreibung der Ablage mit Version, z.B. „ArcadeDB eingebettet (…) · ArcadeDB 26.10.1“; prüft die Verbindung."
+    graphStorage: String!
+    "Gespeicherte Graphen des Projekts (branch des Schlüssels egal), nach Branch sortiert."
+    graphBranches(key: GraphKeyInput!): [StoredGraph!]!
+    "Stand eines Graphen (Generator, SHA-256 je Datei) – ob neu gebaut werden muss; null = keiner."
+    graphState(key: GraphKeyInput!): GraphState
+    "Kopfdaten des Graphen von Projekt + Branch; null = keiner gespeichert."
+    graph(key: GraphKeyInput!): GraphHead
+    graphNodes(graph: ID!, ids: [String!]!): [CodeNode!]!
+    "Kanten an den Knoten; ohne relations alle."
+    graphEdges(graph: ID!, ids: [String!]!, direction: GraphDirection!, relations: [GraphRelation!]): [CodeEdge!]!
+    "Anzahl Kanten ohne CONTAINS je Knoten."
+    graphDegrees(graph: ID!, ids: [String!]!): [GraphCount!]!
+    graphTypesNamed(graph: ID!, name: String!): [CodeNode!]!
+    graphFilesNamed(graph: ID!, name: String!): [CodeNode!]!
+    graphSearch(graph: ID!, search: NodeSearchInput!): [CodeNode!]!
+    graphTopTypes(graph: ID!, limit: Int!): [GraphCount!]!
+    graphMostCalled(graph: ID!, limit: Int!): [GraphCount!]!
+    graphTypeLinks(graph: ID!): [TypeLink!]!
+    graphCallersByType(graph: ID!, typeId: String!): [GraphCount!]!
+    graphParseErrorFiles(graph: ID!, limit: Int!): [String!]!
+    "Kürzester Weg als Kanten in Wegreihenfolge; null = keiner."
+    graphShortestPath(graph: ID!, from: String!, to: String!, relations: [GraphRelation!]!, directed: Boolean!,
+                      maxDepth: Int!): [CodeEdge!]
+    "Lesendes OpenCypher, $g ist auf den Graphen gesetzt. params: JSON-Objekt mit weiteren Parametern."
+    graphQuery(graph: ID!, query: String!, params: String, maxRows: Int!): GraphQueryResult!
+}
+
+extend type Mutation {
+    "Merkt eine neue Generation für Projekt + Branch vor und liefert ihre ID."
+    beginGraph(key: GraphKeyInput!): ID!
+    writeGraphFiles(graph: ID!, files: [SourceFileInput!]!): Int!
+    "Knoten vor den Kanten schreiben; Kanten verweisen auf Knoten-IDs."
+    writeGraphNodes(graph: ID!, nodes: [CodeNodeInput!]!): Int!
+    writeGraphEdges(graph: ID!, edges: [CodeEdgeInput!]!): Int!
+    "Schaltet den Branch auf die Generation um (atomar); die vorige entfernt das Backend im Hintergrund."
+    publishGraph(key: GraphKeyInput!, graph: ID!, header: GraphHeaderInput!): GraphHead!
+    "Inkrementell: wendet die Änderungen auf die Generation base an (eine Transaktion); null = nicht möglich – dann neu schreiben."
+    updateGraph(key: GraphKeyInput!, base: ID!, delta: GraphDeltaInput!): GraphHead
+    "Übernimmt für den Branch von key die Generation von source (gleicher Stand); null = source hat keinen Graphen."
+    linkGraph(key: GraphKeyInput!, source: GraphKeyInput!): GraphHead
+    "Verwirft eine vorgemerkte Generation."
+    abortGraph(graph: ID!): Boolean!
+    "Löscht den Graphen des Branches (branch leer = Projekt ohne Git); false, wenn es keinen gab."
+    deleteGraph(key: GraphKeyInput!): Boolean!
+}
+
+input GraphKeyInput {
+    "Projektname wie im ProjectProvider der App; Backend-Projekte als name@eigentümer."
+    project: String!
+    "Absoluter Pfad der Projektwurzel auf dem Rechner der App (nur zur Anzeige)."
+    root: String!
+    "Leer = Projekt ohne Git."
+    branch: String
+    "Backend-Projekt: Graph für alle mit Zugriff gemeinsam. Leer = Projekt nur nach Namen, je Benutzer."
+    projectId: Int
+}
+
+enum CodeNodeKind { PACKAGE FILE CLASS INTERFACE ENUM RECORD ANNOTATION CONSTRUCTOR METHOD FIELD EXTERNAL }
+enum GraphRelation { CONTAINS IMPORTS EXTENDS IMPLEMENTS OVERRIDES CALLS INSTANTIATES HAS_TYPE ANNOTATED_WITH }
+"EXTRACTED steht so im Code, INFERRED ist abgeleitet (mit score), AMBIGUOUS hat mehrere mögliche Ziele."
+enum EdgeConfidence { EXTRACTED INFERRED AMBIGUOUS }
+enum GraphDirection { OUT IN BOTH }
+
+type CodeNode {
+    id: String!
+    kind: CodeNodeKind!
+    name: String!
+    file: String
+    line: Int
+    endLine: Int
+    modifiers: String
+    signature: String
+    doc: String
+    community: Int
+}
+
+input CodeNodeInput {
+    id: String!
+    kind: CodeNodeKind!
+    name: String!
+    file: String
+    line: Int
+    endLine: Int
+    modifiers: String
+    signature: String
+    doc: String
+    community: Int
+}
+
+type CodeEdge {
+    from: String!
+    to: String!
+    rel: GraphRelation!
+    conf: EdgeConfidence!
+    "Fehlt bei 1.0."
+    score: Float
+    "Anzahl Fundstellen; fehlt bei 1."
+    count: Int
+    line: Int
+}
+
+input CodeEdgeInput {
+    from: String!
+    to: String!
+    rel: GraphRelation!
+    conf: EdgeConfidence
+    score: Float
+    count: Int
+    line: Int
+}
+
+input SourceFileInput {
+    path: String!
+    sha256: String!
+    lines: Int!
+    parseErrors: Boolean
+}
+
+type Community {
+    id: Int!
+    label: String!
+    size: Int!
+    top: [String!]!
+}
+
+input CommunityInput {
+    id: Int!
+    label: String!
+    size: Int!
+    top: [String!]!
+}
+
+"Kopfdaten eines gespeicherten Graphen; id ist die Generation für die Lese-Operationen."
+type GraphHead {
+    id: ID!
+    project: String
+    branch: String
+    commit: String
+    root: String
+    builtAt: String
+    generator: String
+    "Statistik als JSON-Objekt."
+    stats: String!
+    communities: [Community!]!
+    location: String!
+}
+
+"""
+Änderungen gegenüber dem gespeicherten Stand; Kanten über from/to/rel identifiziert. Knoten mit geänderter Art stehen
+unter removedNodes und addedNodes, ihre Kanten unter addedEdges.
+"""
+input GraphDeltaInput {
+    files: [SourceFileInput!]!
+    removedFiles: [String!]!
+    addedNodes: [CodeNodeInput!]!
+    changedNodes: [CodeNodeInput!]!
+    removedNodes: [String!]!
+    addedEdges: [CodeEdgeInput!]!
+    changedEdges: [CodeEdgeInput!]!
+    removedEdges: [CodeEdgeInput!]!
+    header: GraphHeaderInput!
+}
+
+input GraphHeaderInput {
+    commit: String
+    builtAt: String
+    "Wer gebaut hat (Betriebssystem-Benutzer@Rechner) – Graphen gelöschter Branches entfernt nur, wer sie gebaut hat."
+    builtBy: String
+    generator: String
+    version: Int!
+    files: Int!
+    nodes: Int!
+    edges: Int!
+    "Statistik als JSON-Objekt."
+    stats: String
+    communities: [CommunityInput!]
+}
+
+type StoredGraph {
+    branch: String
+    commit: String
+    builtAt: String
+    builtBy: String
+    files: Int!
+    nodes: Int!
+    edges: Int!
+    location: String!
+}
+
+type FileHash {
+    path: String!
+    sha256: String!
+}
+
+type GraphState {
+    generator: String
+    files: [FileHash!]!
+}
+
+input NodeSearchInput {
+    "Leer = alle Arten."
+    kinds: [CodeNodeKind!]
+    "Teilstrings (klein) von Name oder ID, mit withDoc auch der Doku."
+    needles: [String!]
+    withDoc: Boolean!
+    "Java-Regex auf den ganzen kleingeschriebenen Namen bzw. die ID."
+    nameRegex: String
+    idRegex: String
+    limit: Int!
+}
+
+"Zähler je Knoten-ID (Grad, Aufrufe …)."
+type GraphCount {
+    id: String!
+    count: Int!
+}
+
+"Verbindung zweier Typen verschiedener Communities; sample = kleinste Kante."
+type TypeLink {
+    a: String!
+    b: String!
+    weight: Int!
+    sample: CodeEdge!
+}
+
+type GraphQueryResult {
+    columns: [String!]!
+    "Zeilen als JSON-Array von Arrays."
+    rows: String!
+    truncated: Boolean!
+}

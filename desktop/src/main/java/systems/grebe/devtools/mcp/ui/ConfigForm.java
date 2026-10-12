@@ -55,6 +55,7 @@ public class ConfigForm {
 
     private final GridPane grid = new GridPane();
     private final Map<String, Supplier<String>> getters = new LinkedHashMap<>();
+    private final Map<String, PasswordField> secrets = new LinkedHashMap<>();
     private final List<ConfigField> schema;
     private Runnable onChange = () -> { };
     private MultiSelectComboBox<ConfigGroup> activeGroups;
@@ -241,6 +242,17 @@ public class ConfigForm {
         return out;
     }
 
+    /**
+     * Zeigt in leeren Geheimnissen, aus welchen zentralen Zugangsdaten sie kommen (Schlüssel → Name des Eintrags);
+     * fehlt ein Schlüssel, steht wieder der übliche Platzhalter da.
+     */
+    public void showCredentialSources(Map<String, String> sources) {
+        secrets.forEach((key, pf) -> {
+            String name = sources.get(key);
+            pf.setPromptText(name == null ? "••••••" : "leer = aus Zugangsdaten „" + name + "“");
+        });
+    }
+
     public List<String> validate() {
         return ModuleConfig.of(schema, values()).validate();
     }
@@ -254,6 +266,7 @@ public class ConfigForm {
                 pf.setPromptText("••••••");
                 pf.textProperty().addListener(changed);
                 getters.put(f.key(), pf::getText);
+                secrets.put(f.key(), pf);
                 yield pf;
             }
             case BOOLEAN -> {

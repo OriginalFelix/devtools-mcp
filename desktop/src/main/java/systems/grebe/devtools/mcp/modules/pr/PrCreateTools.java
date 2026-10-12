@@ -1,10 +1,14 @@
 package systems.grebe.devtools.mcp.modules.pr;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.Signature;
+import systems.grebe.devtools.mcp.core.SignatureModule;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer;
 
 import static systems.grebe.devtools.mcp.modules.pr.PrTools.PR;
@@ -36,7 +40,9 @@ public class PrCreateTools {
             @ToolParam(required = false, description = "true = Quell-Branch nach dem Merge löschen (GitLab, Bitbucket Cloud)") Boolean deleteSourceBranch,
             @ToolParam(required = false, description = REPOSITORY) String repository,
             @ToolParam(required = false, description = PROJECT) String project,
-            @ToolParam(required = false, description = PROVIDER) String provider) {
+            @ToolParam(required = false, description = PROVIDER) String provider,
+            @ToolParam(required = false, description = Signature.MODEL_PARAM) String aiModel,
+            ToolContext toolContext) {
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("Titel fehlt ('title').");
         }
@@ -70,10 +76,27 @@ public class PrCreateTools {
             }
         }
         env.checkWrite(t, null, "Pull Request anlegen");
+        String body = env.signed(description, SignatureModule.modelName(aiModel, toolContext));
         GitServer.WriteResult r = t.server().create(t.project(), new GitServer.NewPullRequest(title.strip(),
-                blankToNull(description), src, tgt, Boolean.TRUE.equals(draft), reviewers,
+                blankToNull(body), src, tgt, Boolean.TRUE.equals(draft), reviewers,
                 Boolean.TRUE.equals(deleteSourceBranch)));
-        return PrTools.written(r) + note;
+        return PrTools.written(r) + note + bindHint(r.url());
+    }
+
+    /**
+     * Der MCP-Server kann den neuen PR nicht selbst an die Client-Sitzung binden; Clients wie Claude Code Desktop
+     * erkennen PRs, die über diesen Server angelegt wurden, nicht von selbst – das Modell holt es mit dem Werkzeug des
+     * Clients nach. Claude Code nimmt dabei nur URLs der Form {@code https://<host>/<owner>/<repo>/pull/<nummer>} an
+     * (GitHub); Bitbucket- und GitLab-URLs lehnt es ab, für sie entfällt der Hinweis.
+     */
+    static final String BIND_HINT = "\nAn die Sitzung binden: Bietet der Client ein Werkzeug dafür an (z.B. bind_pr in "
+            + "Claude Code), den Pull Request jetzt mit dieser URL binden – sonst zeigt die App ihn nicht an und "
+            + "überwacht seine CI nicht.";
+
+    private static final Pattern BINDABLE_URL = Pattern.compile("https?://[^/]+/[^/]+/[^/]+/pull/\\d+/?");
+
+    static String bindHint(String url) {
+        return url != null && BINDABLE_URL.matcher(url).matches() ? BIND_HINT : "";
     }
 
     @Tool(name = "update", description = "Ändert Titel, Beschreibung oder Ziel-Branch eines Pull/Merge Requests; nicht "
@@ -85,8 +108,11 @@ public class PrCreateTools {
             @ToolParam(required = false, description = "Neuer Ziel-Branch") String target,
             @ToolParam(required = false, description = REPOSITORY) String repository,
             @ToolParam(required = false, description = PROJECT) String project,
-            @ToolParam(required = false, description = PROVIDER) String provider) {
-        GitServer.PrUpdate u = new GitServer.PrUpdate(blankToNull(title), description, blankToNull(target));
+            @ToolParam(required = false, description = PROVIDER) String provider,
+            @ToolParam(required = false, description = Signature.MODEL_PARAM) String aiModel,
+            ToolContext toolContext) {
+        GitServer.PrUpdate u = new GitServer.PrUpdate(blankToNull(title), description == null ? null
+                : env.signed(description, SignatureModule.modelName(aiModel, toolContext)), blankToNull(target));
         if (u.isEmpty()) {
             throw new IllegalArgumentException("Nichts zu ändern – title, description oder target angeben.");
         }

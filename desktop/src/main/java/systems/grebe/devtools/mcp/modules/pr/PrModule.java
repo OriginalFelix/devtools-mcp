@@ -15,6 +15,7 @@ import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.core.Signature;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
@@ -67,7 +68,7 @@ public class PrModule implements ToolModule {
     @Override
     public String description() {
         return "GitHub, GitLab, Bitbucket und weitere Git-Server (erweiterbar per ServiceLoader): Pull/Merge Requests "
-                + "auflisten, lesen, Diff, CI-Status und Kommentar-Threads; optional anlegen, kommentieren, beantworten, "
+                + "auflisten, lesen, Diff, CI-Status, Berichte von Integrationen und Kommentar-Threads; optional anlegen, kommentieren, beantworten, "
                 + "Threads auflösen, mergen und den Branch pushen (einzeln schaltbar, je Repository freigebbar).";
     }
 
@@ -80,16 +81,23 @@ public class PrModule implements ToolModule {
                 Nummer, ein voller Schlüssel (owner/repo#12, gruppe/projekt!12) oder seine URL.
                 - `pr_providers`: aktive Server, angemeldeter Benutzer, Formate; `pr_list`: Pull Requests filtern \
                 (Status, Autor `me`, Quell-/Ziel-Branch – z.B. den PR zum aktuellen Branch finden).
-                - `pr_get`: Titel, Beschreibung, Branches, Reviewer, Freigaben, Merge-Status und CI-Checks; `pr_diff`: \
+                - `pr_get`: Titel, Beschreibung, Branches, Reviewer, Freigaben, Merge-Status, CI-Checks und Kurzfassung der \
+                Integrationen; `pr_diff`: \
                 geänderte Dateien mit Diff; `pr_comments`: alle Kommentare als Threads mit ID, Datei/Zeile und Status \
-                (`unresolved=true` für die offenen).
+                (`unresolved=true` für die offenen), Kommentare von Apps/Bots als [Integration]; `pr_insights`: Berichte \
+                von Integrationen (SonarQube, Tests, Scans) mit Befunden an Datei und Zeile.
+                - `pr_comment` mit `path` und `line` kommentiert eine Codezeile, mit `path` ohne `line` die ganze Datei.
                 - Pull Request anlegen (`pr_create`, falls angeboten): Branch mit git_* committen, mit `pr_push` pushen \
-                (falls angeboten, sonst den Nutzer bitten), Titel und Beschreibung aus git_log/git_diff zusammenfassen.
+                (falls angeboten, sonst den Nutzer bitten), Titel und Beschreibung aus git_log/git_diff zusammenfassen. \
+                Meldet `pr_create` „An die Sitzung binden“ und bietet der Client ein Werkzeug dafür an (z.B. `bind_pr` \
+                in Claude Code), den neuen PR danach mit seiner URL binden.
                 - Review-Kommentare abarbeiten: `pr_comments unresolved=true` → Code ändern und committen → `pr_push` → je \
                 Thread mit `pr_reply` erklären, was geändert wurde → `pr_resolve`. Nur auflösen, was wirklich erledigt ist; \
                 Rückfragen beantworten statt auflösen.
                 - Schreiben (`pr_create`, `pr_update`, `pr_comment`, `pr_reply`, `pr_resolve`, `pr_merge`, `pr_push`) nur \
-                auf Anweisung des Nutzers und das Ergebnis mit Link melden. Fehlt ein Tool, ist es in der App abgeschaltet: \
+                auf Anweisung des Nutzers und das Ergebnis mit Link melden. Die Kennzeichnung („Generated with …“) setzt \
+                der Server selbst unter Kommentare und Beschreibungen – nicht selbst schreiben, aber `aiModel` mit dem \
+                eigenen Modellnamen füllen. Fehlt ein Tool, ist es in der App abgeschaltet: \
                 den Schalter nennen, nicht per `gh`/`glab`/`curl`/`git push` ausweichen. `pr_merge` nur auf ausdrücklichen \
                 Auftrag.""";
     }
@@ -119,6 +127,11 @@ public class PrModule implements ToolModule {
     }
 
     @Override
+    public boolean signsTexts() {
+        return true;
+    }
+
+    @Override
     public List<ConfigField> configSchema() {
         List<String> options = new ArrayList<>(List.of("auto"));
         providers.providers().forEach(p -> options.add(p.id()));
@@ -143,7 +156,7 @@ public class PrModule implements ToolModule {
                 ConfigField.of(ALLOW_CREATE, "Pull Requests anlegen/bearbeiten erlauben", FieldType.BOOLEAN)
                         .withDefault("false").withHelp("pr_create, pr_update"),
                 ConfigField.of(ALLOW_COMMENT, "Kommentieren und antworten erlauben", FieldType.BOOLEAN)
-                        .withDefault("false").withHelp("pr_comment (allgemein oder an einer Codezeile), pr_reply"),
+                        .withDefault("false").withHelp("pr_comment (allgemein, an einer Codezeile oder an einer Datei), pr_reply"),
                 ConfigField.of(ALLOW_RESOLVE, "Threads auflösen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("pr_resolve: Kommentar-Threads als erledigt markieren bzw. wieder öffnen"),
                 ConfigField.of(ALLOW_MERGE, "Mergen erlauben", FieldType.BOOLEAN).withDefault("false")
@@ -155,9 +168,10 @@ public class PrModule implements ToolModule {
                 ConfigField.of(WRITE_PROJECTS, "Schreiben nur in diesen Repositories", FieldType.STRING_LIST)
                         .withHelp("Ein Repository je Zeile, optional mit Server: owner/repo, github:owner/*, "
                                 + "gitlab:gruppe/*, bitbucket:PROJ/repo; * am Ende als Präfix. Leer = alle."),
-                ConfigField.of(COMMENT_SUFFIX, "Kennzeichnung von Kommentaren", FieldType.STRING)
-                        .withHelp("Wird an jeden Kommentar und jede Antwort angehängt, z.B. „(via DevTools MCP)“. "
-                                + "Leer = keine.")));
+                ConfigField.of(COMMENT_SUFFIX, "Eigene Kennzeichnung", FieldType.STRING)
+                        .withHelp("Ersetzt für Pull Requests die Kennzeichnung aus dem Modul „Kennzeichnung“ unter "
+                                + "Kommentaren, Antworten und Beschreibungen, z.B. „(via DevTools MCP)“; "
+                                + Signature.MODEL + " = Name des KI-Modells. Leer = die aus dem Modul „Kennzeichnung“.")));
         return fields;
     }
 

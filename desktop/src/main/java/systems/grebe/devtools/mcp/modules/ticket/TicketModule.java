@@ -16,6 +16,7 @@ import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.core.Signature;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.modules.classify.ClassifyModule;
@@ -129,7 +130,9 @@ public class TicketModule implements ToolModule {
                 Dauer vom Nutzer, nicht geschätzt), `ticket_delete_comment`, \
                 `ticket_delete` (standardmäßig nur selbst angelegte; Schließen ist meist richtiger). Nur auf ausdrückliche \
                 Anweisung des Nutzers schreiben und das Ergebnis mit Link melden. Fehlt ein schreibendes Tool, ist es \
-                abgeschaltet: dem Nutzer den Schalter nennen, nicht per `curl`/`gh`/`glab` ausweichen.
+                abgeschaltet: dem Nutzer den Schalter nennen, nicht per `curl`/`gh`/`glab` ausweichen. Die Kennzeichnung \
+                („Generated with …“) setzt der Server selbst unter Kommentare und Beschreibungen – nicht selbst schreiben, \
+                aber `aiModel` mit dem eigenen Modellnamen füllen.
                 - `ticket_classify` (wenn angeboten): vor der Umsetzung eines Tickets dessen Komplexität einschätzen lassen \
                 und das empfohlene Modell für die Umsetzung verwenden, z.B. als Modell des Subagenten; kommt ein \
                 Classifier-Prompt zurück, die Einschätzung damit selbst durchführen (am besten per Subagent auf Opus). Architektur-Kontext aus dem Code (betroffene Module, Schichten) in `context` mitgeben.
@@ -141,6 +144,11 @@ public class TicketModule implements ToolModule {
     public String briefInstructions() {
         return "Tickets über ticket_*; steht ein Ticket-Schlüssel in Branch, Commit oder Aufgabe, zuerst "
                 + "ticket_get. Schreiben nur auf ausdrückliche Anweisung, Ergebnis mit Link melden.";
+    }
+
+    @Override
+    public boolean signsTexts() {
+        return true;
     }
 
     @Override
@@ -197,8 +205,10 @@ public class TicketModule implements ToolModule {
                 ConfigField.of(WRITE_PROJECTS, "Schreiben nur in diesen Projekten", FieldType.STRING_LIST)
                         .withHelp("Ein Projekt je Zeile, optional mit System: ABC, jira:ABC, github:owner/repo, "
                                 + "gitlab:gruppe/projekt, youtrack:ABC, openproject:kennung, * am Ende als Präfix (gitlab:gruppe/*). Leer = alle Projekte."),
-                ConfigField.of(COMMENT_SUFFIX, "Kennzeichnung von Kommentaren", FieldType.STRING)
-                        .withHelp("Wird an jeden Kommentar angehängt, z.B. „(via DevTools MCP)“. Leer = keine."),
+                ConfigField.of(COMMENT_SUFFIX, "Eigene Kennzeichnung", FieldType.STRING)
+                        .withHelp("Ersetzt für Tickets die Kennzeichnung aus dem Modul „Kennzeichnung“ unter "
+                                + "Kommentaren und Beschreibungen, z.B. „(via DevTools MCP)“; " + Signature.MODEL
+                                + " = Name des KI-Modells. Leer = die aus dem Modul „Kennzeichnung“."),
                 ConfigField.of(ALLOW_DELETE, "Tickets und Kommentare löschen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("ticket_delete, ticket_delete_comment – endgültig, nicht wiederherstellbar."),
                 ConfigField.of(DELETE_ONLY_OWN, "Nur selbst angelegte löschen", FieldType.BOOLEAN).withDefault("true")

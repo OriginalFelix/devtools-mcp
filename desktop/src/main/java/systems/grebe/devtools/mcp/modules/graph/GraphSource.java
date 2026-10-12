@@ -2,8 +2,6 @@ package systems.grebe.devtools.mcp.modules.graph;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.charset.MalformedInputException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -238,12 +236,14 @@ final class GraphSource {
                         + "graph_build aufrufen.");
             }
             try {
-                String content;
-                try {
-                    content = Files.readString(path, StandardCharsets.UTF_8);
-                } catch (MalformedInputException e) {
-                    content = Files.readString(path, StandardCharsets.ISO_8859_1);
+                byte[] bytes = Files.readAllBytes(path);
+                for (int i = 0; i < Math.min(bytes.length, GraphBuilder.BINARY_PROBE); i++) {
+                    if (bytes[i] == 0) {
+                        throw new IllegalArgumentException("Datei " + f + " ist binär (" + bytes.length
+                                + " Bytes) – kein Text zum Lesen.");
+                    }
                 }
+                String content = GraphBuilder.decode(bytes);
                 // wie tree-sitter zählen: ein abschließender Zeilenumbruch ergibt eine leere letzte Zeile
                 return Arrays.stream(content.split("\n", -1))
                         .map(l -> l.endsWith("\r") ? l.substring(0, l.length() - 1) : l).toList();

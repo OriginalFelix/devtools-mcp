@@ -4,19 +4,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
-import java.util.stream.Stream;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.RebaseResult;
@@ -33,6 +28,8 @@ import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.EmptyTreeIterator;
+import systems.grebe.devtools.mcp.core.GitWorktrees;
+import systems.grebe.devtools.mcp.core.GitWorktrees.Worktree;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.Workspaces;
 
@@ -40,14 +37,6 @@ import systems.grebe.devtools.mcp.core.Workspaces;
 final class GitSupport {
 
     static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
-
-    /**
-     * Verknüpfter Worktree eines freigegebenen Repositories ({@code git worktree add}).
-     *
-     * @param name {@code <repository>/<ordner>}, so in git_*-Tools anzugeben
-     * @param main Arbeitsverzeichnis des Haupt-Repositories – maßgeblich für die Schreibfreigabe
-     */
-    record Worktree(String name, Path dir, Path main) { }
 
     private final Workspaces repositories;
     private final String defaultRepository;
@@ -103,69 +92,16 @@ final class GitSupport {
 
     /** Haupt-Repository eines aufgelösten Verzeichnisses (für Worktrees das Repository, zu dem sie gehören). */
     Path mainRoot(Path root) {
-        return worktrees().stream().filter(w -> w.dir().equals(root)).map(Worktree::main).findFirst().orElse(root);
+        return GitWorktrees.main(worktrees(), root);
     }
 
     private Worktree worktree(String wanted) {
-        List<Worktree> all = worktrees();
-        for (Worktree w : all) {
-            if (w.name().equalsIgnoreCase(wanted)) {
-                return w;
-            }
-        }
-        Path p;
-        try {
-            p = realPath(Path.of(wanted));
-        } catch (InvalidPathException e) {
-            return null;
-        }
-        // der speziellste Worktree gewinnt (Worktrees liegen oft im Haupt-Repository, z.B. .claude/worktrees)
-        return all.stream().filter(w -> p.startsWith(realPath(w.dir())))
-                .max(Comparator.comparingInt(w -> w.dir().getNameCount())).orElse(null);
-    }
-
-    /**
-     * Pfad mit aufgelösten Symlinks (z.B. macOS {@code /var} → {@code /private/var}; git schreibt den echten Pfad
-     * nach {@code gitdir}); existiert der Pfad nicht, wird der nächste vorhandene Elternordner aufgelöst.
-     */
-    private static Path realPath(Path p) {
-        Path abs = p.toAbsolutePath().normalize();
-        for (Path base = abs; base != null; base = base.getParent()) {
-            try {
-                return base.toRealPath().resolve(base.relativize(abs));
-            } catch (IOException e) {
-                // weiter mit dem Elternordner
-            }
-        }
-        return abs;
+        return GitWorktrees.find(worktrees(), wanted);
     }
 
     /** Verknüpfte Worktrees aller freigegebenen Repositories (aus {@code .git/worktrees/*}/gitdir). */
     List<Worktree> worktrees() {
-        List<Worktree> out = new ArrayList<>();
-        for (Map.Entry<String, Path> e : repositories.all().entrySet()) {
-            Path meta = e.getValue().resolve(".git").resolve("worktrees");
-            if (!Files.isDirectory(meta)) {
-                continue;
-            }
-            try (Stream<Path> dirs = Files.list(meta)) {
-                for (Path d : dirs.sorted().toList()) {
-                    Path gitdir = d.resolve("gitdir");
-                    if (!Files.isRegularFile(gitdir)) {
-                        continue;
-                    }
-                    Path dotGit = Path.of(Files.readString(gitdir).strip());
-                    Path dir = (dotGit.isAbsolute() ? dotGit : d.resolve(dotGit)).normalize().getParent();
-                    if (dir != null && Files.isDirectory(dir)) {
-                        out.add(new Worktree(e.getKey() + "/" + dir.getFileName(), dir.toAbsolutePath().normalize(),
-                                e.getValue()));
-                    }
-                }
-            } catch (IOException | InvalidPathException ex) {
-                // nicht lesbar -> ohne Worktrees
-            }
-        }
-        return out;
+        return GitWorktrees.of(repositories.all());
     }
 
     @FunctionalInterface

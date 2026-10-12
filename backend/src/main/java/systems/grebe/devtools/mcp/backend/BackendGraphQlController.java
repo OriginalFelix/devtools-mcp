@@ -13,8 +13,10 @@ import org.springframework.stereotype.Controller;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import systems.grebe.devtools.mcp.backend.account.CredentialService;
 import systems.grebe.devtools.mcp.backend.account.UserAccount;
 import systems.grebe.devtools.mcp.api.Catalog;
+import systems.grebe.devtools.mcp.api.CredentialInfo;
 import systems.grebe.devtools.mcp.api.Me;
 import systems.grebe.devtools.mcp.api.ModuleDescriptor;
 import systems.grebe.devtools.mcp.api.ModuleOverlay;
@@ -54,17 +56,19 @@ public class BackendGraphQlController {
     private final SkillService skills;
     private final MemoryService memories;
     private final ScriptService scripts;
+    private final CredentialService credentials;
     private final ChangeBus bus;
 
     public BackendGraphQlController(ProfileService profiles, ProjectService projects, ModuleCatalog catalog,
                                     SkillService skills, MemoryService memories, ScriptService scripts,
-                                    ChangeBus bus) {
+                                    CredentialService credentials, ChangeBus bus) {
         this.profiles = profiles;
         this.projects = projects;
         this.catalog = catalog;
         this.skills = skills;
         this.memories = memories;
         this.scripts = scripts;
+        this.credentials = credentials;
         this.bus = bus;
     }
 
@@ -131,10 +135,32 @@ public class BackendGraphQlController {
         return snapshot(u);
     }
 
-    /** Stand mit Revision; der Zähler wird vor dem Lesen genommen, der Stand ist also mindestens so neu. */
+    /** Ersetzt die eigenen Zugangsdaten (API-Version 1). */
+    @MutationMapping
+    public SettingsSnapshot saveCredentials(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                            @Argument List<CredentialInfo> entries) {
+        UserAccount u = require(user);
+        GraphQlAuth.require(u, Permission.SETTINGS_OWN);
+        credentials.replace(u.id(), entries);
+        return snapshot(u);
+    }
+
+    /** Erneuert das Access-Token eines eigenen OAuth-Eintrags, falls es bald abläuft (API-Version 2). */
+    @MutationMapping
+    public SettingsSnapshot refreshCredential(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                              @Argument long id) {
+        UserAccount u = require(user);
+        credentials.refresh(u.id(), id);
+        return snapshot(u);
+    }
+
+    /**
+     * Stand mit Revision und den eigenen Zugangsdaten (ab API-Version 1 im Schema); der Zähler wird vor dem Lesen
+     * genommen, der Stand ist also mindestens so neu.
+     */
     private SettingsSnapshot snapshot(UserAccount u) {
         long revision = bus.revision();
-        return profiles.snapshot(u.id()).withRevision(revision);
+        return profiles.snapshot(u.id()).withCredentials(credentials.list(u.id())).withRevision(revision);
     }
 
     private long levelId(UserAccount u, Overrides.Level level) {

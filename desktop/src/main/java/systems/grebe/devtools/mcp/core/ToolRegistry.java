@@ -333,7 +333,8 @@ public class ToolRegistry {
     public ConnectionTestResult testConnection(String moduleId, Map<String, String> values) {
         ToolModule m = state(moduleId).module;
         try {
-            return m.testConnection(ModuleConfig.of(m.configSchema(), withSharedDirectories(m, values)));
+            return m.testConnection(ModuleConfig.of(m.configSchema(),
+                    credentials(m).apply(m, withSharedDirectories(m, values))));
         } catch (RuntimeException e) {
             return ConnectionTestResult.failed(ManagedToolCallback.describe(e));
         }
@@ -430,8 +431,9 @@ public class ToolRegistry {
             s.settings = change.apply(s.settings);
             store.saveModule(moduleId, s.settings, secretKeys(s.module));
         }
-        if (AccessModule.ID.equals(moduleId) || ContextSettings.ID.equals(moduleId)) {
-            refreshAll(); // globale Freigaben bzw. Angebot und Beschreibungen betreffen alle Module
+        if (AccessModule.ID.equals(moduleId) || ContextSettings.ID.equals(moduleId)
+                || CredentialsModule.ID.equals(moduleId) || SignatureModule.ID.equals(moduleId)) {
+            refreshAll(); // globale Freigaben, Zugangsdaten, Kennzeichnung bzw. Angebot und Beschreibungen betreffen alle Module
         } else {
             rebuild(moduleId);
         }
@@ -463,13 +465,55 @@ public class ToolRegistry {
         changeListeners.forEach(Runnable::run);
     }
 
-    /** Wirksame Einstellungen plus global freigegebene Verzeichnisse – damit werden die Tools gebaut. */
+    /**
+     * Wirksame Einstellungen plus global freigegebene Verzeichnisse, zentrale Zugangsdaten für leere Geheimnisse und
+     * die Kennzeichnung – damit werden die Tools gebaut.
+     */
     private ModuleSettings toolSettings(ModuleState s) {
         ModuleSettings settings = effective(s);
-        if (s.module.sharedDirectoryFields().isEmpty()) {
-            return settings;
+        Map<String, String> values = withSignature(s.module, credentials(s.module).apply(s.module,
+                withSharedDirectories(s.module, settings.values())));
+        return values == settings.values() ? settings : settings.withValues(values);
+    }
+
+    /** Vorlage aus dem Modul „Kennzeichnung“ für Module, die Texte veröffentlichen ({@link ToolModule#signsTexts}). */
+    private Map<String, String> withSignature(ToolModule module, Map<String, String> values) {
+        if (!module.signsTexts()) {
+            return values;
         }
-        return settings.withValues(withSharedDirectories(s.module, settings.values()));
+        ModuleState sig;
+        synchronized (states) {
+            sig = states.get(SignatureModule.ID);
+        }
+        String template = sig == null ? ""
+                : SignatureModule.template(ModuleConfig.of(sig.module.configSchema(), effective(sig).values()));
+        Map<String, String> out = new LinkedHashMap<>(values);
+        out.put(Signature.CONFIG_KEY, template);
+        return out;
+    }
+
+    /**
+     * Welche leeren Geheimnisse des Moduls bei den angegebenen Werten aus welchen zentralen Zugangsdaten kämen
+     * (Schlüssel des Geheimnisses → Name des Eintrags) – für den Hinweis im Formular.
+     */
+    public Map<String, String> credentialSources(String moduleId, Map<String, String> values) {
+        ToolModule m = state(moduleId).module;
+        Map<String, String> out = new LinkedHashMap<>();
+        credentials(m).matches(m, values).forEach((f, e) -> out.put(f.secretKey(), e.name()));
+        return out;
+    }
+
+    /** Einträge des Moduls „Zugangsdaten“ (leer für das Modul selbst und ohne Zuordnungen im Modul). */
+    private Credentials credentials(ToolModule module) {
+        if (CredentialsModule.ID.equals(module.id()) || module.credentialFields().isEmpty()) {
+            return Credentials.NONE;
+        }
+        ModuleState c;
+        synchronized (states) {
+            c = states.get(CredentialsModule.ID);
+        }
+        return c == null ? Credentials.NONE
+                : Credentials.of(ModuleConfig.of(c.module.configSchema(), effective(c).values()));
     }
 
     /** Hängt die Verzeichnisse aus dem Modul „Freigaben“ an die Projektlisten des Moduls an (ohne Dubletten). */

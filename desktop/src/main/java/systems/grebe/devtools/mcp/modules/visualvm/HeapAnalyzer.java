@@ -2,10 +2,16 @@ package systems.grebe.devtools.mcp.modules.visualvm;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import org.graalvm.visualvm.lib.jfluid.heap.ArrayItemValue;
@@ -23,10 +29,81 @@ import systems.grebe.devtools.mcp.modules.java.ArtifactStore;
 /** Heap-Dump-Analyse mit der Heap-Engine von VisualVM (org-graalvm-visualvm-lib-jfluid-heap). */
 public final class HeapAnalyzer {
 
+    /**
+     * Die Heap-Engine legt ihren Index neben dem Dump ab ({@code <dump>.hwcache}) und verträgt keine zwei Heaps darauf:
+     * Lädt ein zweiter, während der erste rechnet, hält er den Cache für defekt („Dirty cache“) und löscht ihn samt der
+     * Dateien, die der erste gerade benutzt (#95). Deshalb je Datei ein Heap, Zugriffe darauf nacheinander. Einträge
+     * werden nie entfernt – sonst könnten zwei Threads mit verschiedenen Einträgen derselben Datei arbeiten –, nur die
+     * Heaps der zuletzt am längsten unbenutzten werden freigegeben.
+     */
+    private static final Map<Path, Open> OPEN = new HashMap<>();
+    private static final int MAX_LOADED = 2;
+
+    private static final class Open {
+        final ReentrantLock lock = new ReentrantLock();
+        volatile HeapAnalyzer analyzer;
+        Object stamp;
+        volatile long lastUsed;
+    }
+
     private final Heap heap;
     private final Path file;
 
-    public HeapAnalyzer(Path file) {
+    /**
+     * Führt {@code action} mit dem Heap der Datei aus. Ein bereits geladener Heap wird wiederverwendet, solange sich die
+     * Datei nicht geändert hat; gleichzeitige Aufrufe für dieselbe Datei warten aufeinander.
+     */
+    public static <T> T analyze(Path file, Function<HeapAnalyzer, T> action) {
+        Path key = file.toAbsolutePath().normalize();
+        Open open;
+        synchronized (OPEN) {
+            open = OPEN.computeIfAbsent(key, k -> new Open());
+        }
+        open.lock.lock();
+        try {
+            Object stamp = stamp(key);
+            if (open.analyzer == null || !stamp.equals(open.stamp)) {
+                open.analyzer = null;
+                open.analyzer = new HeapAnalyzer(key);
+                open.stamp = stamp;
+            }
+            open.lastUsed = System.nanoTime();
+            return action.apply(open.analyzer);
+        } finally {
+            open.lock.unlock();
+            releaseIdle(open);
+        }
+    }
+
+    /** Gibt die Heaps über {@link #MAX_LOADED} frei – nur solche, die gerade niemand benutzt. */
+    private static void releaseIdle(Open current) {
+        synchronized (OPEN) {
+            List<Open> loaded = new ArrayList<>(OPEN.values());
+            loaded.removeIf(o -> o == current || o.analyzer == null);
+            loaded.sort(Comparator.comparingLong(o -> o.lastUsed));
+            for (int i = 0; i < loaded.size() - (MAX_LOADED - 1); i++) {
+                Open o = loaded.get(i);
+                if (o.lock.tryLock()) {
+                    try {
+                        o.analyzer = null;
+                    } finally {
+                        o.lock.unlock();
+                    }
+                }
+            }
+        }
+    }
+
+    private static Object stamp(Path file) {
+        try {
+            BasicFileAttributes a = Files.readAttributes(file, BasicFileAttributes.class);
+            return List.of(a.size(), a.lastModifiedTime());
+        } catch (IOException e) {
+            throw new UncheckedIOException("Heap-Dump nicht lesbar: " + file, e);
+        }
+    }
+
+    private HeapAnalyzer(Path file) {
         this.file = file;
         try {
             this.heap = HeapFactory.createHeap(file.toFile());
