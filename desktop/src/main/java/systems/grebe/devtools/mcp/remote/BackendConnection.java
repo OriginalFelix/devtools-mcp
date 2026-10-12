@@ -50,6 +50,7 @@ import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 import systems.grebe.devtools.mcp.api.ApiVersions;
+import systems.grebe.devtools.mcp.api.CredentialInfo;
 import systems.grebe.devtools.mcp.api.Grants;
 import systems.grebe.devtools.mcp.api.LoginResult;
 import systems.grebe.devtools.mcp.api.Me;
@@ -63,6 +64,7 @@ import systems.grebe.devtools.mcp.config.ModuleSettings;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.config.TeamSettings;
 import systems.grebe.devtools.mcp.core.ConfigField;
+import systems.grebe.devtools.mcp.core.CredentialsModule;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolRegistry;
@@ -111,7 +113,7 @@ public class BackendConnection {
     static final String ME = "{ me { id username displayName email admin profiles { id name description } "
             + "activeProfileId roles permissions passwordChangeRequired } }";
     static final String SETTINGS_FIELDS = "profileId profileName modules { moduleId enabled tools { name enabled } "
-            + "values { key value } locked } revision";
+            + "values { key value } locked } revision credentials { id name url username secret description }";
     static final String PROJECT_FIELDS = "id name owner toolName writable access description sonarKey ticketProject";
     static final String LOGIN = "mutation($u: String!, $p: String!, $c: String) { login(username: $u, password: $p, "
             + "client: $c) { token expiresAt passwordChangeRequired } }";
@@ -921,6 +923,26 @@ public class BackendConnection {
         saveOverrides("PROFILE", module.id(), enabled, tools, values);
     }
 
+    /**
+     * Ersetzt die eigenen Zugangsdaten im Backend (Tabelle {@code credential}, verschlüsselt) – nicht als Überschreibung
+     * eines Profils: sie gehören dem Benutzer und gelten in allen Profilen.
+     */
+    public void saveCredentials(List<CredentialInfo> entries) {
+        Session owner = session;
+        List<Map<String, Object>> input = entries.stream().map(e -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("name", e.name());
+            m.put("url", e.url());
+            m.put("username", e.username());
+            m.put("secret", e.secret());
+            m.put("description", e.description());
+            return m;
+        }).toList();
+        SettingsSnapshot s = query("mutation($e: [CredentialInput!]!) { saveCredentials(entries: $e) { "
+                + SETTINGS_FIELDS + " } }", Map.of("e", input), "saveCredentials", SettingsSnapshot.class);
+        onSettings(owner, s);
+    }
+
     private SettingsSnapshot saveOverrides(String level, String moduleId, Boolean enabled, Map<String, Boolean> tools,
                                            Map<String, String> values) {
         Session owner = session;
@@ -1078,7 +1100,9 @@ public class BackendConnection {
 
     /** Meldet die Module, wenn sie sich seit der letzten Meldung geändert haben (z.B. Plugin installiert). */
     private synchronized void reportCatalog() {
-        List<ModuleDescriptor> modules = registry.getObject().modules().stream().map(this::descriptor).toList();
+        // Zugangsdaten haben eine eigene Ablage je Benutzer – keine Vorgaben über die Ebenen, nicht in der Web-UI
+        List<ModuleDescriptor> modules = registry.getObject().modules().stream()
+                .filter(m -> !CredentialsModule.ID.equals(m.id())).map(this::descriptor).toList();
         String serialized = json.writeValueAsString(modules);
         if (!serialized.equals(reportedCatalog)) {
             query("mutation($m: [ModuleInput!]!) { reportCatalog(modules: $m) }", Map.of("m", modules),
@@ -1103,7 +1127,7 @@ public class BackendConnection {
         int count = 0;
         for (ToolModule m : registry.getObject().modules()) {
             Optional<ModuleSettings> saved = store.module(m.id());
-            if (saved.isEmpty()) {
+            if (saved.isEmpty() || CredentialsModule.ID.equals(m.id())) { // persönlich, nie als globale Vorgabe
                 continue;
             }
             Set<String> schema = m.configSchema().stream().map(ConfigField::key).collect(Collectors.toSet());

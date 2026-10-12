@@ -18,8 +18,15 @@ import java.util.regex.Pattern;
  */
 public final class ApiVersions {
 
-    /** Neueste Version – die spricht die Desktop-App. */
-    public static final int CURRENT = 0;
+    /**
+     * Neueste Version – die spricht die Desktop-App.
+     *
+     * <ol start="0">
+     *   <li>erste veröffentlichte Version</li>
+     *   <li>Zugangsdaten je Benutzer: {@code Settings.credentials}, Mutation {@code saveCredentials}</li>
+     * </ol>
+     */
+    public static final int CURRENT = 1;
     /** Angebotene Versionen ({@link Info}), ohne Anmeldung. */
     public static final String VERSIONS_PATH = "/api/versions";
     /** Version der Pfade ohne Versionsnummer ({@code /graphql}, {@code /blobs}). */

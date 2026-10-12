@@ -7,6 +7,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
+import systems.grebe.devtools.mcp.core.CredentialField;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
@@ -108,6 +109,12 @@ public class ClassifyModule implements ToolModule {
                 TaskClassifier.Settings.models(config.getString(MODEL_SIMPLE, ""), config.getString(MODEL_NORMAL, ""),
                         config.getString(MODEL_COMPLEX, "")),
                 config.getList(RULES));
+    }
+
+    /** Die API-URL darf leer bleiben – dann gilt der Eintrag für die Claude API. */
+    @Override
+    public List<CredentialField> credentialFields() {
+        return List.of(CredentialField.of(BASE_URL, null, API_KEY).withDefaultUrl("https://api.anthropic.com"));
     }
 
     @Override

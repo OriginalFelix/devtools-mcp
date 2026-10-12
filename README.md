@@ -45,6 +45,30 @@ jedes Modul übernimmt, was zu ihm passt (Git-Repositories, Gradle-/Maven-Projek
 aufheben* lässt die Tools jeden absoluten Pfad verwenden (aufgelöst zum nächsten passenden Verzeichnis darüber, z.B.
 dem Repository); nur lesend freigegebene Projekte des Team-Servers und die Schalter der Module gelten weiter.
 
+Das Modul **Zugangsdaten** hat ebenfalls keine eigenen Tools. Wie beim Git Credential Manager werden Tokens und
+Passwörter dort einmal je Server hinterlegt (Name, URL, optional Benutzer, Token/Passwort, Beschreibung) statt in jedem
+Modul erneut: Bleibt das Token- bzw. Passwortfeld eines Moduls leer, setzt die App beim Bauen der Tools (und beim
+*Verbindung testen*) das des Eintrags ein, dessen URL zur Server-URL des Moduls passt – ist auch der Benutzer leer,
+zusätzlich dessen Benutzer (z.B. die E-Mail zum Jira-Cloud-Token). Ein GitHub-Token unter `https://github.com` gilt so
+für Tickets, Pull Requests, CI und die Release Notes im Maven-Modul zugleich. Zuordnung:
+
+* Schema und Port müssen stimmen, der Host gleich oder eine Subdomain sein (`https://github.com` gilt auch für
+  `https://api.github.com`), der Pfad des Eintrags ein Präfix (`https://gitlab.firma.de/gruppe`). Der genaueste Eintrag
+  gewinnt: gleicher Host vor Subdomain, dann längerer Pfad, dann der weiter oben.
+* Ein eigenes Geheimnis im Modul hat immer Vorrang; ins Modul kopiert wird nichts. Das Formular zeigt in einem leeren
+  Feld, welcher Eintrag greift („leer = aus Zugangsdaten „GitHub““).
+* Gilt für Tickets, Pull Requests, CI/CD, Chat (Matrix), SonarQube, Maven (Repository und GitHub) und Modellwahl
+  (Claude API: `https://api.anthropic.com`, solange keine eigene API-URL gesetzt ist) – nicht für Verbindungslisten
+  (SSH, JDBC, Dolt, Mail), die je Eintrag eigene Zugangsdaten haben.
+* **Ablage:** je Benutzer in der Core-Datenbank des Backends (eingebettet oder Team-Server), Tabelle `credential`, das
+  Geheimnis je Eintrag mit AES-GCM verschlüsselt (Schlüssel `secret.key` des Backends) – nicht in `settings.json` und
+  nicht als Einstellung eines Profils: sie gelten in allen Profilen des Benutzers, Vorgaben des Administrators gibt es
+  dafür nicht. Über die API (ab Version 1: `Settings.credentials`, Mutation `saveCredentials`) bekommt nur der Benutzer
+  selbst seine Einträge; Änderungen kommen wie Einstellungen sofort bei seinen anderen Desktop-Apps an.
+* **Pflege:** in der Desktop-App (Module → Zugangsdaten) oder in der Web-UI des Team-Servers unter *Mein Konto* →
+  *Zugangsdaten* (anlegen, bearbeiten, Reihenfolge, löschen; Recht „Eigene Einstellungen“). Die Web-UI zeigt Tokens nur
+  maskiert und bekommt sie nie zu sehen – beim Bearbeiten bleibt ein leeres Feld beim bisherigen Token.
+
 ### Berechtigungen an das LLM übermitteln
 
 Das Modul **Berechtigungen** zeigt dem LLM, was es darf, und lässt es fehlende Rechte beim Nutzer anfragen:
@@ -862,6 +886,10 @@ Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der S
   Eingaben, die das LLM wie Anweisungen behandelt – deshalb „Freigegebene Absender“ setzen (sonst kann jedes Mitglied
   einer freigegebenen Unterhaltung Anweisungen geben), für Matrix ein eigenes Bot-Konto verwenden und Unterhaltungen
   einschränken. Einladungen nimmt das Modul nur von freigegebenen Absendern an.
+* Zugangsdaten: im Backend je Benutzer verschlüsselt (Tabelle `credential`), nur dem Benutzer selbst zugänglich und nie
+  an das LLM (`permissions_overview` zeigt nur gesetzt/leer).
+  Ein Eintrag geht an jedes Modul, dessen Server-URL passt – auch an Subdomains; Einträge daher so genau wie nötig
+  fassen (`https://jira.firma.de` statt `https://firma.de`).
 
 ### Backend und Team-Server
 
@@ -912,7 +940,8 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
   Rechner laufen; H2, Schema per Flyway aus `db/core`; andere Datenbank über
   `devtools.core.datasource.url/username/password`). Beim ersten Start des Servers wird `admin` (Rolle Administrator)
   angelegt – Passwort aus `DEVTOOLS_MCP_ADMIN_PASSWORD`, sonst zufällig und einmalig im Log; ein zufälliges muss bei
-  der ersten Anmeldung geändert werden.
+  der ersten Anmeldung geändert werden. Dort liegen auch die **Zugangsdaten** der Benutzer
+  (Tabelle `credential`, Geheimnisse verschlüsselt mit `secret.key`).
 * **Passwörter:** PBKDF2 mit HMAC-SHA3-512, 16 Byte Zufalls-Salt, 210.000 Iterationen
   (`pbkdf2-sha3-512$<iterationen>$<salt>$<hash>`); wird die Iterationszahl angehoben, rechnet die nächste Anmeldung
   den Hash neu.
@@ -934,7 +963,7 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
 
 Das Protokoll zwischen Desktop-App und Backend (GraphQL-API und Dateiablage) ist versioniert, damit ein Team-Server
 Desktop-Apps verschiedener Stände bedienen kann: **Jede Änderung am Protokoll ergibt eine neue Version**, die älteren
-bietet das Backend weiter an. Die Versionen sind ganze Zahlen (`ApiVersions.CURRENT` in `shared`, heute 0).
+bietet das Backend weiter an. Die Versionen sind ganze Zahlen (`ApiVersions.CURRENT` in `shared`, heute 1 – Version 1 bringt die Zugangsdaten je Benutzer).
 
 | Pfad | |
 |---|---|
@@ -1870,7 +1899,12 @@ Tools-Klasse oder einzelnen `@Tool`-Methoden (Methode hat Vorrang); dafür die C
 `ToolBeans.callbacks(beans…)` statt `ToolCallbacks.from(…)` erzeugen. Clients können damit lesende Tools ohne Rückfrage
 ausführen und vor verändernden nachfragen; ohne Annotation gilt ein Tool laut Spezifikation als möglicherweise
 zerstörerisch. Bisher annotiert: SSH, Datenbanken (JDBC), Datenbank-Branches, Chat. Für Verzeichnis-basierte Module hilft `Workspaces` (Freigabe + Pfad-Guard); wer die global freigegebenen
-Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`.
+Verzeichnisse mitbekommen soll, nennt seine Verzeichnisliste in `sharedDirectoryFields()`. Leere Geheimnisse füllt die
+App aus dem Modul **Zugangsdaten**: `credentialFields()` leitet die Zuordnung standardmäßig aus
+dem Schema ab (je Provider-Gruppe bzw. für die Felder ohne Gruppe: genau ein URL-Feld → erstes Geheimnis, dazu ein Feld
+`user`/`username`/`email`/`login`); bei mehreren URLs oder ohne URL-Feld gibt das Modul sie selbst an, z.B.
+`CredentialField.of("repositoryUrl", "username", "password")` oder
+`CredentialField.of(null, null, "apiKey").withDefaultUrl("https://api.anthropic.com")`; `List.of()` schaltet es ab.
 
 ## Plugins
 
