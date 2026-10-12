@@ -47,7 +47,8 @@ class GitLabServerProviderTest {
         assertThat(out).contains("- grp/app!12  [open]  @felix  feature/export → main  Export  (Entwurf)");
         assertThat(gl.last("/api/v4/projects/grp%2Fapp/merge_requests").decodedQuery()).contains("state=opened",
                 "scope=created_by_me", "source_branch=feature/export", "per_page=5");
-        assertThat(gl.last("/api/v4/projects/grp%2Fapp/merge_requests").headers().get("private-token")).isEqualTo("glpat-x");
+        assertThat(gl.last("/api/v4/projects/grp%2Fapp/merge_requests").headers().get("authorization"))
+                .isEqualTo("Bearer glpat-x"); // auch OAuth-Tokens
     }
 
     @Test

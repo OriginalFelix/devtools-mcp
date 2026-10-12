@@ -86,7 +86,7 @@ public class GitLabTicketProvider implements TicketProvider {
             base = base.substring(0, base.length() - 7);
         }
         Map<String, String> headers = new LinkedHashMap<>();
-        s.get(TOKEN).ifPresent(t -> headers.put("PRIVATE-TOKEN", t));
+        s.get(TOKEN).ifPresent(t -> headers.put("Authorization", "Bearer " + t));
         return new GitLab(new HttpJson("GitLab", base + "/api/v4", headers, s.timeout()), base, s.get(TOKEN).isPresent());
     }
 
