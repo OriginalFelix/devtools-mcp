@@ -44,6 +44,19 @@ class CredentialSyncTest {
     }
 
     @Test
+    void oauthOptionsTravelWithTheForm() {
+        String options = "token_endpoint=https://jira.example.com/rest/oauth2/latest/token";
+        List<CredentialInfo> current = List.of(new CredentialInfo(3L, "Jira", "https://jira.example.com", null, "", null,
+                CredentialInfo.OAUTH, null, "app", null, null, null, null, options));
+
+        ModuleSettings form = BackendSettingsResolver.credentials(module, current);
+        assertThat(ModuleConfig.of(module.configSchema(), form.values()).getRecords(CredentialsModule.ENTRIES))
+                .singleElement().satisfies(r -> assertThat(r).containsEntry(CredentialsModule.OPTIONS, options));
+        assertThat(BackendSettingsResolver.credentials(module, form, current)).singleElement()
+                .satisfies(c -> assertThat(c.options()).isEqualTo(options));
+    }
+
+    @Test
     void newEntriesHaveNoId() {
         ModuleSettings form = BackendSettingsResolver.credentials(module,
                 List.of(new CredentialInfo(1L, "Neu", "https://x.example.com", null, "t", null)));

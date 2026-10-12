@@ -114,7 +114,7 @@ public class BackendConnection {
             + "activeProfileId roles permissions passwordChangeRequired } }";
     static final String SETTINGS_FIELDS = "profileId profileName modules { moduleId enabled tools { name enabled } "
             + "values { key value } locked } revision credentials { id name url username secret description auth issuer clientId clientSecret scopes "
-            + "expiresAt }";
+            + "expiresAt options }";
     static final String PROJECT_FIELDS = "id name owner toolName writable access description sonarKey ticketProject";
     static final String LOGIN = "mutation($u: String!, $p: String!, $c: String) { login(username: $u, password: $p, "
             + "client: $c) { token expiresAt passwordChangeRequired } }";
@@ -945,6 +945,7 @@ public class BackendConnection {
             m.put("scopes", e.scopes());
             m.put("refreshToken", e.refreshToken());
             m.put("expiresAt", e.expiresAt());
+            m.put("options", e.options());
             return m;
         }).toList();
         SettingsSnapshot s = query("mutation($e: [CredentialInput!]!) { saveCredentials(entries: $e) { "

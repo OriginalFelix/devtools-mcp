@@ -58,7 +58,8 @@ class GitLabTicketProviderTest {
         StubServer.Request r = gl.last("/api/v4/projects/grp%2Fapp/issues");
         assertThat(r.decodedQuery()).contains("state=opened", "scope=assigned_to_me", "labels=bug,backend", "search=login",
                 "milestone=16.0", "weight=3", "per_page=1", "order_by=updated_at");
-        assertThat(r.headers().get("private-token")).isEqualTo("glpat-x");
+        assertThat(r.headers().get("authorization")).isEqualTo("Bearer glpat-x"); // auch OAuth-Tokens
+        assertThat(r.headers()).doesNotContainKey("private-token");
 
         assertThatThrownBy(() -> tools(Map.of()).search(null, null, null, null, null, "milestone 16", null, null, null))
                 .hasMessageContaining("name=wert");

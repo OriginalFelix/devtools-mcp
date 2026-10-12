@@ -87,6 +87,21 @@ public class OAuthClient {
     // ---------------------------------------------------------------- Discovery
 
     /**
+     * Der Server zu Zugangsdaten: Endpunkte von Hand ({@link OAuthOptions#manualEndpoints()}), Atlassian Cloud fest
+     * vorgegeben, sonst über {@link #discover} beim Aussteller (leer = Herkunft der URL).
+     */
+    public OAuthServer resolve(String issuer, String url, OAuthOptions options) {
+        String iss = OAuthServer.issuerFor(issuer, url);
+        if (options.manualEndpoints()) {
+            return options.server(iss);
+        }
+        if (OAuthServer.isAtlassian(issuer, url)) {
+            return OAuthServer.atlassian();
+        }
+        return discover(iss);
+    }
+
+    /**
      * Endpunkte des Autorisierungsservers {@code issuer}: erst RFC 8414 ({@code /.well-known/oauth-authorization-server}),
      * dann OpenID Connect ({@code /.well-known/openid-configuration}); beides fehlgeschlagen und die Adresse gehört zu
      * GitHub, dessen feste Endpunkte.
@@ -134,15 +149,22 @@ public class OAuthClient {
      */
     public OAuthTokens login(OAuthServer server, String clientId, String clientSecret, String scope,
                              Consumer<String> prompt, Consumer<URI> browse) {
-        if (server.supportsDeviceFlow()) {
-            DeviceAuthorization d = startDevice(server, clientId, clientSecret, scope);
+        return login(server, clientId, clientSecret, scope, OAuthOptions.NONE, prompt, browse);
+    }
+
+    /** Wie {@link #login(OAuthServer, String, String, String, Consumer, Consumer)} mit Angaben von Hand. */
+    public OAuthTokens login(OAuthServer server, String clientId, String clientSecret, String scope,
+                             OAuthOptions options, Consumer<String> prompt, Consumer<URI> browse) {
+        if (server.supportsDeviceFlow() && options.redirectUri() == null) {
+            DeviceAuthorization d = startDevice(server, clientId, clientSecret, scope, options);
             prompt.accept("Im Browser " + d.verificationUri() + " öffnen und den Code " + d.userCode()
                     + " eingeben.");
             browse.accept(URI.create(d.browserUri()));
             return pollDevice(server, clientId, clientSecret, d);
         }
         if (server.supportsAuthorizationCode()) {
-            return authorizationCode(server, clientId, clientSecret, scope, Duration.ofMinutes(10), prompt, browse);
+            return authorizationCode(server, clientId, clientSecret, scope, options, Duration.ofMinutes(10), prompt,
+                    browse);
         }
         throw new IllegalStateException("Der Server " + server.issuer() + " bietet weder Device Authorization Grant "
                 + "noch Authorization Code an.");
@@ -150,7 +172,12 @@ public class OAuthClient {
 
     /** Fordert einen Gerätecode an (RFC 8628 §3.1). */
     public DeviceAuthorization startDevice(OAuthServer server, String clientId, String clientSecret, String scope) {
-        Map<String, String> form = new LinkedHashMap<>();
+        return startDevice(server, clientId, clientSecret, scope, OAuthOptions.NONE);
+    }
+
+    private DeviceAuthorization startDevice(OAuthServer server, String clientId, String clientSecret, String scope,
+                                            OAuthOptions options) {
+        Map<String, String> form = new LinkedHashMap<>(parameters(server, options));
         if (scope != null && !scope.isBlank()) {
             form.put("scope", scope.strip());
         }
@@ -203,16 +230,28 @@ public class OAuthClient {
      */
     public OAuthTokens authorizationCode(OAuthServer server, String clientId, String clientSecret, String scope,
                                          Duration wait, Consumer<String> prompt, Consumer<URI> browse) {
+        return authorizationCode(server, clientId, clientSecret, scope, OAuthOptions.NONE, wait, prompt, browse);
+    }
+
+    /** Mit {@link OAuthOptions#redirectUri() fester Rückleitung} und weiteren Parametern der Anmeldung. */
+    public OAuthTokens authorizationCode(OAuthServer server, String clientId, String clientSecret, String scope,
+                                         OAuthOptions options, Duration wait, Consumer<String> prompt,
+                                         Consumer<URI> browse) {
         String verifier = random(32);
         String state = random(16);
         CompletableFuture<Map<String, String>> callback = new CompletableFuture<>();
+        URI fixed = options.redirectUri() == null ? null : URI.create(options.redirectUri());
+        String path = fixed == null || fixed.getPath() == null || fixed.getPath().isEmpty() ? "/callback"
+                : fixed.getPath();
         HttpServer loopback;
         try {
-            loopback = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+            loopback = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(),
+                    fixed == null ? 0 : fixed.getPort()), 0);
         } catch (IOException e) {
-            throw new IllegalStateException("Lokale Rückleitungsadresse nicht verfügbar: " + e.getMessage(), e);
+            throw new IllegalStateException("Lokale Rückleitungsadresse nicht verfügbar"
+                    + (fixed == null ? "" : " (Port " + fixed.getPort() + " belegt?)") + ": " + e.getMessage(), e);
         }
-        loopback.createContext("/callback", exchange -> {
+        loopback.createContext(path, exchange -> {
             Map<String, String> params = query(exchange.getRequestURI().getRawQuery());
             boolean ok = state.equals(params.get("state")) && params.containsKey("code");
             byte[] page = ("<!doctype html><meta charset=utf-8><title>DevTools MCP</title><p>"
@@ -229,9 +268,10 @@ public class OAuthClient {
         });
         loopback.start();
         try {
-            String redirect = "http://" + InetAddress.getLoopbackAddress().getHostAddress() + ":"
+            String redirect = fixed != null ? options.redirectUri()
+                    : "http://" + InetAddress.getLoopbackAddress().getHostAddress() + ":"
                     + loopback.getAddress().getPort() + "/callback";
-            Map<String, String> q = new LinkedHashMap<>();
+            Map<String, String> q = new LinkedHashMap<>(parameters(server, options));
             q.put("response_type", "code");
             q.put("client_id", clientId);
             q.put("redirect_uri", redirect);
@@ -267,6 +307,13 @@ public class OAuthClient {
         OAuthTokens t = tokens(post(server, server.tokenEndpoint(), clientId, clientSecret,
                 Map.of("grant_type", "refresh_token", "refresh_token", refreshToken)));
         return t.refreshToken() != null ? t : new OAuthTokens(t.accessToken(), refreshToken, t.expiresAt(), t.scope());
+    }
+
+    /** Zusätzliche Parameter der Anmeldung: was der Server verlangt, darüber die Angaben von Hand. */
+    private static Map<String, String> parameters(OAuthServer server, OAuthOptions options) {
+        Map<String, String> p = new LinkedHashMap<>(server.authorizationParameters());
+        p.putAll(options.parameters());
+        return p;
     }
 
     // ---------------------------------------------------------------- HTTP

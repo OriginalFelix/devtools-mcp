@@ -26,9 +26,10 @@ public final class ApiVersions {
      *   <li>Zugangsdaten je Benutzer: {@code Settings.credentials}, Mutation {@code saveCredentials}</li>
      *   <li>Zugangsdaten per OAuth 2.0 / OpenID Connect: {@code Credential.auth} usw., Mutation
      *       {@code refreshCredential}</li>
+     *   <li>OAuth-Angaben von Hand: {@code Credential.options}</li>
      * </ol>
      */
-    public static final int CURRENT = 2;
+    public static final int CURRENT = 3;
     /** Angebotene Versionen ({@link Info}), ohne Anmeldung. */
     public static final String VERSIONS_PATH = "/api/versions";
     /** Version der Pfade ohne Versionsnummer ({@code /graphql}, {@code /blobs}). */

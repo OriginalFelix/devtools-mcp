@@ -55,7 +55,7 @@ class GitLabCiProviderTest {
         assertThat(tools.list("running", "main", null, 5, null, "grp/app", null))
                 .contains("2 Build(s) in grp/app (gitlab) – Branch main", "- grp/app#12  [running]  main  01234567  push");
         assertThat(gl.last(API + "/pipelines").decodedQuery()).contains("ref=main", "status=running", "per_page=5");
-        assertThat(gl.last(API + "/pipelines").headers().get("private-token")).isEqualTo("glpat");
+        assertThat(gl.last(API + "/pipelines").headers().get("authorization")).isEqualTo("Bearer glpat"); // auch OAuth-Tokens
 
         // queued hat kein 1:1-Gegenstück – clientseitig filtern
         assertThat(tools.list("queued", null, null, null, null, "grp/app", null))

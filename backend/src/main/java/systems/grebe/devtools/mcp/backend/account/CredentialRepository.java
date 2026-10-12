@@ -19,12 +19,12 @@ import org.springframework.stereotype.Repository;
 public class CredentialRepository {
 
     private static final String COLUMNS = "id, name, url, username, secret, description, auth, issuer, client_id, "
-            + "client_secret, scopes, refresh_token, expires_at";
+            + "client_secret, scopes, refresh_token, expires_at, oauth_options";
 
     /** Gespeicherte Zeile; Geheimnisse so, wie sie in der Datenbank stehen (verschlüsselt). */
     public record Row(long id, String name, String url, String username, String secret, String description,
                       String auth, String issuer, String clientId, String clientSecret, String scopes,
-                      String refreshToken, Instant expiresAt) {
+                      String refreshToken, Instant expiresAt, String options) {
     }
 
     private final JdbcClient jdbc;
@@ -51,11 +51,11 @@ public class CredentialRepository {
             jdbc.sql("""
                             INSERT INTO credential (user_id, sort_order, name, url, username, secret, description, auth,
                                                     issuer, client_id, client_secret, scopes, refresh_token, expires_at,
-                                                    updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
+                                                    oauth_options, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
                     .params(userId, i, r.name(), r.url(), r.username(), r.secret(), r.description(), r.auth(),
                             r.issuer(), r.clientId(), r.clientSecret(), r.scopes(), r.refreshToken(),
-                            timestamp(r.expiresAt()), Timestamp.from(now))
+                            timestamp(r.expiresAt()), r.options(), Timestamp.from(now))
                     .update();
         }
     }
@@ -71,7 +71,8 @@ public class CredentialRepository {
         return new Row(rs.getLong("id"), rs.getString("name"), rs.getString("url"), rs.getString("username"),
                 rs.getString("secret"), rs.getString("description"), rs.getString("auth"), rs.getString("issuer"),
                 rs.getString("client_id"), rs.getString("client_secret"), rs.getString("scopes"),
-                rs.getString("refresh_token"), expires == null ? null : expires.toInstant());
+                rs.getString("refresh_token"), expires == null ? null : expires.toInstant(),
+                rs.getString("oauth_options"));
     }
 
     private static Timestamp timestamp(Instant i) {
