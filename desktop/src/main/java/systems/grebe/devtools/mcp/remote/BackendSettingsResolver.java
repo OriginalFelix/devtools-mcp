@@ -64,7 +64,8 @@ public class BackendSettingsResolver implements SettingsResolver {
             throw new IllegalStateException("Nicht angemeldet.");
         }
         if (CredentialsModule.ID.equals(module.id())) {
-            backend.saveCredentials(credentials(module, after));
+            backend.saveCredentials(credentials(module, after,
+                    backend.settings().map(SettingsSnapshot::credentials).orElse(List.of())));
             return;
         }
         backend.save(module, before, after);
@@ -77,8 +78,13 @@ public class BackendSettingsResolver implements SettingsResolver {
             Map<String, String> r = new LinkedHashMap<>();
             r.put(CredentialsModule.NAME, e.name());
             r.put(CredentialsModule.URL, e.url());
+            r.put(CredentialsModule.AUTH, e.oauth() ? CredentialsModule.AUTH_OAUTH : CredentialsModule.AUTH_TOKEN);
             r.put(CredentialsModule.USER, e.username());
             r.put(CredentialsModule.SECRET, e.secret());
+            r.put(CredentialsModule.ISSUER, e.issuer());
+            r.put(CredentialsModule.CLIENT_ID, e.clientId());
+            r.put(CredentialsModule.CLIENT_SECRET, e.clientSecret());
+            r.put(CredentialsModule.SCOPES, e.scopes());
             r.put(CredentialsModule.DESCRIPTION, e.description());
             records.add(r);
         }
@@ -86,13 +92,25 @@ public class BackendSettingsResolver implements SettingsResolver {
                 : Map.of(CredentialsModule.ENTRIES, ModuleConfig.formatRecords(records)));
     }
 
-    /** Gegenstück zu {@link #credentials(ToolModule, List)}: die Datensätze aus dem Formular. */
-    static List<CredentialInfo> credentials(ToolModule module, ModuleSettings settings) {
+    /**
+     * Gegenstück zu {@link #credentials(ToolModule, List)}: die Datensätze aus dem Formular. Die ID kommt über den Namen
+     * aus dem bisherigen Stand – damit behalten OAuth-Einträge ihr Refresh-Token. Deren Access-Token geht nicht mit
+     * (es kann inzwischen erneuert sein; das Backend behält seins), wer von Hand eins einträgt, stellt auf token um.
+     */
+    static List<CredentialInfo> credentials(ToolModule module, ModuleSettings settings, List<CredentialInfo> current) {
         ModuleConfig config = ModuleConfig.of(module.configSchema(), settings.values());
         return config.getRecords(CredentialsModule.ENTRIES).stream()
-                .map(r -> new CredentialInfo(null, r.get(CredentialsModule.NAME), r.get(CredentialsModule.URL),
-                        r.get(CredentialsModule.USER), r.get(CredentialsModule.SECRET),
-                        r.get(CredentialsModule.DESCRIPTION)))
+                .map(r -> {
+                    String name = r.get(CredentialsModule.NAME);
+                    Long id = current.stream().filter(c -> c.name().equalsIgnoreCase(name.strip()))
+                            .map(CredentialInfo::id).findFirst().orElse(null);
+                    boolean oauth = CredentialsModule.AUTH_OAUTH.equals(r.get(CredentialsModule.AUTH));
+                    return new CredentialInfo(id, name, r.get(CredentialsModule.URL), r.get(CredentialsModule.USER),
+                            oauth ? null : r.get(CredentialsModule.SECRET), r.get(CredentialsModule.DESCRIPTION),
+                            oauth ? CredentialInfo.OAUTH : CredentialInfo.TOKEN, r.get(CredentialsModule.ISSUER),
+                            r.get(CredentialsModule.CLIENT_ID), r.get(CredentialsModule.CLIENT_SECRET),
+                            r.get(CredentialsModule.SCOPES), null, null);
+                })
                 .toList();
     }
 

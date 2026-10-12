@@ -145,6 +145,15 @@ public class BackendGraphQlController {
         return snapshot(u);
     }
 
+    /** Erneuert das Access-Token eines eigenen OAuth-Eintrags, falls es bald abläuft (API-Version 2). */
+    @MutationMapping
+    public SettingsSnapshot refreshCredential(@ContextValue(name = GraphQlAuth.USER, required = false) UserAccount user,
+                                              @Argument long id) {
+        UserAccount u = require(user);
+        credentials.refresh(u.id(), id);
+        return snapshot(u);
+    }
+
     /**
      * Stand mit Revision und den eigenen Zugangsdaten (ab API-Version 1 im Schema); der Zähler wird vor dem Lesen
      * genommen, der Stand ist also mindestens so neu.

@@ -1,5 +1,6 @@
 package systems.grebe.devtools.mcp.web;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,6 +13,7 @@ import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.component.textfield.PasswordField;
 import com.vaadin.flow.component.textfield.TextField;
 import systems.grebe.devtools.mcp.api.CredentialInfo;
@@ -21,6 +23,9 @@ import systems.grebe.devtools.mcp.backend.account.CredentialService;
  * Eigene Zugangsdaten unter „Mein Konto“ (Modul „Zugangsdaten“ der Desktop-App, wie beim Git Credential Manager).
  * Die Seite bekommt die Geheimnisse nie: sie arbeitet mit {@link CredentialService#summaries} und schickt beim
  * Speichern nur ein neu eingegebenes Token mit – die übrigen Einträge behalten ihres über ihre ID.
+ *
+ * <p>Einträge mit Anmeldung per OAuth lassen sich hier einrichten; angemeldet wird in der Desktop-App (der Browser des
+ * Rechners, auf dem sie läuft, bestätigt die Anmeldung), erneuert dann vom Backend.
  */
 class CredentialsPanel extends VerticalLayout {
 
@@ -39,7 +44,7 @@ class CredentialsPanel extends VerticalLayout {
         grid.addColumn(CredentialInfo::name).setHeader("Name").setAutoWidth(true);
         grid.addColumn(CredentialInfo::url).setHeader("URL").setAutoWidth(true);
         grid.addColumn(c -> c.username() == null ? "" : c.username()).setHeader("Benutzer").setAutoWidth(true);
-        grid.addColumn(c -> "••••••").setHeader("Token / Passwort");
+        grid.addColumn(CredentialsPanel::status).setHeader("Anmeldung").setAutoWidth(true);
         grid.addColumn(c -> c.description() == null ? "" : c.description()).setHeader("Beschreibung");
         if (editable) {
             grid.addComponentColumn(this::actions).setAutoWidth(true).setFrozenToEnd(true);
@@ -53,7 +58,9 @@ class CredentialsPanel extends VerticalLayout {
                         + "(Tickets, Pull Requests, CI, SonarQube, Maven …) das Token leer, nimmt es den Eintrag, dessen "
                         + "URL zu seiner Server-URL passt – auch für Subdomains (https://github.com gilt für "
                         + "api.github.com) und Pfade darunter; der genaueste gewinnt, bei Gleichstand der weiter oben. "
-                        + "Gespeichert verschlüsselt im Backend, nur für dich, in allen deinen Profilen. "
+                        + "Gespeichert verschlüsselt im Backend, nur für dich, in allen deinen Profilen. Bei Anmeldung "
+                        + "per OAuth richtest du den Eintrag hier ein und meldest dich in der Desktop-App an (Module → "
+                        + "Zugangsdaten → „Im Browser anmelden“); das Token erneuert dann der Server. "
                         + (editable ? "" : "Zum Ändern fehlt dir das Recht „Eigene Einstellungen“.")),
                 create, grid);
         refresh();
@@ -85,19 +92,50 @@ class CredentialsPanel extends VerticalLayout {
         url.setHelperText("Server, für den sie gelten – auch Subdomains und Pfade darunter");
         TextField username = new TextField("Benutzer");
         username.setHelperText("Optional, z.B. die E-Mail zum Jira-Cloud-Token");
+        Select<String> auth = new Select<>();
+        auth.setLabel("Anmeldung");
+        auth.setItems(CredentialInfo.TOKEN, CredentialInfo.OAUTH);
+        auth.setItemLabelGenerator(a -> CredentialInfo.OAUTH.equals(a) ? "Im Browser (OAuth 2.0 / OpenID Connect)"
+                : "Token / Passwort von Hand");
+        auth.setValue(c != null && c.oauth() ? CredentialInfo.OAUTH : CredentialInfo.TOKEN);
         PasswordField secret = new PasswordField("Token / Passwort");
+        TextField issuer = new TextField("Aussteller");
+        issuer.setHelperText("Für die Discovery (RFC 8414 / OIDC); leer = Herkunft der URL, GitHub braucht keinen");
+        TextField clientId = new TextField("Client-ID");
+        clientId.setHelperText("Registrierte OAuth-App (GitHub: Device Flow aktivieren; GitLab: Redirect-URI "
+                + "http://127.0.0.1/callback)");
+        PasswordField clientSecret = new PasswordField("Client-Geheimnis");
+        clientSecret.setHelperText("Nur für vertrauliche Clients");
+        TextField scopes = new TextField("Scopes");
+        scopes.setHelperText("Durch Leerzeichen getrennt; leer = GitHub: repo read:org, sonst Vorgabe des Servers");
         TextField description = new TextField("Beschreibung");
         if (c != null) {
             name.setValue(c.name());
             url.setValue(c.url());
             username.setValue(nz(c.username()));
             description.setValue(nz(c.description()));
+            issuer.setValue(nz(c.issuer()));
+            clientId.setValue(nz(c.clientId()));
+            scopes.setValue(nz(c.scopes()));
             secret.setHelperText("Leer lassen, um das bisherige zu behalten");
+            clientSecret.setHelperText("Leer lassen, um das bisherige zu behalten");
         }
-        d.add(new FormLayout(name, url, username, secret, description));
+        Runnable showAuth = () -> {
+            boolean oauth = CredentialInfo.OAUTH.equals(auth.getValue());
+            secret.setVisible(!oauth);
+            issuer.setVisible(oauth);
+            clientId.setVisible(oauth);
+            clientSecret.setVisible(oauth);
+            scopes.setVisible(oauth);
+        };
+        auth.addValueChangeListener(e -> showAuth.run());
+        showAuth.run();
+        d.add(new FormLayout(name, url, auth, username, secret, issuer, clientId, clientSecret, scopes, description));
         Button save = new Button("Speichern", e -> {
+            boolean oauth = CredentialInfo.OAUTH.equals(auth.getValue());
             CredentialInfo edited = new CredentialInfo(c == null ? null : c.id(), name.getValue(), url.getValue(),
-                    username.getValue(), secret.getValue(), description.getValue());
+                    username.getValue(), oauth ? null : secret.getValue(), description.getValue(), auth.getValue(),
+                    issuer.getValue(), clientId.getValue(), clientSecret.getValue(), scopes.getValue(), null, null);
             List<CredentialInfo> next = new ArrayList<>(entries);
             if (c == null) {
                 next.add(edited);
@@ -144,6 +182,18 @@ class CredentialsPanel extends VerticalLayout {
     private void refresh() {
         entries = credentials.summaries(userId);
         grid.setItems(entries);
+    }
+
+    /** Anmeldung und – bei OAuth – Ablauf des Tokens (das Token selbst sieht diese Seite nie). */
+    static String status(CredentialInfo c) {
+        if (!c.oauth()) {
+            return "Token";
+        }
+        if (c.expiresAt() == null) {
+            return "OAuth";
+        }
+        Instant expires = Instant.parse(c.expiresAt());
+        return "OAuth – Token " + (expires.isAfter(Instant.now()) ? "bis " : "abgelaufen seit ") + Ui.time(expires);
     }
 
     private static String nz(String s) {
