@@ -69,6 +69,41 @@ für Tickets, Pull Requests, CI und die Release Notes im Maven-Modul zugleich. Z
   *Zugangsdaten* (anlegen, bearbeiten, Reihenfolge, löschen; Recht „Eigene Einstellungen“). Die Web-UI zeigt Tokens nur
   maskiert und bekommt sie nie zu sehen – beim Bearbeiten bleibt ein leeres Feld beim bisherigen Token.
 
+#### Anmeldung im Browser (OAuth 2.0 / OpenID Connect)
+
+Statt ein Token von Hand einzutragen, kann sich ein Eintrag im Browser anmelden (*Anmeldung* = `oauth`) – so z.B. das
+Modul Pull Requests bei GitHub oder GitLab, ohne persönliches Token. Umgesetzt nach Standard, ohne Bibliothek eines
+Anbieters (`shared/oauth/OAuthClient`):
+
+* **Discovery:** Authorization Server Metadata (RFC 8414) unter `/.well-known/oauth-authorization-server`, sonst OpenID
+  Connect Discovery (`/.well-known/openid-configuration`) beim *Aussteller* – leer = Herkunft der URL, z.B.
+  `https://gitlab.com`; für Keycloak & Co. den Realm angeben (`https://sso.firma.de/realms/dev`). Der in den Metadaten
+  genannte Aussteller muss passen. GitHub hat keine Discovery; für github.com und GitHub Enterprise (`…/api/v3`) gelten
+  dessen feste Endpunkte.
+* **Anmelden:** Device Authorization Grant (RFC 8628), wenn der Server ihn anbietet – die App zeigt Adresse und Code
+  und öffnet den Browser; sonst Authorization Code mit PKCE/S256 (RFC 7636) und Rückleitung an
+  `http://127.0.0.1:<freier Port>/callback` (RFC 8252, mit `state`). Öffentliche Clients brauchen nur die Client-ID,
+  vertrauliche zusätzlich das Client-Geheimnis (`client_secret_post` bzw. `client_secret_basic` laut Metadaten).
+* **Ablauf:** Eintrag mit *Anmeldung* `oauth`, *Client-ID* (und ggf. Aussteller, Scopes) speichern, dann unter der
+  Aktion **Im Browser anmelden** den Eintrag wählen. Access- und Refresh-Token gehen ins Backend.
+* **Erneuern:** Läuft ein Access-Token ab (GitLab: nach 2 Stunden), erneuert es das **Backend** mit dem Refresh-Token
+  (RFC 6749 §6) – die Desktop-App stößt das 5 Minuten vorher an (`CredentialRefresher`), der neue Stand kommt wie
+  Einstellungen bei allen Desktop-Apps des Benutzers an und die Tools werden neu gebaut. Je Benutzer erneuert das
+  Backend nacheinander und nur, was bald abläuft – Server, die Refresh-Tokens bei jeder Verwendung austauschen, melden
+  so keine zweite Desktop-App ab. Das Refresh-Token verlässt das Backend nie; der Team-Server muss dafür den
+  Autorisierungsserver erreichen. Lehnt der Server ab (`invalid_grant`, steht im Log), neu anmelden.
+* **Web-UI:** Einträge mit OAuth lassen sich unter *Mein Konto* einrichten (Ablauf des Tokens sichtbar); angemeldet
+  wird in der Desktop-App, weil der Browser des eigenen Rechners die Anmeldung bestätigt.
+
+| Server | App registrieren | Hinweise |
+|---|---|---|
+| GitHub / GitHub Enterprise | *Settings → Developer settings → OAuth Apps* (bzw. der Organisation), **Enable Device Flow**; Callback-URL beliebig, z.B. `http://127.0.0.1/callback` | Device Flow, kein Client-Geheimnis nötig. Scopes leer = `repo read:org`. Tokens von OAuth-Apps laufen nicht ab. |
+| GitLab (ab 17.x mit Device Flow) | *Benutzer- bzw. Gruppeneinstellungen → Applications*, **nicht vertraulich**, Redirect-URI `http://127.0.0.1/callback`, Scope `api` | Discovery über OIDC; Scopes `api`. Ältere Versionen ohne Device Flow melden sich per Authorization Code + PKCE an. |
+| Andere OAuth-/OIDC-Server (Keycloak, Entra ID, …) | öffentlicher Client mit Device Flow oder Redirect-URI `http://127.0.0.1/callback` | Aussteller angeben; Scopes nach dem Ziel-API. |
+
+Bitbucket Cloud kennt keinen Device Flow und verlangt vertrauliche Clients, Bitbucket Data Center nur HTTP Access
+Tokens – dort bleibt das Token von Hand der einfachere Weg.
+
 ### Berechtigungen an das LLM übermitteln
 
 Das Modul **Berechtigungen** zeigt dem LLM, was es darf, und lässt es fehlende Rechte beim Nutzer anfragen:
@@ -887,7 +922,8 @@ Einstellungen“ anmeldet). Geheimnisse werden mit AES-GCM verschlüsselt, der S
   einer freigegebenen Unterhaltung Anweisungen geben), für Matrix ein eigenes Bot-Konto verwenden und Unterhaltungen
   einschränken. Einladungen nimmt das Modul nur von freigegebenen Absendern an.
 * Zugangsdaten: im Backend je Benutzer verschlüsselt (Tabelle `credential`), nur dem Benutzer selbst zugänglich und nie
-  an das LLM (`permissions_overview` zeigt nur gesetzt/leer).
+  an das LLM (`permissions_overview` zeigt nur gesetzt/leer). OAuth: Refresh-Tokens bleiben im Backend, die Anmeldung
+  nutzt PKCE und `state`, die Rückleitung lauscht nur auf `127.0.0.1` und nur während der Anmeldung.
   Ein Eintrag geht an jedes Modul, dessen Server-URL passt – auch an Subdomains; Einträge daher so genau wie nötig
   fassen (`https://jira.firma.de` statt `https://firma.de`).
 
@@ -963,7 +999,7 @@ java -jar devtools-server.jar            # Port 8080, Web-UI unter /, GraphQL un
 
 Das Protokoll zwischen Desktop-App und Backend (GraphQL-API und Dateiablage) ist versioniert, damit ein Team-Server
 Desktop-Apps verschiedener Stände bedienen kann: **Jede Änderung am Protokoll ergibt eine neue Version**, die älteren
-bietet das Backend weiter an. Die Versionen sind ganze Zahlen (`ApiVersions.CURRENT` in `shared`, heute 1 – Version 1 bringt die Zugangsdaten je Benutzer).
+bietet das Backend weiter an. Die Versionen sind ganze Zahlen (`ApiVersions.CURRENT` in `shared`, heute 2 – Version 1 bringt die Zugangsdaten je Benutzer, Version 2 deren Anmeldung per OAuth).
 
 | Pfad | |
 |---|---|

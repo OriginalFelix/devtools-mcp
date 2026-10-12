@@ -113,7 +113,8 @@ public class BackendConnection {
     static final String ME = "{ me { id username displayName email admin profiles { id name description } "
             + "activeProfileId roles permissions passwordChangeRequired } }";
     static final String SETTINGS_FIELDS = "profileId profileName modules { moduleId enabled tools { name enabled } "
-            + "values { key value } locked } revision credentials { id name url username secret description }";
+            + "values { key value } locked } revision credentials { id name url username secret description auth issuer clientId clientSecret scopes "
+            + "expiresAt }";
     static final String PROJECT_FIELDS = "id name owner toolName writable access description sonarKey ticketProject";
     static final String LOGIN = "mutation($u: String!, $p: String!, $c: String) { login(username: $u, password: $p, "
             + "client: $c) { token expiresAt passwordChangeRequired } }";
@@ -931,15 +932,31 @@ public class BackendConnection {
         Session owner = session;
         List<Map<String, Object>> input = entries.stream().map(e -> {
             Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", e.id());
             m.put("name", e.name());
             m.put("url", e.url());
             m.put("username", e.username());
             m.put("secret", e.secret());
             m.put("description", e.description());
+            m.put("auth", e.oauth() ? CredentialInfo.OAUTH : CredentialInfo.TOKEN);
+            m.put("issuer", e.issuer());
+            m.put("clientId", e.clientId());
+            m.put("clientSecret", e.clientSecret());
+            m.put("scopes", e.scopes());
+            m.put("refreshToken", e.refreshToken());
+            m.put("expiresAt", e.expiresAt());
             return m;
         }).toList();
         SettingsSnapshot s = query("mutation($e: [CredentialInput!]!) { saveCredentials(entries: $e) { "
                 + SETTINGS_FIELDS + " } }", Map.of("e", input), "saveCredentials", SettingsSnapshot.class);
+        onSettings(owner, s);
+    }
+
+    /** Lässt das Backend das Access-Token eines OAuth-Eintrags erneuern, falls es bald abläuft. */
+    public void refreshCredential(long id) {
+        Session owner = session;
+        SettingsSnapshot s = query("mutation($id: Int!) { refreshCredential(id: $id) { " + SETTINGS_FIELDS + " } }",
+                Map.of("id", id), "refreshCredential", SettingsSnapshot.class);
         onSettings(owner, s);
     }
 
