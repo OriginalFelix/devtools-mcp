@@ -45,6 +45,15 @@ jedes Modul übernimmt, was zu ihm passt (Git-Repositories, Gradle-/Maven-Projek
 aufheben* lässt die Tools jeden absoluten Pfad verwenden (aufgelöst zum nächsten passenden Verzeichnis darüber, z.B.
 dem Repository); nur lesend freigegebene Projekte des Team-Servers und die Schalter der Module gelten weiter.
 
+Das Modul **Kennzeichnung** hat ebenfalls keine eigenen Tools. Sein *Text* (Standard `🤖 Generated with
+{AI_MODEL_NAME}`) steht unter jedem Kommentar, jeder Antwort und jeder Beschreibung, die ein KI-Client über die Tools
+veröffentlicht: `pr_comment`, `pr_reply`, `pr_create`, `pr_update`, `ticket_comment`, `ticket_transition … comment=`,
+`ticket_create`, `ticket_update`. `{AI_MODEL_NAME}` wird durch den Modellnamen ersetzt, den das LLM im Parameter
+`aiModel` mitgibt – fehlt er, durch den Namen des MCP-Clients (z.B. „Claude Code“). Steht schon eine Kennzeichnung
+nach derselben Vorlage am Textende (etwa „🤖 Generated with [Claude Code](…)“ vom Client selbst), wird sie ersetzt statt
+verdoppelt. *Kennzeichnung anhängen* schaltet sie ab; *Eigene Kennzeichnung* in den Modulen Tickets und Pull Requests
+ersetzt sie dort.
+
 Das Modul **Zugangsdaten** hat ebenfalls keine eigenen Tools. Wie beim Git Credential Manager werden Tokens und
 Passwörter dort einmal je Server hinterlegt (Name, URL, optional Benutzer, Token/Passwort, Beschreibung) statt in jedem
 Modul erneut: Bleibt das Token- bzw. Passwortfeld eines Moduls leer, setzt die App beim Bauen der Tools (und beim
@@ -183,8 +192,8 @@ optional mit System (`jira:ABC`, `github:octo/*`); leer = alle. Geprüft wird da
 nicht der Parameter `project` – `DEF-9` mit `project=ABC` wird abgelehnt, bevor ein Request rausgeht. Ausnahme
 OpenProject: Nummern wie `#123` verraten das Projekt nicht, daher wird das Arbeitspaket dafür einmal (lesend) abgerufen
 (`openproject:mein-projekt`). Ein Kommentar beim
-Statuswechsel (`ticket_transition … comment=`) braucht zusätzlich `allowComment`; `commentSuffix` hängt eine Kennzeichnung
-an jeden Kommentar. `ticket_links`, `ticket_transitions` und `ticket_worklogs` sind lesend und immer da.
+Statuswechsel (`ticket_transition … comment=`) braucht zusätzlich `allowComment`; Kommentare und Beschreibungen tragen die
+Kennzeichnung aus dem Modul **Kennzeichnung** (`commentSuffix` = eigene für Tickets). `ticket_links`, `ticket_transitions` und `ticket_worklogs` sind lesend und immer da.
 
 `ticket_link` verknüpft `key <relation> target` (z.B. `ABC-1 blocks ABC-2`, `#1 Parent #2` = #2 wird Parent von #1);
 ohne `relation` listet es die möglichen Arten mit ID, ohne etwas zu ändern. `relation` nimmt Name oder ID, `_`/`-`/Leerzeichen
@@ -275,7 +284,8 @@ Annotations, GitLab Testbericht der Pipeline, Code Quality (Premium, über Graph
 Typischer Ablauf „Review-Kommentare abarbeiten“: `pr_comments unresolved=true` → Code ändern, `git_commit` → `pr_push`
 → je Thread `pr_reply` (was geändert wurde) → `pr_resolve`. `writeProjects` schränkt alle schreibenden Tools auf
 Repositories ein (`github:octo/*`, `PROJ/app`); geprüft wird das Repository aus dem Pull-Request-Schlüssel.
-`commentSuffix` kennzeichnet Kommentare und Antworten. Ein weiterer Server (z.B. Gitea) braucht eine
+Kommentare, Antworten und Beschreibungen tragen die Kennzeichnung aus dem Modul **Kennzeichnung**
+(`commentSuffix` = eigene für Pull Requests). Ein weiterer Server (z.B. Gitea) braucht eine
 `GitServerProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider`.
 

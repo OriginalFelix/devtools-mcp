@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.core.Signature;
 import systems.grebe.devtools.mcp.modules.ticket.spi.ProviderSettings;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketProvider;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
@@ -29,7 +30,8 @@ public final class TicketEnvironment {
     private final int maxPerColumn;
     private final int maxLines;
     private final List<String> writeProjects;
-    private final String commentSuffix;
+    /** Vorlage der Kennzeichnung: eigene des Moduls, sonst die aus dem Modul „Kennzeichnung“; leer = keine. */
+    private final String signature;
 
     private final TicketOwnership ownership;
 
@@ -54,7 +56,7 @@ public final class TicketEnvironment {
         this.maxPerColumn = Math.max(1, c.getInt(TicketModule.MAX_PER_COLUMN, 15));
         this.maxLines = Math.max(50, c.getInt(TicketModule.MAX_LINES, 400));
         this.writeProjects = c.getList(TicketModule.WRITE_PROJECTS);
-        this.commentSuffix = c.getString(TicketModule.COMMENT_SUFFIX, "");
+        this.signature = c.getString(TicketModule.COMMENT_SUFFIX, Signature.template(c));
     }
 
     // ------------------------------------------------------------------ Schreibfreigabe
@@ -141,12 +143,17 @@ public final class TicketEnvironment {
         return e.system().canonicalKey(key.trim(), e.project(project));
     }
 
-    /** Kommentartext mit optionaler Kennzeichnung. */
-    public String commentBody(String body) {
+    /** Kommentartext mit Kennzeichnung; {@code model} ersetzt {@link Signature#MODEL}. */
+    public String commentBody(String body, String model) {
         if (body == null || body.isBlank()) {
             throw new IllegalArgumentException("Leerer Kommentar – Text in 'body' angeben.");
         }
-        return commentSuffix.isBlank() ? body.strip() : body.strip() + "\n\n" + commentSuffix.strip();
+        return signed(body, model);
+    }
+
+    /** Text (z.B. Beschreibung) mit Kennzeichnung; ohne Text nur die Kennzeichnung, ohne beides leer. */
+    public String signed(String text, String model) {
+        return Signature.sign(text, signature, model);
     }
 
     public List<Entry> entries() {

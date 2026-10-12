@@ -4,9 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.Signature;
+import systems.grebe.devtools.mcp.core.SignatureModule;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 
 import static systems.grebe.devtools.mcp.modules.ticket.TicketTools.PROJECT;
@@ -35,8 +38,11 @@ public class TicketEditTools {
                     + "(leert), {\"customfield_10368\": \"me\"}, {\"Lösungsversionen\": \"43.1, 42.6\"}. Benutzer per "
                     + "Name/E-Mail oder me, Listen als Kommaliste; Werte, die mit { oder [ beginnen, gehen als JSON hinaus") Map<String, String> fields,
             @ToolParam(required = false, description = PROJECT) String project,
-            @ToolParam(required = false, description = PROVIDER) String provider) {
-        TicketSystem.TicketUpdate u = new TicketSystem.TicketUpdate(blankToNull(title), description, labels);
+            @ToolParam(required = false, description = PROVIDER) String provider,
+            @ToolParam(required = false, description = Signature.MODEL_PARAM) String aiModel,
+            ToolContext toolContext) {
+        TicketSystem.TicketUpdate u = new TicketSystem.TicketUpdate(blankToNull(title), description == null ? null
+                : env.signed(description, SignatureModule.modelName(aiModel, toolContext)), labels);
         boolean withFields = fields != null && !fields.isEmpty();
         if (u.isEmpty() && !withFields) {
             throw new IllegalArgumentException("Nichts zu ändern – title, description, labels oder fields angeben.");

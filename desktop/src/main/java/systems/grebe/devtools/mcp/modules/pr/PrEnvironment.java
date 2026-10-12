@@ -16,6 +16,7 @@ import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevWalk;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
+import systems.grebe.devtools.mcp.core.Signature;
 import systems.grebe.devtools.mcp.core.Workspaces;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServer;
 import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
@@ -61,7 +62,8 @@ public final class PrEnvironment {
     private final String remote;
     private final int maxLines;
     private final List<String> writeProjects;
-    private final String commentSuffix;
+    /** Vorlage der Kennzeichnung: eigene des Moduls, sonst die aus dem Modul „Kennzeichnung“; leer = keine. */
+    private final String signature;
     private final Duration pushTimeout;
 
     public PrEnvironment(GitServerProviders providers, ModuleConfig c) {
@@ -80,7 +82,7 @@ public final class PrEnvironment {
         this.remote = c.getString(PrModule.REMOTE, "origin");
         this.maxLines = Math.max(50, c.getInt(PrModule.MAX_LINES, 1500));
         this.writeProjects = c.getList(PrModule.WRITE_PROJECTS);
-        this.commentSuffix = c.getString(PrModule.COMMENT_SUFFIX, "");
+        this.signature = c.getString(PrModule.COMMENT_SUFFIX, Signature.template(c));
         this.pushTimeout = Duration.ofSeconds(Math.max(30, c.getInt(PrModule.PUSH_TIMEOUT, 120)));
     }
 
@@ -324,12 +326,17 @@ public final class PrEnvironment {
         return false;
     }
 
-    /** Kommentartext mit optionaler Kennzeichnung. */
-    public String commentBody(String body) {
+    /** Kommentartext mit Kennzeichnung; {@code model} ersetzt {@link Signature#MODEL}. */
+    public String commentBody(String body, String model) {
         if (body == null || body.isBlank()) {
             throw new IllegalArgumentException("Leerer Kommentar – Text in 'body' angeben.");
         }
-        return commentSuffix.isBlank() ? body.strip() : body.strip() + "\n\n" + commentSuffix.strip();
+        return signed(body, model);
+    }
+
+    /** Text (z.B. Beschreibung) mit Kennzeichnung; ohne Text nur die Kennzeichnung, ohne beides leer. */
+    public String signed(String text, String model) {
+        return Signature.sign(text, signature, model);
     }
 
     static boolean blank(String s) {

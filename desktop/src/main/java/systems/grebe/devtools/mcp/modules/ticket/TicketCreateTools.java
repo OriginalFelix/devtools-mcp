@@ -3,9 +3,12 @@ package systems.grebe.devtools.mcp.modules.ticket;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.ShellHints;
+import systems.grebe.devtools.mcp.core.Signature;
+import systems.grebe.devtools.mcp.core.SignatureModule;
 import systems.grebe.devtools.mcp.modules.ticket.spi.TicketSystem;
 
 import static systems.grebe.devtools.mcp.modules.ticket.TicketTools.PROJECT;
@@ -36,13 +39,20 @@ public class TicketCreateTools {
                     + "\"Transform\"}, {\"Priorität\": \"Low\"}, {\"customfield_10368\": \"me\"}. Benutzer per Name/E-Mail "
                     + "oder me, Listen als Kommaliste; Werte, die mit { oder [ beginnen, gehen als JSON hinaus. Jira nimmt die "
                     + "Felder des Create-Screens; andere Systeme setzen sie nach dem Anlegen wie ticket_update") Map<String, String> fields,
-            @ToolParam(required = false, description = PROVIDER) String provider) {
+            @ToolParam(required = false, description = PROVIDER) String provider,
+            @ToolParam(required = false, description = Signature.MODEL_PARAM) String aiModel,
+            ToolContext toolContext) {
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("Titel fehlt ('title').");
         }
         TicketEnvironment.Entry e = env.resolve(provider, null);
         String target = env.checkWrite(e, null, project, "Anlegen");
         return TicketTools.written(env.remember(e, e.system().create(target,
-                new TicketSystem.NewTicket(title.trim(), description, type, labels, assignees), fields), true));
+                new TicketSystem.NewTicket(title.trim(), blankToNull(env.signed(description,
+                        SignatureModule.modelName(aiModel, toolContext))), type, labels, assignees), fields), true));
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 }

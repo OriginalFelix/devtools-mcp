@@ -92,7 +92,7 @@ class BitbucketServerProviderTest {
         bb.on(CLOUD_PR + "/comments", "{\"id\":7,\"links\":{\"html\":{\"href\":\"https://bitbucket.org/c/7\"}}}");
         bb.on(CLOUD_PR + "/comments/1/resolve", "{}");
         PrEnvironment env = env("cloud", Map.of());
-        assertThat(new PrCommentTools(env).reply("1", "Erledigt", "team/web#5", null, null, null)).contains("[ID 7]");
+        assertThat(new PrCommentTools(env).reply("1", "Erledigt", "team/web#5", null, null, null, null, null)).contains("[ID 7]");
         assertThat(bb.last(CLOUD_PR + "/comments").body()).contains("\"parent\":{\"id\":1}", "\"raw\":\"Erledigt\"");
         new PrResolveTools(env).resolve("1", false, "team/web#5", null, null, null);
         assertThat(bb.last(CLOUD_PR + "/comments/1/resolve").method()).isEqualTo("DELETE");
@@ -111,7 +111,7 @@ class BitbucketServerProviderTest {
         assertThat(new PrTools(env).comments("team/web#5", null, null, null, null, null))
                 .contains("### [1] Datei  src/C.java  OFFEN", "- scanner [Integration], ");
 
-        new PrCommentTools(env).comment("Aufteilen", "team/web#5", "src/C.java", null, null, null, null);
+        new PrCommentTools(env).comment("Aufteilen", "team/web#5", "src/C.java", null, null, null, null, null, null);
         assertThat(bb.last(CLOUD_PR + "/comments").body()).contains("\"inline\":{\"path\":\"src/C.java\"}");
 
         bb.on(CLOUD_PR, "{\"id\":5,\"source\":{\"commit\":{\"hash\":\"abc\"}}}");
@@ -180,9 +180,9 @@ class BitbucketServerProviderTest {
         bb.on(DC_PR + "/comments/40", r -> StubServer.Reply.json("{\"id\":40,\"version\":4}"));
         PrEnvironment env = env("datacenter", Map.of());
 
-        new PrCommentTools(env).comment("Hm", "PROJ/app#5", "src/A.java", 2, null, null, null);
+        new PrCommentTools(env).comment("Hm", "PROJ/app#5", "src/A.java", 2, null, null, null, null, null);
         assertThat(bb.last(DC_PR + "/comments").body()).contains("\"lineType\":\"ADDED\"", "\"fileType\":\"TO\"", "\"line\":2");
-        assertThatThrownBy(() -> new PrCommentTools(env).comment("Hm", "PROJ/app#5", "src/A.java", 99, null, null, null))
+        assertThatThrownBy(() -> new PrCommentTools(env).comment("Hm", "PROJ/app#5", "src/A.java", 99, null, null, null, null, null))
                 .hasMessageContaining("liegt nicht im Diff");
 
         new PrResolveTools(env).resolve("40", true, "PROJ/app#5", null, null, null);
@@ -202,7 +202,7 @@ class BitbucketServerProviderTest {
         assertThat(new PrTools(env).comments("PROJ/app#5", null, null, null, null, null))
                 .contains("### [70] Datei  src/C.java  OFFEN", "- ci-bot [Integration], ");
 
-        new PrCommentTools(env).comment("Ergänzt", "PROJ/app#5", "src/C.java", null, null, null, null);
+        new PrCommentTools(env).comment("Ergänzt", "PROJ/app#5", "src/C.java", null, null, null, null, null, null);
         assertThat(bb.last(DC_PR + "/comments").body()).contains("\"anchor\":{\"path\":\"src/C.java\",\"diffType\":\"EFFECTIVE\"}");
         assertThat(bb.requests).noneMatch(r -> r.path().startsWith(DC_PR + "/diff"));
 
@@ -246,7 +246,7 @@ class BitbucketServerProviderTest {
         bb.on("/rest/api/1.0/projects/PROJ/repos/app/pull-requests", r -> new StubServer.Reply(201,
                 "{\"id\":6,\"links\":{\"self\":[{\"href\":\"https://bb/pr/6\"}]}}", Map.of()));
         String out = new PrCreateTools(env("datacenter", Map.of())).create("Login", "Text", "feature/login", null, null,
-                java.util.List.of("anna"), null, null, "proj/app", null);
+                java.util.List.of("anna"), null, null, "proj/app", null, null, null);
         assertThat(out).contains("PROJ/app#6: Pull Request angelegt: feature/login → develop", "https://bb/pr/6");
         assertThat(out).doesNotContain("bind_pr");
         assertThat(bb.last("/rest/api/1.0/projects/PROJ/repos/app/pull-requests").body())

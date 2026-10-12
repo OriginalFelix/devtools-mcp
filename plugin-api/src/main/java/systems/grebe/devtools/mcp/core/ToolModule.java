@@ -115,6 +115,15 @@ public interface ToolModule {
     }
 
     /**
+     * Ob das Modul Texte im Namen des Nutzers veröffentlicht (Kommentare, Beschreibungen) und sie mit der Kennzeichnung
+     * aus dem Modul „Kennzeichnung“ versieht – dann steht deren Vorlage in der Konfiguration (siehe
+     * {@link Signature#template}). Standard nein.
+     */
+    default boolean signsTexts() {
+        return false;
+    }
+
+    /**
      * Geheimnisse, die aus den zentralen Zugangsdaten (Modul „Zugangsdaten“) kommen dürfen, wenn sie im Modul leer
      * bleiben – passend zur Server-URL des Moduls. Standard: aus dem Schema abgeleitet (siehe
      * {@link CredentialField#derive}); Module mit mehreren URLs oder ohne URL-Feld ordnen selbst zu, {@code List.of()}
