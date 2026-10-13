@@ -51,6 +51,12 @@ class Win32WindowSystemTest {
         }
     }
 
+    /** Mit sichtbarem Fenster der Fixture ist der Bildschirm offensichtlich nicht gesperrt. */
+    @Test
+    void unlockedDesktopIsNotReportedAsLocked() {
+        assertThat(new Win32WindowSystem().locked()).isFalse();
+    }
+
     @Test
     void findsWindowWithProcessAndThread() {
         assertThat(window.pid()).isEqualTo(fixture.pid());

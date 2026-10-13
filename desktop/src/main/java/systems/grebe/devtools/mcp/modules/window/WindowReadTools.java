@@ -44,6 +44,7 @@ public class WindowReadTools {
     public String list(
             @ToolParam(required = false, description = "Filter: Teil von Prozessname oder Fenstertitel (ohne "
                     + "Groß-/Kleinschreibung)") String filter) {
+        support.requirePresent();
         String f = filter == null || filter.isBlank() ? null : filter.toLowerCase(Locale.ROOT);
         Map<Long, List<NativeWindow>> byPid = new LinkedHashMap<>();
         for (NativeWindow w : support.windows().windows()) {
@@ -70,7 +71,8 @@ public class WindowReadTools {
         WindowSession.Binding b = support.session().current();
         StringBuilder head = new StringBuilder(shown + " Prozess(e) mit Fenstern");
         if (rejected > 0) {
-            head.append(", ").append(rejected).append(" nicht freigegeben/ausgeschlossen");
+            head.append(", ").append(rejected).append(" nicht freigegeben/ausgeschlossen (freigeben in der DevTools-App: "
+                    + "Fenstersteuerung → „Nur diese Prozesse“, dann speichern)");
         }
         head.append(" – ").append(support.windows().name()).append('\n');
         head.append(b == null ? "Gebunden: nichts\n" : "Gebunden: " + b.describe() + "\n");
@@ -89,6 +91,7 @@ public class WindowReadTools {
             @ToolParam(required = false, description = "true (Standard) = auch Fenster von Kindprozessen (z.B. "
                     + "Electron/Chromium, Starter-Skripte); nicht bei Shell-Prozessen wie dem Explorer")
             Boolean includeChildren) {
+        support.requirePresent();
         long target = pid != null ? pid : findByName(process);
         ProcessHandle handle = ProcessHandle.of(target).filter(ProcessHandle::isAlive)
                 .orElseThrow(() -> new IllegalArgumentException("Prozess " + target + " läuft nicht."));
@@ -131,6 +134,7 @@ public class WindowReadTools {
     @Tool(name = "windows", description = "Listet die aktuellen Fenster des gebundenen Prozesses (vorderstes zuerst) mit "
             + "ID, Titel, UI-Thread und Größe – z.B. um einen neu geöffneten Dialog zu finden." + ShellHints.WINDOW)
     public String windows() {
+        support.requirePresent();
         return "Gebunden: " + support.session().require().describe() + scope() + "\n\n" + windowList();
     }
 
@@ -145,7 +149,8 @@ public class WindowReadTools {
         }
         StringBuilder sb = new StringBuilder();
         own.forEach(w -> sb.append(support.isForeground(w) ? "* " : "- ").append(describe(w)).append('\n'));
-        return sb.append("(* = im Vordergrund)").toString();
+        return sb.append("(* = im Vordergrund, d.h. das aktive Fenster des Nutzers – vorn sichtbar reicht dafür nicht)")
+                .toString();
     }
 
     @Tool(name = "screenshot", description = "Bild eines Fensters des gebundenen Prozesses (PNG). Mit eigenem Zeiger "
@@ -153,6 +158,7 @@ public class WindowReadTools {
             + "window_scroll und window_drag beziehen sich auf die Pixel dieses Bildes. Nach jeder Eingabe erneut "
             + "aufrufen, um das Ergebnis zu prüfen." + ShellHints.WINDOW)
     public String screenshot(@ToolParam(required = false, description = WINDOW) String window) {
+        support.requirePresent();
         support.windows().requireCapturePermission();
         return support.exclusive(() -> {
             NativeWindow w = support.resolve(window);

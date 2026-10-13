@@ -22,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.config.ModuleSettings;
 
 class McpRuntimeTest {
@@ -151,8 +152,15 @@ class McpRuntimeTest {
 
         /** Ruft ein anderes Tool auf wie context_call: mit dem Tool-Kontext des äußeren Aufrufs. */
         @Tool(name = "outer", description = "Ruft shot auf.")
-        public String outer(ToolContext toolContext) {
-            return "außen:" + runtime.enabledTool("window_shot").orElseThrow().call("{}", toolContext);
+        public String outer(@ToolParam(required = false) String target, ToolContext toolContext) {
+            return "außen:" + runtime.enabledTool("window_" + (target == null ? "shot" : target)).orElseThrow()
+                    .call("{}", toolContext);
+        }
+
+        /** Liest den Client-Namen wie die Kennzeichnung von pr_create und ticket_create. */
+        @Tool(name = "sign", description = "Kennzeichnung.")
+        public String sign(ToolContext toolContext) {
+            return "von " + SignatureModule.modelName(null, toolContext);
         }
     }
 
@@ -187,12 +195,16 @@ class McpRuntimeTest {
         return added.getAllValues().stream().filter(s -> s.tool().name().equals(name)).findFirst().orElseThrow();
     }
 
-    @SuppressWarnings("deprecation")
     private static McpSchema.CallToolResult call(McpServerFeatures.SyncToolSpecification spec) {
+        return call(spec, Map.of());
+    }
+
+    @SuppressWarnings("deprecation")
+    private static McpSchema.CallToolResult call(McpServerFeatures.SyncToolSpecification spec, Map<String, Object> args) {
         McpSyncServerExchange exchange = org.mockito.Mockito.mock(McpSyncServerExchange.class);
         when(exchange.sessionId()).thenReturn("ki-1");
         when(exchange.getClientInfo()).thenReturn(new McpSchema.Implementation("Claude Code", "1"));
-        return spec.callHandler().apply(exchange, new McpSchema.CallToolRequest(spec.tool().name(), Map.of()));
+        return spec.callHandler().apply(exchange, new McpSchema.CallToolRequest(spec.tool().name(), args));
     }
 
     private static String text(McpSchema.CallToolResult result) {
@@ -216,7 +228,7 @@ class McpRuntimeTest {
 
         // unveränderte Definition: nur der Aufruf im Slot wird getauscht – Bilder und Session bleiben
         runtime.rebuild(sessionModule(), ON, List.of());
-        verify(server, times(3)).addTool(any()); // drei Tools, jedes nur beim ersten Aufbau angemeldet
+        verify(server, times(4)).addTool(any()); // vier Tools, jedes nur beim ersten Aufbau angemeldet
         McpSchema.CallToolResult second = call(registered);
         assertThat(text(second)).contains("ki-1/Claude Code");
         assertThat(images(second)).containsExactly("image/png");
@@ -241,6 +253,15 @@ class McpRuntimeTest {
 
         assertThat(text(result)).contains("skript:").contains("ki-1/Claude Code");
         assertThat(images(result)).containsExactly("image/png");
+    }
+
+    /** Die Kennzeichnung (pr_create, ticket_create) nennt den MCP-Client – auch durch Bilder- und Session-Wrapper. */
+    @Test
+    void signatureSeesTheClientDirectlyAndInNestedCalls() {
+        runtime.rebuild(sessionModule(), ON, List.of());
+
+        assertThat(text(call(added("window_sign")))).isEqualTo("von Claude Code");
+        assertThat(text(call(added("window_outer"), Map.of("target", "sign")))).isEqualTo("außen:von Claude Code");
     }
 
     @Test

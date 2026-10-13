@@ -49,6 +49,26 @@ class WindowToolsTest {
                 "Gebunden: nichts").doesNotContain("Fremd");
     }
 
+    /** Gesperrter Bildschirm (Sperre, Standby): sofort pausieren statt Tokens für Versuche zu verbrauchen. */
+    @Test
+    void lockedScreenTellsTheAiToPauseButUnbindStillWorks() {
+        bind();
+        desktop.locked = true;
+
+        java.util.List<org.assertj.core.api.ThrowableAssert.ThrowingCallable> tools = java.util.List.of(() -> read.list(null),
+                () -> read.bind(SELF, null, false), read::windows, () -> read.screenshot(null),
+                () -> input.click(1, 1, null, null, null, null), () -> keys.type("x", null, null),
+                () -> keys.key("enter", null, null));
+        for (var tool : tools) {
+            assertThatThrownBy(tool).hasMessageContaining("Bildschirm ist gesperrt").hasMessageContaining("pausieren");
+        }
+        assertThat(desktop.events).noneMatch(e -> e.startsWith("capture") || e.startsWith("click"));
+        assertThat(read.unbind()).contains("aufgehoben");
+
+        desktop.locked = false;
+        assertThat(read.list(null)).contains("(PID " + SELF + ")");
+    }
+
     @Test
     void withoutBindingToolsAskToBindFirst() {
         assertThatThrownBy(() -> read.windows()).hasMessageContaining("window_bind");

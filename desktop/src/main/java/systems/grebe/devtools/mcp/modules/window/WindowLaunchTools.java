@@ -46,6 +46,7 @@ public class WindowLaunchTools {
     public String launch(
             @ToolParam(description = "Programm: Name oder Pfad, z.B. \"winword\" oder \"C:\\\\Tools\\\\app.exe\"") String program,
             @ToolParam(required = false, description = "Argumente, z.B. [\"/w\"] für ein leeres Word-Dokument") List<String> arguments) {
+        support.requirePresent();
         if (program == null || program.isBlank()) {
             throw new IllegalArgumentException("Kein Programm angegeben.");
         }

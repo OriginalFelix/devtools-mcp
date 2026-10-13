@@ -38,6 +38,7 @@ public class WindowInputTools {
             @ToolParam(required = false, description = "Anzahl Klicks, 2 = Doppelklick (Standard 1)") Integer count,
             @ToolParam(required = false, description = "Gehaltene Tasten, z.B. \"ctrl\" oder \"shift\"") String modifiers,
             @ToolParam(required = false, description = WindowReadTools.WINDOW) String window) {
+        support.requirePresent();
         int mask = button(button);
         int clicks = count == null ? 1 : Math.clamp(count, 1, 3);
         List<Integer> held = List.of();
@@ -74,6 +75,7 @@ public class WindowInputTools {
             @ToolParam(description = "y" + COORDS) int y,
             @ToolParam(description = "Rasten: positiv = nach unten, negativ = nach oben (max. ±50)") int amount,
             @ToolParam(required = false, description = WindowReadTools.WINDOW) String window) {
+        support.requirePresent();
         int notches = Math.clamp(amount, -50, 50);
         return support.pointerInput(window, false, g -> {
             g.move(g.toScreen(x, y));
@@ -95,6 +97,7 @@ public class WindowInputTools {
             @ToolParam(description = "Ziel y") int toY,
             @ToolParam(required = false, description = "left (Standard), right oder middle") String button,
             @ToolParam(required = false, description = WindowReadTools.WINDOW) String window) {
+        support.requirePresent();
         int mask = button(button);
         return support.pointerInput(window, false, g -> {
             Point from = g.toScreen(fromX, fromY);

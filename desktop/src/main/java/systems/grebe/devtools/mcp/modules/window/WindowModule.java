@@ -105,14 +105,17 @@ public class WindowModule implements ToolModule {
                 Nutzers – NICHT per PowerShell, AppleScript, xdotool oder Skripten.
 
                 Ablauf:
-                1. `window_list` → Prozess finden, `window_bind` (pid oder process) → nur dessen Fenster sind ansprechbar. \
+                1. `window_list` → Prozess finden, `window_bind` (pid oder process) → nur dessen Fenster sind ansprechbar; \
+                andere window_*-Tools erst nach der Antwort aufrufen, nicht parallel dazu. \
                 Programme selbst starten nur mit `window_launch` (startet im Hintergrund und bindet) – nie per Shell, \
                 sonst bekommt das Fenster den Fokus und die Eingaben des Nutzers landen darin.
                 2. `window_screenshot` → Bild ansehen. Koordinaten für `window_click`, `window_scroll` und \
                 `window_drag` sind Pixel dieses Bildes.
                 3. Eingabe (`window_click`, `window_scroll`, `window_drag`; mit Tastatur `window_type`, `window_key`), \
                 danach erneut `window_screenshot` und das Ergebnis prüfen, bevor es weitergeht. Neue Dialoge findet \
-                `window_windows`.
+                `window_windows`. Bleibt die Prüfsumme des Bildes gleich, ist die Eingabe nicht angekommen: \
+                Koordinaten prüfen; verwirft das Programm Eingaben im Hintergrund, den Nutzer bitten, in der App \
+                „Maus der KI“/„Tastatur der KI“ auf `maus`/`tastatur` zu stellen.
                 4. Tippen geht in das Element, das du zuletzt angeklickt hast – vor dem Tippen also in das Eingabefeld \
                 klicken.
 
@@ -123,6 +126,8 @@ public class WindowModule implements ToolModule {
                 - Meldet ein Tool, dass der Nutzer die Maus bewegt hat, NICHT sofort wiederholen: der Nutzer arbeitet \
                 gerade selbst. Fragen, ob du weitermachen sollst.
                 - Fokusverlust bricht ab: erst nachsehen (Screenshot), was sich geöffnet hat.
+                - Meldet ein Tool, dass der Bildschirm gesperrt ist (Sperre, Standby), sofort pausieren: nicht \
+                wiederholen, dem Nutzer kurz den Stand sagen und auf seine nächste Nachricht warten.
                 - Fertig? Immer `window_unbind` aufrufen – das blendet den Zeiger der KI, Rahmen und Hinweis aus.
                 - Keine Passwörter, Zugangsdaten oder Zahlungsdaten eintippen; nichts Unumkehrbares (Löschen, Senden, \
                 Bezahlen) ohne ausdrückliche Bestätigung des Nutzers.""";

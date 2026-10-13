@@ -52,7 +52,7 @@ class FocusGuardTest {
 
         assertThat(restored).isEqualTo(1);
         assertThat(desktop.foreground).isEqualTo(USER);
-        assertThat(desktop.events).containsExactly("activate 10");
+        assertThat(desktop.events).containsExactly("return 10");
     }
 
     @Test
@@ -84,6 +84,6 @@ class FocusGuardTest {
         guard.guard(OptionalLong.of(USER), Duration.ofSeconds(1));
 
         assertThat(desktop.foreground).isEqualTo(OTHER_USER_WINDOW); // dorthin zurück, nicht zum alten Fenster
-        assertThat(desktop.events).containsExactly("activate 20");
+        assertThat(desktop.events).containsExactly("return 20");
     }
 }

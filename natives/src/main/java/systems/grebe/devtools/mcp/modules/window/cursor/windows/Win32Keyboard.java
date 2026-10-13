@@ -13,6 +13,8 @@ import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.win32.StdCallLibrary;
 import com.sun.jna.win32.W32APIOptions;
 
+import systems.grebe.devtools.mcp.modules.window.cursor.MouseButton;
+
 /**
  * Die Tastatur eines zweiten Zeigers: Tastatur-Nachrichten direkt an ein Fenster – ohne es zu aktivieren und ohne die
  * Tastatur des Nutzers. Text geht als {@code WM_CHAR} (beliebige Zeichen, unabhängig vom Tastaturlayout, auch
@@ -35,6 +37,9 @@ final class Win32Keyboard {
     private static final int WM_SYSKEYDOWN = 0x104;
     private static final int WM_SYSKEYUP = 0x105;
     private static final int MAPVK_VK_TO_VSC = 0;
+    private static final int VK_LBUTTON = 0x01;
+    private static final int VK_RBUTTON = 0x02;
+    private static final int VK_MBUTTON = 0x04;
     private static final int VK_RETURN = 0x0D;
     private static final int VK_SHIFT = 0x10;
     private static final int VK_CONTROL = 0x11;
@@ -99,7 +104,7 @@ final class Win32Keyboard {
             post(target, msg, vk, lParam); // ohne Kombination: der Tastaturzustand spielt keine Rolle
             return;
         }
-        withKeyState(target, shift, ctrl, alt, down ? vk : 0, () -> post(target, msg, vk, lParam));
+        withKeyState(target, shift, ctrl, alt, down ? vk : 0, null, () -> post(target, msg, vk, lParam));
     }
 
     /** Führt {@code body} (z.B. einen Klick) mit den gehaltenen Strg/Umschalt/Alt im Tastaturzustand des Ziels aus. */
@@ -111,7 +116,17 @@ final class Win32Keyboard {
             body.run();
             return;
         }
-        withKeyState(target, shift, ctrl, alt, 0, body);
+        withKeyState(target, shift, ctrl, alt, 0, null, body);
+    }
+
+    /**
+     * Wie {@link #withModifiers}, dazu die gehaltenen Maustasten im Tastaturzustand des Ziels: Java/AWT liest sie dort
+     * ({@code GetKeyState(VK_LBUTTON)}) statt aus der Nachricht – fehlen sie beim Drücken, hält Swing den Klick für
+     * Ziehen und reicht ihn nicht an das Element darunter weiter.
+     */
+    void withModifiersAndButtons(HWND target, Set<Integer> heldKeys, Set<MouseButton> heldButtons, Runnable body) {
+        withKeyState(target, heldKeys.contains(KeyEvent.VK_SHIFT), heldKeys.contains(KeyEvent.VK_CONTROL),
+                heldKeys.contains(KeyEvent.VK_ALT), 0, heldButtons, body);
     }
 
     /** Wiederholung 1, Scancode, Extended-Bit, Kontext (Alt), vorheriger Zustand und Übergang beim Loslassen. */
@@ -130,8 +145,13 @@ final class Win32Keyboard {
         return l;
     }
 
-    /** Setzt Strg/Umschalt/Alt (und die gedrückte Taste) im Tastaturzustand des Ziel-Threads, solange {@code body} wirkt. */
-    private void withKeyState(HWND target, boolean shift, boolean ctrl, boolean alt, int pressedVk, Runnable body) {
+    /**
+     * Setzt Strg/Umschalt/Alt (und die gedrückte Taste) im Tastaturzustand des Ziel-Threads, solange {@code body} wirkt;
+     * mit {@code buttons} auch die Maustasten (gehalten = gedrückt, sonst losgelassen), {@code null} lässt sie, wie sie
+     * sind.
+     */
+    private void withKeyState(HWND target, boolean shift, boolean ctrl, boolean alt, int pressedVk,
+                              Set<MouseButton> buttons, Runnable body) {
         int targetThread = User32.INSTANCE.GetWindowThreadProcessId(target, new IntByReference());
         int self = Kernel32.INSTANCE.GetCurrentThreadId();
         boolean attached = targetThread != 0 && targetThread != self && user32.AttachThreadInput(self, targetThread, true);
@@ -147,6 +167,11 @@ final class Win32Keyboard {
         set(state, VK_MENU, VK_LMENU, alt);
         if (pressedVk != 0) {
             state[pressedVk] = (byte) DOWN;
+        }
+        if (buttons != null) {
+            state[VK_LBUTTON] = buttons.contains(MouseButton.LEFT) ? (byte) DOWN : 0;
+            state[VK_RBUTTON] = buttons.contains(MouseButton.RIGHT) ? (byte) DOWN : 0;
+            state[VK_MBUTTON] = buttons.contains(MouseButton.MIDDLE) ? (byte) DOWN : 0;
         }
         try {
             user32.SetKeyboardState(state);

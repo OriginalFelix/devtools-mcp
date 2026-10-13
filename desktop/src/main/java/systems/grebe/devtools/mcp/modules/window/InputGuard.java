@@ -45,7 +45,7 @@ final class InputGuard {
      */
     String unverified() {
         return requireForeground ? "" : " Wirkung nicht geprüft – im Hintergrund verwerfen manche Programme Eingaben; "
-                + "mit window_screenshot kontrollieren.";
+                + "mit window_screenshot kontrollieren (gleiche Prüfsumme wie vorher = nichts angekommen).";
     }
 
     InputDevice device() {

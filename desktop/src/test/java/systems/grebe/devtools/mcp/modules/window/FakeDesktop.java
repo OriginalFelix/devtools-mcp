@@ -33,6 +33,8 @@ final class FakeDesktop implements WindowSystem, InputDevice {
     BufferedImage backgroundImage;
     long foreground;
     boolean activationWorks = true;
+    /** Bildschirm gesperrt (Sperre, Standby). */
+    boolean locked;
     private int foregroundLostAfter = -1;
     private int foregroundQueries;
     Point pointer = new Point(0, 0);
@@ -95,6 +97,18 @@ final class FakeDesktop implements WindowSystem, InputDevice {
         if (activationWorks) {
             foreground = id;
         }
+    }
+
+    @Override
+    public boolean returnForeground(long id) {
+        events.add("return " + Long.toHexString(id));
+        foreground = id;
+        return true;
+    }
+
+    @Override
+    public boolean locked() {
+        return locked;
     }
 
     // --- InputDevice

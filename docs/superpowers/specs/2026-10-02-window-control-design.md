@@ -42,6 +42,26 @@ Eingaben holen das Fenster nach vorn und nutzen die echte Tastatur.
   unter macOS ist Cmd erlaubt.
 - Headless-Betrieb oder nicht unterstützte Plattform: das Modul liefert keine Tools und nennt den Grund.
 
+### Nutzer nicht am Rechner (Sperre, Standby)
+
+- Ist der Bildschirm gesperrt (Sperre, Standby, Anmeldebildschirm), scheitert jedes `window_*`-Tool außer
+  `window_unbind` sofort mit dem Hinweis, zu pausieren: nicht wiederholen, nicht abwarten, dem Nutzer den Stand sagen
+  und auf seine nächste Nachricht warten. So verbrauchen KIs keine Tokens für Versuche, die nichts bewirken können
+  (über dem Fenster liegt dann der Sperrbildschirm). `window_unbind` geht immer, damit aufgeräumt werden kann.
+- Erkennung `WindowSystem.locked()`, Windows: Eingaben gehen nicht an den Desktop `Default` (`OpenInputDesktop`
+  scheitert oder liefert `Winlogon`). macOS und X11 erkennen es noch nicht (immer „nicht gesperrt“).
+
+### Den Nutzer nie stören
+
+- Fenster der KI dürfen sichtbar nach vorn kommen, aber dem Nutzer nie den Fokus nehmen: Seine Tastatur, sein
+  Vordergrundfenster und offene Menüs (z.B. ein Kontextmenü, in dem er gerade etwas sucht) bleiben unberührt. Das gilt
+  für die Modi `eigener-zeiger`/`eigene-tastatur`; `maus`/`tastatur` aktivieren das Fenster bewusst.
+- Holt sich ein Programm trotzdem selbst den Vordergrund (Programmstart, Java beim Fokuswechsel – das lässt Windows nur
+  nach längerer Untätigkeit des Nutzers zu), wird er nur auf demselben Weg zurückgegeben (`returnForeground`: reines
+  `SetForegroundWindow`) – nie durch Anhängen an den Eingabe-Thread des Nutzers oder eine simulierte Alt-Taste, die
+  seine Menüs schließen.
+- Tests, die Fenster zeigen, nehmen ebenfalls nie den Fokus.
+
 ## Programme starten (`window_launch`)
 
 Schalter `allowLaunch` (Standard aus). Das Programm muss den Prozessfilter passieren (Name und Kommandozeile, immer

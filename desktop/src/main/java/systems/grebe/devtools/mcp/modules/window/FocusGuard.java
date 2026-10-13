@@ -13,8 +13,9 @@ import systems.grebe.devtools.mcp.modules.window.platform.WindowSystem;
 /**
  * Hält ein von der KI gestartetes Programm im Hintergrund: Holt es sich während des Hochfahrens den Vordergrund, geht
  * er sofort an das Fenster zurück, in dem der Nutzer gerade arbeitet – so landen Tastatur-Eingaben des Nutzers nie im
- * Fenster der KI. Klickt der Nutzer das Fenster selbst an (Maustaste gedrückt, während es nach vorn kommt), will er es
- * haben: dann hört der Wächter auf.
+ * Fenster der KI. Zurückgegeben wird nur so, wie Windows es ohnehin zulässt ({@link WindowSystem#returnForeground}) –
+ * nie mit simulierten Tasten, die etwa ein offenes Kontextmenü des Nutzers schließen. Klickt der Nutzer das Fenster
+ * selbst an (Maustaste gedrückt, während es nach vorn kommt), will er es haben: dann hört der Wächter auf.
  */
 final class FocusGuard {
 
@@ -59,7 +60,7 @@ final class FocusGuard {
                     return -1; // der Nutzer hat es angeklickt
                 }
                 if (ours && user != 0) {
-                    windows.activate(user);
+                    windows.returnForeground(user); // schonend: nie Tasten simulieren, die Menüs des Nutzers schließen
                     restored++;
                 } else if (!ours) {
                     user = fg.getAsLong(); // der Nutzer ist selbst in ein anderes Fenster gewechselt

@@ -40,6 +40,8 @@ final class Win32WindowSystem implements WindowSystem {
     private static final int WS_EX_LAYERED = 0x80000;
     private static final int LWA_ALPHA = 0x2;
     private static final int SW_RESTORE = 9;
+    private static final int DESKTOP_READOBJECTS = 0x1;
+    private static final int UOI_NAME = 2;
     private static final int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
     private static final int DWMWA_CLOAKED = 14;
     private static final byte VK_MENU = 0x12;
@@ -65,6 +67,9 @@ final class Win32WindowSystem implements WindowSystem {
     private final MethodHandle attachThreadInput;
     private final MethodHandle keybdEvent;
     private final MethodHandle getCurrentThreadId;
+    private final MethodHandle openInputDesktop;
+    private final MethodHandle getUserObjectInformation;
+    private final MethodHandle closeDesktop;
     private final MethodHandle setThreadDpiAwarenessContext;
     private final MethodHandle dwmGetWindowAttribute;
     private final MethodHandle getClassName;
@@ -97,6 +102,11 @@ final class Win32WindowSystem implements WindowSystem {
         keybdEvent = Natives.bind(linker, user32, "keybd_event",
                 FunctionDescriptor.ofVoid(JAVA_BYTE, JAVA_BYTE, JAVA_INT, JAVA_LONG));
         getCurrentThreadId = Natives.bind(linker, kernel32, "GetCurrentThreadId", FunctionDescriptor.of(JAVA_INT));
+        openInputDesktop = Natives.bind(linker, user32, "OpenInputDesktop",
+                FunctionDescriptor.of(ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT));
+        getUserObjectInformation = Natives.bind(linker, user32, "GetUserObjectInformationW",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, JAVA_INT, ADDRESS, JAVA_INT, ADDRESS));
+        closeDesktop = Natives.bind(linker, user32, "CloseDesktop", FunctionDescriptor.of(JAVA_INT, ADDRESS));
         // erst ab Windows 10 1607 – fehlt die Funktion, liefert Windows bei DPI-bewusster JVM trotzdem physische Pixel
         setThreadDpiAwarenessContext = Natives.bindOptional(linker, user32, "SetThreadDpiAwarenessContext",
                 FunctionDescriptor.of(ADDRESS, ADDRESS));
@@ -349,6 +359,39 @@ final class Win32WindowSystem implements WindowSystem {
             if (attached) {
                 Natives.call(attachThreadInput, "AttachThreadInput", self, fgThread, 0);
             }
+        }
+    }
+
+    /**
+     * Nur {@code SetForegroundWindow}: gelingt, wenn Windows es zulässt – etwa, weil sich gerade ein anderes Programm
+     * genauso nach vorn geholt hat.
+     */
+    @Override
+    public boolean returnForeground(long id) {
+        Natives.call(setForegroundWindow, "SetForegroundWindow", MemorySegment.ofAddress(id));
+        return foreground().orElse(0) == id;
+    }
+
+    /**
+     * Eingaben gehen an den Desktop {@code Default}; bei Sperre, Standby und Anmeldung an {@code Winlogon}, den dieser
+     * Prozess nicht öffnen darf.
+     */
+    @Override
+    public boolean locked() {
+        MemorySegment desk = (MemorySegment) Natives.call(openInputDesktop, "OpenInputDesktop", 0, 0, DESKTOP_READOBJECTS);
+        if (desk.address() == 0) {
+            return true;
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment name = arena.allocate(256 * 2L, 2);
+            MemorySegment needed = arena.allocate(JAVA_INT);
+            if ((int) Natives.call(getUserObjectInformation, "GetUserObjectInformationW", desk, UOI_NAME, name,
+                    (int) name.byteSize(), needed) == 0) {
+                return false; // unbekannt – lieber weiterarbeiten als grundlos pausieren
+            }
+            return !"Default".equalsIgnoreCase(name.getString(0, java.nio.charset.StandardCharsets.UTF_16LE));
+        } finally {
+            Natives.call(closeDesktop, "CloseDesktop", desk);
         }
     }
 

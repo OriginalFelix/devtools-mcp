@@ -25,9 +25,16 @@ import systems.grebe.devtools.mcp.modules.window.cursor.MouseButton;
  * {@link #isModernUi} an ihren Fensterklassen; sie bedient der Controller per UI Automation ({@link Win32Automation})
  * bzw. Touch ({@link Win32Touch}) – beides bewegt den Mauszeiger ebenfalls nicht. Spiele mit Raw Input reagieren auf
  * nichts davon.
+ *
+ * <p>Java/AWT ({@link #isAwt}) liest die Position einer Maus-Nachricht nicht aus dem lParam, sondern aus
+ * {@code GetMessagePos} – bei gesendeten Nachrichten ist das der lParam, aber als Bildschirmpunkt. Diese Fenster
+ * bekommen deshalb Bildschirm- statt Client-Koordinaten.
  */
 final class Win32Input {
 
+    private static final int WM_ACTIVATE = 0x0006;
+    private static final int WA_INACTIVE = 0;
+    private static final int WA_ACTIVE = 1;
     private static final int WM_MOUSEMOVE = 0x200;
     private static final int WM_LBUTTONDOWN = 0x201;
     private static final int WM_LBUTTONUP = 0x202;
@@ -101,6 +108,30 @@ final class Win32Input {
                 || className.startsWith("WinUIDesktopWin32WindowClass");
     }
 
+    /** Ob das Fenster zu Java/AWT gehört ({@code SunAwtFrame}, {@code SunAwtDialog} … – AWT und Swing, nicht JavaFX). */
+    boolean isAwt(HWND hwnd) {
+        return className(hwnd).startsWith("SunAwt") || className(root(hwnd)).startsWith("SunAwt");
+    }
+
+    /** Das Top-Level-Fenster. */
+    HWND root(HWND hwnd) {
+        HWND root = user32.GetAncestor(hwnd, GA_ROOT);
+        return root == null ? hwnd : root;
+    }
+
+    /**
+     * Meldet dem Fenster {@code WM_ACTIVATE}, ohne es zu aktivieren: Windows ändert weder Vordergrund noch Fokus, nur
+     * die Anwendung hält sich für aktiv bzw. nicht mehr aktiv.
+     */
+    void activation(HWND root, boolean active) {
+        post(root, WM_ACTIVATE, active ? WA_ACTIVE : WA_INACTIVE, 0);
+    }
+
+    /** Ob beide Fenster zum selben Prozess gehören. */
+    static boolean sameProcess(HWND a, HWND b) {
+        return pid(a) == pid(b);
+    }
+
     /**
      * Tastatur-Ziel ohne eigenen Fokus des Zeigers: bei UWP/WinUI das {@code CoreWindow} des Fensters unter dem Punkt,
      * sonst dessen fokussiertes Element, sofern Windows es kennt (bei Fenstern im Hintergrund meist nicht), sonst das
@@ -137,7 +168,7 @@ final class Win32Input {
         return out;
     }
 
-    private static long pid(HWND hwnd) {
+    static long pid(HWND hwnd) {
         com.sun.jna.ptr.IntByReference pid = new com.sun.jna.ptr.IntByReference();
         User32.INSTANCE.GetWindowThreadProcessId(hwnd, pid);
         return Integer.toUnsignedLong(pid.getValue());
@@ -171,7 +202,7 @@ final class Win32Input {
     }
 
     void move(HWND target, Point physical, Set<MouseButton> held) {
-        post(target, WM_MOUSEMOVE, mk(held), clientParam(target, physical));
+        post(target, WM_MOUSEMOVE, mk(held), pointParam(target, physical));
     }
 
     /** @param repeat zweiter oder weiterer Klick in Folge – Doppelklick-Nachricht, wenn das Fenster sie haben will */
@@ -188,7 +219,7 @@ final class Win32Input {
             case RIGHT -> down ? (dbl ? WM_RBUTTONDBLCLK : WM_RBUTTONDOWN) : WM_RBUTTONUP;
             case MIDDLE -> down ? (dbl ? WM_MBUTTONDBLCLK : WM_MBUTTONDOWN) : WM_MBUTTONUP;
         };
-        post(target, msg, mk(held) | mkKeys(heldKeys), clientParam(target, physical));
+        post(target, msg, mk(held) | mkKeys(heldKeys), pointParam(target, physical));
     }
 
     private static long mkKeys(Set<Integer> heldKeys) {
@@ -233,6 +264,15 @@ final class Win32Input {
             throw new IllegalStateException("Nachricht an Fenster " + hwnd + " nicht zustellbar (geschlossen oder "
                     + "höhere Rechte).");
         }
+    }
+
+    /** Position für eine Maus-Nachricht: Client-Koordinaten, bei Java/AWT Bildschirmkoordinaten (siehe Klasse). */
+    private long pointParam(HWND hwnd, Point physical) {
+        if (isAwt(hwnd)) {
+            Point screen = dpiAware(() -> logical(hwnd, physical));
+            return lParam(screen.x, screen.y);
+        }
+        return clientParam(hwnd, physical);
     }
 
     private long clientParam(HWND hwnd, Point physical) {

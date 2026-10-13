@@ -39,6 +39,7 @@ public class WindowKeyboardTools {
             @ToolParam(required = false, description = "auto (Standard), keys (nur Tasten) oder paste (alles über die "
                     + "Zwischenablage)") String method,
             @ToolParam(required = false, description = WindowReadTools.WINDOW) String window) {
+        support.requirePresent();
         if (text == null || text.isEmpty()) {
             throw new IllegalArgumentException("Kein Text angegeben.");
         }
@@ -161,6 +162,7 @@ public class WindowKeyboardTools {
             @ToolParam(description = "Taste(n), z.B. \"ctrl+shift+s\" oder \"down down enter\"") String keys,
             @ToolParam(required = false, description = "Wie oft die ganze Folge gedrückt wird (Standard 1, max. 50)") Integer repeat,
             @ToolParam(required = false, description = WindowReadTools.WINDOW) String window) {
+        support.requirePresent();
         List<KeySpec.Combo> combos = KeySpec.parse(keys);
         for (KeySpec.Combo c : combos) {
             if (c.usesSystemKey(support.mac())) {

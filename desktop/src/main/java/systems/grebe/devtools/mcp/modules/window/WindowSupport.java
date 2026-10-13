@@ -161,6 +161,18 @@ final class WindowSupport {
         return isForeground(w);
     }
 
+    /**
+     * Scheitert, wenn der Bildschirm gesperrt ist (Sperre, Standby): Dann sitzt niemand davor, Fenster lassen sich weder
+     * sehen noch bedienen – die KI soll pausieren, statt mit weiteren Versuchen Tokens zu verbrauchen.
+     */
+    void requirePresent() {
+        if (windows.locked()) {
+            throw new IllegalStateException("Der Bildschirm ist gesperrt (Sperre oder Standby) – der Nutzer ist nicht am "
+                    + "Rechner, Fenster lassen sich jetzt weder sehen noch bedienen. Nicht wiederholen und nicht abwarten: "
+                    + "pausieren, dem Nutzer kurz sagen, wo du stehst, und auf seine nächste Nachricht warten.");
+        }
+    }
+
     boolean isForeground(NativeWindow w) {
         OptionalLong fg = windows.foreground();
         return fg.isPresent() && fg.getAsLong() == w.id();

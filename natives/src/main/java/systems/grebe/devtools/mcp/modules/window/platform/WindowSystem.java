@@ -34,6 +34,25 @@ public interface WindowSystem {
     void activate(long id);
 
     /**
+     * Gibt den Vordergrund an das Fenster des Nutzers zurück, nachdem ein Programm ihn sich genommen hat – ohne den
+     * Nutzer zu stören: anders als {@link #activate} nur, wenn das System es ohnehin zulässt (kein Anhängen an fremde
+     * Eingabe-Threads, keine simulierte Taste, die etwa offene Kontextmenüs schließt).
+     *
+     * @return ob das Fenster danach im Vordergrund liegt
+     */
+    default boolean returnForeground(long id) {
+        return false;
+    }
+
+    /**
+     * Ob der Bildschirm gesperrt ist – Sperre, Standby oder Anmeldebildschirm: Niemand sitzt davor, Fenster lassen sich
+     * weder sehen noch bedienen. Ohne Erkennung {@code false}.
+     */
+    default boolean locked() {
+        return false;
+    }
+
+    /**
      * Bild des Fensters, ohne es nach vorn zu holen – auch wenn andere Fenster darüber liegen. Leer, wenn das System
      * das nicht kann (dann bleibt nur der Bildschirmausschnitt).
      */
