@@ -70,6 +70,9 @@ public final class ShellHints {
     public static final String BROWSER = " Webseiten immer über die browser_*-Tools öffnen und bedienen, nicht mit "
             + "eigenen Selenium-/Playwright-/Puppeteer-Skripten, `open`/`curl` in der Shell oder einem headless Browser.";
 
+    public static final String IDE = " Projekte und Code-Stellen in der IDE des Nutzers immer über die ide_*-Tools "
+            + "öffnen, nicht mit `idea`, `code`, `eclipse`, `devenv`, `xed` oder `open -a` in der Shell.";
+
     public static final String JDBC = " Konfigurierte Datenbanken immer über die jdbc_*-Tools ansprechen, nicht mit "
             + "`psql`, `mysql`, `sqlplus`, `sqlcmd` o.ä. in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
 

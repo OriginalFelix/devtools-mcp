@@ -1,0 +1,14 @@
+systems.grebe.devtools.mcp.modules.ide.jetbrains.IntelliJIdeProvider
+systems.grebe.devtools.mcp.modules.ide.jetbrains.AndroidStudioIdeProvider
+systems.grebe.devtools.mcp.modules.ide.jetbrains.PyCharmIdeProvider
+systems.grebe.devtools.mcp.modules.ide.jetbrains.WebStormIdeProvider
+systems.grebe.devtools.mcp.modules.ide.jetbrains.RiderIdeProvider
+systems.grebe.devtools.mcp.modules.ide.jetbrains.CLionIdeProvider
+systems.grebe.devtools.mcp.modules.ide.jetbrains.GoLandIdeProvider
+systems.grebe.devtools.mcp.modules.ide.vscode.VsCodeIdeProvider
+systems.grebe.devtools.mcp.modules.ide.vscode.VsCodiumIdeProvider
+systems.grebe.devtools.mcp.modules.ide.vscode.CursorIdeProvider
+systems.grebe.devtools.mcp.modules.ide.eclipse.EclipseIdeProvider
+systems.grebe.devtools.mcp.modules.ide.netbeans.NetBeansIdeProvider
+systems.grebe.devtools.mcp.modules.ide.visualstudio.VisualStudioIdeProvider
+systems.grebe.devtools.mcp.modules.ide.xcode.XcodeIdeProvider
