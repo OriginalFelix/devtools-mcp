@@ -242,4 +242,26 @@ class GitHubServerProviderTest {
                 .hasMessageContaining("nicht freigegeben");
         assertThat(gh.requests).isEmpty();
     }
+
+    @Test
+    void createDraftAndMarkReadyViaGraphQl() {
+        gh.on("/repos/octo/app", "{\"default_branch\":\"main\"}");
+        gh.on("/repos/octo/app/pulls", r -> new StubServer.Reply(201,
+                "{\"number\":8,\"html_url\":\"https://github.com/octo/app/pull/8\"}", Map.of()));
+        PrCreateTools tools = new PrCreateTools(env(Map.of()));
+        assertThat(tools.createDraft("Feature", null, "feature/x", null, null, null, null, "octo/app", null, null, null))
+                .contains("octo/app#8: Entwurf angelegt: feature/x → main");
+        assertThat(gh.last("/repos/octo/app/pulls").body()).contains("\"draft\":true");
+
+        gh.on("/repos/octo/app/pulls/8", "{\"number\":8,\"draft\":true,\"node_id\":\"PR_kw8\","
+                + "\"html_url\":\"https://github.com/octo/app/pull/8\"}");
+        gh.on("/graphql", "{\"data\":{\"markPullRequestReadyForReview\":{\"pullRequest\":{\"isDraft\":false}}}}");
+        assertThat(tools.markReady("octo/app#8", null, null, null))
+                .contains("octo/app#8: als bereit zum Review markiert", "https://github.com/octo/app/pull/8");
+        assertThat(gh.last("/graphql").body()).contains("markPullRequestReadyForReview", "\"id\":\"PR_kw8\"");
+
+        gh.on("/repos/octo/app/pulls/8", "{\"number\":8,\"draft\":false}");
+        assertThat(tools.markReady("octo/app#8", null, null, null)).contains("ist kein Entwurf");
+        assertThat(gh.requests).filteredOn(r -> r.path().equals("/graphql")).hasSize(1);
+    }
 }

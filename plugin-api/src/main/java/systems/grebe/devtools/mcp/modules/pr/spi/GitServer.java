@@ -90,6 +90,14 @@ public interface GitServer {
     }
 
     /**
+     * Markiert einen Entwurf (Draft) als bereit zum Review. Ist der Pull Request kein Entwurf, bleibt er unverändert
+     * und die Meldung sagt das.
+     */
+    default WriteResult markReady(String ref, String project) {
+        throw unsupported("Entwürfe als bereit markieren");
+    }
+
+    /**
      * Allgemeiner Kommentar, mit Datei und Zeile ein Code-Kommentar zur neuen Fassung, mit Datei ohne Zeile ein
      * Datei-Kommentar zur Datei als Ganzes.
      */

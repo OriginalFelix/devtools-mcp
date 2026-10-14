@@ -557,6 +557,23 @@ public class GitHubServerProvider implements GitServerProvider {
         }
 
         @Override
+        public WriteResult markReady(String key, String project) {
+            requireToken("Als bereit markieren");
+            Ref r = ref(key, project);
+            JsonNode pr = http.getJson(r.path());
+            String url = text(pr.path("html_url"));
+            if (!pr.path("draft").asBoolean(false)) {
+                return new WriteResult(r.key(), "ist kein Entwurf – unverändert", url);
+            }
+            // die REST-API kann den Entwurfsstatus nicht ändern, nur GraphQL
+            ObjectNode vars = HttpJson.object();
+            vars.put("id", text(pr.path("node_id")));
+            graphql("mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id})"
+                    + "{pullRequest{isDraft}}}", vars);
+            return new WriteResult(r.key(), "als bereit zum Review markiert", url);
+        }
+
+        @Override
         public WriteResult comment(String key, String project, NewComment c) {
             requireToken("Kommentieren");
             Ref r = ref(key, project);

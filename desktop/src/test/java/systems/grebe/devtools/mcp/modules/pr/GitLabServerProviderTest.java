@@ -179,4 +179,23 @@ class GitLabServerProviderTest {
         assertThat(gl.last(MR + "/unapprove").method()).isEqualTo("POST");
         assertThat(gl.last(MR + "/notes").body()).contains("Bitte Tests", "\\n\\n/submit_review requested_changes");
     }
+
+    @Test
+    void markReadyStripsDraftPrefixOrUsesQuickAction() {
+        gl.on(MR, "{\"iid\":12,\"title\":\"Draft: [WIP] Export\",\"draft\":true,\"web_url\":\"https://gl/mr/12\"}");
+        PrCreateTools tools = new PrCreateTools(env());
+        assertThat(tools.markReady("grp/app!12", null, null, null))
+                .contains("grp/app!12: als bereit zum Review markiert", "https://gl/mr/12");
+        StubServer.Request put = gl.last(MR);
+        assertThat(put.method()).isEqualTo("PUT");
+        assertThat(put.body()).isEqualTo("{\"title\":\"Export\"}");
+
+        gl.on(MR, "{\"iid\":12,\"title\":\"Export\",\"draft\":true}");
+        gl.on(MR + "/notes", r -> new StubServer.Reply(201, "{\"id\":78}", Map.of()));
+        assertThat(tools.markReady("grp/app!12", null, null, null)).contains("als bereit zum Review markiert");
+        assertThat(gl.last(MR + "/notes").body()).contains("\"body\":\"/ready\"");
+
+        gl.on(MR, "{\"iid\":12,\"title\":\"Export\",\"draft\":false}");
+        assertThat(tools.markReady("grp/app!12", null, null, null)).contains("ist kein Entwurf");
+    }
 }

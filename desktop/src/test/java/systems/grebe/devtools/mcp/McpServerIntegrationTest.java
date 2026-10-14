@@ -280,7 +280,7 @@ class McpServerIntegrationTest {
                     Map.entry("invocations_", ShellHints.INVOCATIONS), Map.entry("share_", ShellHints.SHARE),
                     Map.entry("context_", ShellHints.CONTEXT));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(198); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(200); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);

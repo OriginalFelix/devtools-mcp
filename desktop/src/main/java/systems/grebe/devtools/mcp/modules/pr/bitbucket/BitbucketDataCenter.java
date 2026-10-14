@@ -491,6 +491,30 @@ final class BitbucketDataCenter implements GitServer {
         requireToken("Bearbeiten");
         Ref r = ref(key, project);
         JsonNode pr = http.getJson(r.path());
+        ObjectNode body = editBody(pr, u);
+        if (u.target() != null) {
+            body.set("toRef", branchRef(u.target(), new String[] {r.projectKey(), r.slug()}));
+        }
+        JsonNode n = http.put(r.path(), body).body();
+        return new WriteResult(r.key(), "aktualisiert", text(n.path("links").path("self").path(0).path("href")));
+    }
+
+    @Override
+    public WriteResult markReady(String key, String project) {
+        requireToken("Als bereit markieren");
+        Ref r = ref(key, project);
+        JsonNode pr = http.getJson(r.path());
+        if (!pr.path("draft").asBoolean(false)) {
+            return new WriteResult(r.key(), "ist kein Entwurf – unverändert", webUrl(r));
+        }
+        ObjectNode body = editBody(pr, new PrUpdate(null, null, null));
+        body.put("draft", false); // ab Bitbucket 8.18
+        http.put(r.path(), body);
+        return new WriteResult(r.key(), "als bereit zum Review markiert", webUrl(r));
+    }
+
+    /** Rumpf zum Bearbeiten: Version, Titel, Beschreibung und die bisherigen Reviewer (sonst entfernt Bitbucket sie). */
+    private static ObjectNode editBody(JsonNode pr, PrUpdate u) {
         ObjectNode body = HttpJson.object();
         body.put("version", pr.path("version").asInt());
         body.put("title", u.title() != null ? u.title() : text(pr.path("title")));
@@ -498,15 +522,10 @@ final class BitbucketDataCenter implements GitServer {
         if (description != null) {
             body.put("description", description);
         }
-        if (u.target() != null) {
-            body.set("toRef", branchRef(u.target(), new String[] {r.projectKey(), r.slug()}));
-        }
-        // Reviewer mitschicken, sonst entfernt Bitbucket sie
         var reviewers = body.putArray("reviewers");
         pr.path("reviewers").forEach(rv -> reviewers.addObject().putObject("user")
                 .put("name", text(rv.path("user").path("name"))));
-        JsonNode n = http.put(r.path(), body).body();
-        return new WriteResult(r.key(), "aktualisiert", text(n.path("links").path("self").path(0).path("href")));
+        return body;
     }
 
     @Override

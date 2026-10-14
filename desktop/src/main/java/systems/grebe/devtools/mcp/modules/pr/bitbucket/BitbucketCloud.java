@@ -388,6 +388,19 @@ final class BitbucketCloud implements GitServer {
     }
 
     @Override
+    public WriteResult markReady(String key, String project) {
+        requireToken("Als bereit markieren");
+        Ref r = ref(key, project);
+        if (!http.getJson(r.path()).path("draft").asBoolean(false)) {
+            return new WriteResult(r.key(), "ist kein Entwurf – unverändert", r.web());
+        }
+        ObjectNode body = HttpJson.object();
+        body.put("draft", false);
+        http.put(r.path(), body);
+        return new WriteResult(r.key(), "als bereit zum Review markiert", r.web());
+    }
+
+    @Override
     public WriteResult comment(String key, String project, NewComment c) {
         requireToken("Kommentieren");
         Ref r = ref(key, project);
