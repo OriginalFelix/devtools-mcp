@@ -446,6 +446,26 @@ final class BitbucketCloud implements GitServer {
     }
 
     @Override
+    public WriteResult review(String key, String project, Verdict verdict, String message) {
+        boolean approve = verdict == Verdict.APPROVE;
+        requireToken(approve ? "Freigeben" : "Änderungen anfordern");
+        Ref r = ref(key, project);
+        try {
+            // das gegenteilige Urteil zurückziehen, falls vorhanden
+            http.delete(r.path() + (approve ? "/request-changes" : "/approve"));
+        } catch (HttpJson.StatusException e) {
+            // keins abgegeben
+        }
+        http.post(r.path() + (approve ? "/approve" : "/request-changes"), HttpJson.object());
+        String msg = approve ? "freigegeben" : "Änderungen angefordert";
+        if (message == null) {
+            return new WriteResult(r.key(), msg, r.web());
+        }
+        WriteResult c = comment(key, project, new NewComment(message, null, null));
+        return new WriteResult(r.key(), msg + ", Kommentar hinzugefügt", c.url(), c.id());
+    }
+
+    @Override
     public WriteResult merge(String key, String project, MergeOptions o) {
         requireToken("Mergen");
         Ref r = ref(key, project);

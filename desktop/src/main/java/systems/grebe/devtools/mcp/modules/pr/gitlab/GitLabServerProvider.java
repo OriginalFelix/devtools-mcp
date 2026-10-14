@@ -642,6 +642,33 @@ public class GitLabServerProvider implements GitServerProvider {
         }
 
         @Override
+        public WriteResult review(String key, String project, Verdict verdict, String message) {
+            Ref r = ref(key, project);
+            String web = webBase + "/" + r.project() + "/-/merge_requests/" + r.iid();
+            if (verdict == Verdict.APPROVE) {
+                requireToken("Freigeben");
+                http.post(r.path() + "/approve", HttpJson.object());
+                if (message == null) {
+                    return new WriteResult(r.key(), "freigegeben", web);
+                }
+                WriteResult c = comment(key, project, new NewComment(message, null, null));
+                return new WriteResult(r.key(), "freigegeben, Kommentar hinzugefügt", c.url(), c.id());
+            }
+            requireToken("Änderungen anfordern");
+            try {
+                // eine eigene Freigabe widerspricht dem Urteil – zurückziehen, falls vorhanden
+                http.post(r.path() + "/unapprove", HttpJson.object());
+            } catch (HttpJson.StatusException e) {
+                // nicht freigegeben
+            }
+            // Für den Reviewer-Status „Änderungen angefordert“ gibt es keinen REST-Endpunkt, nur die Quick Action
+            String command = "/submit_review requested_changes";
+            WriteResult c = comment(key, project, new NewComment(message == null ? command : message + "\n\n" + command,
+                    null, null));
+            return new WriteResult(r.key(), "Änderungen angefordert", c.url(), c.id());
+        }
+
+        @Override
         public WriteResult merge(String key, String project, MergeOptions o) {
             requireToken("Mergen");
             Ref r = ref(key, project);

@@ -646,6 +646,21 @@ public class GitHubServerProvider implements GitServerProvider {
         }
 
         @Override
+        public WriteResult review(String key, String project, Verdict verdict, String message) {
+            boolean approve = verdict == Verdict.APPROVE;
+            requireToken(approve ? "Freigeben" : "Änderungen anfordern");
+            Ref r = ref(key, project);
+            ObjectNode body = HttpJson.object();
+            body.put("event", approve ? "APPROVE" : "REQUEST_CHANGES");
+            if (message != null) {
+                body.put("body", message);
+            }
+            JsonNode n = http.post(r.path() + "/reviews", body).body();
+            return new WriteResult(r.key(), approve ? "freigegeben" : "Änderungen angefordert",
+                    text(n.path("html_url")), "r" + text(n.path("id")));
+        }
+
+        @Override
         public WriteResult merge(String key, String project, MergeOptions o) {
             requireToken("Mergen");
             Ref r = ref(key, project);

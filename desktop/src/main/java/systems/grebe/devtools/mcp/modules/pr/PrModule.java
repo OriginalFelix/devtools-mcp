@@ -22,8 +22,8 @@ import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
 
 /**
  * Pull/Merge Requests auf Git-Servern über austauschbare Provider ({@link GitServerProvider}, per ServiceLoader):
- * auflisten, lesen, Diff und Kommentar-Threads; je Schalter anlegen, kommentieren, Threads auflösen, mergen und den
- * Branch pushen. Mitgeliefert: GitHub, GitLab, Bitbucket (Cloud und Data Center).
+ * auflisten, lesen, Diff und Kommentar-Threads; je Schalter anlegen, kommentieren, Threads auflösen, freigeben bzw.
+ * Änderungen anfordern, mergen und den Branch pushen. Mitgeliefert: GitHub, GitLab, Bitbucket (Cloud und Data Center).
  */
 @Component
 public class PrModule implements ToolModule {
@@ -39,6 +39,7 @@ public class PrModule implements ToolModule {
     static final String ALLOW_CREATE = "allowCreate";
     static final String ALLOW_COMMENT = "allowComment";
     static final String ALLOW_RESOLVE = "allowResolve";
+    static final String ALLOW_REVIEW = "allowReview";
     static final String ALLOW_MERGE = "allowMerge";
     static final String ALLOW_PUSH = "allowPush";
     static final String PUSH_TIMEOUT = "pushTimeoutSeconds";
@@ -69,7 +70,7 @@ public class PrModule implements ToolModule {
     public String description() {
         return "GitHub, GitLab, Bitbucket und weitere Git-Server (erweiterbar per ServiceLoader): Pull/Merge Requests "
                 + "auflisten, lesen, Diff, CI-Status, Berichte von Integrationen und Kommentar-Threads; optional anlegen, kommentieren, beantworten, "
-                + "Threads auflösen, mergen und den Branch pushen (einzeln schaltbar, je Repository freigebbar).";
+                + "Threads auflösen, freigeben oder Änderungen anfordern, mergen und den Branch pushen (einzeln schaltbar, je Repository freigebbar).";
     }
 
     @Override
@@ -94,12 +95,14 @@ public class PrModule implements ToolModule {
                 - Review-Kommentare abarbeiten: `pr_comments unresolved=true` → Code ändern und committen → `pr_push` → je \
                 Thread mit `pr_reply` erklären, was geändert wurde → `pr_resolve`. Nur auflösen, was wirklich erledigt ist; \
                 Rückfragen beantworten statt auflösen.
-                - Schreiben (`pr_create`, `pr_update`, `pr_comment`, `pr_reply`, `pr_resolve`, `pr_merge`, `pr_push`) nur \
-                auf Anweisung des Nutzers und das Ergebnis mit Link melden. Die Kennzeichnung („Generated with …“) setzt \
-                der Server selbst unter Kommentare und Beschreibungen – nicht selbst schreiben, aber `aiModel` mit dem \
+                - Review abschließen: einzelne Stellen mit `pr_comment` (path/line) anmerken, dann `pr_approve` \
+                (freigeben, Kommentar optional) oder `pr_changes_required` (Änderungen anfordern, mit Begründung).
+                - Schreiben (`pr_create`, `pr_update`, `pr_comment`, `pr_reply`, `pr_resolve`, `pr_approve`, \
+                `pr_changes_required`, `pr_merge`, `pr_push`) nur auf Anweisung des Nutzers und das Ergebnis mit Link \
+                melden. Die Kennzeichnung („Generated with …“) setzt der Server selbst unter Kommentare und Beschreibungen – nicht selbst schreiben, aber `aiModel` mit dem \
                 eigenen Modellnamen füllen. Fehlt ein Tool, ist es in der App abgeschaltet: \
-                den Schalter nennen, nicht per `gh`/`glab`/`curl`/`git push` ausweichen. `pr_merge` nur auf ausdrücklichen \
-                Auftrag.""";
+                den Schalter nennen, nicht per `gh`/`glab`/`curl`/`git push` ausweichen. `pr_approve`, `pr_changes_required` \
+                und `pr_merge` nur auf ausdrücklichen Auftrag.""";
     }
 
     @Override
@@ -159,6 +162,10 @@ public class PrModule implements ToolModule {
                         .withDefault("false").withHelp("pr_comment (allgemein, an einer Codezeile oder an einer Datei), pr_reply"),
                 ConfigField.of(ALLOW_RESOLVE, "Threads auflösen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("pr_resolve: Kommentar-Threads als erledigt markieren bzw. wieder öffnen"),
+                ConfigField.of(ALLOW_REVIEW, "Freigeben und Änderungen anfordern erlauben", FieldType.BOOLEAN)
+                        .withDefault("false").withHelp("pr_approve, pr_changes_required: Review-Urteil als "
+                                + "angemeldeter Benutzer abgeben (GitLab: Änderungen anfordern per Quick Action "
+                                + "/submit_review, ältere Versionen nur als Kommentar)"),
                 ConfigField.of(ALLOW_MERGE, "Mergen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("pr_merge – führt den Pull Request in den Ziel-Branch zusammen."),
                 ConfigField.of(ALLOW_PUSH, "Branch pushen erlauben", FieldType.BOOLEAN).withDefault("false")
@@ -187,6 +194,9 @@ public class PrModule implements ToolModule {
         }
         if (config.getBoolean(ALLOW_RESOLVE)) {
             beans.add(new PrResolveTools(env));
+        }
+        if (config.getBoolean(ALLOW_REVIEW)) {
+            beans.add(new PrReviewTools(env));
         }
         if (config.getBoolean(ALLOW_MERGE)) {
             beans.add(new PrMergeTools(env));

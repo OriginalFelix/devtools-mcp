@@ -32,6 +32,7 @@ final class BitbucketDataCenter implements GitServer {
     private final String contextPath;
     private final boolean authenticated;
     private volatile String me;
+    private volatile String mySlug;
 
     BitbucketDataCenter(HttpJson http, String webBase, boolean authenticated) {
         this.http = http;
@@ -586,6 +587,37 @@ final class BitbucketDataCenter implements GitServer {
         http.put(path, body);
         return new WriteResult(r.key(), "Thread " + threadId.trim() + (resolved ? " als erledigt markiert"
                 : " wieder geöffnet"), webUrl(r));
+    }
+
+    @Override
+    public WriteResult review(String key, String project, Verdict verdict, String message) {
+        boolean approve = verdict == Verdict.APPROVE;
+        requireToken(approve ? "Freigeben" : "Änderungen anfordern");
+        Ref r = ref(key, project);
+        ObjectNode body = HttpJson.object();
+        body.put("status", approve ? "APPROVED" : "NEEDS_WORK");
+        http.put(r.path() + "/participants/" + HttpJson.enc(mySlug()), body);
+        String msg = approve ? "freigegeben" : "Änderungen angefordert (Needs work)";
+        if (message == null) {
+            return new WriteResult(r.key(), msg, webUrl(r));
+        }
+        WriteResult c = comment(key, project, new NewComment(message, null, null));
+        return new WriteResult(r.key(), msg + ", Kommentar hinzugefügt", c.url(), c.id());
+    }
+
+    /** URL-Slug des angemeldeten Benutzers – weicht vom Namen ab, wenn dieser Sonderzeichen enthält. */
+    private String mySlug() {
+        if (mySlug == null) {
+            String name = me();
+            String slug = null;
+            for (JsonNode u : http.getJson("/rest/api/1.0/users" + query("filter", name, "limit", 25)).path("values")) {
+                if (name.equalsIgnoreCase(text(u.path("name")))) {
+                    slug = text(u.path("slug"));
+                }
+            }
+            mySlug = slug == null ? name.toLowerCase(Locale.ROOT) : slug;
+        }
+        return mySlug;
     }
 
     @Override
