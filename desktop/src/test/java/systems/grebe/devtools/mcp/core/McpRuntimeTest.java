@@ -14,6 +14,7 @@ import java.util.Set;
 
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.tool.ToolCallback;
@@ -120,5 +121,28 @@ class McpRuntimeTest {
         verify(server, times(1)).removeTool("git_status");
         verify(server, never()).removeTool("git_log");
         verify(server, times(3)).addTool(any());
+    }
+
+    @Test
+    void imagesAttachedByToolBecomeImageContent() {
+        McpSchema.Tool tool = McpSchema.Tool.builder().name("browser_screenshot").inputSchema(
+                new McpSchema.JsonSchema("object", Map.of(), List.of(), null, null, null)).build();
+        McpServerFeatures.SyncToolSpecification spec = new McpServerFeatures.SyncToolSpecification(tool,
+                (exchange, request) -> {
+                    ToolImages.add(new byte[]{1, 2, 3}, "image/png");
+                    return McpSchema.CallToolResult.builder()
+                            .content(List.of(McpSchema.TextContent.builder("Screenshot").build())).isError(false).build();
+                });
+
+        McpSchema.CallToolResult r = McpRuntime.withImages(spec).callHandler().apply(null,
+                new McpSchema.CallToolRequest("browser_screenshot", Map.of()));
+
+        assertThat(r.content()).hasSize(2);
+        assertThat(r.content().get(1)).isInstanceOfSatisfying(McpSchema.ImageContent.class, i -> {
+            assertThat(i.mimeType()).isEqualTo("image/png");
+            assertThat(i.data()).isEqualTo("AQID");
+        });
+        assertThat(ToolImages.active()).isFalse();
+        assertThat(ToolImages.add(new byte[]{1}, "image/png")).isFalse();
     }
 }

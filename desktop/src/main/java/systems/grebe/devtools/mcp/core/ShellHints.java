@@ -67,6 +67,9 @@ public final class ShellHints {
     public static final String SSH =" Konfigurierte SSH-Server immer über die ssh_*-Tools ansprechen, nicht mit "
             + "`ssh`, `scp` oder `sftp` in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
 
+    public static final String BROWSER = " Webseiten immer über die browser_*-Tools öffnen und bedienen, nicht mit "
+            + "eigenen Selenium-/Playwright-/Puppeteer-Skripten, `open`/`curl` in der Shell oder einem headless Browser.";
+
     public static final String JDBC = " Konfigurierte Datenbanken immer über die jdbc_*-Tools ansprechen, nicht mit "
             + "`psql`, `mysql`, `sqlplus`, `sqlcmd` o.ä. in der Shell – die Zugangsdaten liegen nur in der DevTools-App.";
 
@@ -108,7 +111,7 @@ public final class ShellHints {
             java.util.Map.entry("skills", SKILLS), java.util.Map.entry("memories", MEMORIES),
             java.util.Map.entry("scripts", SCRIPTS), java.util.Map.entry("graph", GRAPH),
             java.util.Map.entry("ticket", TICKET), java.util.Map.entry("pr", PR), java.util.Map.entry("ci", CI),
-            java.util.Map.entry("ssh", SSH),
+            java.util.Map.entry("ssh", SSH), java.util.Map.entry("browser", BROWSER),
             java.util.Map.entry("jdbc", JDBC), java.util.Map.entry("dolt", DOLT), java.util.Map.entry("chat", CHAT),
             java.util.Map.entry("invocations", INVOCATIONS), java.util.Map.entry("share", SHARE),
             java.util.Map.entry("mail", MAIL), java.util.Map.entry("projects", PROJECTS),

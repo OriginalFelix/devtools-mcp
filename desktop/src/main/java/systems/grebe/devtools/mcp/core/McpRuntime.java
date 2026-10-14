@@ -205,8 +205,8 @@ public final class McpRuntime implements AutoCloseable {
 
     /** Meldet das Tool an oder tauscht bei gleicher Definition nur den Aufruf aus. */
     private void expose(String name, ManagedToolCallback cb) {
-        McpServerFeatures.SyncToolSpecification spec = inScope(McpProgress.wrap(withAnnotations(
-                McpToolUtils.toSyncToolSpecification(cb), McpToolHints.annotations(cb))));
+        McpServerFeatures.SyncToolSpecification spec = inScope(McpProgress.wrap(withImages(withAnnotations(
+                McpToolUtils.toSyncToolSpecification(cb), McpToolHints.annotations(cb)))));
         McpSchema.Tool tool = context.shellHintsOnce() ? withDescription(spec.tool(),
                 ShellHints.strip(spec.tool().description())) : spec.tool();
         Slot slot = slots.get(name);
@@ -252,6 +252,24 @@ public final class McpRuntime implements AutoCloseable {
         BiFunction<McpSyncServerExchange, McpSchema.CallToolRequest, McpSchema.CallToolResult> handler = spec.callHandler();
         return new McpServerFeatures.SyncToolSpecification(spec.tool(),
                 (exchange, request) -> ToolScope.callIn(this.scope, () -> handler.apply(exchange, request)));
+    }
+
+    /** Legt Bilder, die das Tool per {@link ToolImages#add} angehängt hat, als {@code ImageContent} ins Ergebnis. */
+    static McpServerFeatures.SyncToolSpecification withImages(McpServerFeatures.SyncToolSpecification spec) {
+        BiFunction<McpSyncServerExchange, McpSchema.CallToolRequest, McpSchema.CallToolResult> handler = spec.callHandler();
+        return new McpServerFeatures.SyncToolSpecification(spec.tool(), (exchange, request) -> {
+            ToolImages.Collected<McpSchema.CallToolResult> c = ToolImages.collect(() -> handler.apply(exchange, request));
+            McpSchema.CallToolResult r = c.result();
+            if (c.images().isEmpty() || r == null || Boolean.TRUE.equals(r.isError())) {
+                return r;
+            }
+            List<McpSchema.Content> content = new ArrayList<>(r.content() == null ? List.of() : r.content());
+            for (ToolImages.Image image : c.images()) {
+                content.add(new McpSchema.ImageContent(null,
+                        java.util.Base64.getEncoder().encodeToString(image.data()), image.mimeType()));
+            }
+            return new McpSchema.CallToolResult(content, r.isError(), r.structuredContent(), r.meta());
+        });
     }
 
     /** Übernimmt die {@link ToolHints} eines Tools in seine MCP-Definition (Spring AI kennt sie nicht). */

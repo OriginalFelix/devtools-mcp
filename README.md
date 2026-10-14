@@ -21,6 +21,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **Pull Requests** (GitHub, GitLab, Bitbucket Cloud/Data Center; erweiterbar per ServiceLoader) | `pr_providers`, `pr_list`, `pr_get` (Branches, Reviewer, Freigaben, Merge-Status, CI-Checks, Beschreibung), `pr_diff`, `pr_comments` (Threads mit ID, Datei/Zeile bzw. ganze Datei, offen/erledigt, Integrationen gekennzeichnet), `pr_insights` (Berichte von Integrationen mit Befunden) · je Schalter (Standard aus): `pr_create`/`pr_update`, `pr_comment`/`pr_reply`, `pr_resolve`, `pr_merge`, `pr_push` (Feature-Branch per installiertem `git`, nie Force/Standard-Branch), einschränkbar auf Repositories; Server und Repository aus dem Remote des lokalen Repositories (Modul Standard: aus) |
 | **CI/CD** (Jenkins, GitLab CI/CD, GitHub Actions; erweiterbar per ServiceLoader) | `ci_providers`, `ci_list` (Builds/Pipelines/Läufe nach Status, Branch, Workflow), `ci_get` (Status, Branch, Commit, Auslöser, Dauer, Parameter, Jobs/Stages mit fehlgeschlagenen Schritten), `ci_log` (Log eines Jobs, ohne Angabe der erste fehlgeschlagene; letzte Zeilen oder `grep`), `ci_workflows` (startbare Jenkins-Jobs, GitHub-Workflows) · je Schalter (Standard aus): `ci_start` (Branch, Parameter/Variablen/Inputs), `ci_cancel`, `ci_retry` (nur fehlgeschlagene Jobs oder ganzer Lauf), einschränkbar auf Projekte; System und Projekt aus dem Remote des lokalen Repositories (Jenkins über eine Job-Zuordnung) (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
+| **Browser** (Selenium WebDriver 4.51: Chrome, Firefox, Edge, Safari, Brave/Vivaldi/Opera/LibreWolf …, Selenium Grid) | lesend: `browser_sessions`, `browser_screenshot` (als Bild: Ausschnitt, Element oder ganze Seite), `browser_read_page` (bedienbare Elemente bzw. Seitenstruktur mit Referenzen `[e12]`), `browser_text`, `browser_find`, `browser_console`, `browser_network` (über WebDriver BiDi) · steuernd: `browser_open` (optional headless, Grid oder an laufenden Chrome/Edge anhängen), `browser_close`, `browser_navigate`, `browser_tabs`, `browser_resize`, `browser_wait`, `browser_dialog` · Schalter (Standard an): `browser_click`, `browser_type`, `browser_key`, `browser_select`, `browser_hover`, `browser_scroll`, `browser_drag` · Schalter (Standard aus): `browser_execute_js`, `browser_upload` – Treiber über Selenium Manager, erlaubte/gesperrte Hosts (siehe [Browser](#browser-selenium)) (Modul Standard: aus) |
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
@@ -458,6 +459,55 @@ das LLM sieht nur Name, `benutzer@host:port`, Anmeldeverfahren und Beschreibung.
 * Host-Keys: `accept-new` (Standard) merkt sich den Schlüssel beim ersten Verbinden in `~/.devtools-mcp/ssh_known_hosts`
   und lehnt einen geänderten ab; `strict` akzeptiert nur Hosts, die schon in der Datei stehen. *Verbindung testen*
   verbindet sich mit jeder Verbindung und zeigt Server-Version und Fingerprint.
+
+### Browser (Selenium)
+
+Steuert einen echten Browser auf dem Rechner des Nutzers – ähnlich der Browser-Erweiterung eines KI-Clients, aber für
+jeden Browser mit WebDriver und ohne Erweiterung. Der Browser läuft standardmäßig mit Fenster, damit der Nutzer zusieht;
+*Ohne Fenster (headless)* bzw. `browser_open headless=true` startet ihn unsichtbar.
+
+* **Browser:** `chrome`, `firefox`, `edge`, `safari`. Selenium Manager (in Selenium enthalten) lädt den passenden Treiber
+  und – fehlt er – den Browser selbst (Chrome for Testing, Firefox) nach `~/.cache/selenium`. Safari bringt
+  `safaridriver` mit; einmalig im Menü *Entwickler* „Entfernte Automation erlauben“. Unter *Weitere Browser* trägt man
+  Browser auf Basis einer Engine mit eigenem Programm ein (Name, Engine `chrome`/`edge`/`firefox`, Programm, Argumente),
+  z.B. Brave, Vivaldi, Opera, Chromium oder LibreWolf; `browser_open browser=brave`. Mit *Selenium Grid* (z.B. ein
+  `selenium/standalone-chrome`-Container) startet `browser_open remote=true` dort.
+* **Sitzungen:** jede Sitzung hat eine ID (`b1`, `b2` …), ohne Angabe gilt die zuletzt verwendete. Höchstens *Max. offene
+  Browser*; geschlossen nach *Browser schließen nach* Minuten ohne Nutzung, bei geänderter Konfiguration und beim Beenden.
+  `browser_navigate` mit `url` startet den Standard-Browser, wenn keiner offen ist. Mit *Profilverzeichnis* bleiben
+  Anmeldungen zwischen Starts erhalten (sonst frisches, temporäres Profil).
+* **Lesen:** `browser_read_page` listet bedienbare Elemente (Links, Buttons, Felder, Auswahllisten, ARIA-Rollen, auch in
+  offenen Shadow-DOMs) als `[e12] button "Speichern" disabled`, `mode=all` zusätzlich Überschriften, Texte, Bilder und
+  Zellen. Die Referenz steht als `data-mcp-ref` am Element und gilt bis zur nächsten Navigation; Klick- und
+  Eingabe-Tools nehmen `ref`, einen `selector` (CSS, XPath `//…`, `text=…`) oder Koordinaten. Passwortfelder zeigen ihren
+  Wert nie. `browser_text` liefert den Lesetext, `browser_find` sucht nach Text oder Selektor.
+* **Screenshots** gehen als MCP-`ImageContent` an den Client (das LLM sieht das Bild): sichtbarer Ausschnitt, ein
+  Element oder `fullPage` (Firefox nativ, Chrome/Edge per CDP), verkleinert auf *Max. Bildkante* (PNG, große Bilder JPEG).
+  `x`/`y` von `browser_click`, `browser_hover`, `browser_scroll` und `browser_drag` beziehen sich auf die Pixel des
+  letzten Ausschnitt-Screenshots und werden in CSS-Pixel umgerechnet. Optional zusätzlich im *Ablageordner*.
+  Für eigene Module und Plugins: `core/ToolImages.add(bytes, mimeType)` aus der Plugin-API hängt ein Bild an das
+  Ergebnis des laufenden Tool-Aufrufs; `McpRuntime` legt es neben den Text, an Kürzen und Protokoll vorbei.
+* **Konsole und Netzwerk** schneidet WebDriver BiDi ab dem Start mit (Chrome, Edge, Firefox; je Sitzung die letzten
+  1000 Einträge): `browser_console` (Stufen, JS-Fehler, Muster), `browser_network` (Methode, Status, Typ, Größe, URL,
+  `onlyErrors`). Ohne BiDi (Safari, angehängte Browser) hängt sich das Modul nach jeder Aktion per Skript an
+  `console.*` und an Fehler der Seite – erfasst wird dann erst ab der ersten Aktion auf einer Seite –, und
+  `browser_network` liest die Resource Timing API der aktuellen Seite (ohne Methode und Abbrüche).
+* **Safari:** einmalig „Entfernte Automation erlauben“ (Einstellungen → Entwickler) oder `safaridriver --enable`; kein
+  headless. Safari verwirft Eingaben an ein Fenster ohne Fokus – vor Klicks, Tippen und Tasten holt das Modul das
+  Fenster deshalb nach vorn – und beginnt eine durch Klick ausgelöste Navigation verzögert (das Modul wartet bis zu
+  600 ms darauf). Die Integrationstests laufen mit `-Pbrowser=firefox|edge|safari` gegen einen anderen Browser als
+  Chrome.
+* **Dialoge:** `alert`/`confirm`/`prompt` bleiben offen, bis `browser_dialog` sie bestätigt oder abbricht; Aktionen,
+  die einen Dialog öffnen, melden das im Ergebnis.
+* **Freigaben:** *Erlaubte Hosts* (leer = alle; `*.firma.de` gilt auch für `firma.de`, mit Port nur dieser Port) und
+  *Gesperrte Hosts* (Vorrang) gelten für `browser_open`/`navigate`/`tabs` und für Seitenwechsel durch Klicks oder
+  Eingaben – führt eine Aktion auf eine nicht freigegebene Adresse, geht der Browser zurück und das Tool meldet einen
+  Fehler. Nur `http(s)`, `about:` und `data:`; `file://` nur mit eigenem Schalter.
+* **Schalter:** *Seiten bedienen* (Standard an) für Klicken, Tippen, Tasten, Auswahl, Maus, Scrollen, Ziehen;
+  *JavaScript ausführen* (`browser_execute_js`), *An laufende Browser anhängen* (`browser_open attach=localhost:9222` für
+  einen selbst mit `--remote-debugging-port` und eigenem `--user-data-dir` gestarteten Chrome/Edge – samt dessen
+  Anmeldungen) und *Datei-Uploads* (`browser_upload`, nur aus *Verzeichnisse für Uploads*) sind standardmäßig aus.
+* *Verbindung testen* startet den Standard-Browser ohne Fenster (und, falls eingetragen, im Grid) und zeigt die Version.
 
 ### Datenbanken (JDBC)
 
