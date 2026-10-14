@@ -585,6 +585,42 @@ public class GitLabServerProvider implements GitServerProvider {
         }
 
         @Override
+        public WriteResult markReady(String key, String project) {
+            requireToken("Als bereit markieren");
+            Ref r = ref(key, project);
+            JsonNode mr = http.getJson(r.path());
+            String url = text(mr.path("web_url"));
+            if (!mr.path("draft").asBoolean(mr.path("work_in_progress").asBoolean(false))) {
+                return new WriteResult(r.key(), "ist kein Entwurf – unverändert", url);
+            }
+            // GitLab leitet den Entwurfsstatus aus dem Titel ab; ohne erkanntes Präfix hilft die Quick Action
+            String title = text(mr.path("title"));
+            String ready = withoutDraftPrefix(title);
+            if (ready.isEmpty() || !DRAFT_PREFIX.matcher(title == null ? "" : title).find()) {
+                comment(key, project, new NewComment("/ready", null, null));
+            } else {
+                ObjectNode body = HttpJson.object();
+                body.put("title", ready);
+                url = HttpJson.first(text(http.put(r.path(), body).body().path("web_url")), url);
+            }
+            return new WriteResult(r.key(), "als bereit zum Review markiert", url);
+        }
+
+        private static final Pattern DRAFT_PREFIX = Pattern.compile(
+                "^\\s*(?:\\[draft]|\\(draft\\)|draft:|draft\\s+-|\\[wip]|wip:)\\s*", Pattern.CASE_INSENSITIVE);
+
+        /** Titel ohne die Präfixe, an denen GitLab Entwürfe erkennt ({@code Draft:}, {@code [Draft]}, {@code WIP:} …). */
+        static String withoutDraftPrefix(String title) {
+            String t = title == null ? "" : title;
+            Matcher m = DRAFT_PREFIX.matcher(t);
+            while (m.find()) {
+                t = t.substring(m.end());
+                m = DRAFT_PREFIX.matcher(t);
+            }
+            return t.strip();
+        }
+
+        @Override
         public WriteResult comment(String key, String project, NewComment c) {
             requireToken("Kommentieren");
             Ref r = ref(key, project);

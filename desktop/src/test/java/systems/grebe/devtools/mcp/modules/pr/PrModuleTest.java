@@ -61,7 +61,7 @@ class PrModuleTest {
         List<ToolCallback> all = module.createTools(ModuleConfig.of(module.configSchema(), Map.of("allowCreate", "true",
                 "allowComment", "true", "allowResolve", "true", "allowReview", "true", "allowMerge", "true", "allowPush",
                 "true")));
-        assertThat(all).extracting(t -> t.getToolDefinition().name()).contains("create", "update", "comment", "reply",
+        assertThat(all).extracting(t -> t.getToolDefinition().name()).contains("create", "create_draft", "mark_ready", "update", "comment", "reply",
                 "resolve", "approve", "changes_required", "merge", "push");
         assertThat(module.instructions()).contains("`pr_comments", "`pr_reply`", "gh pr");
     }

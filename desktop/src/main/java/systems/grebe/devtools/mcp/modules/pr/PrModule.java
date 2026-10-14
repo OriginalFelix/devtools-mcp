@@ -91,13 +91,14 @@ public class PrModule implements ToolModule {
                 - Pull Request anlegen (`pr_create`, falls angeboten): Branch mit git_* committen, mit `pr_push` pushen \
                 (falls angeboten, sonst den Nutzer bitten), Titel und Beschreibung aus git_log/git_diff zusammenfassen. \
                 Meldet `pr_create` „An die Sitzung binden“ und bietet der Client ein Werkzeug dafür an (z.B. `bind_pr` \
-                in Claude Code), den neuen PR danach mit seiner URL binden.
+                in Claude Code), den neuen PR danach mit seiner URL binden. Noch nicht fertig: `pr_create_draft` legt ihn \
+                als Entwurf an, `pr_mark_ready` gibt ihn später zum Review frei.
                 - Review-Kommentare abarbeiten: `pr_comments unresolved=true` → Code ändern und committen → `pr_push` → je \
                 Thread mit `pr_reply` erklären, was geändert wurde → `pr_resolve`. Nur auflösen, was wirklich erledigt ist; \
                 Rückfragen beantworten statt auflösen.
                 - Review abschließen: einzelne Stellen mit `pr_comment` (path/line) anmerken, dann `pr_approve` \
                 (freigeben, Kommentar optional) oder `pr_changes_required` (Änderungen anfordern, mit Begründung).
-                - Schreiben (`pr_create`, `pr_update`, `pr_comment`, `pr_reply`, `pr_resolve`, `pr_approve`, \
+                - Schreiben (`pr_create`, `pr_create_draft`, `pr_mark_ready`, `pr_update`, `pr_comment`, `pr_reply`, `pr_resolve`, `pr_approve`, \
                 `pr_changes_required`, `pr_merge`, `pr_push`) nur auf Anweisung des Nutzers und das Ergebnis mit Link \
                 melden. Die Kennzeichnung („Generated with …“) setzt der Server selbst unter Kommentare und Beschreibungen – nicht selbst schreiben, aber `aiModel` mit dem \
                 eigenen Modellnamen füllen. Fehlt ein Tool, ist es in der App abgeschaltet: \
@@ -157,7 +158,7 @@ public class PrModule implements ToolModule {
                 ConfigField.of(MAX_LINES, "Max. Ausgabezeilen", FieldType.INT).withDefault("1500")
                         .withHelp("Längere Diffs und Kommentarlisten werden gekürzt."),
                 ConfigField.of(ALLOW_CREATE, "Pull Requests anlegen/bearbeiten erlauben", FieldType.BOOLEAN)
-                        .withDefault("false").withHelp("pr_create, pr_update"),
+                        .withDefault("false").withHelp("pr_create, pr_create_draft, pr_mark_ready, pr_update"),
                 ConfigField.of(ALLOW_COMMENT, "Kommentieren und antworten erlauben", FieldType.BOOLEAN)
                         .withDefault("false").withHelp("pr_comment (allgemein, an einer Codezeile oder an einer Datei), pr_reply"),
                 ConfigField.of(ALLOW_RESOLVE, "Threads auflösen erlauben", FieldType.BOOLEAN).withDefault("false")

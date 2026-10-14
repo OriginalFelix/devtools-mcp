@@ -292,4 +292,32 @@ class BitbucketServerProviderTest {
         assertThat(bb.last(DC_PR + "/participants/felix_firma.de").body()).contains("\"status\":\"NEEDS_WORK\"");
         assertThat(bb.requests).filteredOn(r -> r.path().equals("/rest/api/1.0/users")).hasSize(1);
     }
+
+    @Test
+    void cloudMarkReadyClearsDraft() {
+        bb.on(CLOUD_PR, "{\"id\":5,\"draft\":true}");
+        PrCreateTools tools = new PrCreateTools(env("cloud", Map.of()));
+        assertThat(tools.markReady("team/web#5", null, null, null)).contains("team/web#5: als bereit zum Review markiert");
+        StubServer.Request put = bb.last(CLOUD_PR);
+        assertThat(put.method()).isEqualTo("PUT");
+        assertThat(put.body()).isEqualTo("{\"draft\":false}");
+
+        bb.on(CLOUD_PR, "{\"id\":5,\"draft\":false}");
+        assertThat(tools.markReady("team/web#5", null, null, null)).contains("ist kein Entwurf");
+        assertThat(bb.last(CLOUD_PR).method()).isEqualTo("GET");
+    }
+
+    @Test
+    void dataCenterMarkReadyKeepsVersionTitleAndReviewers() {
+        bb.on(DC_PR, """
+                {"id":5,"version":3,"title":"API","description":"Text","draft":true,
+                 "reviewers":[{"user":{"name":"anna"}}]}""");
+        PrCreateTools tools = new PrCreateTools(env("datacenter", Map.of()));
+        assertThat(tools.markReady("PROJ/app#5", null, null, null))
+                .contains("PROJ/app#5: als bereit zum Review markiert", "/projects/PROJ/repos/app/pull-requests/5");
+        StubServer.Request put = bb.last(DC_PR);
+        assertThat(put.method()).isEqualTo("PUT");
+        assertThat(put.body()).contains("\"version\":3", "\"title\":\"API\"", "\"description\":\"Text\"",
+                "\"name\":\"anna\"", "\"draft\":false");
+    }
 }

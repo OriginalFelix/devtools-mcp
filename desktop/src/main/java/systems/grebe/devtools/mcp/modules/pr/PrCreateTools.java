@@ -17,7 +17,7 @@ import static systems.grebe.devtools.mcp.modules.pr.PrTools.PROVIDER;
 import static systems.grebe.devtools.mcp.modules.pr.PrTools.REPOSITORY;
 import static systems.grebe.devtools.mcp.modules.pr.PrTools.blankToNull;
 
-/** Anlegen und Bearbeiten (Schalter {@code allowCreate}). */
+/** Anlegen (auch als Entwurf), bereit markieren und Bearbeiten (Schalter {@code allowCreate}). */
 public class PrCreateTools {
 
     private final PrEnvironment env;
@@ -81,6 +81,42 @@ public class PrCreateTools {
                 blankToNull(body), src, tgt, Boolean.TRUE.equals(draft), reviewers,
                 Boolean.TRUE.equals(deleteSourceBranch)));
         return PrTools.written(r) + note + bindHint(r.url());
+    }
+
+    @Tool(name = "create_draft", description = "Legt einen Pull/Merge Request als Entwurf (Draft) an – noch nicht "
+            + "bereit zum Review, nicht mergebar; später mit pr_mark_ready freigeben. Quell-Branch ist standardmäßig der "
+            + "aktuelle Branch des lokalen Repositories, Ziel der Standard-Branch. Der Branch muss gepusht sein (pr_push). "
+            + "Titel und Beschreibung aus den Commits/Änderungen zusammenfassen. Nur auf Anweisung des Nutzers."
+            + ShellHints.PR)
+    public String createDraft(
+            @ToolParam(description = "Titel") String title,
+            @ToolParam(required = false, description = "Beschreibung (Markdown): was und warum, Testhinweise, Ticket-Bezug") String description,
+            @ToolParam(required = false, description = "Quell-Branch. Leer = aktueller Branch des lokalen Repositories.") String source,
+            @ToolParam(required = false, description = "Ziel-Branch. Leer = Standard-Branch des Repositories.") String target,
+            @ToolParam(required = false, description = "Reviewer (Benutzernamen; GitHub-Teams als team:slug; Bitbucket Cloud: "
+                    + "Account-ID oder UUID)") List<String> reviewers,
+            @ToolParam(required = false, description = "true = Quell-Branch nach dem Merge löschen (GitLab, Bitbucket Cloud)") Boolean deleteSourceBranch,
+            @ToolParam(required = false, description = REPOSITORY) String repository,
+            @ToolParam(required = false, description = PROJECT) String project,
+            @ToolParam(required = false, description = PROVIDER) String provider,
+            @ToolParam(required = false, description = Signature.MODEL_PARAM) String aiModel,
+            ToolContext toolContext) {
+        return create(title, description, source, target, true, reviewers, deleteSourceBranch, repository, project,
+                provider, aiModel, toolContext);
+    }
+
+    @Tool(name = "mark_ready", description = "Markiert einen Entwurf (Draft) als bereit zum Review – danach können "
+            + "Reviewer freigeben und der Pull Request lässt sich mergen. Ist er kein Entwurf, bleibt er unverändert. "
+            + "Nur auf Anweisung des Nutzers." + ShellHints.PR)
+    public String markReady(
+            @ToolParam(required = false, description = PR + ". Leer = zum aktuellen Branch.") String pr,
+            @ToolParam(required = false, description = REPOSITORY) String repository,
+            @ToolParam(required = false, description = PROJECT) String project,
+            @ToolParam(required = false, description = PROVIDER) String provider) {
+        PrEnvironment.Target t = env.target(provider, repository, project, pr);
+        String ref = PrTools.refOrCurrent(t, pr);
+        env.checkWrite(t, ref, "Als bereit markieren");
+        return PrTools.written(t.server().markReady(ref, t.project()));
     }
 
     /**
