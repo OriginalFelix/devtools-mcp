@@ -3,6 +3,9 @@ plugins {
 }
 
 val jgitVersion = "7.6.0.202603022253-r"
+// Browser-Modul: Spring Boot verwaltet Selenium (BOM) mit einer älteren Version – hier die aktuelle
+val seleniumVersion = "4.51.0"
+extra["selenium.version"] = seleniumVersion
 val javafxVersion = "25"
 
 // JavaFX wird plattformabhängig ausgeliefert (natives Rendering)
@@ -64,6 +67,10 @@ dependencies {
 
     // SSH-Modul: Befehle und SFTP über JSch (gepflegter Fork mit aktuellen Algorithmen, ohne weitere Abhängigkeiten)
     implementation("com.github.mwiede:jsch:2.27.2")
+
+    // Browser-Modul: Chrome, Firefox, Edge, Safari und Selenium Grid über WebDriver; Treiber (und bei Bedarf der
+    // Browser selbst) kommen über Selenium Manager, Konsole und Netzwerk über WebDriver BiDi
+    implementation("org.seleniumhq.selenium:selenium-java:$seleniumVersion")
 
     // Mail-Modul: IMAP inkl. IDLE (Angus Mail, Implementierung von Jakarta Mail; Version aus der Boot-BOM)
     implementation("org.eclipse.angus:angus-mail")
@@ -135,6 +142,8 @@ tasks.test {
     })
     // Doltlite-Tests: Programm per -Pdoltlite=<pfad zu doltlite(.exe)>, sonst aus dem PATH; ohne beides übersprungen
     providers.gradleProperty("doltlite").orNull?.let { systemProperty("devtools.test.doltlite", it) }
+    // Browser-Tests: anderer Browser per -Pbrowser=firefox|edge|safari (Standard chrome)
+    providers.gradleProperty("browser").orNull?.let { systemProperty("devtools.test.browser", it) }
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
