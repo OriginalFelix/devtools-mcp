@@ -22,6 +22,7 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 | **CI/CD** (Jenkins, GitLab CI/CD, GitHub Actions; erweiterbar per ServiceLoader) | `ci_providers`, `ci_list` (Builds/Pipelines/Läufe nach Status, Branch, Workflow), `ci_get` (Status, Branch, Commit, Auslöser, Dauer, Parameter, Jobs/Stages mit fehlgeschlagenen Schritten), `ci_log` (Log eines Jobs, ohne Angabe der erste fehlgeschlagene; letzte Zeilen oder `grep`), `ci_workflows` (startbare Jenkins-Jobs, GitHub-Workflows) · je Schalter (Standard aus): `ci_start` (Branch, Parameter/Variablen/Inputs), `ci_cancel`, `ci_retry` (nur fehlgeschlagene Jobs oder ganzer Lauf), einschränkbar auf Projekte; System und Projekt aus dem Remote des lokalen Repositories (Jenkins über eine Job-Zuordnung) (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Browser** (Selenium WebDriver 4.51: Chrome, Firefox, Edge, Safari, Brave/Vivaldi/Opera/LibreWolf …, Selenium Grid) | lesend: `browser_sessions`, `browser_screenshot` (als Bild: Ausschnitt, Element oder ganze Seite), `browser_read_page` (bedienbare Elemente bzw. Seitenstruktur mit Referenzen `[e12]`), `browser_text`, `browser_find`, `browser_console`, `browser_network` (über WebDriver BiDi) · steuernd: `browser_open` (optional headless, Grid oder an laufenden Chrome/Edge anhängen), `browser_close`, `browser_navigate`, `browser_tabs`, `browser_resize`, `browser_wait`, `browser_dialog` · Schalter (Standard an): `browser_click`, `browser_type`, `browser_key`, `browser_select`, `browser_hover`, `browser_scroll`, `browser_drag` · Schalter (Standard aus): `browser_execute_js`, `browser_upload` – Treiber über Selenium Manager, erlaubte/gesperrte Hosts (siehe [Browser](#browser-selenium)) (Modul Standard: aus) |
+| **IDE** (IntelliJ IDEA, PyCharm, WebStorm, Rider, CLion, GoLand, Android Studio, VS Code, VSCodium, Cursor, Eclipse, NetBeans, Visual Studio, Xcode; erweiterbar per ServiceLoader) | `ide_providers` (aktive IDEs, gefundene Installation, was jede kann), `ide_open_project`, `ide_close_project`, `ide_show` (dem Nutzer eine Code-Stelle zeigen: Datei, Zeile, Spalte), `ide_diff` (zwei Dateien im Vergleich) – nur in freigegebenen Projekten; IDE je Aufruf, als Standard oder automatisch nach Spuren im Projekt (`.idea`, `.vscode`, `*.sln` …) (siehe [IDE](#ide-serviceloader)) (Modul Standard: aus) |
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
@@ -520,6 +521,38 @@ jeden Browser mit WebDriver und ohne Erweiterung. Der Browser läuft standardmä
   einen selbst mit `--remote-debugging-port` und eigenem `--user-data-dir` gestarteten Chrome/Edge – samt dessen
   Anmeldungen) und *Datei-Uploads* (`browser_upload`, nur aus *Verzeichnisse für Uploads*) sind standardmäßig aus.
 * *Verbindung testen* startet den Standard-Browser ohne Fenster (und, falls eingetragen, im Grid) und zeigt die Version.
+
+### IDE (ServiceLoader)
+
+Öffnet Projekte in der IDE des Nutzers, schließt sie wieder und zeigt ihm Code-Stellen – etwa die Ursache eines Fehlers
+oder die gerade geänderte Zeile. Die Tools wirken auf seinem Bildschirm und ändern keine Dateien; Projekte und Dateien
+müssen in freigegebenen Projekten liegen (wie bei Git und Build, auch Verzeichnisse darin wie Module oder Worktrees).
+
+Das Modul folgt dem Muster der anderen Provider über `modules/ide/spi`: `IdeProvider` (ID, Felder, `recognizes`)
+erzeugt eine `Ide` mit `probe`, `openProject` und `show`; `closeProject` und `diff` sind `default`-Methoden, was eine
+IDE kann, meldet `capabilities()`. Mitgeliefert sind
+
+| Provider | Anbindung | Öffnen | Zeigen | Schließen | Vergleich |
+|---|---|---|---|---|---|
+| `intellij`, `pycharm`, `webstorm`, `rider`, `clion`, `goland`, `android-studio` | Starter (`idea` …, Toolbox-Skript; macOS `open -na <App>/Contents/MacOS/idea --args`) | `idea <ordner>` | `--line`, `--column` | – | `idea diff` |
+| `vscode`, `vscodium`, `cursor` | Befehl `code`/`codium`/`cursor` | `code <ordner>` | `code <projekt> -g datei:zeile:spalte` (im Fenster des Projekts) | – | `code -d` |
+| `eclipse` | Starter `--launcher.openFile` (macOS `open -a Eclipse.app`), optional Workspace (`-data`) | Ordner per Smart Import | `datei:zeile:spalte` (macOS ohne Zeile) | – | – |
+| `netbeans` | Starter `--open` | Projektordner | `datei:zeile` | – | – |
+| `visualstudio` (Windows) | Automatisierung (DTE aus der Running Object Table) per Windows PowerShell, sonst `devenv.exe` | Projektmappe (`*.sln`, `*.slnx`) bzw. Ordner; schon offen → Fenster aktiv | Instanz des Projekts, sonst `devenv /Edit` | nur ohne ungespeicherte Änderungen | `devenv /Diff` |
+| `xcode` (macOS) | `xed`, AppleScript | `.xcworkspace` vor `.xcodeproj`, Swift-Paket | `xed --line` | Xcode fragt nach Ungespeichertem | FileMerge (`opendiff`) |
+
+Das *Programm* jeder IDE sucht das Modul selbst (eingetragener Pfad, `PATH`, Toolbox-Skripte und übliche
+Installationsorte, unter Windows `%LOCALAPPDATA%`/`Program Files`, für Visual Studio `vswhere`); beim ersten Start sind
+die gefundenen IDEs eingeschaltet. Ohne Angabe von `ide` nimmt ein Aufruf die *Standard-IDE*, bei `auto` die erste aktive,
+die Spuren im Projekt erkennt (`.idea`, `.vscode`, `.project`, `nbproject`, `*.sln`, `*.xcodeproj` …), sonst die erste
+aktive. Der Starter gibt den Auftrag an die laufende IDE weiter und endet; läuft er nach der *Wartezeit* noch, ist er die
+gerade gestartete IDE und bleibt offen.
+
+Projekte schließen können JetBrains-IDEs, VS Code, Eclipse und NetBeans von außen nicht – `ide_close_project` sagt das
+dann und das LLM bittet den Nutzer darum. Eine weitere IDE (z.B. Zed, Sublime Text, Fleet) braucht eine
+`IdeProvider`-Klasse und eine Zeile in
+`src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ide.spi.IdeProvider` – auch aus einem Plugin
+(`api-version: 4`).
 
 ### Datenbanken (JDBC)
 
@@ -2189,7 +2222,7 @@ Sie enthält, was ein Plugin braucht, und reicht Spring AI (`@Tool`, `ToolCallba
 | Plugin | `DevToolsPlugin`, `PluginContext`, `PluginDescriptor`, `PluginApi` |
 | Module | `ToolModule`, `ModuleAction`, `ConnectionTestResult`, `ToolScope`, `ConfigField`, `ConfigGroup`, `FieldType`, `ModuleConfig` |
 | Tools | `ToolBeans` (Callbacks mit Hinweisen), `@ToolHints`, `ToolProgress` (Fortschritt an den Client), `DelegatingToolCallback` |
-| Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `ContainerRuntimeProvider`/`RuntimeSettings` (die Laufzeit `ContainerRuntime` kommt aus Container4J, Paket `systems.grebe.container4j`) |
+| Provider | `ServiceProvider` und die SPIs `TicketProvider`/`TicketSystem`/`ProviderSettings`/`HttpJson`, `ChatProvider`/`ChatSystem`/`ChatSettings`/`ChatVault`, `GitServerProvider`/`GitServer`, `CiProvider`/`CiSystem`, `IdeProvider`/`Ide` (ab `api-version: 4`), `ContainerRuntimeProvider`/`RuntimeSettings` (die Laufzeit `ContainerRuntime` kommt aus Container4J, Paket `systems.grebe.container4j`) |
 | Datenbanken | `DatabaseConnectionProvider`, `DatabaseConnectionInfo` (Verbindungen des JDBC-Moduls, ab `api-version: 2`) |
 | Projekte | `ProjectProvider`, `ProjectDirectory` (freigegebene Projektverzeichnisse, ab `api-version: 2`) |
 | Mail | `MailAccountProvider`, `MailAccountInfo`, `MailFolderInfo`, `MailSummary`, `MailMessage`, `MailAttachment(Info)`, `MailQuery`, `MailDraft`, `MailSend`, `NewMail` (Konten des Mail-Moduls, ab `api-version: 3`) |

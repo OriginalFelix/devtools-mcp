@@ -12,9 +12,10 @@ public final class PluginApi {
      *   <li>2 – {@code DatabaseConnectionProvider} (Verbindungen des JDBC-Moduls) und {@code ProjectProvider}
      *   (freigegebene Projektverzeichnisse) für Plugins</li>
      *   <li>3 – {@code MailAccountProvider} (E-Mail-Konten des Mail-Moduls) für Plugins</li>
+     *   <li>4 – Provider-SPI {@code IdeProvider}/{@code Ide} (Entwicklungsumgebungen des Moduls IDE)</li>
      * </ul>
      */
-    public static final int VERSION = 3;
+    public static final int VERSION = 4;
 
     private PluginApi() {
     }
