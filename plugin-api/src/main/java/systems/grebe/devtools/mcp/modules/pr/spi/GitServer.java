@@ -107,6 +107,15 @@ public interface GitServer {
         throw unsupported("Threads auflösen");
     }
 
+    /**
+     * Gibt als angemeldeter Benutzer ein Review-Urteil ab: freigeben oder Änderungen anfordern. {@code body} (bereits
+     * mit Kennzeichnung) begründet das Urteil, {@code null} = ohne Text; Server ohne Text am Urteil legen ihn als
+     * allgemeinen Kommentar an.
+     */
+    default WriteResult review(String ref, String project, Verdict verdict, String body) {
+        throw unsupported(verdict == Verdict.APPROVE ? "Freigeben" : "Änderungen anfordern");
+    }
+
     /** Führt den Pull Request zusammen. */
     default WriteResult merge(String ref, String project, MergeOptions options) {
         throw unsupported("Mergen");
@@ -135,6 +144,14 @@ public interface GitServer {
                         + "' – erlaubt: open, merged, closed, all.");
             };
         }
+    }
+
+    /** Urteil eines Reviews. */
+    enum Verdict {
+        /** Freigeben (Approve). */
+        APPROVE,
+        /** Änderungen anfordern (Request changes / Needs work). */
+        REQUEST_CHANGES
     }
 
     record Availability(boolean available, String version, String user, String message) {

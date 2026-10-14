@@ -253,4 +253,43 @@ class BitbucketServerProviderTest {
                 .contains("\"id\":\"refs/heads/feature/login\"", "\"id\":\"refs/heads/develop\"", "\"key\":\"PROJ\"",
                         "\"slug\":\"app\"", "\"name\":\"anna\"");
     }
+
+    @Test
+    void cloudApproveAndRequestChanges() {
+        bb.on(CLOUD_PR + "/approve", "{\"approved\":true}");
+        bb.on(CLOUD_PR + "/request-changes", "{\"state\":\"changes_requested\"}");
+        bb.on(CLOUD_PR + "/comments", r -> new StubServer.Reply(201,
+                "{\"id\":9,\"links\":{\"html\":{\"href\":\"https://bitbucket.org/c/9\"}}}", Map.of()));
+        PrReviewTools tools = new PrReviewTools(env("cloud", Map.of()));
+
+        assertThat(tools.approve("team/web#5", null, null, null, null, null, null)).contains("team/web#5: freigegeben");
+        assertThat(bb.last(CLOUD_PR + "/approve").method()).isEqualTo("POST");
+        assertThat(bb.last(CLOUD_PR + "/request-changes").method()).isEqualTo("DELETE");
+
+        assertThat(tools.changesRequired("team/web#5", "Bitte Tests", null, null, null, null, null))
+                .contains("Änderungen angefordert, Kommentar hinzugefügt", "https://bitbucket.org/c/9");
+        assertThat(bb.last(CLOUD_PR + "/request-changes").method()).isEqualTo("POST");
+        assertThat(bb.last(CLOUD_PR + "/approve").method()).isEqualTo("DELETE");
+        assertThat(bb.last(CLOUD_PR + "/comments").body()).contains("Bitte Tests");
+    }
+
+    @Test
+    void dataCenterSetsParticipantStatusWithUserSlug() {
+        bb.on("/rest/api/1.0/application-properties", r -> new StubServer.Reply(200, "{\"version\":\"9.4.0\"}",
+                Map.of("X-AUSERNAME", "felix@firma.de")));
+        bb.on("/rest/api/1.0/users", "{\"values\":[{\"name\":\"felix@firma.de\",\"slug\":\"felix_firma.de\"}]}");
+        bb.on(DC_PR + "/participants/felix_firma.de", "{\"status\":\"APPROVED\"}");
+        bb.on(DC_PR + "/comments", "{\"id\":61,\"version\":0}");
+        PrReviewTools tools = new PrReviewTools(env("datacenter", Map.of()));
+
+        assertThat(tools.approve("PROJ/app#5", null, null, null, null, null, null)).contains("PROJ/app#5: freigegeben");
+        StubServer.Request put = bb.last(DC_PR + "/participants/felix_firma.de");
+        assertThat(put.method()).isEqualTo("PUT");
+        assertThat(put.body()).contains("\"status\":\"APPROVED\"");
+
+        assertThat(tools.changesRequired("PROJ/app#5", "Bitte Tests", null, null, null, null, null))
+                .contains("Änderungen angefordert (Needs work), Kommentar hinzugefügt", "commentId=61");
+        assertThat(bb.last(DC_PR + "/participants/felix_firma.de").body()).contains("\"status\":\"NEEDS_WORK\"");
+        assertThat(bb.requests).filteredOn(r -> r.path().equals("/rest/api/1.0/users")).hasSize(1);
+    }
 }

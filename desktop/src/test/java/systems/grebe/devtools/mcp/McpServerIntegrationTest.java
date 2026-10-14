@@ -256,7 +256,7 @@ class McpServerIntegrationTest {
         registry.updateConfig("git", Map.of("repositories", repoDir.toString(), "allowSync", "true",
                 "allowIntegrate", "true", "allowDiscard", "true"));
         registry.updateConfig("pr", Map.of("allowCreate", "true", "allowComment", "true", "allowResolve", "true",
-                "allowMerge", "true", "allowPush", "true"));
+                "allowReview", "true", "allowMerge", "true", "allowPush", "true"));
         registry.updateConfig("container", Map.of("allowExec", "true", "allowLifecycle", "true", "allowCopy", "true",
                 "allowCreate", "true", "allowRemove", "true", "allowCompose", "true",
                 "composeProjects", composeDir.toString()));
@@ -280,7 +280,7 @@ class McpServerIntegrationTest {
                     Map.entry("invocations_", ShellHints.INVOCATIONS), Map.entry("share_", ShellHints.SHARE),
                     Map.entry("context_", ShellHints.CONTEXT));
             List<McpSchema.Tool> tools = client.listTools().tools();
-            assertThat(tools).hasSize(196); // alle @Tool-Methoden aller Module
+            assertThat(tools).hasSize(198); // alle @Tool-Methoden aller Module
             assertThat(tools).allSatisfy(t -> {
                 String hint = hintByPrefix.entrySet().stream().filter(e -> t.name().startsWith(e.getKey()))
                         .map(Map.Entry::getValue).findFirst().orElse(null);

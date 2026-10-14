@@ -97,6 +97,28 @@ class GitHubServerProviderTest {
     }
 
     @Test
+    void approveAndChangesRequiredPostReviews() {
+        gh.on("/repos/octo/app/pulls/7/reviews", r -> new StubServer.Reply(200,
+                "{\"id\":31,\"html_url\":\"https://github.com/octo/app/pull/7#pullrequestreview-31\"}", Map.of()));
+        PrReviewTools tools = new PrReviewTools(env(Map.of()));
+
+        assertThat(tools.approve("octo/app#7", null, null, null, null, null, null))
+                .contains("octo/app#7: freigegeben [ID r31]", "#pullrequestreview-31");
+        assertThat(gh.last("/repos/octo/app/pulls/7/reviews").body()).contains("\"event\":\"APPROVE\"")
+                .doesNotContain("\"body\"");
+
+        assertThat(tools.changesRequired("octo/app#7", "Tests fehlen", null, null, null, null, null))
+                .contains("Änderungen angefordert");
+        assertThat(gh.last("/repos/octo/app/pulls/7/reviews").body())
+                .contains("\"event\":\"REQUEST_CHANGES\"", "Tests fehlen\\n\\n(via DevTools)");
+
+        assertThatThrownBy(() -> tools.changesRequired("octo/app#7", " ", null, null, null, null, null))
+                .hasMessageContaining("Begründung fehlt");
+        assertThatThrownBy(() -> tools.approve(null, null, null, null, null, null, null))
+                .hasMessageContaining("ausdrücklich angeben");
+    }
+
+    @Test
     void replyResolveAndInlineCommentUseRightEndpoints() {
         gh.on("/graphql", r -> StubServer.Reply.json(r.body().contains("addPullRequestReviewThreadReply")
                 ? "{\"data\":{\"addPullRequestReviewThreadReply\":{\"comment\":{\"databaseId\":99,\"url\":\"https://github.com/c/99\"}}}}"

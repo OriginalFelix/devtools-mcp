@@ -161,4 +161,22 @@ class GitLabServerProviderTest {
         assertThat(gl.last(MR + "/merge").body()).contains("\"sha\":\"h1\"", "\"squash\":true",
                 "\"squash_commit_message\":\"Export\"", "\"should_remove_source_branch\":true");
     }
+
+    @Test
+    void approveUsesEndpointAndChangesRequiredTheQuickAction() {
+        gl.on(MR + "/approve", "{\"approved\":true}");
+        gl.on(MR + "/notes", r -> new StubServer.Reply(201, "{\"id\":77}", Map.of()));
+        PrReviewTools tools = new PrReviewTools(env());
+
+        assertThat(tools.approve("grp/app!12", null, null, null, null, null, null))
+                .contains("grp/app!12: freigegeben", "/grp/app/-/merge_requests/12");
+        assertThat(gl.requests).noneMatch(r -> r.path().equals(MR + "/notes"));
+        assertThat(tools.approve("grp/app!12", "Sauber", null, null, null, null, null))
+                .contains("freigegeben, Kommentar hinzugefügt", "#note_77");
+
+        assertThat(tools.changesRequired("grp/app!12", "Bitte Tests", null, null, null, null, null))
+                .contains("Änderungen angefordert");
+        assertThat(gl.last(MR + "/unapprove").method()).isEqualTo("POST");
+        assertThat(gl.last(MR + "/notes").body()).contains("Bitte Tests", "\\n\\n/submit_review requested_changes");
+    }
 }
