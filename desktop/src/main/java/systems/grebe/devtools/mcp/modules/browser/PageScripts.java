@@ -109,6 +109,7 @@ final class PageScripts {
             }
             function all(root, out) {
               for (const el of root.querySelectorAll('*')) {
+                if (el.id === '__mcp_overlay') continue;
                 out.push(el);
                 if (el.shadowRoot) all(el.shadowRoot, out);
               }

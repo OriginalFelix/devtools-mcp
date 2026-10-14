@@ -71,7 +71,13 @@ public class BrowserTools {
             WebElement el = (ref != null && !ref.isBlank()) || (selector != null && !selector.isBlank())
                     ? BrowserEnvironment.element(d, ref, selector) : null;
             boolean full = el == null && Boolean.TRUE.equals(fullPage);
-            Screenshots.Shot shot = Screenshots.capture(d, el, full, env.maxImageEdge());
+            Screenshots.Shot shot;
+            Overlay.visible(s, d, false);
+            try {
+                shot = Screenshots.capture(d, el, full, env.maxImageEdge());
+            } finally {
+                Overlay.visible(s, d, true);
+            }
             if (el == null && !full) {
                 Object w = ((JavascriptExecutor) d).executeScript("return window.innerWidth");
                 s.cssPerImagePixel = w instanceof Number n ? n.doubleValue() / shot.width() : 0;

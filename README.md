@@ -497,6 +497,13 @@ jeden Browser mit WebDriver und ohne Erweiterung. Der Browser läuft standardmä
   Fenster deshalb nach vorn – und beginnt eine durch Klick ausgelöste Navigation verzögert (das Modul wartet bis zu
   600 ms darauf). Die Integrationstests laufen mit `-Pbrowser=firefox|edge|safari` gegen einen anderen Browser als
   Chrome.
+* **Aktionen sichtbar** (*Aktionen im Browser anzeigen*, Standard an, nicht headless): WebDriver bewegt nur einen
+  virtuellen Zeiger im Browser, nicht den Mauszeiger des Systems. Damit der Nutzer sieht, was passiert, legt das Modul
+  eine Ebene über die Seite – leuchtender Rahmen, solange gesteuert wird, ein Zeiger, der vor jedem Klick, Tippen,
+  Zeigen, Scrollen und Ziehen zum Ziel gleitet (*Dauer der Zeigerbewegung*, 0 = sofort), eine Welle beim Klick und oben
+  eine Leiste mit *Beschriftung*, aktueller Aktion und **Stopp**. Nach „Stopp“ lehnen alle Eingabe-Tools ab, bis der
+  Nutzer „Fortsetzen“ drückt. Die Ebene (`#__mcp_overlay`, Shadow-DOM, `pointer-events: none`) fängt keine Klicks ab,
+  fehlt in Screenshots und in browser_read_page/browser_find und wird nach Navigationen neu angelegt.
 * **Dialoge:** `alert`/`confirm`/`prompt` bleiben offen, bis `browser_dialog` sie bestätigt oder abbricht; Aktionen,
   die einen Dialog öffnen, melden das im Ergebnis.
 * **Freigaben:** *Erlaubte Hosts* (leer = alle; `*.firma.de` gilt auch für `firma.de`, mit Port nur dieser Port) und

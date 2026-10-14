@@ -57,6 +57,9 @@ public class BrowserInteractTools {
             Set<String> tabsBefore = d.getWindowHandles();
             Target t = target(s, d, ref, selector, x, y);
             String what = t.describe(d);
+            int[] p = t.show(s, d, (b.equals("left") ? "Klickt auf " : b.equals("right") ? "Rechtsklick auf "
+                    : "Doppelklick auf ") + caption(what));
+            Overlay.ripple(s, d, p);
             Actions a = new Actions(d);
             if (t.element != null && b.equals("left") && mods.isEmpty()) {
                 try {
@@ -107,6 +110,7 @@ public class BrowserInteractTools {
             if (hasTarget) {
                 WebElement el = BrowserEnvironment.element(d, ref, selector);
                 BrowserEnvironment.scrollIntoView(d, el);
+                Overlay.ripple(s, d, Overlay.moveTo(s, d, el, "Tippt in " + caption(describe(d, el))));
                 if (!Boolean.FALSE.equals(clear)) {
                     clear(d, el);
                 }
@@ -116,6 +120,7 @@ public class BrowserInteractTools {
                 }
                 what = describe(d, el);
             } else {
+                Overlay.caption(s, d, "Tippt " + text.length() + " Zeichen");
                 Actions a = new Actions(d).sendKeys(text);
                 if (Boolean.TRUE.equals(submit)) {
                     a.sendKeys(Keys.ENTER);
@@ -164,6 +169,7 @@ public class BrowserInteractTools {
                 WebElement el = BrowserEnvironment.element(d, ref, null);
                 ((JavascriptExecutor) d).executeScript("arguments[0].focus()", el);
             }
+            Overlay.caption(s, d, "Taste " + keys.strip() + (n > 1 ? " ×" + n : ""));
             Actions a = new Actions(d);
             for (int i = 0; i < n; i++) {
                 for (Keyboard.Chord c : chords) {
@@ -195,6 +201,7 @@ public class BrowserInteractTools {
                 throw new IllegalArgumentException(describe(d, el) + " ist keine <select>-Liste – aufklicken und die "
                         + "Option mit browser_click wählen.");
             }
+            Overlay.ripple(s, d, Overlay.moveTo(s, d, el, "Wählt " + String.join(", ", options)));
             Select sel = new Select(el);
             if (sel.isMultiple()) {
                 sel.deselectAll();
@@ -245,6 +252,7 @@ public class BrowserInteractTools {
         return env.interact(s, d -> {
             Target t = target(s, d, ref, selector, x, y);
             String what = t.describe(d);
+            t.show(s, d, "Zeigt auf " + caption(what));
             Actions a = new Actions(d);
             t.moveTo(a);
             a.perform();
@@ -277,6 +285,8 @@ public class BrowserInteractTools {
             if (dir.isEmpty()) {
                 WebElement el = BrowserEnvironment.element(d, ref, selector);
                 BrowserEnvironment.scrollIntoView(d, el);
+                Overlay.moveTo(s, d, el, "Scrollt zu " + caption(describe(d, el)));
+                Overlay.refresh(s, d, null);
                 return "Sichtbar: " + describe(d, el) + "\n" + position(s, d);
             }
             List<?> view = (List<?>) js.executeScript("return [innerWidth, innerHeight]");
@@ -287,14 +297,23 @@ public class BrowserInteractTools {
             int dx = dir.equals("left") ? -px : dir.equals("right") ? px : 0;
             int dy = dir.equals("up") ? -px : dir.equals("down") ? px : 0;
             WheelInput.ScrollOrigin origin;
+            String where = "Scrollt " + switch (dir) {
+                case "up" -> "nach oben";
+                case "down" -> "nach unten";
+                case "left" -> "nach links";
+                default -> "nach rechts";
+            };
             if (hasElement) {
                 WebElement el = BrowserEnvironment.element(d, ref, selector);
                 BrowserEnvironment.scrollIntoView(d, el);
+                Overlay.moveTo(s, d, el, where);
                 origin = WheelInput.ScrollOrigin.fromElement(el);
             } else if (x != null && y != null) {
                 int[] p = css(s, x, y);
+                Overlay.moveTo(s, d, p[0], p[1], where);
                 origin = WheelInput.ScrollOrigin.fromViewport(p[0], p[1]);
             } else {
+                Overlay.moveTo(s, d, w / 2, h / 2, where);
                 origin = WheelInput.ScrollOrigin.fromViewport(w / 2, h / 2);
             }
             try {
@@ -308,6 +327,7 @@ public class BrowserInteractTools {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+            Overlay.refresh(s, d, null);
             return "Gescrollt: " + dir + " " + px + " px.\n" + position(s, d);
         });
     }
@@ -338,9 +358,12 @@ public class BrowserInteractTools {
             String fromText = from.describe(d);
             Target to = target(s, d, toRef, toSelector, toX, toY);
             String toText = to.describe(d);
+            Overlay.ripple(s, d, from.show(s, d, "Greift " + caption(fromText)));
             Actions a = new Actions(d);
             from.moveTo(a);
-            a.clickAndHold();
+            a.clickAndHold().perform();
+            to.show(s, d, "Zieht nach " + caption(toText));
+            a = new Actions(d);
             to.moveTo(a);
             a.release().perform();
             return "Gezogen von " + fromText + " nach " + toText + ".\n" + env.after(s, d);
@@ -358,6 +381,15 @@ public class BrowserInteractTools {
             } else {
                 a.moveToLocation(cssX, cssY);
             }
+        }
+
+        /** Angezeigten Zeiger hierher bewegen; liefert die Stelle (CSS-Pixel) oder {@code null}. */
+        int[] show(BrowserSession s, WebDriver d, String action) {
+            if (element != null) {
+                return Overlay.moveTo(s, d, element, action);
+            }
+            Overlay.moveTo(s, d, cssX, cssY, action);
+            return s.showActions ? new int[]{cssX, cssY} : null;
         }
 
         String describe(WebDriver d) {
@@ -390,6 +422,12 @@ public class BrowserInteractTools {
     private static int[] css(BrowserSession s, int x, int y) {
         double f = s.cssPerImagePixel > 0 ? s.cssPerImagePixel : 1.0;
         return new int[]{(int) Math.round(x * f), (int) Math.round(y * f)};
+    }
+
+    /** Zeile aus browser_read_page ohne Referenz, für die Leiste im Browser. */
+    private static String caption(String line) {
+        String c = line.replaceFirst("^\\[e\\d+] ", "");
+        return BrowserEnvironment.clip(c, 80);
     }
 
     /** Eine Zeile wie in browser_read_page. */

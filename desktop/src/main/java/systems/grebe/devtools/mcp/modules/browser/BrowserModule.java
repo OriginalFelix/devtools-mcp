@@ -44,6 +44,9 @@ public class BrowserModule implements ToolModule {
     static final String MAX_IMAGE_EDGE = "maxImageEdge";
     static final String MAX_LINES = "maxOutputLines";
     static final String SCREENSHOT_DIR = "screenshotDirectory";
+    static final String SHOW_ACTIONS = "showActions";
+    static final String ANIMATION_MS = "animationMillis";
+    static final String OVERLAY_LABEL = "overlayLabel";
     static final String ALLOW_INTERACT = "allowInteract";
     static final String ALLOW_JS = "allowJavaScript";
     static final String ALLOW_ATTACH = "allowAttach";
@@ -171,6 +174,14 @@ public class BrowserModule implements ToolModule {
                 ConfigField.of(SCREENSHOT_DIR, "Ablageordner für Screenshots", FieldType.DIRECTORY)
                         .withHelp("Optional: browser_screenshot save=true speichert hier; auch wenn ein Aufrufer (Skript) "
                                 + "keine Bilder empfangen kann."),
+                ConfigField.of(SHOW_ACTIONS, "Aktionen im Browser anzeigen", FieldType.BOOLEAN).withDefault("true")
+                        .withHelp("Leuchtender Rahmen, solange gesteuert wird, ein Mauszeiger, der zum Ziel gleitet, eine "
+                                + "Welle beim Klick und oben eine Leiste mit der aktuellen Aktion und „Stopp“ – damit hält "
+                                + "der Nutzer die Steuerung an. Nicht bei headless; in Screenshots ausgeblendet."),
+                ConfigField.of(ANIMATION_MS, "Dauer der Zeigerbewegung (ms)", FieldType.INT).withDefault("400")
+                        .withHelp("0 = Zeiger springt sofort. Jede Aktion dauert um diese Zeit länger."),
+                ConfigField.of(OVERLAY_LABEL, "Beschriftung der Leiste", FieldType.STRING)
+                        .withDefault("Claude steuert diesen Browser"),
                 ConfigField.of(ALLOW_INTERACT, "Seiten bedienen erlauben", FieldType.BOOLEAN).withDefault("true")
                         .withHelp("browser_click, browser_type, browser_key, browser_select, browser_hover, browser_scroll, "
                                 + "browser_drag. Aus = nur öffnen, lesen und Screenshots."),

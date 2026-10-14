@@ -188,6 +188,9 @@ final class BrowserEnvironment {
                 LOG.debug("Fenstergröße nicht gesetzt", e);
             }
         }
+        s.showActions = config.getBoolean(BrowserModule.SHOW_ACTIONS) && !head;
+        s.animationMillis = Math.clamp(config.getInt(BrowserModule.ANIMATION_MS, 400), 0, 3000);
+        s.overlayLabel = config.getString(BrowserModule.OVERLAY_LABEL, "Claude steuert diesen Browser");
         listen(s);
         sessions.add(s);
         return s;
@@ -271,6 +274,7 @@ final class BrowserEnvironment {
             if (s.safari) {
                 d.switchTo().window(d.getWindowHandle());
             }
+            Overlay.guard(s, d);
             return action.apply(d);
         });
     }
@@ -499,6 +503,7 @@ final class BrowserEnvironment {
         }
         checkCurrentUrl(s, d);
         pollConsole(s, d);
+        Overlay.refresh(s, d, null);
         return status(s, d);
     }
 

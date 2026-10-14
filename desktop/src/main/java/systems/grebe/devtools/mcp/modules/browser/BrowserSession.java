@@ -49,6 +49,15 @@ final class BrowserSession {
     volatile String bidiUnavailable;
     /** CSS-Pixel je Bildpixel des letzten Viewport-Screenshots; 0 = noch keiner. */
     volatile double cssPerImagePixel;
+    /** Aktionen im Browser anzeigen ({@link Overlay}); aus bei headless. */
+    volatile boolean showActions;
+    volatile int animationMillis = 400;
+    volatile String overlayLabel = "";
+    /** Position des angezeigten Zeigers (CSS-Pixel), -1 = noch keine. */
+    volatile int cursorX = -1;
+    volatile int cursorY = -1;
+    /** Der Nutzer hat im Browser „Stopp“ gedrückt; Eingaben werden abgelehnt, bis er „Fortsetzen“ drückt. */
+    volatile boolean stoppedByUser;
     /** Letzte freigegebene Adresse des aktiven Tabs – Rückfallziel, wenn ein Seitenwechsel gesperrt ist. */
     volatile String lastAllowedUrl;
     volatile long lastUsed = System.currentTimeMillis();

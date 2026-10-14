@@ -44,6 +44,7 @@ public class BrowserUploadTools {
                 throw new IllegalArgumentException(BrowserInteractTools.describe(d, el) + " ist kein Datei-Feld "
                         + "(<input type=file>) – browser_find selector=\"input[type=file]\" findet es.");
             }
+            Overlay.ripple(s, d, Overlay.moveTo(s, d, el, "Wählt " + files.size() + " Datei(en)"));
             el.sendKeys(String.join("\n", files));
             return files.size() + " Datei(en) gewählt: " + String.join(", ", files) + "\n" + env.after(s, d);
         });
