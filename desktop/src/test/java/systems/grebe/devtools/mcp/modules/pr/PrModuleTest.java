@@ -46,8 +46,8 @@ class PrModuleTest {
         assertThat(providers.providers()).extracting(GitServerProvider::id).containsExactly("github", "gitlab", "bitbucket");
         assertThat(module.configSchema()).extracting(ConfigField::key).contains("repositories", "remote",
                 "defaultProvider", "github.enabled", "github.token", "gitlab.baseUrl", "bitbucket.deployment",
-                "bitbucket.user", "allowCreate", "allowComment", "allowResolve", "allowReview", "allowMerge", "allowPush",
-                "writeProjects");
+                "bitbucket.user", "allowCreate", "allowComment", "allowResolve", "allowReview", "allowMerge", "allowDecline",
+                "allowPush", "writeProjects");
         assertThat(module.configSchema()).filteredOn(f -> f.key().equals("defaultProvider"))
                 .flatExtracting(ConfigField::options).containsExactly("auto", "github", "gitlab", "bitbucket");
         assertThat(env(Map.of()).entries()).isEmpty();
@@ -59,10 +59,10 @@ class PrModuleTest {
         assertThat(tools).extracting(t -> t.getToolDefinition().name())
                 .containsExactlyInAnyOrder("providers", "list", "get", "diff", "comments", "insights");
         List<ToolCallback> all = module.createTools(ModuleConfig.of(module.configSchema(), Map.of("allowCreate", "true",
-                "allowComment", "true", "allowResolve", "true", "allowReview", "true", "allowMerge", "true", "allowPush",
-                "true")));
+                "allowComment", "true", "allowResolve", "true", "allowReview", "true", "allowMerge", "true", "allowDecline",
+                "true", "allowPush", "true")));
         assertThat(all).extracting(t -> t.getToolDefinition().name()).contains("create", "create_draft", "mark_ready", "update", "comment", "reply",
-                "resolve", "approve", "changes_required", "merge", "push");
+                "resolve", "approve", "changes_required", "merge", "decline", "delete_branch", "push");
         assertThat(module.instructions()).contains("`pr_comments", "`pr_reply`", "gh pr");
     }
 

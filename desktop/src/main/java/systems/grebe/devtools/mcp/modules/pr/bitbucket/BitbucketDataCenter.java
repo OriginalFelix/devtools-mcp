@@ -243,7 +243,13 @@ final class BitbucketDataCenter implements GitServer {
         return new PullRequest(repo + "#" + text(n.path("id")), text(n.path("title")), state,
                 n.path("draft").asBoolean(false), user(n.path("author").path("user")),
                 text(n.path("fromRef").path("displayId")), text(n.path("toRef").path("displayId")),
-                date(n.path("updatedDate")), text(n.path("links").path("self").path(0).path("href")));
+                date(n.path("updatedDate")), text(n.path("links").path("self").path(0).path("href")),
+                fork(n.path("fromRef").path("repository").path("id"), n.path("toRef").path("repository").path("id")));
+    }
+
+    /** Ob Quell- und Ziel-Repository verschieden sind; {@code null}, wenn eine ID fehlt. */
+    private static Boolean fork(JsonNode from, JsonNode to) {
+        return from.isMissingNode() || to.isMissingNode() ? null : !from.equals(to);
     }
 
     @Override
@@ -439,7 +445,8 @@ final class BitbucketDataCenter implements GitServer {
         return o;
     }
 
-    private String defaultBranch(String project) {
+    @Override
+    public String defaultBranch(String project) {
         String base = repoPath(project);
         try {
             return text(http.getJson(base + "/default-branch").path("displayId"));
@@ -672,5 +679,37 @@ final class BitbucketDataCenter implements GitServer {
             }
         }
         return new WriteResult(r.key(), msg, webUrl(r));
+    }
+
+    @Override
+    public WriteResult decline(String key, String project) {
+        requireToken("Ablehnen");
+        Ref r = ref(key, project);
+        int version = http.getJson(r.path()).path("version").asInt();
+        ObjectNode body = HttpJson.object();
+        body.put("version", version);
+        http.post(r.path() + "/decline" + query("version", version), body);
+        return new WriteResult(r.key(), "abgelehnt", webUrl(r));
+    }
+
+    @Override
+    public String branchHead(String project, String branch) {
+        for (JsonNode b : http.getJson(repoPath(project) + "/branches" + query("filterText", branch, "limit", 100))
+                .path("values")) {
+            if (branch.equals(text(b.path("displayId")))) {
+                return HttpJson.first(text(b.path("latestCommit")), "");
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public void deleteBranch(String project, String branch) {
+        requireToken("Branch löschen");
+        String[] repo = repo(project);
+        ObjectNode body = HttpJson.object();
+        body.put("name", "refs/heads/" + branch);
+        body.put("dryRun", false);
+        http.request("DELETE", "/rest/branch-utils/1.0/projects/" + repo[0] + "/repos/" + repo[1] + "/branches", body);
     }
 }

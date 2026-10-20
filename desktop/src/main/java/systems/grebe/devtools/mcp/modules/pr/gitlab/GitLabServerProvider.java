@@ -242,7 +242,9 @@ public class GitLabServerProvider implements GitServerProvider {
             return new PullRequest(project + "!" + text(n.path("iid")), text(n.path("title")), state,
                     n.path("draft").asBoolean(n.path("work_in_progress").asBoolean(false)),
                     text(n.path("author").path("username")), text(n.path("source_branch")),
-                    text(n.path("target_branch")), text(n.path("updated_at")), text(n.path("web_url")));
+                    text(n.path("target_branch")), text(n.path("updated_at")), text(n.path("web_url")),
+                    n.path("source_project_id").isMissingNode() || n.path("target_project_id").isMissingNode() ? null
+                            : !n.path("source_project_id").equals(n.path("target_project_id")));
         }
 
         @Override
@@ -730,6 +732,43 @@ public class GitLabServerProvider implements GitServerProvider {
             return new WriteResult(r.key(), "gemergt (" + HttpJson.first(text(n.path("merge_commit_sha")),
                     text(n.path("squash_commit_sha")), text(n.path("state"))) + ")"
                     + (o.deleteSourceBranch() ? ", Quell-Branch wird gelöscht" : ""), text(n.path("web_url")));
+        }
+
+        @Override
+        public WriteResult decline(String key, String project) {
+            requireToken("Schließen");
+            Ref r = ref(key, project);
+            ObjectNode body = HttpJson.object();
+            body.put("state_event", "close");
+            JsonNode n = http.put(r.path(), body).body();
+            return new WriteResult(r.key(), "geschlossen (abgelehnt)", text(n.path("web_url")));
+        }
+
+        @Override
+        public String defaultBranch(String project) {
+            return text(http.getJson("/projects/" + enc(project(project))).path("default_branch"));
+        }
+
+        @Override
+        public String branchHead(String project, String branch) {
+            try {
+                return HttpJson.first(text(http.getJson(branchPath(project, branch)).path("commit").path("id")), "");
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 404) {
+                    return null;
+                }
+                throw e;
+            }
+        }
+
+        @Override
+        public void deleteBranch(String project, String branch) {
+            requireToken("Branch löschen");
+            http.delete(branchPath(project, branch));
+        }
+
+        private static String branchPath(String project, String branch) {
+            return "/projects/" + enc(project(project)) + "/repository/branches/" + enc(branch);
         }
     }
 }

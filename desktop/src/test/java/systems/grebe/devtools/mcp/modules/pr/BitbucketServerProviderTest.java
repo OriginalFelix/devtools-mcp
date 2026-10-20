@@ -320,4 +320,114 @@ class BitbucketServerProviderTest {
         assertThat(put.body()).contains("\"version\":3", "\"title\":\"API\"", "\"description\":\"Text\"",
                 "\"name\":\"anna\"", "\"draft\":false");
     }
+
+    // ------------------------------------------------------------------ Ablehnen und Branches löschen
+
+    static final String DC_REPO = "/rest/api/1.0/projects/PROJ/repos/app";
+    static final String DC_BRANCH_UTILS = "/rest/branch-utils/1.0/projects/PROJ/repos/app/branches";
+
+    private void dataCenterBranches(String defaultBranch, String branchesJson) {
+        bb.on(DC_REPO + "/default-branch", "{\"displayId\":\"" + defaultBranch + "\"}");
+        bb.on(DC_REPO + "/branches", branchesJson);
+        bb.on(DC_BRANCH_UTILS, r -> new StubServer.Reply(204, "", Map.of()));
+    }
+
+    @Test
+    void dataCenterDeclineCommentsThenDeclinesAndDeletesSourceBranch() {
+        String pr = """
+                {"id":5,"version":3,"title":"Alt","state":"OPEN","author":{"user":{"name":"felix"}},
+                 "fromRef":{"id":"refs/heads/feature/alt","displayId":"feature/alt","latestCommit":"c0ffee",
+                            "repository":{"id":1,"slug":"app","project":{"key":"PROJ"}}},
+                 "toRef":{"displayId":"master","repository":{"id":1}}}""";
+        bb.on(DC_PR, pr);
+        bb.on(DC_PR + "/merge", "{\"canMerge\":true,\"conflicted\":false,\"vetoes\":[]}");
+        bb.on("/rest/build-status/1.0/commits/c0ffee", "{\"isLastPage\":true,\"values\":[]}");
+        bb.on(DC_REPO + "/pull-requests", "{\"isLastPage\":true,\"values\":[" + pr + "]}");
+        bb.on(DC_PR + "/comments", "{\"id\":61,\"version\":0}");
+        bb.on(DC_PR + "/decline", "{\"state\":\"DECLINED\"}");
+        dataCenterBranches("master", "{\"values\":[{\"displayId\":\"feature/alt\",\"latestCommit\":\"c0ffee\"}]}");
+
+        String out = new PrDeclineTools(env("datacenter", Map.of()))
+                .decline("PROJ/app#5", "Überholt", true, null, null, null, null, null);
+        assertThat(out).contains("PROJ/app#5: abgelehnt, Kommentar hinzugefügt, Branch feature/alt gelöscht "
+                + "(letzter Commit c0ffee)");
+        StubServer.Request decline = bb.last(DC_PR + "/decline");
+        assertThat(decline.method()).isEqualTo("POST");
+        assertThat(decline.query()).isEqualTo("version=3");
+        assertThat(bb.requests.indexOf(bb.last(DC_PR + "/comments"))).isLessThan(bb.requests.indexOf(decline));
+        assertThat(bb.last(DC_PR + "/comments").body()).contains("Überholt");
+        StubServer.Request del = bb.last(DC_BRANCH_UTILS);
+        assertThat(del.method()).isEqualTo("DELETE");
+        assertThat(del.body()).contains("\"name\":\"refs/heads/feature/alt\"", "\"dryRun\":false");
+    }
+
+    @Test
+    void dataCenterDeclineLeavesClosedPullRequestAlone() {
+        bb.on(DC_PR, "{\"id\":5,\"version\":3,\"state\":\"DECLINED\",\"fromRef\":{\"latestCommit\":\"c0ffee\"}}");
+        bb.on(DC_PR + "/merge", "{\"canMerge\":false,\"conflicted\":false,\"vetoes\":[]}");
+        bb.on("/rest/build-status/1.0/commits/c0ffee", "{\"isLastPage\":true,\"values\":[]}");
+        String out = new PrDeclineTools(env("datacenter", Map.of()))
+                .decline("PROJ/app#5", null, null, null, null, null, null, null);
+        assertThat(out).contains("PROJ/app#5: ist nicht offen (closed) – unverändert");
+        assertThat(bb.requests).extracting(StubServer.Request::method).containsOnly("GET");
+    }
+
+    @Test
+    void deleteBranchRefusesDefaultBranchOpenPullRequestsAndUnknownBranches() {
+        PrDeclineTools tools = new PrDeclineTools(env("datacenter", Map.of()));
+        assertThatThrownBy(() -> tools.deleteBranch("master", null, "PROJ/app", null))
+                .hasMessageContaining("Standard-Branch");
+        assertThat(bb.requests).isEmpty();
+
+        bb.on(DC_REPO + "/pull-requests", """
+                {"isLastPage":true,"values":[{"id":7,"title":"Y","state":"OPEN","fromRef":{"displayId":"feature/y"},
+                 "toRef":{"displayId":"develop"}}]}""");
+        dataCenterBranches("develop", "{\"values\":[]}");
+        assertThatThrownBy(() -> tools.deleteBranch("feature/y", null, "PROJ/app", null))
+                .hasMessageContaining("noch Pull Requests offen: PROJ/app#7");
+        assertThatThrownBy(() -> tools.deleteBranch("develop", null, "PROJ/app", null))
+                .hasMessageContaining("'develop' ist der Standard-Branch");
+        assertThatThrownBy(() -> tools.deleteBranch("feature/weg", null, "PROJ/app", null))
+                .hasMessageContaining("Branch 'feature/weg' gibt es in PROJ/app nicht");
+        assertThat(bb.requests).noneMatch(r -> r.path().equals(DC_BRANCH_UTILS));
+
+        bb.on(DC_REPO + "/branches", "{\"values\":[{\"displayId\":\"feature/z\",\"latestCommit\":\"abc123\"}]}");
+        assertThat(tools.deleteBranch("refs/heads/feature/z", null, "PROJ/app", null))
+                .isEqualTo("PROJ/app: Branch feature/z gelöscht (letzter Commit abc123)");
+        assertThat(bb.last(DC_BRANCH_UTILS).body()).contains("\"name\":\"refs/heads/feature/z\"");
+    }
+
+    @Test
+    void declineRefusesBranchDeletionWhileAnotherPullRequestIsOpen() {
+        String pr = """
+                {"id":5,"version":3,"title":"Alt","state":"OPEN","fromRef":{"displayId":"feature/alt","latestCommit":"c0ffee"},
+                 "toRef":{"displayId":"master"}}""";
+        String other = """
+                {"id":6,"title":"Backport","state":"OPEN","fromRef":{"displayId":"feature/alt"},"toRef":{"displayId":"43.1"}}""";
+        bb.on(DC_PR, pr);
+        bb.on(DC_PR + "/merge", "{\"canMerge\":true,\"conflicted\":false,\"vetoes\":[]}");
+        bb.on("/rest/build-status/1.0/commits/c0ffee", "{\"isLastPage\":true,\"values\":[]}");
+        bb.on(DC_REPO + "/pull-requests", "{\"isLastPage\":true,\"values\":[" + pr + "," + other + "]}");
+        assertThatThrownBy(() -> new PrDeclineTools(env("datacenter", Map.of()))
+                .decline("PROJ/app#5", null, true, null, null, null, null, null))
+                .hasMessageContaining("weitere Pull Requests offen: PROJ/app#6");
+        assertThat(bb.requests).noneMatch(r -> r.path().equals(DC_PR + "/decline"));
+    }
+
+    @Test
+    void cloudDeclinePostsDeclineAndDeletesBranchRef() {
+        bb.on(CLOUD_PR, """
+                {"id":5,"state":"OPEN","source":{"branch":{"name":"feature/alt"},"repository":{"full_name":"team/web"}},
+                 "destination":{"branch":{"name":"main"},"repository":{"full_name":"team/web"}}}""");
+        bb.on(CLOUD_PR + "/decline", "{\"state\":\"DECLINED\"}");
+        bb.on("/repositories/team/web/pullrequests", "{\"values\":[]}");
+        bb.on("/repositories/team/web", "{\"mainbranch\":{\"name\":\"main\"}}");
+        bb.on("/repositories/team/web/refs/branches/feature%2Falt", r -> "DELETE".equals(r.method())
+                ? new StubServer.Reply(204, "", Map.of()) : StubServer.Reply.json("{\"target\":{\"hash\":\"beef\"}}"));
+        String out = new PrDeclineTools(env("cloud", Map.of()))
+                .decline("team/web#5", null, true, null, null, null, null, null);
+        assertThat(out).contains("team/web#5: abgelehnt, Branch feature/alt gelöscht (letzter Commit beef)");
+        assertThat(bb.last(CLOUD_PR + "/decline").method()).isEqualTo("POST");
+        assertThat(bb.last("/repositories/team/web/refs/branches/feature%2Falt").method()).isEqualTo("DELETE");
+    }
 }

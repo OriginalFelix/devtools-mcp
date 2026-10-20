@@ -129,6 +129,35 @@ public interface GitServer {
         throw unsupported("Mergen");
     }
 
+    /**
+     * Lehnt einen offenen Pull Request ab bzw. schließt ihn ohne Merge – nur diese eine Aktion. Status prüfen,
+     * Begründung kommentieren und den Quell-Branch löschen übernimmt das Modul über {@link #get}, {@link #comment} und
+     * {@link #deleteBranch}.
+     */
+    default WriteResult decline(String ref, String project) {
+        throw unsupported("Pull Requests ablehnen");
+    }
+
+    // ------------------------------------------------------------------ Branches auf dem Server
+
+    /** Standard-Branch des Repositories (ohne {@code refs/heads/}). */
+    default String defaultBranch(String project) {
+        throw unsupported("Standard-Branch ermitteln");
+    }
+
+    /** Letzter Commit eines Branches auf dem Server oder {@code null}, wenn es ihn nicht gibt. */
+    default String branchHead(String project, String branch) {
+        throw unsupported("Branches lesen");
+    }
+
+    /**
+     * Löscht einen Branch im Repository auf dem Server – nur diese eine Aktion. Die Prüfungen (Standard-Branch,
+     * offene Pull Requests, Existenz) macht das Modul vorher.
+     */
+    default void deleteBranch(String project, String branch) {
+        throw unsupported("Branches löschen");
+    }
+
     private UnsupportedOperationException unsupported(String what) {
         return new UnsupportedOperationException(what + " wird vom Git-Server '" + id() + "' nicht unterstützt.");
     }
@@ -177,9 +206,16 @@ public interface GitServer {
      *
      * @param key systemweit eindeutig ({@code owner/repo#12}, {@code gruppe/projekt!12}, {@code PROJ/repo#12})
      * @param state {@code open}, {@code merged} oder {@code closed}
+     * @param fromFork Quell-Branch liegt in einem anderen Repository (Fork); {@code null} = unbekannt
      */
     record PullRequest(String key, String title, String state, boolean draft, String author, String source,
-                       String target, String updated, String url) { }
+                       String target, String updated, String url, Boolean fromFork) {
+        /** Ohne Angabe zum Fork (unbekannt). */
+        public PullRequest(String key, String title, String state, boolean draft, String author, String source,
+                           String target, String updated, String url) {
+            this(key, title, state, draft, author, source, target, updated, url, null);
+        }
+    }
 
     /** CI-Status eines Commits, z.B. ein Check-Run oder die Pipeline. */
     record Check(String name, String status, String url) { }
