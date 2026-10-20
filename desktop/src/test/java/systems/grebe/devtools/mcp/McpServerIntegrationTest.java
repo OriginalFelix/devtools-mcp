@@ -340,6 +340,86 @@ class McpServerIntegrationTest {
         assertThat(Files.exists(home.resolve("skills.mv.db"))).isTrue();
     }
 
+    /**
+     * Extension {@code io.modelcontextprotocol/skills}: angekündigt im {@code initialize}, {@code skills/list} mit
+     * Manifest, {@code resources/read} liefert genau die Bytes, deren SHA-256 im Manifest steht. Roh über HTTP, weil der
+     * SDK-Client weder {@code capabilities.extensions} noch eigene Methoden kennt.
+     */
+    @Test
+    void skillsExtensionServesStoredSkillsAsAgentSkills() throws Exception {
+        assertThat(client.callTool(callRequest("skills_create", Map.of("name", "mcp-agent-skill",
+                "description", "Verwenden, wenn Skills über MCP geladen werden.", "content", "## Schritte\n1. lesen\n")))
+                .isError()).isNotEqualTo(Boolean.TRUE);
+
+        var http = java.net.http.HttpClient.newHttpClient();
+        var init = mcpPost(http, null, Map.of("jsonrpc", "2.0", "id", 1, "method", "initialize", "params", Map.of(
+                "protocolVersion", "2025-11-25", "clientInfo", Map.of("name", "skills-client", "version", "1"),
+                "capabilities", Map.of("extensions", Map.of("io.modelcontextprotocol/skills", Map.of())))));
+        String session = init.headers().firstValue("Mcp-Session-Id").orElseThrow();
+        Map<String, Object> caps = map(map(rpcResult(init.body()).get("result")).get("capabilities"));
+        assertThat(caps).containsKey("resources").containsKey("tools");
+        assertThat(map(caps.get("extensions"))).containsEntry("io.modelcontextprotocol/skills",
+                Map.of("directoryRead", true));
+        mcpPost(http, session, Map.of("jsonrpc", "2.0", "method", "notifications/initialized"));
+
+        Map<String, Object> list = map(rpcResult(mcpPost(http, session, Map.of("jsonrpc", "2.0", "id", 2,
+                "method", "skills/list", "params", Map.of())).body()).get("result"));
+        assertThat(list).containsEntry("resultType", "complete").containsKey("ttlMs").containsKey("cacheScope");
+        Map<String, Object> entry = ((List<?>) list.get("skills")).stream().map(McpServerIntegrationTest::map)
+                .filter(e -> "skill://mcp-agent-skill/SKILL.md".equals(e.get("uri"))).findFirst().orElseThrow();
+        assertThat(map(entry.get("frontmatter"))).containsEntry("name", "mcp-agent-skill")
+                .containsEntry("description", "Verwenden, wenn Skills über MCP geladen werden.");
+        Map<String, Object> manifest = map(((List<?>) entry.get("resources")).getFirst());
+
+        Map<String, Object> read = map(rpcResult(mcpPost(http, session, Map.of("jsonrpc", "2.0", "id", 3,
+                "method", "resources/read", "params", Map.of("uri", "skill://mcp-agent-skill/SKILL.md"))).body())
+                .get("result"));
+        String text = (String) map(((List<?>) read.get("contents")).getFirst()).get("text");
+        assertThat(text).startsWith("---\nname: \"mcp-agent-skill\"\n").contains("## Schritte\n1. lesen");
+        byte[] bytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(((Number) manifest.get("size")).longValue()).isEqualTo(bytes.length);
+        assertThat(manifest.get("digest")).isEqualTo("sha256:" + java.util.HexFormat.of().formatHex(
+                java.security.MessageDigest.getInstance("SHA-256").digest(bytes)));
+
+        Map<String, Object> unknown = rpcResult(mcpPost(http, session, Map.of("jsonrpc", "2.0", "id", 4,
+                "method", "skills/get", "params", Map.of("uri", "skill://gibt-es-nicht/SKILL.md"))).body());
+        assertThat(map(unknown.get("error"))).containsEntry("code", -32602);
+
+        // Clients ohne die Extension finden die Skills in resources/list
+        assertThat(client.listResources().resources()).extracting(McpSchema.Resource::uri)
+                .contains("skill://mcp-agent-skill/SKILL.md");
+    }
+
+    private java.net.http.HttpResponse<String> mcpPost(java.net.http.HttpClient http, String session,
+                                                       Map<String, Object> message) throws Exception {
+        var req = java.net.http.HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/mcp"))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                        io.modelcontextprotocol.json.McpJsonDefaults.getMapper().writeValueAsString(message)));
+        if (session != null) {
+            req.header("Mcp-Session-Id", session).header("MCP-Protocol-Version", "2025-11-25");
+        }
+        var res = http.send(req.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(res.statusCode()).as(res.body()).isLessThan(300);
+        return res;
+    }
+
+    /** JSON-RPC-Antwort aus JSON oder SSE ({@code data:}-Zeilen). */
+    private static Map<String, Object> rpcResult(String body) throws Exception {
+        String json = body.strip();
+        if (!json.startsWith("{")) {
+            json = json.lines().filter(l -> l.startsWith("data:")).map(l -> l.substring(5).strip())
+                    .filter(l -> l.contains("\"id\"")).reduce((a, b) -> b).orElseThrow();
+        }
+        return map(io.modelcontextprotocol.json.McpJsonDefaults.getMapper().readValue(json, Map.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> map(Object o) {
+        return (Map<String, Object>) o;
+    }
+
     @Test
     void memoriesRoundTripOverMcp() {
         // delete ist ohne Schalter registriert – dann nur für temporäre Memories

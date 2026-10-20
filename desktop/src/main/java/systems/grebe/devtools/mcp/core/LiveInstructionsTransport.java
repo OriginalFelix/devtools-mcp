@@ -27,6 +27,8 @@ import reactor.core.publisher.Mono;
  * Installieren eines Plugins) sieht jede <em>neue</em> Session sofort; eine bestehende behält den Text ihres
  * {@code initialize}, bis der Client neu verbindet.
  *
+ * <p>Außerdem hängt sie die Methoden der {@link McpExtension}s ein ({@link McpExtensions#wrap}).
+ *
  * <p>Außerdem bündelt die Hülle die {@code list_changed}-Meldungen: Das SDK schickt bei <em>jedem</em>
  * {@code addTool}/{@code removeTool} eine eigene Meldung an alle Sessions – ein Neuaufbau aller Module (etwa nach dem
  * Verbinden mit dem Backend) wären so Hunderte Meldungen je Session, bei einer abgerissenen Verbindung jede davon mit
@@ -45,25 +47,40 @@ public final class LiveInstructionsTransport implements McpStreamableServerTrans
 
     private final McpStreamableServerTransportProvider delegate;
     private final Supplier<String> instructions;
+    private final McpExtensions extensions;
     private final Duration quietPeriod;
     /** Je Methode die geplante (noch nicht gesendete) Meldung. */
     private final Map<String, Disposable> pending = new HashMap<>();
 
     public LiveInstructionsTransport(McpStreamableServerTransportProvider delegate, Supplier<String> instructions) {
-        this(delegate, instructions, DEFAULT_QUIET_PERIOD);
+        this(delegate, instructions, (McpExtensions) null);
+    }
+
+    /** @param extensions hängt vor der ersten Session die Handler der Extensions ein; {@code null} = keine */
+    public LiveInstructionsTransport(McpStreamableServerTransportProvider delegate, Supplier<String> instructions,
+                                     McpExtensions extensions) {
+        this(delegate, instructions, extensions, DEFAULT_QUIET_PERIOD);
     }
 
     LiveInstructionsTransport(McpStreamableServerTransportProvider delegate, Supplier<String> instructions,
                               Duration quietPeriod) {
+        this(delegate, instructions, null, quietPeriod);
+    }
+
+    LiveInstructionsTransport(McpStreamableServerTransportProvider delegate, Supplier<String> instructions,
+                              McpExtensions extensions, Duration quietPeriod) {
         this.delegate = delegate;
         this.instructions = instructions;
+        this.extensions = extensions;
         this.quietPeriod = quietPeriod;
     }
 
     @Override
     public void setSessionFactory(McpStreamableServerSession.Factory sessionFactory) {
+        McpStreamableServerSession.Factory factory = extensions == null ? sessionFactory
+                : extensions.wrap(sessionFactory);
         delegate.setSessionFactory(request -> {
-            McpStreamableServerSession.McpStreamableServerSessionInit init = sessionFactory.startSession(request);
+            McpStreamableServerSession.McpStreamableServerSessionInit init = factory.startSession(request);
             return new McpStreamableServerSession.McpStreamableServerSessionInit(init.session(),
                     init.initResult().map(this::withCurrentInstructions));
         });

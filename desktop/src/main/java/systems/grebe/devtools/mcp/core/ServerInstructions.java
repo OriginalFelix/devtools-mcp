@@ -14,6 +14,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStreamableServerTransportProvider;
+import org.springframework.web.servlet.function.RouterFunction;
+import org.springframework.web.servlet.function.ServerResponse;
 import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.modules.scripts.ScriptManager;
 import systems.grebe.devtools.mcp.plugin.PluginManager;
@@ -139,12 +141,23 @@ public class ServerInstructions {
      * Baut die Instructions bei jedem {@code initialize} neu (siehe {@link LiveInstructionsTransport}): Plugins,
      * die zur Laufzeit installiert, aktiviert oder entfernt werden, sind so für jede neue Client-Session sofort
      * berücksichtigt. {@code @Primary}, damit der MCP-Server diese Hülle bekommt; die Router-Funktion hängt weiter am
-     * eigentlichen WebMVC-Transport.
+     * eigentlichen WebMVC-Transport. Außerdem hängt die Hülle die Methoden der {@link McpExtension}s ein.
      */
     @Bean
     @Primary
-    LiveInstructionsTransport liveInstructionsTransport(WebMvcStreamableServerTransportProvider transport) {
-        return new LiveInstructionsTransport(transport, this::build);
+    LiveInstructionsTransport liveInstructionsTransport(WebMvcStreamableServerTransportProvider transport,
+                                                        McpExtensions extensions) {
+        return new LiveInstructionsTransport(transport, this::build, extensions);
+    }
+
+    /**
+     * Router-Funktion des MCP-Endpunkts – ersetzt die der Autokonfiguration (gleicher Bean-Name) und kündigt im
+     * {@code initialize} die {@link McpExtension}s unter {@code capabilities.extensions} an.
+     */
+    @Bean(name = "webMvcStreamableServerRouterFunction")
+    RouterFunction<ServerResponse> webMvcStreamableServerRouterFunction(
+            WebMvcStreamableServerTransportProvider transport, McpExtensions extensions) {
+        return transport.getRouterFunction().filter(extensions::advertise);
     }
 
     /**

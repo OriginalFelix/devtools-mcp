@@ -1587,6 +1587,19 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
 * **Sparsam ausgeliefert:** `skills_list` zeigt je Skill nur Name und gekürzte Beschreibung (ohne Tags); bei Suchtext
   und genau einem Treffer kommt der Inhalt gleich mit (spart den zweiten Aufruf). `skills_view` hat statt Frontmatter
   eine Kopfzeile (Name, Revision, Herkunft, Registrierung).
+* **Als Agent Skills über MCP (Extension `io.modelcontextprotocol/skills`, SEP-2640):** Der Server kündigt die
+  Extension im `initialize` unter `capabilities.extensions` an (mit `directoryRead: true`, solange `skills_view` aktiv
+  ist) und beantwortet `skills/list`, `skills/get` und `resources/directory/read`. Jeder Skill ist ein Verzeichnis
+  `skill://<name>/` mit einer `SKILL.md` – YAML-Frontmatter (`name`, `description`, unter `metadata` Kategorie, Tags,
+  Registrierung, Revision, Herkunft) plus Inhalt und Liste der Zusatzdateien – und den Zusatzdateien unter ihrem Pfad
+  (`resources/read`, Anhänge als `blob`). Das Manifest in `skills/list` enthält je Datei Größe und SHA-256 der
+  ausgelieferten Bytes; die `SKILL.md` wird dafür bei jedem Zugriff gleich aus dem gespeicherten Skill erzeugt.
+  Ergebnisse tragen `ttlMs: 0` und `cacheScope: private` (Skills ändern sich laufend und sind benutzerbezogen);
+  Änderungen meldet zusätzlich `notifications/resources/list_changed`. Clients ohne die Extension finden die
+  `SKILL.md` aller Skills in `resources/list` (z.B. als `@`-Erwähnung in Claude Code). Laden per `resources/read`
+  zählt wie `skills_view` als Verwendung. Technisch: das MCP-SDK kennt Extensions noch nicht – `McpExtensions` hängt
+  die Methoden in die Handler-Tabelle der Session-Fabrik ein und ergänzt die `initialize`-Antwort über einen Filter
+  an der Router-Funktion; weitere Extensions sind Beans vom Typ `McpExtension`.
 * **Historie:** jede Änderung erzeugt eine Revision mit Aktion und Notiz (`skills_history`). Mit
   `expected_revision` lehnt ein Patch ab, wenn der Skill inzwischen woanders geändert wurde.
 * **Ablage im Backend:** Skills liegen im Backend (eingebettet oder Team-Server) und gehören der E-Mail des
