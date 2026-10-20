@@ -264,4 +264,31 @@ class GitHubServerProviderTest {
         assertThat(tools.markReady("octo/app#8", null, null, null)).contains("ist kein Entwurf");
         assertThat(gh.requests).filteredOn(r -> r.path().equals("/graphql")).hasSize(1);
     }
+
+    @Test
+    void declineClosesAndDeletesHeadButNeverForkBranches() {
+        gh.on("/repos/octo/app/pulls/8", """
+                {"number":8,"state":"open","html_url":"https://github.com/octo/app/pull/8",
+                 "head":{"ref":"feature/x","sha":"c0ffee","repo":{"full_name":"octo/app"}},"base":{"ref":"main"}}""");
+        gh.on("/repos/octo/app", "{\"default_branch\":\"main\",\"html_url\":\"https://github.com/octo/app\"}");
+        gh.on("/repos/octo/app/git/refs/heads/feature/x", r -> "DELETE".equals(r.method())
+                ? new StubServer.Reply(204, "", Map.of()) : StubServer.Reply.json("{\"object\":{\"sha\":\"c0ffee\"}}"));
+        gh.on("/repos/octo/app/pulls", "[]");
+        gh.on("/repos/octo/app/pulls/8/reviews", "[]");
+        gh.on("/repos/octo/app/commits/c0ffee/check-runs", "{\"check_runs\":[]}");
+        gh.on("/repos/octo/app/commits/c0ffee/status", "{\"statuses\":[]}");
+        PrDeclineTools tools = new PrDeclineTools(env(Map.of()));
+        assertThat(tools.decline("octo/app#8", null, true, null, null, null, null, null))
+                .contains("octo/app#8: geschlossen (abgelehnt), Branch feature/x gelöscht (letzter Commit c0ffee)");
+        assertThat(gh.last("/repos/octo/app/pulls/8").method()).isEqualTo("PATCH");
+        assertThat(gh.last("/repos/octo/app/pulls/8").body()).isEqualTo("{\"state\":\"closed\"}");
+        assertThat(gh.last("/repos/octo/app/git/refs/heads/feature/x").method()).isEqualTo("DELETE");
+
+        gh.requests.clear();
+        gh.on("/repos/octo/app/pulls/8", """
+                {"number":8,"state":"open","head":{"ref":"feature/x","sha":"c0ffee","repo":{"full_name":"fork/app"}}}""");
+        assertThat(tools.decline("octo/app#8", null, true, null, null, null, null, null))
+                .contains("Branch feature/x liegt in einem Fork – nicht gelöscht");
+        assertThat(gh.requests).noneMatch(r -> r.path().startsWith("/repos/octo/app/git/refs"));
+    }
 }

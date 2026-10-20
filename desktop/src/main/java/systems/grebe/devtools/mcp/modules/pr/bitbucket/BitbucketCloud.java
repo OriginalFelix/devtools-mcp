@@ -180,7 +180,14 @@ final class BitbucketCloud implements GitServer {
         return new PullRequest(repo + "#" + text(n.path("id")), text(n.path("title")), state,
                 n.path("draft").asBoolean(false), user(n.path("author")),
                 text(n.path("source").path("branch").path("name")), text(n.path("destination").path("branch").path("name")),
-                text(n.path("updated_on")), text(n.path("links").path("html").path("href")));
+                text(n.path("updated_on")), text(n.path("links").path("html").path("href")),
+                fork(text(n.path("source").path("repository").path("full_name")),
+                        text(n.path("destination").path("repository").path("full_name"))));
+    }
+
+    /** Ob Quell- und Ziel-Repository verschieden sind; {@code null}, wenn eines fehlt. */
+    private static Boolean fork(String from, String to) {
+        return from == null || to == null ? null : !from.equalsIgnoreCase(to);
     }
 
     private static String user(JsonNode u) {
@@ -498,5 +505,40 @@ final class BitbucketCloud implements GitServer {
         String msg = res.status() == 202 ? "Merge gestartet (läuft im Hintergrund)"
                 : "gemergt (" + text(res.body().path("merge_commit").path("hash")) + ")";
         return new WriteResult(r.key(), msg + (o.deleteSourceBranch() ? ", Quell-Branch wird geschlossen" : ""), r.web());
+    }
+
+    @Override
+    public WriteResult decline(String key, String project) {
+        requireToken("Ablehnen");
+        Ref r = ref(key, project);
+        http.post(r.path() + "/decline", HttpJson.object());
+        return new WriteResult(r.key(), "abgelehnt", r.web());
+    }
+
+    @Override
+    public String defaultBranch(String project) {
+        return text(http.getJson("/repositories/" + repo(project)).path("mainbranch").path("name"));
+    }
+
+    @Override
+    public String branchHead(String project, String branch) {
+        try {
+            return HttpJson.first(text(http.getJson(branchPath(project, branch)).path("target").path("hash")), "");
+        } catch (HttpJson.StatusException e) {
+            if (e.status() == 404) {
+                return null;
+            }
+            throw e;
+        }
+    }
+
+    @Override
+    public void deleteBranch(String project, String branch) {
+        requireToken("Branch löschen");
+        http.delete(branchPath(project, branch));
+    }
+
+    private static String branchPath(String project, String branch) {
+        return "/repositories/" + repo(project) + "/refs/branches/" + HttpJson.enc(branch);
     }
 }

@@ -23,7 +23,7 @@ import systems.grebe.devtools.mcp.modules.pr.spi.GitServerProvider;
 /**
  * Pull/Merge Requests auf Git-Servern über austauschbare Provider ({@link GitServerProvider}, per ServiceLoader):
  * auflisten, lesen, Diff und Kommentar-Threads; je Schalter anlegen, kommentieren, Threads auflösen, freigeben bzw.
- * Änderungen anfordern, mergen und den Branch pushen. Mitgeliefert: GitHub, GitLab, Bitbucket (Cloud und Data Center).
+ * Änderungen anfordern, mergen, ablehnen, den Branch pushen und Branches auf dem Server löschen. Mitgeliefert: GitHub, GitLab, Bitbucket (Cloud und Data Center).
  */
 @Component
 public class PrModule implements ToolModule {
@@ -41,6 +41,7 @@ public class PrModule implements ToolModule {
     static final String ALLOW_RESOLVE = "allowResolve";
     static final String ALLOW_REVIEW = "allowReview";
     static final String ALLOW_MERGE = "allowMerge";
+    static final String ALLOW_DECLINE = "allowDecline";
     static final String ALLOW_PUSH = "allowPush";
     static final String PUSH_TIMEOUT = "pushTimeoutSeconds";
     static final String WRITE_PROJECTS = "writeProjects";
@@ -70,7 +71,8 @@ public class PrModule implements ToolModule {
     public String description() {
         return "GitHub, GitLab, Bitbucket und weitere Git-Server (erweiterbar per ServiceLoader): Pull/Merge Requests "
                 + "auflisten, lesen, Diff, CI-Status, Berichte von Integrationen und Kommentar-Threads; optional anlegen, kommentieren, beantworten, "
-                + "Threads auflösen, freigeben oder Änderungen anfordern, mergen und den Branch pushen (einzeln schaltbar, je Repository freigebbar).";
+                + "Threads auflösen, freigeben oder Änderungen anfordern, mergen, ablehnen, den Branch pushen und Branches auf dem "
+                + "Server löschen (einzeln schaltbar, je Repository freigebbar).";
     }
 
     @Override
@@ -98,12 +100,13 @@ public class PrModule implements ToolModule {
                 Rückfragen beantworten statt auflösen.
                 - Review abschließen: einzelne Stellen mit `pr_comment` (path/line) anmerken, dann `pr_approve` \
                 (freigeben, Kommentar optional) oder `pr_changes_required` (Änderungen anfordern, mit Begründung).
+                - Überholte Pull Requests aufräumen: `pr_decline` (Begründung als `comment`, `deleteSourceBranch=true`                 löscht den Quell-Branch auf dem Server mit); einzelne Remote-Branches ohne offenen Pull Request mit                 `pr_delete_branch` – nicht per `git push --delete`. Den gemeldeten letzten Commit an den Nutzer weitergeben.
                 - Schreiben (`pr_create`, `pr_create_draft`, `pr_mark_ready`, `pr_update`, `pr_comment`, `pr_reply`, `pr_resolve`, `pr_approve`, \
-                `pr_changes_required`, `pr_merge`, `pr_push`) nur auf Anweisung des Nutzers und das Ergebnis mit Link \
+                `pr_changes_required`, `pr_merge`, `pr_decline`, `pr_delete_branch`, `pr_push`) nur auf Anweisung des Nutzers und das Ergebnis mit Link \
                 melden. Die Kennzeichnung („Generated with …“) setzt der Server selbst unter Kommentare und Beschreibungen – nicht selbst schreiben, aber `aiModel` mit dem \
                 eigenen Modellnamen füllen. Fehlt ein Tool, ist es in der App abgeschaltet: \
-                den Schalter nennen, nicht per `gh`/`glab`/`curl`/`git push` ausweichen. `pr_approve`, `pr_changes_required` \
-                und `pr_merge` nur auf ausdrücklichen Auftrag.""";
+                den Schalter nennen, nicht per `gh`/`glab`/`curl`/`git push` ausweichen. `pr_approve`, `pr_changes_required`, \
+                `pr_merge`, `pr_decline` und `pr_delete_branch` nur auf ausdrücklichen Auftrag.""";
     }
 
     @Override
@@ -169,6 +172,10 @@ public class PrModule implements ToolModule {
                                 + "/submit_review, ältere Versionen nur als Kommentar)"),
                 ConfigField.of(ALLOW_MERGE, "Mergen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("pr_merge – führt den Pull Request in den Ziel-Branch zusammen."),
+                ConfigField.of(ALLOW_DECLINE, "Ablehnen und Branches löschen erlauben", FieldType.BOOLEAN)
+                        .withDefault("false").withHelp("pr_decline: Pull Request ablehnen bzw. ohne Merge schließen, "
+                                + "optional samt Quell-Branch; pr_delete_branch: Branch auf dem Server löschen. Nie den "
+                                + "Standard-Branch, nie einen Branch mit offenem Pull Request."),
                 ConfigField.of(ALLOW_PUSH, "Branch pushen erlauben", FieldType.BOOLEAN).withDefault("false")
                         .withHelp("pr_push: 'git push -u' des aktuellen Branches mit den Git-Zugangsdaten des Rechners "
                                 + "(installiertes git nötig). Nie Force-Push, nie auf den Standard-Branch."),
@@ -201,6 +208,9 @@ public class PrModule implements ToolModule {
         }
         if (config.getBoolean(ALLOW_MERGE)) {
             beans.add(new PrMergeTools(env));
+        }
+        if (config.getBoolean(ALLOW_DECLINE)) {
+            beans.add(new PrDeclineTools(env));
         }
         if (config.getBoolean(ALLOW_PUSH)) {
             beans.add(new PrPushTools(env));

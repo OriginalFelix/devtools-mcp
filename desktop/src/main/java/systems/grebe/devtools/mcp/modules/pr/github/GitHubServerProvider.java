@@ -254,7 +254,15 @@ public class GitHubServerProvider implements GitServerProvider {
             return new PullRequest(repo + "#" + text(n.path("number")), text(n.path("title")), state,
                     n.path("draft").asBoolean(false), text(n.path("user").path("login")),
                     text(n.path("head").path("ref")), text(n.path("base").path("ref")), text(n.path("updated_at")),
-                    text(n.path("html_url")));
+                    text(n.path("html_url")), fork(n, repo));
+        }
+
+        /** Gelöschtes Fork-Repository ({@code head.repo = null}) zählt als Fork. */
+        private static Boolean fork(JsonNode n, String repo) {
+            if (n.path("head").isMissingNode()) {
+                return null;
+            }
+            return !repo.equalsIgnoreCase(HttpJson.first(text(n.path("head").path("repo").path("full_name")), ""));
         }
 
         @Override
@@ -703,6 +711,43 @@ public class GitHubServerProvider implements GitServerProvider {
                 }
             }
             return new WriteResult(r.key(), msg, text(pr.path("html_url")));
+        }
+
+        @Override
+        public WriteResult decline(String key, String project) {
+            requireToken("Schließen");
+            Ref r = ref(key, project);
+            ObjectNode body = HttpJson.object();
+            body.put("state", "closed");
+            JsonNode n = http.patch(r.path(), body).body();
+            return new WriteResult(r.key(), "geschlossen (abgelehnt)", text(n.path("html_url")));
+        }
+
+        @Override
+        public String defaultBranch(String project) {
+            return text(http.getJson("/repos/" + repo(project)).path("default_branch"));
+        }
+
+        @Override
+        public String branchHead(String project, String branch) {
+            try {
+                return HttpJson.first(text(http.getJson(refPath(project, branch)).path("object").path("sha")), "");
+            } catch (HttpJson.StatusException e) {
+                if (e.status() == 404) {
+                    return null;
+                }
+                throw e;
+            }
+        }
+
+        @Override
+        public void deleteBranch(String project, String branch) {
+            requireToken("Branch löschen");
+            http.delete(refPath(project, branch));
+        }
+
+        private static String refPath(String project, String branch) {
+            return "/repos/" + repo(project) + "/git/refs/heads/" + enc(branch).replace("%2F", "/");
         }
     }
 }

@@ -198,4 +198,25 @@ class GitLabServerProviderTest {
         gl.on(MR, "{\"iid\":12,\"title\":\"Export\",\"draft\":false}");
         assertThat(tools.markReady("grp/app!12", null, null, null)).contains("ist kein Entwurf");
     }
+
+    @Test
+    void declineClosesMergeRequestAndDeletesSourceBranch() {
+        gl.on(MR, """
+                {"iid":12,"state":"opened","source_branch":"feature/x","source_project_id":3,"target_project_id":3,
+                 "web_url":"https://gl/mr/12"}""");
+        gl.on("/api/v4/projects/grp%2Fapp", "{\"default_branch\":\"main\",\"web_url\":\"https://gl/grp/app\"}");
+        gl.on("/api/v4/projects/grp%2Fapp/repository/branches/feature%2Fx", r -> "DELETE".equals(r.method())
+                ? new StubServer.Reply(204, "", Map.of()) : StubServer.Reply.json("{\"commit\":{\"id\":\"c0ffee\"}}"));
+        gl.on(MR + "/notes", r -> new StubServer.Reply(201, "{\"id\":78}", Map.of()));
+        gl.on("/api/v4/projects/grp%2Fapp/merge_requests", "[]");
+        String out = new PrDeclineTools(env()).deleteBranch("feature/x", null, "grp/app", null);
+        assertThat(out).isEqualTo("grp/app: Branch feature/x gelöscht (letzter Commit c0ffee)");
+
+        assertThat(new PrDeclineTools(env()).decline("grp/app!12", "Überholt", false, null, null, null, null, null))
+                .contains("grp/app!12: geschlossen (abgelehnt), Kommentar hinzugefügt", "https://gl/mr/12");
+        StubServer.Request put = gl.last(MR);
+        assertThat(put.method()).isEqualTo("PUT");
+        assertThat(put.body()).isEqualTo("{\"state_event\":\"close\"}");
+        assertThat(gl.last(MR + "/notes").body()).contains("Überholt");
+    }
 }
