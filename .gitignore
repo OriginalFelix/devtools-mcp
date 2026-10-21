@@ -19,3 +19,5 @@ build/
 /server/tsconfig.json
 /server/types.d.ts
 /server/vite.config.ts
+
+graphify-out/cache/

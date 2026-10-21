@@ -1,0 +1,4808 @@
+{
+  "backend/build.gradle.kts": {
+    "mtime": 1792600816.6940198,
+    "seen": 1792600859.419499,
+    "ast_hash": "6395843f8e4c38ac770ebc095b9f2562",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/AccountGraphQlController.java": {
+    "mtime": 1792600816.6950197,
+    "seen": 1792600859.4195056,
+    "ast_hash": "01b9fd338b71acb099957237d36f3fdf",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/BackendChanged.java": {
+    "mtime": 1792600816.69602,
+    "seen": 1792600859.4195087,
+    "ast_hash": "f02c309724e93355287dc6a6d54a8566",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/BackendConfig.java": {
+    "mtime": 1792600816.69602,
+    "seen": 1792600859.4195118,
+    "ast_hash": "63ed36dda846452958caad26c8b9d859",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/BackendGraphQlController.java": {
+    "mtime": 1792600816.69602,
+    "seen": 1792600859.4195147,
+    "ast_hash": "29e91f7695be4ce849ff6b0b01ec4447",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/BackendHome.java": {
+    "mtime": 1792600816.69602,
+    "seen": 1792600859.4195173,
+    "ast_hash": "eb7f05e90ac9f1a0853dd26830c76322",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/ChangeBus.java": {
+    "mtime": 1792600816.6970198,
+    "seen": 1792600859.4195206,
+    "ast_hash": "1ad3e53659f25baa26d833bd644a5993",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/GraphQlAuth.java": {
+    "mtime": 1792600816.6970198,
+    "seen": 1792600859.419524,
+    "ast_hash": "04c7b43eac68de61aa7fa0c9319aca9e",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/GraphQlErrors.java": {
+    "mtime": 1792600816.6970198,
+    "seen": 1792600859.4195263,
+    "ast_hash": "7340a7426241260bb593bdb0085ba6b5",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/SkillCaller.java": {
+    "mtime": 1792600816.6970198,
+    "seen": 1792600859.4195285,
+    "ast_hash": "4b755210689c27411f4138938478c2f2",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/SkillsDatabaseConfig.java": {
+    "mtime": 1792600816.6970198,
+    "seen": 1792600859.4195309,
+    "ast_hash": "d67c5570a2ccc7064a06831fbf65b8a1",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/AccountRepository.java": {
+    "mtime": 1792600816.6980197,
+    "seen": 1792600859.419533,
+    "ast_hash": "91915af98aa69700e2e4c02a022a8446",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/AccountService.java": {
+    "mtime": 1792600816.6980197,
+    "seen": 1792600859.4195359,
+    "ast_hash": "eb3bb65f835d5ce7d36e69288043ada7",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/ApiToken.java": {
+    "mtime": 1792600816.69902,
+    "seen": 1792600859.4195383,
+    "ast_hash": "fe9c27f9ecb763a3851ef8c1708ea6bd",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/CoreDatabaseConfig.java": {
+    "mtime": 1792600816.69902,
+    "seen": 1792600859.4195402,
+    "ast_hash": "1610988374a0d14acae5898c11ee79fd",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/CredentialRepository.java": {
+    "mtime": 1792600816.69902,
+    "seen": 1792600859.4195426,
+    "ast_hash": "19bba952ce031bb6f494d1e2f1e3a6c5",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/CredentialService.java": {
+    "mtime": 1792600816.69902,
+    "seen": 1792600859.4195454,
+    "ast_hash": "4733d45f400a76db4889c6d0876a248b",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/LoginThrottle.java": {
+    "mtime": 1792600816.7000198,
+    "seen": 1792600859.4195473,
+    "ast_hash": "b1593a4d014b04fb369751b55ed8dc90",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/PasswordHashing.java": {
+    "mtime": 1792600816.7000198,
+    "seen": 1792600859.4195502,
+    "ast_hash": "a6070b33f4d32372f5585964e5e83a60",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/Role.java": {
+    "mtime": 1792600816.7000198,
+    "seen": 1792600859.4195523,
+    "ast_hash": "15143f57c409654b978e938375dc84c7",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/RoleService.java": {
+    "mtime": 1792600816.7000198,
+    "seen": 1792600859.4195547,
+    "ast_hash": "ada96f8903d773b0058c048e7bd2c54f",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/Sha3Pbkdf2PasswordEncoder.java": {
+    "mtime": 1792600816.7000198,
+    "seen": 1792600859.4195569,
+    "ast_hash": "6a4b9cbecfdf565f894f441207127ce0",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/TokenService.java": {
+    "mtime": 1792600816.70102,
+    "seen": 1792600859.4195595,
+    "ast_hash": "e54166a0ce2edde34df4a62561efc6dc",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/account/UserAccount.java": {
+    "mtime": 1792600816.70102,
+    "seen": 1792600859.419562,
+    "ast_hash": "626b25283393f6c144ba67cda08cebce",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/api/ApiConfig.java": {
+    "mtime": 1792600816.70102,
+    "seen": 1792600859.4195642,
+    "ast_hash": "432190712120d59be82f2934fcd8d372",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/api/ApiSchemas.java": {
+    "mtime": 1792600816.70202,
+    "seen": 1792600859.4195664,
+    "ast_hash": "c69db50860c15d3f1ee5e02b876c29bb",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/api/VersionedGraphQl.java": {
+    "mtime": 1792600816.70202,
+    "seen": 1792600859.4195683,
+    "ast_hash": "3fe3280e9027c44eff76949619ac27da",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/blobs/BlobController.java": {
+    "mtime": 1792600816.70202,
+    "seen": 1792600859.4195707,
+    "ast_hash": "c8ed7904f5c372792886388aa260a0a1",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/blobs/BlobJanitor.java": {
+    "mtime": 1792600816.70202,
+    "seen": 1792600859.419573,
+    "ast_hash": "66fb98e5b0f1d89904f418a7c328e28b",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/blobs/BlobReferences.java": {
+    "mtime": 1792600816.70302,
+    "seen": 1792600859.419575,
+    "ast_hash": "163241f8f61f27c86f2e057e2610eb84",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/blobs/BlobStore.java": {
+    "mtime": 1792600816.70302,
+    "seen": 1792600859.4195771,
+    "ast_hash": "8bbdc78259af0ac4321e2a3bfbb37348",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/broker/BrokerGraphQlController.java": {
+    "mtime": 1792600816.70302,
+    "seen": 1792600859.419579,
+    "ast_hash": "d8603323679eafc1840814cbdc536d4b",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/broker/BrokerService.java": {
+    "mtime": 1792600816.70302,
+    "seen": 1792600859.419581,
+    "ast_hash": "12ddb823d21772c56dd65b576bf15884",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/catalog/ModuleCatalog.java": {
+    "mtime": 1792600816.70402,
+    "seen": 1792600859.419583,
+    "ast_hash": "be3b53e41a6ee28f1b2216855347cbbb",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/discovery/DiscoveryAdvertiser.java": {
+    "mtime": 1792600816.70402,
+    "seen": 1792600859.419585,
+    "ast_hash": "936d9e9a8936def2eda8947c2e982ec1",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/graph/ArcadeGraphReader.java": {
+    "mtime": 1792600816.70502,
+    "seen": 1792600859.4195871,
+    "ast_hash": "0189113e0dd941c7dfe87ff405de9046",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/graph/GraphGraphQlController.java": {
+    "mtime": 1792600816.70502,
+    "seen": 1792600859.4195888,
+    "ast_hash": "915ff34b4287e72fbaca47fad2794476",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/graph/GraphStorage.java": {
+    "mtime": 1792600816.70602,
+    "seen": 1792600859.4195907,
+    "ast_hash": "ba7a6c4fed8966f37d79f32f01bd9720",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/memories/Memory.java": {
+    "mtime": 1792600816.70602,
+    "seen": 1792600859.4195926,
+    "ast_hash": "16e7ccd365f17999112744e20292c896",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/memories/MemoryFile.java": {
+    "mtime": 1792600816.70702,
+    "seen": 1792600859.419595,
+    "ast_hash": "0a166c90f042586cb273b1930d7c5e9f",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/memories/MemoryRepository.java": {
+    "mtime": 1792600816.70702,
+    "seen": 1792600859.419597,
+    "ast_hash": "b7c2bd56aff0793ea7dd62bf67d68930",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/memories/MemoryService.java": {
+    "mtime": 1792600816.7080202,
+    "seen": 1792600859.4195986,
+    "ast_hash": "bbc8eca50e61f436230ee8ade927ee50",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/profile/Profile.java": {
+    "mtime": 1792600816.7080202,
+    "seen": 1792600859.419601,
+    "ast_hash": "8628605f05e25d5d68accd93c81ab9b5",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/profile/ProfileRepository.java": {
+    "mtime": 1792600816.7080202,
+    "seen": 1792600859.4196126,
+    "ast_hash": "5c449ab136802293828cd4260301ea51",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/profile/ProfileService.java": {
+    "mtime": 1792600816.7090201,
+    "seen": 1792600859.4196148,
+    "ast_hash": "1b9d1f1bcf0b6dc619f64fbe639eae47",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/project/Project.java": {
+    "mtime": 1792600816.7090201,
+    "seen": 1792600859.419632,
+    "ast_hash": "70c5a4116d2ee1de1c9abf547c62f8ef",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/project/ProjectRepository.java": {
+    "mtime": 1792600816.7090201,
+    "seen": 1792600859.419634,
+    "ast_hash": "fa8d630475cbcd218578336b4f2ea303",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/project/ProjectService.java": {
+    "mtime": 1792600816.7100203,
+    "seen": 1792600859.4196365,
+    "ast_hash": "4a36aa359742548abb419054a2b36dc6",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/scripts/GherkinScripts.java": {
+    "mtime": 1792600816.7100203,
+    "seen": 1792600859.4196386,
+    "ast_hash": "19d02ecdc2fabf535300d29f4a52462b",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/scripts/Script.java": {
+    "mtime": 1792600816.7100203,
+    "seen": 1792600859.4196405,
+    "ast_hash": "8452f6c3efbfec96d90832f34a7f5d22",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/scripts/ScriptRepository.java": {
+    "mtime": 1792600816.7100203,
+    "seen": 1792600859.419643,
+    "ast_hash": "adad5277a36a5eebfe78e49140a00394",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/scripts/ScriptRevision.java": {
+    "mtime": 1792600816.7110202,
+    "seen": 1792600859.4196448,
+    "ast_hash": "f3ea3cc87abe08b2029e732bb44cf02b",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/scripts/ScriptRevisionRepository.java": {
+    "mtime": 1792600816.7110202,
+    "seen": 1792600859.419647,
+    "ast_hash": "da3118ae94f57ae0b2f279b451c9e7e9",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/scripts/ScriptService.java": {
+    "mtime": 1792600816.7110202,
+    "seen": 1792600859.4196494,
+    "ast_hash": "2793b12b2c73f3e657ae60f858b00527",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/scripts/ScriptSyntax.java": {
+    "mtime": 1792600816.7110202,
+    "seen": 1792600859.4196513,
+    "ast_hash": "28fb234f20458ed2a8ce9afcbf2a8c2d",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/shares/AccountShareResolver.java": {
+    "mtime": 1792600816.7120202,
+    "seen": 1792600859.4196534,
+    "ast_hash": "78952999349aa414fd3c07c007c67d11",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/shares/ItemShare.java": {
+    "mtime": 1792600816.7120202,
+    "seen": 1792600859.419655,
+    "ast_hash": "4f4653981b3c7d815ab557e267ec3892",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/shares/ItemShareRepository.java": {
+    "mtime": 1792600816.7120202,
+    "seen": 1792600859.4196682,
+    "ast_hash": "5ac00b9252bebe7d75e56eb51507b06a",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/shares/ShareResolver.java": {
+    "mtime": 1792600816.7120202,
+    "seen": 1792600859.4196706,
+    "ast_hash": "64bef3bb7804973c0e43871bd0d5dcde",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/shares/ShareStore.java": {
+    "mtime": 1792600816.7120202,
+    "seen": 1792600859.4196725,
+    "ast_hash": "1ef16f6143d8a4f1159af59e1479e12c",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/shares/SharedBlobs.java": {
+    "mtime": 1792600816.7130203,
+    "seen": 1792600859.4196746,
+    "ast_hash": "d3f5402056124db76784f5e5d57e2e21",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/skills/Skill.java": {
+    "mtime": 1792600816.7130203,
+    "seen": 1792600859.4196763,
+    "ast_hash": "2cb77d6b684f13cc0f905bbd3aa9b792",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/skills/SkillFile.java": {
+    "mtime": 1792600816.7130203,
+    "seen": 1792600859.4196787,
+    "ast_hash": "03ae07a128ee8c2a9d92b702a6a99f00",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/skills/SkillOwner.java": {
+    "mtime": 1792600816.7130203,
+    "seen": 1792600859.4196808,
+    "ast_hash": "1b1ccbc5ebddd570cb4f3eb7d1aa943e",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/skills/SkillRepository.java": {
+    "mtime": 1792600816.7140203,
+    "seen": 1792600859.4196827,
+    "ast_hash": "d37df66e0206c04b948a57b19dc93c8c",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/skills/SkillRevision.java": {
+    "mtime": 1792600816.7140203,
+    "seen": 1792600859.4196851,
+    "ast_hash": "9a7a4f883f82593d4e031a350db5542a",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/skills/SkillRevisionRepository.java": {
+    "mtime": 1792600816.7140203,
+    "seen": 1792600859.4196873,
+    "ast_hash": "b99337f95aeced651f8f0c19ef6fb6fc",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/skills/SkillSchemaMigration.java": {
+    "mtime": 1792600816.7140203,
+    "seen": 1792600859.4196894,
+    "ast_hash": "8989927db994a4a13689317d15e4c4a1",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/systems/grebe/devtools/mcp/backend/skills/SkillService.java": {
+    "mtime": 1792600816.7150204,
+    "seen": 1792600859.4196916,
+    "ast_hash": "bbf8aadb3c14120e1119a9d4783db482",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/account/AccountServiceTest.java": {
+    "mtime": 1792600816.7210205,
+    "seen": 1792600859.4196935,
+    "ast_hash": "a16d635bcf1efc4a45b14ac2e0e2b872",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/account/CredentialOAuthTest.java": {
+    "mtime": 1792600816.7210205,
+    "seen": 1792600859.4196959,
+    "ast_hash": "586b04d1c2780e24dc31ddf7d2e7b0b0",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/account/CredentialServiceTest.java": {
+    "mtime": 1792600816.7210205,
+    "seen": 1792600859.419698,
+    "ast_hash": "42f82be1d4e108a6f0a9201823cc9301",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/account/Sha3Pbkdf2PasswordEncoderTest.java": {
+    "mtime": 1792600816.7220206,
+    "seen": 1792600859.4197,
+    "ast_hash": "e50861429e33e123dc4799b408d94752",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/api/ApiSchemasTest.java": {
+    "mtime": 1792600816.7220206,
+    "seen": 1792600859.4197018,
+    "ast_hash": "32204eb73303ac8a46e989e43d049858",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/blobs/BlobStoreTest.java": {
+    "mtime": 1792600816.7220206,
+    "seen": 1792600859.4197037,
+    "ast_hash": "cad208c7dd20db62e7281be1f7495a34",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/broker/BrokerServiceTest.java": {
+    "mtime": 1792600816.7230206,
+    "seen": 1792600859.4197059,
+    "ast_hash": "f3fa207462758798e3fe0124e9380e79",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/catalog/ModuleCatalogTest.java": {
+    "mtime": 1792600816.7230206,
+    "seen": 1792600859.4197075,
+    "ast_hash": "139f389ced85504e243b7a60ddc31a05",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/graph/GraphStorageTest.java": {
+    "mtime": 1792600816.7240205,
+    "seen": 1792600859.4197097,
+    "ast_hash": "7a54f29ee32cb6d556e3313ee1a40141",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/graph/RemoteGraphStorageTest.java": {
+    "mtime": 1792600816.7240205,
+    "seen": 1792600859.4197118,
+    "ast_hash": "05f9c5e6ff129ce33cd7897be1fd6148",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/memories/MemoryAttachmentTest.java": {
+    "mtime": 1792600816.7240205,
+    "seen": 1792600859.4197135,
+    "ast_hash": "01808792f4cf5c2a5940fd655130c5c9",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/memories/MemoryServiceTest.java": {
+    "mtime": 1792600816.7240205,
+    "seen": 1792600859.4197156,
+    "ast_hash": "cb0b04764387696ea1653caa08b2fcf6",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/scripts/GherkinScriptsTest.java": {
+    "mtime": 1792600816.7250206,
+    "seen": 1792600859.4197176,
+    "ast_hash": "7c77b335407474b1c10babdd06b6d7d0",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/scripts/ScriptServiceTest.java": {
+    "mtime": 1792600816.7250206,
+    "seen": 1792600859.419725,
+    "ast_hash": "f9dab66609ff8faf5341d59f99811ae9",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/shares/ShareTest.java": {
+    "mtime": 1792600816.7250206,
+    "seen": 1792600859.4197273,
+    "ast_hash": "4b645958736c8b13fe54e96544627e30",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/skills/SkillAttachmentTest.java": {
+    "mtime": 1792600816.7260206,
+    "seen": 1792600859.4197295,
+    "ast_hash": "f340822110ff265c8060d3246d6454f6",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/skills/SkillSchemaMigrationTest.java": {
+    "mtime": 1792600816.7260206,
+    "seen": 1792600859.4197316,
+    "ast_hash": "c1d667df5ab8b4576a5a48c0c204f94d",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/skills/SkillScopingTest.java": {
+    "mtime": 1792600816.7260206,
+    "seen": 1792600859.4197364,
+    "ast_hash": "63fd65adacb9c1d6e0a841ff33771c89",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/systems/grebe/devtools/mcp/backend/skills/SkillServiceTest.java": {
+    "mtime": 1792600816.7270207,
+    "seen": 1792600859.4197383,
+    "ast_hash": "5a3c37f7ac0e0a28222cd633e3cf1be6",
+    "semantic_hash": ""
+  },
+  "backend/src/testFixtures/java/systems/grebe/devtools/mcp/backend/skills/SkillTestSupport.java": {
+    "mtime": 1792600816.7290208,
+    "seen": 1792600859.4197404,
+    "ast_hash": "038d552bcdac9d6a3e7617f2e912160b",
+    "semantic_hash": ""
+  },
+  "build.gradle.kts": {
+    "mtime": 1792600816.7290208,
+    "seen": 1792600859.4197423,
+    "ast_hash": "f594360aebbf031e46916ac0ef21af31",
+    "semantic_hash": ""
+  },
+  "desktop/build.gradle.kts": {
+    "mtime": 1792600816.7290208,
+    "seen": 1792600859.4197445,
+    "ast_hash": "18ee104b10468920b43fcad0aa501f62",
+    "semantic_hash": ""
+  },
+  "desktop/natives/build-tree-sitter-wasm.sh": {
+    "mtime": 1792600816.7300208,
+    "seen": 1792600859.4197466,
+    "ast_hash": "1798e3d7ce73d950e6dc78f47dca68a0",
+    "semantic_hash": ""
+  },
+  "desktop/natives/tree-sitter-wasm/SplitLexer.java": {
+    "mtime": 1792600816.7300208,
+    "seen": 1792600859.4197485,
+    "ast_hash": "edd093c981b7ada5a78ded066aaee788",
+    "semantic_hash": ""
+  },
+  "desktop/natives/tree-sitter-wasm/ast.c": {
+    "mtime": 1792600816.7300208,
+    "seen": 1792600859.4197505,
+    "ast_hash": "7e8944a0d841f6b00e5fbfef03fe82a3",
+    "semantic_hash": ""
+  },
+  "desktop/natives/tree-sitter-wasm/yowasp-clang.mjs": {
+    "mtime": 1792600816.7310207,
+    "seen": 1792600859.4197524,
+    "ast_hash": "4e975b4dafc1d8af3604cfbf15a18dd3",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/DevToolsMcpApplication.java": {
+    "mtime": 1792600816.7320209,
+    "seen": 1792600859.4197545,
+    "ast_hash": "e90a3fc195dee66697da66fe3f935425",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/channel/BridgeJar.java": {
+    "mtime": 1792600816.7320209,
+    "seen": 1792600859.4197562,
+    "ast_hash": "2e87373b36f3a86a6d60555e80c4d054",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/channel/ChannelBridge.java": {
+    "mtime": 1792600816.7330208,
+    "seen": 1792600859.4197583,
+    "ast_hash": "f58537ce1311cfafd73852a51b3d5803",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/config/GraphDatabaseSettings.java": {
+    "mtime": 1792600816.7330208,
+    "seen": 1792600859.4197605,
+    "ast_hash": "68f628ed234951aca0fb0e9f24a9ba33",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/config/PluginSettings.java": {
+    "mtime": 1792600816.7330208,
+    "seen": 1792600859.4197621,
+    "ast_hash": "8a5d6f69a07979e3342a7a9d5d9160e4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/config/ServerSettings.java": {
+    "mtime": 1792600816.7330208,
+    "seen": 1792600859.419764,
+    "ast_hash": "7546e7b5a8efb6bb183b2d589f709afe",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/config/SettingsStore.java": {
+    "mtime": 1792600816.734021,
+    "seen": 1792600859.419766,
+    "ast_hash": "a40651bf370398bdbc9a592fe68d7573",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/config/TeamSettings.java": {
+    "mtime": 1792600816.734021,
+    "seen": 1792600859.4197679,
+    "ast_hash": "fd2bdd58c53d7c93a252a16b0dcfae24",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/AccessModule.java": {
+    "mtime": 1792600816.734021,
+    "seen": 1792600859.4197698,
+    "ast_hash": "9988abd8716817c46bd11c004844d67f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ChannelEvents.java": {
+    "mtime": 1792600816.7350209,
+    "seen": 1792600859.419772,
+    "ast_hash": "b18110f9a8862a6e3e9c21d939b10137",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/CommandRunner.java": {
+    "mtime": 1792600816.7350209,
+    "seen": 1792600859.4197736,
+    "ast_hash": "fc584f47c9ef8863959e678884cb7793",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ContextLoaderProxy.java": {
+    "mtime": 1792600816.7350209,
+    "seen": 1792600859.419776,
+    "ast_hash": "8c4e76c58d23d4f81e307a581302c8d0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ContextSettings.java": {
+    "mtime": 1792600816.7350209,
+    "seen": 1792600859.4197779,
+    "ast_hash": "5ed85c8214ee7f157dd1dd70eb7e535e",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/CredentialStore.java": {
+    "mtime": 1792600816.7360208,
+    "seen": 1792600859.4197798,
+    "ast_hash": "7c19e4190ade758f356a4db3b94b8341",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/Credentials.java": {
+    "mtime": 1792600816.7360208,
+    "seen": 1792600859.4197817,
+    "ast_hash": "04ff99922d89041eb2ae9279fc88d2e2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/CredentialsModule.java": {
+    "mtime": 1792600816.7360208,
+    "seen": 1792600859.4197836,
+    "ast_hash": "0281e8ef8407ef70541e1f1721919991",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ErrorHints.java": {
+    "mtime": 1792600816.7360208,
+    "seen": 1792600859.4197857,
+    "ast_hash": "5451c1cbad64d3c437bd16f96e31a328",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/FileSource.java": {
+    "mtime": 1792600816.737021,
+    "seen": 1792600859.4197874,
+    "ast_hash": "15427949b669aec21f1c5e55b9aff362",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/GitWorktrees.java": {
+    "mtime": 1792600816.737021,
+    "seen": 1792600859.4197896,
+    "ast_hash": "afd488ec740dfee7a00608cdf13c683b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/InvocationService.java": {
+    "mtime": 1792600816.737021,
+    "seen": 1792600859.419792,
+    "ast_hash": "d1fba112e5a0252979e1f1616f81d226",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/LiveInstructionsTransport.java": {
+    "mtime": 1792600816.737021,
+    "seen": 1792600859.4197936,
+    "ast_hash": "31272f31c9c064a774ebea6de7ed44a8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/LocalFiles.java": {
+    "mtime": 1792600816.738021,
+    "seen": 1792600859.4197955,
+    "ast_hash": "a87779e1f001b3802bd17520516f7d27",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ManagedToolCallback.java": {
+    "mtime": 1792600816.738021,
+    "seen": 1792600859.4197974,
+    "ast_hash": "a7e4c71ec85e86926bd0bfecaa1ff500",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/McpProgress.java": {
+    "mtime": 1792600816.738021,
+    "seen": 1792600859.4197996,
+    "ast_hash": "b25c4792026907b47be5c7218ad01db6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/McpRuntime.java": {
+    "mtime": 1792600816.739021,
+    "seen": 1792600859.4198012,
+    "ast_hash": "7974316814cf1569e2bd95791a4719e3",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/McpToolHints.java": {
+    "mtime": 1792600816.739021,
+    "seen": 1792600859.4198034,
+    "ast_hash": "6d152ed593320a8b28be16b63ca99982",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/OutputCleaner.java": {
+    "mtime": 1792600816.739021,
+    "seen": 1792600859.4198055,
+    "ast_hash": "627cfd8003ea9ffd87bf976aa04b50d4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ProviderRegistry.java": {
+    "mtime": 1792600816.739021,
+    "seen": 1792600859.4198072,
+    "ast_hash": "177f9e93335303092853e12ee7b20708",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ServerInstructions.java": {
+    "mtime": 1792600816.740021,
+    "seen": 1792600859.4198093,
+    "ast_hash": "871bff7824827173d97ea50cc1e07485",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/SettingsResolver.java": {
+    "mtime": 1792600816.740021,
+    "seen": 1792600859.419811,
+    "ast_hash": "ee2e7a4405df5e3ea04ad4b3e5b26bc2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ShellHints.java": {
+    "mtime": 1792600816.740021,
+    "seen": 1792600859.4198132,
+    "ast_hash": "37afced36accfa96b29a879e6bca5bea",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/SignatureModule.java": {
+    "mtime": 1792600816.7410212,
+    "seen": 1792600859.4198148,
+    "ast_hash": "093c214dd26003d84a946f1a3c2d02b4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/Text.java": {
+    "mtime": 1792600816.7410212,
+    "seen": 1792600859.419817,
+    "ast_hash": "bc4dc3b63c352d4566fd9cf6c29c070b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/TokenStats.java": {
+    "mtime": 1792600816.7410212,
+    "seen": 1792600859.4198186,
+    "ast_hash": "c3cda0c70a43728af0c9155f624555d7",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ToolCallListener.java": {
+    "mtime": 1792600816.7410212,
+    "seen": 1792600859.4198208,
+    "ast_hash": "b147b0e7408dd59d0c3a7959186e3499",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ToolInvocation.java": {
+    "mtime": 1792600816.7410212,
+    "seen": 1792600859.4198227,
+    "ast_hash": "dfc3f95ff8f96f5b3b3e9f1087ec6458",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ToolInvocationLog.java": {
+    "mtime": 1792600816.742021,
+    "seen": 1792600859.4198244,
+    "ast_hash": "b412d2b108d27c6ba2496b2f1fc11368",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/ToolRegistry.java": {
+    "mtime": 1792600816.742021,
+    "seen": 1792600859.4198265,
+    "ast_hash": "72bb25abd5063d6612a6c3a9dd8f262c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/UserConfirmation.java": {
+    "mtime": 1792600816.742021,
+    "seen": 1792600859.4198282,
+    "ast_hash": "f212383afa542b52715eaa41921c7236",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/core/Workspaces.java": {
+    "mtime": 1792600816.743021,
+    "seen": 1792600859.41983,
+    "ast_hash": "7a4d5233b1276613d7d4fc906ed917b6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/fx/FxApp.java": {
+    "mtime": 1792600816.743021,
+    "seen": 1792600859.419832,
+    "ast_hash": "8e35619ab41293421540f1d2f8121ad8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/asprof/AsprofInstaller.java": {
+    "mtime": 1792600816.7440212,
+    "seen": 1792600859.4198341,
+    "ast_hash": "2443a5947083b72645e8e652ff083ee8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/asprof/AsyncProfilerModule.java": {
+    "mtime": 1792600816.7440212,
+    "seen": 1792600859.4198358,
+    "ast_hash": "531048527aae6cb9cafc2831dd249861",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/asprof/AsyncProfilerTools.java": {
+    "mtime": 1792600816.7440212,
+    "seen": 1792600859.419838,
+    "ast_hash": "b76ab771cedeae2620ee97e56c8d11f7",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/BrowserEnvironment.java": {
+    "mtime": 1792600816.745021,
+    "seen": 1792600859.4198399,
+    "ast_hash": "6624225e3d972db4f6469947cd64bb14",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/BrowserInteractTools.java": {
+    "mtime": 1792600816.7460213,
+    "seen": 1792600859.4198418,
+    "ast_hash": "b8fb93ed04a766a8e3676d1691b155dd",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/BrowserModule.java": {
+    "mtime": 1792600816.7460213,
+    "seen": 1792600859.4198437,
+    "ast_hash": "e27d791c988cf8b46a24a9b4ea7b5c50",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/BrowserNavigationTools.java": {
+    "mtime": 1792600816.7460213,
+    "seen": 1792600859.4198456,
+    "ast_hash": "8697859f7ae118aa278e6e05e81056bd",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/BrowserScriptTools.java": {
+    "mtime": 1792600816.7470212,
+    "seen": 1792600859.4198475,
+    "ast_hash": "b0f50d54e4ea4727865b837f17f28b74",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/BrowserSession.java": {
+    "mtime": 1792600816.7470212,
+    "seen": 1792600859.4198494,
+    "ast_hash": "a6e086952207234fdb4ad0a7e82c6164",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/BrowserSessions.java": {
+    "mtime": 1792600816.7470212,
+    "seen": 1792600859.4198515,
+    "ast_hash": "60a5b0936c67f93709b03525443bcd5e",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/BrowserTools.java": {
+    "mtime": 1792600816.7470212,
+    "seen": 1792600859.4198534,
+    "ast_hash": "b6e1a0724621536c1cb06450649f491b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/BrowserUploadTools.java": {
+    "mtime": 1792600816.7480214,
+    "seen": 1792600859.4198554,
+    "ast_hash": "7c618fec8015c1999ca1c284ae7624ba",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/Drivers.java": {
+    "mtime": 1792600816.7480214,
+    "seen": 1792600859.4198575,
+    "ast_hash": "7ac2e6c07850e9761dcdf38766849e9a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/Overlay.java": {
+    "mtime": 1792600816.7480214,
+    "seen": 1792600859.419869,
+    "ast_hash": "bdded09ed0e4b6c7065c08d391f2d3c9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/PageScripts.java": {
+    "mtime": 1792600816.7480214,
+    "seen": 1792600859.4198718,
+    "ast_hash": "80a1b4903f426031de32dab8a2b37984",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/browser/Screenshots.java": {
+    "mtime": 1792600816.7490213,
+    "seen": 1792600859.4198737,
+    "ast_hash": "c17b7b703230cbad040d9c1a5d7d05c0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/ChatEnvironment.java": {
+    "mtime": 1792600816.7500212,
+    "seen": 1792600859.419876,
+    "ast_hash": "a85a73d20815263092b9441fb162ab08",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/ChatInbox.java": {
+    "mtime": 1792600816.7510214,
+    "seen": 1792600859.419878,
+    "ast_hash": "5032f8c9184aa9d4776c99deb6a912a6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/ChatMarkdown.java": {
+    "mtime": 1792600816.7510214,
+    "seen": 1792600859.4198802,
+    "ast_hash": "cfd51eee3d5667fce66f42b0e397973b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/ChatModule.java": {
+    "mtime": 1792600816.7520213,
+    "seen": 1792600859.419882,
+    "ast_hash": "fa95afa1a530e1ad567df62a61e0ad1f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/ChatProviders.java": {
+    "mtime": 1792600816.7520213,
+    "seen": 1792600859.419884,
+    "ast_hash": "359d3cc22bc32c310c8ea75603572fa2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/ChatState.java": {
+    "mtime": 1792600816.7520213,
+    "seen": 1792600859.4198859,
+    "ast_hash": "6a28d879fc0e6fc217528d0a3779beec",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/ChatTools.java": {
+    "mtime": 1792600816.7530215,
+    "seen": 1792600859.4198878,
+    "ast_hash": "03c1f9fb3fedfdf1e14578962bc9be3f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/matrix/MatrixChat.java": {
+    "mtime": 1792600816.7530215,
+    "seen": 1792600859.41989,
+    "ast_hash": "03bb3ed684f0e5b5958be52ffd512629",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/matrix/MatrixChatProvider.java": {
+    "mtime": 1792600816.7540214,
+    "seen": 1792600859.4198916,
+    "ast_hash": "3ecb327336b65122e6bc84f84d555567",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/matrix/MatrixClient.java": {
+    "mtime": 1792600816.7540214,
+    "seen": 1792600859.4198937,
+    "ast_hash": "e7a93056b420c6bea0b2f43046fb4cd5",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/matrix/MatrixEvents.java": {
+    "mtime": 1792600816.7540214,
+    "seen": 1792600859.4198956,
+    "ast_hash": "2e6ac21642eea26e254edc482c6dc55b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/teams/GraphAuth.java": {
+    "mtime": 1792600816.7550216,
+    "seen": 1792600859.4198976,
+    "ast_hash": "cc506777209b2ac24c6e676ba51c9362",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/teams/GraphHttp.java": {
+    "mtime": 1792600816.7550216,
+    "seen": 1792600859.4198995,
+    "ast_hash": "2b0c031bb841dd457add2a33cd2e7ae0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/teams/TeamsChat.java": {
+    "mtime": 1792600816.7550216,
+    "seen": 1792600859.4199011,
+    "ast_hash": "a76636f552bdb10bd943d4fb1d564858",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/teams/TeamsChatProvider.java": {
+    "mtime": 1792600816.7560215,
+    "seen": 1792600859.4199033,
+    "ast_hash": "4b47fc9c44342fbd312025d0e02ab50a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/chat/teams/TeamsHtml.java": {
+    "mtime": 1792600816.7560215,
+    "seen": 1792600859.4199052,
+    "ast_hash": "a6fa497085ed844e6a00b39ffeb1bcad",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ci/CiCancelTools.java": {
+    "mtime": 1792600816.7560215,
+    "seen": 1792600859.419907,
+    "ast_hash": "eddb6cfa548c1c021f65c922a270ffa5",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ci/CiEnvironment.java": {
+    "mtime": 1792600816.7570214,
+    "seen": 1792600859.4199092,
+    "ast_hash": "fc17eb3a1bfa8bdb079f907486b4c881",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ci/CiModule.java": {
+    "mtime": 1792600816.7570214,
+    "seen": 1792600859.419913,
+    "ast_hash": "c9d9675d1fa801bd4dd2020247d226e9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ci/CiProviders.java": {
+    "mtime": 1792600816.7570214,
+    "seen": 1792600859.4199216,
+    "ast_hash": "57c814bf67a0f1b228d08530c25155c0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ci/CiRetryTools.java": {
+    "mtime": 1792600816.7570214,
+    "seen": 1792600859.4199278,
+    "ast_hash": "477ec02829169c058d6fcae89076af86",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ci/CiStartTools.java": {
+    "mtime": 1792600816.7580216,
+    "seen": 1792600859.4199347,
+    "ast_hash": "19886cff0e52e580f53e7a63de59681d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ci/CiTools.java": {
+    "mtime": 1792600816.7580216,
+    "seen": 1792600859.419941,
+    "ast_hash": "7040936ad9a132835891db6a0943d0ba",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ci/github/GitHubCiProvider.java": {
+    "mtime": 1792600816.7600217,
+    "seen": 1792600859.4199448,
+    "ast_hash": "6a1e58936e3d8838839b00ba9186fd42",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ci/gitlab/GitLabCiProvider.java": {
+    "mtime": 1792600816.7610216,
+    "seen": 1792600859.4199486,
+    "ast_hash": "6757fe960fab25a4a5feb38316ac8627",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ci/jenkins/JenkinsCiProvider.java": {
+    "mtime": 1792600816.7620215,
+    "seen": 1792600859.4199526,
+    "ast_hash": "efe20227a0eb8abd7e5da2c72994c603",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/classify/ClassifyModule.java": {
+    "mtime": 1792600816.7620215,
+    "seen": 1792600859.4199567,
+    "ast_hash": "976e855ce6a8e9a3098594cd8e25f95b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/classify/ClassifyTools.java": {
+    "mtime": 1792600816.7630217,
+    "seen": 1792600859.4199605,
+    "ast_hash": "a4416d8a8c1af0f2ebd8c4b42da1379e",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/classify/TaskClassifier.java": {
+    "mtime": 1792600816.7630217,
+    "seen": 1792600859.419965,
+    "ast_hash": "c4c9afdae07034f2919fd447b51a43ed",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ComposeReadTools.java": {
+    "mtime": 1792600816.7640216,
+    "seen": 1792600859.4199688,
+    "ast_hash": "1eedf044938fb23eac62e19e59561d94",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ComposeWriteTools.java": {
+    "mtime": 1792600816.7640216,
+    "seen": 1792600859.4199731,
+    "ast_hash": "8a0260ae6e7a361fe119751be1ac43a4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ContainerCopyTools.java": {
+    "mtime": 1792600816.7640216,
+    "seen": 1792600859.419977,
+    "ast_hash": "50f583f0306f7363aaccbb4c1caa885a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ContainerCreateTools.java": {
+    "mtime": 1792600816.7640216,
+    "seen": 1792600859.4199808,
+    "ast_hash": "b79668368ed84d98c18f74cdb153b9ac",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ContainerEnvironment.java": {
+    "mtime": 1792600816.7650218,
+    "seen": 1792600859.419996,
+    "ast_hash": "a28c84d467cb0f8580134e36073f7c03",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ContainerExecTools.java": {
+    "mtime": 1792600816.7650218,
+    "seen": 1792600859.4200003,
+    "ast_hash": "109b38afb4b1b9da8a8ca28544f3b77f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ContainerLifecycleTools.java": {
+    "mtime": 1792600816.7650218,
+    "seen": 1792600859.4200044,
+    "ast_hash": "8ba209e950d72f0e7c40e85be889295c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ContainerModule.java": {
+    "mtime": 1792600816.7650218,
+    "seen": 1792600859.4200084,
+    "ast_hash": "3515fdf42cbfa66454fbb330ec80160c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ContainerReadTools.java": {
+    "mtime": 1792600816.7660217,
+    "seen": 1792600859.4200125,
+    "ast_hash": "487f7427a428631323c5ee8622b3191f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ContainerRemoveTools.java": {
+    "mtime": 1792600816.7660217,
+    "seen": 1792600859.4200165,
+    "ast_hash": "17d83c2ab8bb59c30541612a6b6c2639",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/ContainerRuntimes.java": {
+    "mtime": 1792600816.7660217,
+    "seen": 1792600859.4200208,
+    "ast_hash": "2336fdf57f5e7f109c1a0016fe513918",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/cli/DockerRuntimeProvider.java": {
+    "mtime": 1792600816.7660217,
+    "seen": 1792600859.420025,
+    "ast_hash": "f50ef69bbd930dae1b78c40ffa7c3c90",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/container/cli/PodmanRuntimeProvider.java": {
+    "mtime": 1792600816.767022,
+    "seen": 1792600859.420028,
+    "ast_hash": "386e6e5d3d38713885f5fd9bcf239497",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/context/ContextCallTool.java": {
+    "mtime": 1792600816.767022,
+    "seen": 1792600859.42003,
+    "ast_hash": "a915cb9abc50c15502cc3e6a5d2ae61c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/context/ContextModule.java": {
+    "mtime": 1792600816.767022,
+    "seen": 1792600859.4200323,
+    "ast_hash": "8187245809aaa211d4a08a55c3660b6f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/context/ContextText.java": {
+    "mtime": 1792600816.767022,
+    "seen": 1792600859.420034,
+    "ast_hash": "284958a03879c724d0304733fe4da7eb",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/context/ContextTools.java": {
+    "mtime": 1792600816.7680218,
+    "seen": 1792600859.420036,
+    "ast_hash": "2e29627748687e39f0cbd01c6160de2e",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/context/Digester.java": {
+    "mtime": 1792600816.7680218,
+    "seen": 1792600859.4200382,
+    "ast_hash": "ef92fb1b79cf96b5163d1234869b83ea",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/context/ResultBudget.java": {
+    "mtime": 1792600816.7680218,
+    "seen": 1792600859.4200401,
+    "ast_hash": "11724fb19be4bde9d6b68a3cc49f7e32",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/context/ResultStore.java": {
+    "mtime": 1792600816.7680218,
+    "seen": 1792600859.420042,
+    "ast_hash": "d5bc73339d9f310db846fab7977483ea",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/debug/DebugModule.java": {
+    "mtime": 1792600816.7690217,
+    "seen": 1792600859.420044,
+    "ast_hash": "6941962e8c30da15ed9066970ade2b3c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/debug/DebugSession.java": {
+    "mtime": 1792600816.7690217,
+    "seen": 1792600859.420046,
+    "ast_hash": "10e21170f9b2d4590edcd6df9a408a43",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/debug/DebugSessions.java": {
+    "mtime": 1792600816.7690217,
+    "seen": 1792600859.4200478,
+    "ast_hash": "cb25b10e036c117d9e8dc765c50abd5a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/debug/DebugTools.java": {
+    "mtime": 1792600816.770022,
+    "seen": 1792600859.42005,
+    "ast_hash": "99fa74b1a05fe02f1ffd0ea50359c379",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/Calibration.java": {
+    "mtime": 1792600816.770022,
+    "seen": 1792600859.4200518,
+    "ast_hash": "310da6df58001fe74898e36ba4d55b3f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/DecideDeleteTools.java": {
+    "mtime": 1792600816.770022,
+    "seen": 1792600859.4200537,
+    "ast_hash": "c2ec1830b35b22417eee5a2a2a14d5ca",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/DecideEngines.java": {
+    "mtime": 1792600816.770022,
+    "seen": 1792600859.4200556,
+    "ast_hash": "e77f080f499b69d7697722ac57ab11e0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/DecideModule.java": {
+    "mtime": 1792600816.7710218,
+    "seen": 1792600859.4200575,
+    "ast_hash": "e2f9c1b95fc8a506ac22ae49b102ba60",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/DecideSettings.java": {
+    "mtime": 1792600816.7710218,
+    "seen": 1792600859.4200597,
+    "ast_hash": "799db78cbf599a45d8655ec8c5ad4f25",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/DecideTools.java": {
+    "mtime": 1792600816.7710218,
+    "seen": 1792600859.4200616,
+    "ast_hash": "a58769767ca5a32531fdc8a5d474c395",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/Decider.java": {
+    "mtime": 1792600816.772022,
+    "seen": 1792600859.4200637,
+    "ast_hash": "4a802027c5bea46937357dd3ced7e8bf",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/DecisionLog.java": {
+    "mtime": 1792600816.772022,
+    "seen": 1792600859.4200659,
+    "ast_hash": "c9e54e33977c83a464177cfc194f5d11",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/DecisionSchema.java": {
+    "mtime": 1792600816.772022,
+    "seen": 1792600859.4200675,
+    "ast_hash": "d9d62d1cf3d66f6d1c2ade49cca21ef4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/ModelFiles.java": {
+    "mtime": 1792600816.773022,
+    "seen": 1792600859.4200697,
+    "ast_hash": "3e6ed19bbff323702de87a363e7ea3fe",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/TaskStore.java": {
+    "mtime": 1792600816.773022,
+    "seen": 1792600859.4200714,
+    "ast_hash": "ce02b9e49230633a44966f5f7d1387e2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/engine/BpeTokenizer.java": {
+    "mtime": 1792600816.773022,
+    "seen": 1792600859.4200735,
+    "ast_hash": "f930e3087f5624b4b8a73cab368cb07c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/engine/Gguf.java": {
+    "mtime": 1792600816.774022,
+    "seen": 1792600859.4200752,
+    "ast_hash": "3a7e34339e9a20b0b88ef81dc6ad4eed",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/engine/Kernels.java": {
+    "mtime": 1792600816.774022,
+    "seen": 1792600859.4200773,
+    "ast_hash": "c0c24fdfce90729d65a6319c402f2d97",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/engine/LayaModel.java": {
+    "mtime": 1792600816.774022,
+    "seen": 1792600859.420079,
+    "ast_hash": "797f95e1adb5813d6be9f570f790bcc5",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/engine/LlamaModel.java": {
+    "mtime": 1792600816.775022,
+    "seen": 1792600859.4200811,
+    "ast_hash": "fd81c1ba254399da28dc1ffe0e58aa74",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/engine/ModernBert.java": {
+    "mtime": 1792600816.775022,
+    "seen": 1792600859.420083,
+    "ast_hash": "7c178f83a3617c94e0f332d9ed50a2e3",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/engine/SafeTensors.java": {
+    "mtime": 1792600816.775022,
+    "seen": 1792600859.4200847,
+    "ast_hash": "50474b814b1b9894c32a30cc91bd83c1",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/engine/Tensor.java": {
+    "mtime": 1792600816.775022,
+    "seen": 1792600859.4200869,
+    "ast_hash": "688ab122c4a693d7a735d4a67b985c84",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decide/engine/VectorKernels.java": {
+    "mtime": 1792600816.775022,
+    "seen": 1792600859.4200888,
+    "ast_hash": "d57b72c85e8ac11ab006eb1bb04ae84b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decompile/ClassFinder.java": {
+    "mtime": 1792600816.776022,
+    "seen": 1792600859.420091,
+    "ast_hash": "d3b3a0dc97e762a38e73814d3a3bc08f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decompile/ClassSource.java": {
+    "mtime": 1792600816.776022,
+    "seen": 1792600859.4200928,
+    "ast_hash": "9ec47eeec1f51ac49c9c4e5b6291fc93",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decompile/DecompileModule.java": {
+    "mtime": 1792600816.776022,
+    "seen": 1792600859.420095,
+    "ast_hash": "c08384692274f399c2c27bed3c4fb6e7",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decompile/DecompileTools.java": {
+    "mtime": 1792600816.7770221,
+    "seen": 1792600859.4200969,
+    "ast_hash": "6a663ac0cb082a757180c2d65d39be9c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/decompile/Vineflower.java": {
+    "mtime": 1792600816.7770221,
+    "seen": 1792600859.4200988,
+    "ast_hash": "2f53111b584c9734a5cb02d9442ce432",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/dolt/DoltBackend.java": {
+    "mtime": 1792600816.7770221,
+    "seen": 1792600859.420101,
+    "ast_hash": "eac4243b8216ce40a3f24d484cede620",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/dolt/DoltBranchWatcher.java": {
+    "mtime": 1792600816.7770221,
+    "seen": 1792600859.4201028,
+    "ast_hash": "220df884b4319e75534c81c0736ed69e",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/dolt/DoltBranches.java": {
+    "mtime": 1792600816.778022,
+    "seen": 1792600859.420105,
+    "ast_hash": "346f184793504c7000758d6b0807c287",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/dolt/DoltDatabase.java": {
+    "mtime": 1792600816.778022,
+    "seen": 1792600859.4201066,
+    "ast_hash": "2ef6426229b00002144eaea4bbdcbb69",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/dolt/DoltModule.java": {
+    "mtime": 1792600816.778022,
+    "seen": 1792600859.4201088,
+    "ast_hash": "2d5ea5f7d0e87dda110de86b27c980ce",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/dolt/DoltServerBackend.java": {
+    "mtime": 1792600816.778022,
+    "seen": 1792600859.4201107,
+    "ast_hash": "9af2fd3abea6b4fb36b4693f42660dd2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/dolt/DoltTools.java": {
+    "mtime": 1792600816.7790222,
+    "seen": 1792600859.4201126,
+    "ast_hash": "ce47894b4b58a87a08475e9bbb066646",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/dolt/DoltliteBackend.java": {
+    "mtime": 1792600816.7790222,
+    "seen": 1792600859.4201148,
+    "ast_hash": "0c05d4ab8426b5de5e82b89f23299e20",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/dolt/GitHead.java": {
+    "mtime": 1792600816.7790222,
+    "seen": 1792600859.4201167,
+    "ast_hash": "2fee4cbbbba62117af91409ee11deec6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/git/GitCherryPickTools.java": {
+    "mtime": 1792600816.7790222,
+    "seen": 1792600859.4201186,
+    "ast_hash": "7b82f80eb09843a51095d73c36817513",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/git/GitCli.java": {
+    "mtime": 1792600816.7800221,
+    "seen": 1792600859.4201207,
+    "ast_hash": "3976ef2dd075d391d3fd8a6a4fa60c8d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/git/GitDiscardTools.java": {
+    "mtime": 1792600816.7800221,
+    "seen": 1792600859.4201229,
+    "ast_hash": "9fed48b5d524b1661f5b3512dd08db36",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/git/GitIntegrateTools.java": {
+    "mtime": 1792600816.7800221,
+    "seen": 1792600859.420125,
+    "ast_hash": "b4305f70dd97e6e1ba6b22e783c2948c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/git/GitModule.java": {
+    "mtime": 1792600816.781022,
+    "seen": 1792600859.4201267,
+    "ast_hash": "61f408f5bc2592d53c16744338b7aba4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/git/GitReadTools.java": {
+    "mtime": 1792600816.7820222,
+    "seen": 1792600859.4201288,
+    "ast_hash": "0e7dd656de901a88eeb1604d8b0b64f9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/git/GitResolveTools.java": {
+    "mtime": 1792600816.7820222,
+    "seen": 1792600859.4201305,
+    "ast_hash": "c15f8d4ff400f52cebe098223f938423",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/git/GitSupport.java": {
+    "mtime": 1792600816.7820222,
+    "seen": 1792600859.4201326,
+    "ast_hash": "2db6b5269f9b09bb62c493a19d2fe123",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/git/GitSyncTools.java": {
+    "mtime": 1792600816.7820222,
+    "seen": 1792600859.4201345,
+    "ast_hash": "68296bb24e1d5a8f825bdded5d64e50d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/git/GitWriteTools.java": {
+    "mtime": 1792600816.7830222,
+    "seen": 1792600859.4201367,
+    "ast_hash": "accc9232a030a592ebc2625bd58d4601",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/Communities.java": {
+    "mtime": 1792600816.7830222,
+    "seen": 1792600859.4201388,
+    "ast_hash": "51d9da6668a1388f4a96b1aa5a341f12",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/FileGraphProvider.java": {
+    "mtime": 1792600816.7830222,
+    "seen": 1792600859.4201407,
+    "ast_hash": "51083b42de033bc1c4d42d5168109333",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GitState.java": {
+    "mtime": 1792600816.7830222,
+    "seen": 1792600859.420143,
+    "ast_hash": "431c76c6adf6a391b40254ef954c0442",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphAutoIndexer.java": {
+    "mtime": 1792600816.7840223,
+    "seen": 1792600859.4201446,
+    "ast_hash": "d94db7b62ce03e52cd82946b449cacde",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphBuilder.java": {
+    "mtime": 1792600816.7840223,
+    "seen": 1792600859.4201467,
+    "ast_hash": "da98ffc78b7c3c963f8e95979ebc91a4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphFiles.java": {
+    "mtime": 1792600816.7850223,
+    "seen": 1792600859.4201488,
+    "ast_hash": "e08a288943c0c586a8f4c4fdd0b02e69",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphIndexAction.java": {
+    "mtime": 1792600816.7850223,
+    "seen": 1792600859.4201505,
+    "ast_hash": "4fec425f385999a42f9bee30bedfaa4a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphModule.java": {
+    "mtime": 1792600816.7850223,
+    "seen": 1792600859.4201527,
+    "ast_hash": "b74e5cd4587d15a73e218c6ffcd151c0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphProjects.java": {
+    "mtime": 1792600816.7850223,
+    "seen": 1792600859.4201546,
+    "ast_hash": "b96a083cb00090eeb88b8f8a1bc9aef1",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphQueries.java": {
+    "mtime": 1792600816.7860224,
+    "seen": 1792600859.4201567,
+    "ast_hash": "f5fc386f97b8fff3d4b4b1f47213278c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphService.java": {
+    "mtime": 1792600816.7870224,
+    "seen": 1792600859.4201586,
+    "ast_hash": "b070733d2eb6f91f5eb4e3bbbb38ec82",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphSource.java": {
+    "mtime": 1792600816.7870224,
+    "seen": 1792600859.4201605,
+    "ast_hash": "ec9fd1fa613125329c5edcf59a3d2e17",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphStore.java": {
+    "mtime": 1792600816.7870224,
+    "seen": 1792600859.4201627,
+    "ast_hash": "c27df6cb878a2037c4f6c9bc7236c1db",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphTools.java": {
+    "mtime": 1792600816.7880223,
+    "seen": 1792600859.4201646,
+    "ast_hash": "40ec514f991b1bfef615f16181bcc492",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/JavaExtractor.java": {
+    "mtime": 1792600816.7890224,
+    "seen": 1792600859.4201665,
+    "ast_hash": "c4c95313c0a3d4f59a47dd0ac1cd335b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/JavaResolver.java": {
+    "mtime": 1792600816.7890224,
+    "seen": 1792600859.4201684,
+    "ast_hash": "60b267116ffa9459342e5880de9464a2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/graph/MemoryGraphReader.java": {
+    "mtime": 1792600816.7890224,
+    "seen": 1792600859.4201705,
+    "ast_hash": "4d318f4db1560b2c359ef1a8c05633ff",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/CliIde.java": {
+    "mtime": 1792600816.7890224,
+    "seen": 1792600859.4201725,
+    "ast_hash": "17bc8ce5b88e7a677468f752db7aa7d2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/IdeEnvironment.java": {
+    "mtime": 1792600816.7900224,
+    "seen": 1792600859.4201746,
+    "ast_hash": "da5547b56c6221f3f2705d84635faf36",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/IdeModule.java": {
+    "mtime": 1792600816.7900224,
+    "seen": 1792600859.4201763,
+    "ast_hash": "5aefb85c39e91ac7d8701850dc1b0150",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/IdePrograms.java": {
+    "mtime": 1792600816.7900224,
+    "seen": 1792600859.4201784,
+    "ast_hash": "7dd5a222e1650fbb8eefc01ee98d19ff",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/IdeProviders.java": {
+    "mtime": 1792600816.7910225,
+    "seen": 1792600859.4201806,
+    "ast_hash": "fd9a97ea7c37403314314f3973b7bf64",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/IdeTools.java": {
+    "mtime": 1792600816.7910225,
+    "seen": 1792600859.4201822,
+    "ast_hash": "514ae1d0f49b38cdcde746850a4b7e42",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/eclipse/EclipseIdeProvider.java": {
+    "mtime": 1792600816.7910225,
+    "seen": 1792600859.4201844,
+    "ast_hash": "099a19c5ba49bfb1e7e98f1c06a5c24c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/jetbrains/AndroidStudioIdeProvider.java": {
+    "mtime": 1792600816.7920225,
+    "seen": 1792600859.420186,
+    "ast_hash": "b1ba5ac10de219c81ad149a4f669de08",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/jetbrains/CLionIdeProvider.java": {
+    "mtime": 1792600816.7920225,
+    "seen": 1792600859.4201882,
+    "ast_hash": "4fbeb640fdf087f7e5c0217b6f38b0ca",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/jetbrains/GoLandIdeProvider.java": {
+    "mtime": 1792600816.7920225,
+    "seen": 1792600859.42019,
+    "ast_hash": "e08be30a8d3387e1b6556a1c71cb3b56",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/jetbrains/IntelliJIdeProvider.java": {
+    "mtime": 1792600816.7920225,
+    "seen": 1792600859.4201922,
+    "ast_hash": "09b5e7e35740f85b44a1a45748ba43d5",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/jetbrains/JetBrainsIdeProvider.java": {
+    "mtime": 1792600816.7920225,
+    "seen": 1792600859.4201944,
+    "ast_hash": "e6fd1f527e8d531d47137e3de3a044e7",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/jetbrains/PyCharmIdeProvider.java": {
+    "mtime": 1792600816.7920225,
+    "seen": 1792600859.420196,
+    "ast_hash": "a18359a1aead881e472f4feab23388c1",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/jetbrains/RiderIdeProvider.java": {
+    "mtime": 1792600816.7930226,
+    "seen": 1792600859.420198,
+    "ast_hash": "7936f874fb9898f008cdd298f7076a53",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/jetbrains/WebStormIdeProvider.java": {
+    "mtime": 1792600816.7930226,
+    "seen": 1792600859.4201999,
+    "ast_hash": "5c3591157c8152a3a9e51c899b4bdc76",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/netbeans/NetBeansIdeProvider.java": {
+    "mtime": 1792600816.7930226,
+    "seen": 1792600859.420202,
+    "ast_hash": "c3ef9fa1c2c02c015e4047042327be1a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/visualstudio/VisualStudioIdeProvider.java": {
+    "mtime": 1792600816.7930226,
+    "seen": 1792600859.4202037,
+    "ast_hash": "9d0c4e2056f4e5f43d83d2b8e0aac0cc",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/vscode/CursorIdeProvider.java": {
+    "mtime": 1792600816.7940226,
+    "seen": 1792600859.4202058,
+    "ast_hash": "a669ef95e84b0cdc074d087abdfa10fd",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/vscode/VsCodeFamilyProvider.java": {
+    "mtime": 1792600816.7940226,
+    "seen": 1792600859.4202075,
+    "ast_hash": "46db25dd23ca8924027972f13b7530d4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/vscode/VsCodeIdeProvider.java": {
+    "mtime": 1792600816.7940226,
+    "seen": 1792600859.4202096,
+    "ast_hash": "e0b9f4ea8bc078598ae5987e9cb56cef",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/vscode/VsCodiumIdeProvider.java": {
+    "mtime": 1792600816.7940226,
+    "seen": 1792600859.4202118,
+    "ast_hash": "c2020a076cc37cbcded1be4e14ccb5c6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ide/xcode/XcodeIdeProvider.java": {
+    "mtime": 1792600816.7950225,
+    "seen": 1792600859.4202135,
+    "ast_hash": "e83ad210f698da93ec299546d1605616",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/invocations/InvocationsModule.java": {
+    "mtime": 1792600816.7950225,
+    "seen": 1792600859.4202156,
+    "ast_hash": "638426396c3478d2548b8b5558912d3b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/java/ArtifactStore.java": {
+    "mtime": 1792600816.7950225,
+    "seen": 1792600859.4202173,
+    "ast_hash": "99f15643f927a83608b440e40864fe36",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/java/Containers.java": {
+    "mtime": 1792600816.7960227,
+    "seen": 1792600859.4202194,
+    "ast_hash": "f959d399d46e8258d4477d46ec2656df",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/java/IdleFrames.java": {
+    "mtime": 1792600816.7960227,
+    "seen": 1792600859.4202213,
+    "ast_hash": "73fa016fd699c2d8ba660a87be440bfb",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/java/JavaEnvironment.java": {
+    "mtime": 1792600816.7960227,
+    "seen": 1792600859.4202232,
+    "ast_hash": "8dff997ca4ddc8b30bd6e6760829c567",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/java/JavaEnvironmentProvider.java": {
+    "mtime": 1792600816.7960227,
+    "seen": 1792600859.4202254,
+    "ast_hash": "8462dcea2ef857fcb8cfa697142321ed",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/java/JavaSettingsModule.java": {
+    "mtime": 1792600816.7960227,
+    "seen": 1792600859.4202273,
+    "ast_hash": "bd1f4499f5d1a5fe64695ab28dc6aac0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/java/JvmTarget.java": {
+    "mtime": 1792600816.7970226,
+    "seen": 1792600859.4202292,
+    "ast_hash": "e06919697f573ccb717c81e28df110a3",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/java/LocalJvms.java": {
+    "mtime": 1792600816.7970226,
+    "seen": 1792600859.420231,
+    "ast_hash": "26bae722531498e17c7e47f240c6f28a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/java/StackProfile.java": {
+    "mtime": 1792600816.7970226,
+    "seen": 1792600859.420233,
+    "ast_hash": "a2bf7d3c43b79e4494962e05a734e08a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/java/ToolDownloads.java": {
+    "mtime": 1792600816.7970226,
+    "seen": 1792600859.420235,
+    "ast_hash": "1c74e6761fe9bd69c9dca69b2bdf5b5b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcConnection.java": {
+    "mtime": 1792600816.7980227,
+    "seen": 1792600859.420237,
+    "ast_hash": "1a41a07bc8a8e9f88c729c4e79e53ca8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcConnectionProvider.java": {
+    "mtime": 1792600816.7980227,
+    "seen": 1792600859.4202387,
+    "ast_hash": "212a84bd70a2cb625ee686cd93ff24fc",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcDdlTools.java": {
+    "mtime": 1792600816.7980227,
+    "seen": 1792600859.4202409,
+    "ast_hash": "bb3e1ddf8a5bc1b6b5c74f636f7adda6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcDeleteTools.java": {
+    "mtime": 1792600816.7980227,
+    "seen": 1792600859.4202428,
+    "ast_hash": "7e19ee72d7284e7fe7002f3fc21b9de9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcDrivers.java": {
+    "mtime": 1792600816.7990227,
+    "seen": 1792600859.4202447,
+    "ast_hash": "4a059dc13ebea83493c21c28d7490127",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcEnvironment.java": {
+    "mtime": 1792600816.7990227,
+    "seen": 1792600859.4202466,
+    "ast_hash": "d37bbfd334e9bbae05f3b4c48e8e8194",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcExecuteTools.java": {
+    "mtime": 1792600816.7990227,
+    "seen": 1792600859.4202485,
+    "ast_hash": "c34d3fc2bc8377d82d286edca1cd47f9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcInsertTools.java": {
+    "mtime": 1792600816.7990227,
+    "seen": 1792600859.4202507,
+    "ast_hash": "657bd66a12685bd2bce84fdd1de3707a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcMetadata.java": {
+    "mtime": 1792600816.8000228,
+    "seen": 1792600859.4202526,
+    "ast_hash": "c3aa8de5f47bafe63539604e5aa498e8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcModule.java": {
+    "mtime": 1792600816.8000228,
+    "seen": 1792600859.4202547,
+    "ast_hash": "8b1867b6a80eaedf165a3c3ac661d151",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcQueryTools.java": {
+    "mtime": 1792600816.8000228,
+    "seen": 1792600859.4202566,
+    "ast_hash": "bc3d169542a731216a5187570ad3f718",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcResults.java": {
+    "mtime": 1792600816.8000228,
+    "seen": 1792600859.4202585,
+    "ast_hash": "7eac8c317578fd99edde1faad0489df6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcRunner.java": {
+    "mtime": 1792600816.8010228,
+    "seen": 1792600859.4202607,
+    "ast_hash": "2996d73317b0e1deb51343b331b196b1",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcSessions.java": {
+    "mtime": 1792600816.8010228,
+    "seen": 1792600859.4202623,
+    "ast_hash": "8aff47d5beb8a406248358e2573a6426",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcTools.java": {
+    "mtime": 1792600816.8020227,
+    "seen": 1792600859.4202645,
+    "ast_hash": "5dcb93cedb7786bb82b4fcf92843a276",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcUpdateTools.java": {
+    "mtime": 1792600816.8020227,
+    "seen": 1792600859.4202664,
+    "ast_hash": "d713b2e5b8bc24946d24f03fdc09a448",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcValues.java": {
+    "mtime": 1792600816.8020227,
+    "seen": 1792600859.4202688,
+    "ast_hash": "95526fee442bb6e65d6dd72a588573a1",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/SqlStatements.java": {
+    "mtime": 1792600816.8020227,
+    "seen": 1792600859.4202707,
+    "ast_hash": "bea1880a40331dc82d61db47ca53f9d8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jfr/JfrAnalyzer.java": {
+    "mtime": 1792600816.8030229,
+    "seen": 1792600859.4202726,
+    "ast_hash": "f9c90d178e8246012e6b25c7bcdaf6fa",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jfr/JfrModule.java": {
+    "mtime": 1792600816.8030229,
+    "seen": 1792600859.4202747,
+    "ast_hash": "138054fa4efa582bade29b277290b360",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jfr/JfrTools.java": {
+    "mtime": 1792600816.8030229,
+    "seen": 1792600859.4202764,
+    "ast_hash": "69f38b18f6b96f94b44beccdc8743411",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jvm/JvmInvasiveTools.java": {
+    "mtime": 1792600816.8040228,
+    "seen": 1792600859.4202785,
+    "ast_hash": "93c5a21ed373dd391c08473f75d2ee67",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jvm/JvmModule.java": {
+    "mtime": 1792600816.8040228,
+    "seen": 1792600859.4202807,
+    "ast_hash": "4cc537dd7448a8926ce28eff9761d6ae",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jvm/JvmTools.java": {
+    "mtime": 1792600816.8040228,
+    "seen": 1792600859.4202826,
+    "ast_hash": "91ceb346e0933ee5029dd1ae06fdf1af",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/jvm/ThreadDumpAnalyzer.java": {
+    "mtime": 1792600816.8040228,
+    "seen": 1792600859.4202847,
+    "ast_hash": "c1bc94bb1da2fda9427f4d52b6e6c116",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailAccount.java": {
+    "mtime": 1792600816.805023,
+    "seen": 1792600859.4202867,
+    "ast_hash": "e30c20b4c4cbbc229f4b17665e9aeaaa",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailAccountService.java": {
+    "mtime": 1792600816.805023,
+    "seen": 1792600859.4202886,
+    "ast_hash": "01e288edc74b09c82d6d187631ced808",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailCommand.java": {
+    "mtime": 1792600816.805023,
+    "seen": 1792600859.4202907,
+    "ast_hash": "89a0d0f1878128a61cd8cc7b9217f69f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailConnector.java": {
+    "mtime": 1792600816.806023,
+    "seen": 1792600859.4202929,
+    "ast_hash": "b3893bf345ae10103f31bcb24ee361f1",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailEnvironment.java": {
+    "mtime": 1792600816.806023,
+    "seen": 1792600859.420295,
+    "ast_hash": "4ce5ebe7ed683d6a1ac258436953383b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailModule.java": {
+    "mtime": 1792600816.8070228,
+    "seen": 1792600859.420297,
+    "ast_hash": "4be71422e0d96312cfe600a985196380",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailOAuth.java": {
+    "mtime": 1792600816.8070228,
+    "seen": 1792600859.420299,
+    "ast_hash": "a30542b3e5c61671d5e1873266ecb015",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailSender.java": {
+    "mtime": 1792600816.8070228,
+    "seen": 1792600859.4203007,
+    "ast_hash": "f2d4ef20121484817338ac610cae6b17",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailState.java": {
+    "mtime": 1792600816.808023,
+    "seen": 1792600859.4203029,
+    "ast_hash": "fc5e53d211a79f393f0248b2c46754f0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailText.java": {
+    "mtime": 1792600816.808023,
+    "seen": 1792600859.4203045,
+    "ast_hash": "35ec759c55c30c9bd3898d9f13483aa5",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailTools.java": {
+    "mtime": 1792600816.808023,
+    "seen": 1792600859.4203067,
+    "ast_hash": "c47e69549683cdf74feacfd8cc0dbf28",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailWatcher.java": {
+    "mtime": 1792600816.809023,
+    "seen": 1792600859.4203088,
+    "ast_hash": "eb27b3bba68a386f74304f079e8ae9ba",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/mail/MailWriteTools.java": {
+    "mtime": 1792600816.810023,
+    "seen": 1792600859.4203107,
+    "ast_hash": "c1b99b13871eead65e46a3447ed9e248",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/maven/ApiDiff.java": {
+    "mtime": 1792600816.810023,
+    "seen": 1792600859.420313,
+    "ast_hash": "6c10e12ddf51a164917fe67548465921",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/maven/Coordinates.java": {
+    "mtime": 1792600816.810023,
+    "seen": 1792600859.4203146,
+    "ast_hash": "644e7d54b19b6faa6c2fbf0fd117c385",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/maven/GitHubReleaseNotes.java": {
+    "mtime": 1792600816.811023,
+    "seen": 1792600859.4203167,
+    "ast_hash": "f5fd16f69358f641f90b62699cafad92",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/maven/MavenModule.java": {
+    "mtime": 1792600816.811023,
+    "seen": 1792600859.4203184,
+    "ast_hash": "bb5f6c7f8878624b1cd281c0e551cd4c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/maven/MavenRepositoryClient.java": {
+    "mtime": 1792600816.811023,
+    "seen": 1792600859.4203205,
+    "ast_hash": "d8ecbe37b8736596aa5390271f0adefe",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/maven/MavenTools.java": {
+    "mtime": 1792600816.8120232,
+    "seen": 1792600859.4203284,
+    "ast_hash": "a0640f451df7951e07aa4ef285f18f1c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/maven/MavenVersions.java": {
+    "mtime": 1792600816.8120232,
+    "seen": 1792600859.4203305,
+    "ast_hash": "2f069d7341e54758692bcca2852c25a5",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/maven/PomInfo.java": {
+    "mtime": 1792600816.8120232,
+    "seen": 1792600859.4203324,
+    "ast_hash": "1a27f88a3d71035ed6fe77d8afedda8d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/memories/MemoriesModule.java": {
+    "mtime": 1792600816.813023,
+    "seen": 1792600859.4203346,
+    "ast_hash": "0a8e5282e72c4d681aba49f467b59847",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/memories/MemoryDeleteTools.java": {
+    "mtime": 1792600816.813023,
+    "seen": 1792600859.4203367,
+    "ast_hash": "d919c41c029cb2a65eee5107ea98a6cd",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/memories/MemoryReadTools.java": {
+    "mtime": 1792600816.813023,
+    "seen": 1792600859.4203386,
+    "ast_hash": "1a7c7533988642fa464e2c879223a9a3",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/memories/MemoryShareTools.java": {
+    "mtime": 1792600816.813023,
+    "seen": 1792600859.4203408,
+    "ast_hash": "de96b050991fd0aa10bc97a88526cd22",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/memories/MemoryWriteTools.java": {
+    "mtime": 1792600816.813023,
+    "seen": 1792600859.4203424,
+    "ast_hash": "580c8ee10fd6cb7382389543944f6c31",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/permissions/PermissionRequestTools.java": {
+    "mtime": 1792600816.814023,
+    "seen": 1792600859.4203446,
+    "ast_hash": "1bd5025d2acd029636a67be097732745",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/permissions/PermissionTools.java": {
+    "mtime": 1792600816.814023,
+    "seen": 1792600859.4203467,
+    "ast_hash": "bca60d21e5ce76f9c944e9e6992d5a9b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/permissions/Permissions.java": {
+    "mtime": 1792600816.8150232,
+    "seen": 1792600859.4203484,
+    "ast_hash": "876a8d52de6acce3107b483105b04eb8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/permissions/PermissionsModule.java": {
+    "mtime": 1792600816.8150232,
+    "seen": 1792600859.4203506,
+    "ast_hash": "1fc9652080210d1a2acda7c464bd3a29",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/GitServerProviders.java": {
+    "mtime": 1792600816.8150232,
+    "seen": 1792600859.4203525,
+    "ast_hash": "21017eb32806cafca4dc609e140372a6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/PrCommentTools.java": {
+    "mtime": 1792600816.8150232,
+    "seen": 1792600859.4203544,
+    "ast_hash": "3c2b062cf26e797bffad942c0699bea2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/PrCreateTools.java": {
+    "mtime": 1792600816.816023,
+    "seen": 1792600859.4203563,
+    "ast_hash": "2a3e438edc873c3c7fa1fb1c400cc5b9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/PrDeclineTools.java": {
+    "mtime": 1792600816.816023,
+    "seen": 1792600859.4203584,
+    "ast_hash": "48b557627820aef5157edb4883dda3ba",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/PrEnvironment.java": {
+    "mtime": 1792600816.816023,
+    "seen": 1792600859.42036,
+    "ast_hash": "ea0ab69e0a816995ee0a03db5f2d2369",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/PrMergeTools.java": {
+    "mtime": 1792600816.816023,
+    "seen": 1792600859.4203622,
+    "ast_hash": "4cfaeade38eed1e4213f7fd211033436",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/PrModule.java": {
+    "mtime": 1792600816.8170233,
+    "seen": 1792600859.4203646,
+    "ast_hash": "3988a9b5e2ca8890a1afa8f4fa8b079a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/PrPushTools.java": {
+    "mtime": 1792600816.8170233,
+    "seen": 1792600859.4203665,
+    "ast_hash": "7ad778aae38f48ed80135b2de62a8d28",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/PrResolveTools.java": {
+    "mtime": 1792600816.8170233,
+    "seen": 1792600859.4203684,
+    "ast_hash": "f6b494e1c3e079d64b0957b9acfbdad6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/PrReviewTools.java": {
+    "mtime": 1792600816.8170233,
+    "seen": 1792600859.4203703,
+    "ast_hash": "a29b812d2da61ed9e2feeb2ac66d71d6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/PrTools.java": {
+    "mtime": 1792600816.8180232,
+    "seen": 1792600859.4203722,
+    "ast_hash": "3cf2de1d0e27af0dd6760c6fb9b18279",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/bitbucket/BitbucketCloud.java": {
+    "mtime": 1792600816.8190234,
+    "seen": 1792600859.4203742,
+    "ast_hash": "2a6c50354eaee7f18760ae1b449fe848",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/bitbucket/BitbucketDataCenter.java": {
+    "mtime": 1792600816.8190234,
+    "seen": 1792600859.4203763,
+    "ast_hash": "143cf5a45110b86150260ba63f529851",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/bitbucket/BitbucketServerProvider.java": {
+    "mtime": 1792600816.8190234,
+    "seen": 1792600859.4203784,
+    "ast_hash": "d5862b36c126130ddf86962c804b68fd",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/bitbucket/CodeInsights.java": {
+    "mtime": 1792600816.8190234,
+    "seen": 1792600859.4203804,
+    "ast_hash": "75f535263b21a35a4baa351321a470ee",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/github/GitHubServerProvider.java": {
+    "mtime": 1792600816.8200233,
+    "seen": 1792600859.4203825,
+    "ast_hash": "fefb56d0f565274832cc29748d538cf7",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/pr/gitlab/GitLabServerProvider.java": {
+    "mtime": 1792600816.8210232,
+    "seen": 1792600859.4203842,
+    "ast_hash": "52cce4811e5742e269bfae49815607f9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/CompiledScript.java": {
+    "mtime": 1792600816.8220234,
+    "seen": 1792600859.4203863,
+    "ast_hash": "58c8b58977ebc42a863ee410ce42553e",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/DevToolsScript.java": {
+    "mtime": 1792600816.8220234,
+    "seen": 1792600859.420388,
+    "ast_hash": "382078c7645907f09a86c841d0427c56",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/GherkinScriptCompiler.java": {
+    "mtime": 1792600816.8220234,
+    "seen": 1792600859.42039,
+    "ast_hash": "ebd27df1eb67b63611ba846afe8fce2d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/GherkinSteps.java": {
+    "mtime": 1792600816.8230233,
+    "seen": 1792600859.420392,
+    "ast_hash": "244e5cc631a3eca89f11d579241d44e0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/JavaClasspath.java": {
+    "mtime": 1792600816.8230233,
+    "seen": 1792600859.4203937,
+    "ast_hash": "e9edb927b2c0a83001b682d1cfca7641",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/JavaScriptCompiler.java": {
+    "mtime": 1792600816.8230233,
+    "seen": 1792600859.4203959,
+    "ast_hash": "12c34ce6e500dd33ba615b7289596abd",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/RegistryToolCaller.java": {
+    "mtime": 1792600816.8230233,
+    "seen": 1792600859.4203975,
+    "ast_hash": "739bca27aac4587a087a3711047b02b5",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScenarioRun.java": {
+    "mtime": 1792600816.8240235,
+    "seen": 1792600859.4203994,
+    "ast_hash": "41a47bf50a9525d8b8b6145429d8d759",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptCache.java": {
+    "mtime": 1792600816.8240235,
+    "seen": 1792600859.4204013,
+    "ast_hash": "868527d67db6d3e15e329ad3b58da3d9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptCompiler.java": {
+    "mtime": 1792600816.8240235,
+    "seen": 1792600859.4204032,
+    "ast_hash": "ca57bac9e63e4f6a8d8731f396237ded",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptDefinition.java": {
+    "mtime": 1792600816.8240235,
+    "seen": 1792600859.420405,
+    "ast_hash": "fff31a8206caf9fc9551bfab0682f3fb",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptDeleteTools.java": {
+    "mtime": 1792600816.8250234,
+    "seen": 1792600859.420407,
+    "ast_hash": "4a1e62f0d57c768f18a3c737f0795ce1",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptManager.java": {
+    "mtime": 1792600816.8250234,
+    "seen": 1792600859.4204087,
+    "ast_hash": "a4d4dd1c4001909b9c5c930a8a0da775",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptReadTools.java": {
+    "mtime": 1792600816.8250234,
+    "seen": 1792600859.4204109,
+    "ast_hash": "a1a44c9b60685adc0a111e17c6c8b60d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptRunTools.java": {
+    "mtime": 1792600816.8260236,
+    "seen": 1792600859.4204128,
+    "ast_hash": "f256275bc4fc15e131ec4f4ca873fcb3",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptTimeout.java": {
+    "mtime": 1792600816.8260236,
+    "seen": 1792600859.4204144,
+    "ast_hash": "2eb3dfdd69594227ada3d57597760bd8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptToolCallback.java": {
+    "mtime": 1792600816.8260236,
+    "seen": 1792600859.4204314,
+    "ast_hash": "0f032b347ccbc9c2a87789109e62d3ed",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptToolModule.java": {
+    "mtime": 1792600816.8260236,
+    "seen": 1792600859.4204335,
+    "ast_hash": "6bd6e4cc58b22e4a03b91eb4881c1fed",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptWriteTools.java": {
+    "mtime": 1792600816.8260236,
+    "seen": 1792600859.4204352,
+    "ast_hash": "94bd6b966ccffa394c9369403b3df3d3",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptsModule.java": {
+    "mtime": 1792600816.8270235,
+    "seen": 1792600859.420437,
+    "ast_hash": "dfa07eb3ccd0ed3f58dd3ad3dc679154",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ToolCaller.java": {
+    "mtime": 1792600816.8270235,
+    "seen": 1792600859.4204388,
+    "ast_hash": "11e6db560a275b3414c17d502e32ab03",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/CamelMatcher.java": {
+    "mtime": 1792600816.8270235,
+    "seen": 1792600859.4204407,
+    "ast_hash": "b2e7e42a471a6bea785b2dd1e8bb8baa",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/ClassIndex.java": {
+    "mtime": 1792600816.8280234,
+    "seen": 1792600859.4204423,
+    "ast_hash": "eff3594dd567f07b51897464e2913933",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/CodeLexer.java": {
+    "mtime": 1792600816.8280234,
+    "seen": 1792600859.4204445,
+    "ast_hash": "cbf39a26cc33762f7522f9545afea050",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/Completion.java": {
+    "mtime": 1792600816.8280234,
+    "seen": 1792600859.4204462,
+    "ast_hash": "2d5b96d0fe3ef3b5230ed0d66fe6fb7d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/CompletionResult.java": {
+    "mtime": 1792600816.8280234,
+    "seen": 1792600859.420448,
+    "ast_hash": "b031459eb02bde50e6f32a97f48a3d10",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/GherkinAssist.java": {
+    "mtime": 1792600816.8290236,
+    "seen": 1792600859.42045,
+    "ast_hash": "34d98a806a0c0360418b2e19c20d2d27",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/GroovyAssist.java": {
+    "mtime": 1792600816.8300235,
+    "seen": 1792600859.4204519,
+    "ast_hash": "f748050c9ff9a5a2f2d6b4cc5798a616",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/JavaAssist.java": {
+    "mtime": 1792600816.8300235,
+    "seen": 1792600859.4204535,
+    "ast_hash": "642cdf15e07081f6226b1b4c37f5921f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/JavaModel.java": {
+    "mtime": 1792600816.8300235,
+    "seen": 1792600859.4204555,
+    "ast_hash": "23c8da3f9d5983668258b2837e5bfb28",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/Members.java": {
+    "mtime": 1792600816.8310237,
+    "seen": 1792600859.4204574,
+    "ast_hash": "8baac0a30c2d4ce2cae4024e023f8f9b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/ScriptAssist.java": {
+    "mtime": 1792600816.8310237,
+    "seen": 1792600859.4204595,
+    "ast_hash": "b61367c0b9d161db329a89c432e8d4f3",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/SyntaxHighlighter.java": {
+    "mtime": 1792600816.8310237,
+    "seen": 1792600859.4204614,
+    "ast_hash": "934fbdaea813cabc5ffde6e5fe834bd5",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/scripts/assist/ToolInfo.java": {
+    "mtime": 1792600816.8310237,
+    "seen": 1792600859.420463,
+    "ast_hash": "15e1afc3031be1245639bef98d6aa474",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/share/ShareBroker.java": {
+    "mtime": 1792600816.8320236,
+    "seen": 1792600859.4204652,
+    "ast_hash": "4ad556254b5509d833a5e65a3f14e1ff",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/share/ShareMessages.java": {
+    "mtime": 1792600816.8320236,
+    "seen": 1792600859.420467,
+    "ast_hash": "37b42b4424354b7651996af8fea99083",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/share/ShareModule.java": {
+    "mtime": 1792600816.8330235,
+    "seen": 1792600859.420469,
+    "ast_hash": "087f8fbe8041c49aef334ca400f64972",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/share/ShareState.java": {
+    "mtime": 1792600816.8330235,
+    "seen": 1792600859.4204707,
+    "ast_hash": "e1e6e2c25eb6367515daca2528d702cf",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/share/ShareTools.java": {
+    "mtime": 1792600816.8330235,
+    "seen": 1792600859.4204726,
+    "ast_hash": "041476486f003dda7609fd0e018cecd2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/share/ShareTransfer.java": {
+    "mtime": 1792600816.8340237,
+    "seen": 1792600859.4204745,
+    "ast_hash": "b38db2d767779a57f44cc1531fd45a82",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/shares/ShareConfirmation.java": {
+    "mtime": 1792600816.8340237,
+    "seen": 1792600859.4204764,
+    "ast_hash": "c22fc7226d4b4327af26b86025f8b784",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/skills/RecallHints.java": {
+    "mtime": 1792600816.8350236,
+    "seen": 1792600859.420478,
+    "ast_hash": "8c3e83aca86f1212d976ff806fac5b3f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillDeleteTools.java": {
+    "mtime": 1792600816.8350236,
+    "seen": 1792600859.42048,
+    "ast_hash": "8744b974b3e1171f2b2a39ac0dbb4e82",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillReadTools.java": {
+    "mtime": 1792600816.8350236,
+    "seen": 1792600859.4204822,
+    "ast_hash": "bbde7b8debdd448fea9e7725d5f97b95",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillReview.java": {
+    "mtime": 1792600816.8360238,
+    "seen": 1792600859.4204838,
+    "ast_hash": "aa8185b56f15e3435c29e147fd72cf80",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillReviewPrompt.java": {
+    "mtime": 1792600816.8360238,
+    "seen": 1792600859.4204857,
+    "ast_hash": "920fe4eb642442dff7785431fc2250a4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillReviewTools.java": {
+    "mtime": 1792600816.8360238,
+    "seen": 1792600859.4204874,
+    "ast_hash": "f1afca584f88411ace9936a70dae99bd",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillReviewTracker.java": {
+    "mtime": 1792600816.8360238,
+    "seen": 1792600859.4204893,
+    "ast_hash": "45e032a810c3b288ec9d2ee4190cf86c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillShareTools.java": {
+    "mtime": 1792600816.8370237,
+    "seen": 1792600859.420491,
+    "ast_hash": "36bc11384b0e4f67648be1d7f561afce",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillWriteTools.java": {
+    "mtime": 1792600816.8370237,
+    "seen": 1792600859.4204931,
+    "ast_hash": "7a4ca36a6798d5e3da3e25396864d8c1",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillsModule.java": {
+    "mtime": 1792600816.8370237,
+    "seen": 1792600859.4204948,
+    "ast_hash": "b39062ccd581b32bb55844c9da7f36f7",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/sonar/SonarClient.java": {
+    "mtime": 1792600816.838024,
+    "seen": 1792600859.420497,
+    "ast_hash": "ae3cdfdaeb413a6be66733bc6f12b0ac",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/sonar/SonarModule.java": {
+    "mtime": 1792600816.838024,
+    "seen": 1792600859.4204988,
+    "ast_hash": "bd567c7d29d51e975d74479306dce4cd",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/sonar/SonarTools.java": {
+    "mtime": 1792600816.838024,
+    "seen": 1792600859.4205008,
+    "ast_hash": "1549121847bf53648daf76c370c62877",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshConnection.java": {
+    "mtime": 1792600816.8390238,
+    "seen": 1792600859.4205024,
+    "ast_hash": "f1c5407c61c38ed77a8a252b6133057d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshEnvironment.java": {
+    "mtime": 1792600816.8390238,
+    "seen": 1792600859.4205046,
+    "ast_hash": "f13e6b7428d3ab329eb4e0df5e929502",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshExecTools.java": {
+    "mtime": 1792600816.8390238,
+    "seen": 1792600859.4205065,
+    "ast_hash": "e7f555df09973c66594305f9f89ca5a3",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshModule.java": {
+    "mtime": 1792600816.8400238,
+    "seen": 1792600859.4205081,
+    "ast_hash": "72762acb91cad984840afdb7e0e6a092",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshSessions.java": {
+    "mtime": 1792600816.8400238,
+    "seen": 1792600859.42051,
+    "ast_hash": "c86b356132263ecdfe48575c46dfa59b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshShellTools.java": {
+    "mtime": 1792600816.8400238,
+    "seen": 1792600859.4205117,
+    "ast_hash": "2e194046a8ac17c6916bae11c3e4d74a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshShells.java": {
+    "mtime": 1792600816.841024,
+    "seen": 1792600859.4205139,
+    "ast_hash": "3b060dbebd0bb71a35f1c8783c8dabed",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshSudoTools.java": {
+    "mtime": 1792600816.841024,
+    "seen": 1792600859.4205155,
+    "ast_hash": "1db0658627dadf882d2208212e06afe2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshTools.java": {
+    "mtime": 1792600816.841024,
+    "seen": 1792600859.420518,
+    "ast_hash": "b88f9e69057503bbb75b28f4117826d2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshTransferTools.java": {
+    "mtime": 1792600816.841024,
+    "seen": 1792600859.4205196,
+    "ast_hash": "3ee017c3a83e5576e401a7297199d7b9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/SshWriteTools.java": {
+    "mtime": 1792600816.8420238,
+    "seen": 1792600859.4205215,
+    "ast_hash": "21b18ab1be23f835ee906ea5ac6f65ff",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ssh/TofuHostKeys.java": {
+    "mtime": 1792600816.8420238,
+    "seen": 1792600859.4205232,
+    "ast_hash": "8b34cd675cdc9d9753432a56430b2153",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketAssignTools.java": {
+    "mtime": 1792600816.8420238,
+    "seen": 1792600859.420525,
+    "ast_hash": "ff2554bf641ec99b66de272f18a1a527",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketClassifyTools.java": {
+    "mtime": 1792600816.843024,
+    "seen": 1792600859.4205272,
+    "ast_hash": "653dc4e7f2879ce0c24fbc9310c29c6a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketCommentTools.java": {
+    "mtime": 1792600816.843024,
+    "seen": 1792600859.420529,
+    "ast_hash": "372d9bfc2c0871ed78f476ba8b505079",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketCreateTools.java": {
+    "mtime": 1792600816.843024,
+    "seen": 1792600859.420531,
+    "ast_hash": "7b9fa2398d03d3c21c38b3e308b35af7",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketDeleteTools.java": {
+    "mtime": 1792600816.843024,
+    "seen": 1792600859.4205327,
+    "ast_hash": "f47a9b6cc838c5055b07fc89705809db",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketEditTools.java": {
+    "mtime": 1792600816.843024,
+    "seen": 1792600859.4205346,
+    "ast_hash": "861259d478413a467d79d20e5d0a37dc",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketEnvironment.java": {
+    "mtime": 1792600816.844024,
+    "seen": 1792600859.4205363,
+    "ast_hash": "648d180417bd89a982c4951940c5a9bb",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketLinkTools.java": {
+    "mtime": 1792600816.844024,
+    "seen": 1792600859.4205382,
+    "ast_hash": "61cc0127510baa3ea0a6925e7eb79edd",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketModule.java": {
+    "mtime": 1792600816.844024,
+    "seen": 1792600859.42054,
+    "ast_hash": "e4249802a4b351267351723454b8ed8b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketOwnership.java": {
+    "mtime": 1792600816.844024,
+    "seen": 1792600859.420542,
+    "ast_hash": "51e6fb7bb4a2e360d79667821c520e13",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketProviders.java": {
+    "mtime": 1792600816.844024,
+    "seen": 1792600859.4205437,
+    "ast_hash": "c3f2581c0df1e4eac51a1733b3178800",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketTimeTools.java": {
+    "mtime": 1792600816.845024,
+    "seen": 1792600859.4205456,
+    "ast_hash": "0076b14e76ff63dec8a68c3dcdfc4e4d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketTools.java": {
+    "mtime": 1792600816.845024,
+    "seen": 1792600859.4205475,
+    "ast_hash": "e067ee46c2a9b8b6a438be360b9bfad0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/TicketTransitionTools.java": {
+    "mtime": 1792600816.845024,
+    "seen": 1792600859.4205494,
+    "ast_hash": "cf2ce48c34d902a0428eb234cecfb10a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/github/GitHubTicketProvider.java": {
+    "mtime": 1792600816.846024,
+    "seen": 1792600859.420551,
+    "ast_hash": "2e38ca03b1bf10ebbe231c9249f8423a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/gitlab/GitLabTicketProvider.java": {
+    "mtime": 1792600816.847024,
+    "seen": 1792600859.420553,
+    "ast_hash": "50646e7a97ef141683dfe2c3562fc44a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/jira/JiraTicketProvider.java": {
+    "mtime": 1792600816.847024,
+    "seen": 1792600859.420555,
+    "ast_hash": "66c3cb0ba52d25aa8eb1ebd273573175",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/openproject/OpenProjectTicketProvider.java": {
+    "mtime": 1792600816.8480241,
+    "seen": 1792600859.4205568,
+    "ast_hash": "e198d2a5e58a050b97b725f2eab9d125",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/ticket/youtrack/YouTrackTicketProvider.java": {
+    "mtime": 1792600816.8500242,
+    "seen": 1792600859.4205587,
+    "ast_hash": "9c31114931b22ac2b5c749c23f833653",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/visualvm/HeapAnalyzer.java": {
+    "mtime": 1792600816.8500242,
+    "seen": 1792600859.4205606,
+    "ast_hash": "3b00622831ceeee4b6dabc45a2588428",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/visualvm/JmxCpuSampler.java": {
+    "mtime": 1792600816.8500242,
+    "seen": 1792600859.4205625,
+    "ast_hash": "a4ac0ac17d07513e1ba004fc48cf5e84",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/visualvm/VisualVmLauncher.java": {
+    "mtime": 1792600816.8500242,
+    "seen": 1792600859.4205644,
+    "ast_hash": "1616ecc874639ebbbb4b1228c766e1b9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/visualvm/VisualVmModule.java": {
+    "mtime": 1792600816.8510242,
+    "seen": 1792600859.4205663,
+    "ast_hash": "a4020a7ae0d4d2b8b8a4c042e1917388",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/modules/visualvm/VisualVmTools.java": {
+    "mtime": 1792600816.8510242,
+    "seen": 1792600859.420568,
+    "ast_hash": "12eab20ffbc085e5011d325f17058b20",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/InvalidPluginException.java": {
+    "mtime": 1792600816.8510242,
+    "seen": 1792600859.4205701,
+    "ast_hash": "d32189d25d767996b593684c0a715c69",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/PluginClassLoader.java": {
+    "mtime": 1792600816.8510242,
+    "seen": 1792600859.4205718,
+    "ast_hash": "b5e1b9eac98273a1d38700c4081abdea",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/PluginConfig.java": {
+    "mtime": 1792600816.852024,
+    "seen": 1792600859.420574,
+    "ast_hash": "afb0c59ce68ce64785d56d490202f31f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/PluginDescriptorReader.java": {
+    "mtime": 1792600816.852024,
+    "seen": 1792600859.420576,
+    "ast_hash": "3191c8c078f2be42d3a3703ca6a0258c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/PluginKeys.java": {
+    "mtime": 1792600816.852024,
+    "seen": 1792600859.4205778,
+    "ast_hash": "f613228f6d1cec4d1c1446375c8c399d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/PluginManager.java": {
+    "mtime": 1792600816.8530242,
+    "seen": 1792600859.42058,
+    "ast_hash": "d73279b1f9cdeede6008e03d6a941b9c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/PluginSignature.java": {
+    "mtime": 1792600816.8530242,
+    "seen": 1792600859.4205818,
+    "ast_hash": "51bf6875b10069fd7ad2c05d6b610f7a",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/PluginSigner.java": {
+    "mtime": 1792600816.8530242,
+    "seen": 1792600859.4205837,
+    "ast_hash": "23cc03a5df97569850f0ef720df212dc",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/PluginSpringContext.java": {
+    "mtime": 1792600816.8540242,
+    "seen": 1792600859.4205854,
+    "ast_hash": "e6c6f0acb1e36f05499feb772c68e2bc",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/PluginToolModule.java": {
+    "mtime": 1792600816.8540242,
+    "seen": 1792600859.4205875,
+    "ast_hash": "b7b1e8632f89189e03e0c83405bd7091",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/store/MavenPluginResolver.java": {
+    "mtime": 1792600816.8540242,
+    "seen": 1792600859.4205892,
+    "ast_hash": "39b156c7bac6537c6799fbb70563b233",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/store/PluginCatalog.java": {
+    "mtime": 1792600816.8550243,
+    "seen": 1792600859.420591,
+    "ast_hash": "5199a3a47e5b562c029e20f26f29d203",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/store/PluginRepository.java": {
+    "mtime": 1792600816.8550243,
+    "seen": 1792600859.4205928,
+    "ast_hash": "eaab1de3719486d23c4eec7da4ed6bd8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/plugin/store/PluginStore.java": {
+    "mtime": 1792600816.8550243,
+    "seen": 1792600859.420595,
+    "ast_hash": "3d626e4b7c15b3c9e7baa86fb73cd2b8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/project/ProjectDirectoryProvider.java": {
+    "mtime": 1792600816.8550243,
+    "seen": 1792600859.420597,
+    "ast_hash": "f8a105ffea2f3eabb496ace1faf33869",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/project/ProjectsModule.java": {
+    "mtime": 1792600816.8560243,
+    "seen": 1792600859.420599,
+    "ast_hash": "8b79813eaf675dca22112ab4a47e138c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/BackendConnection.java": {
+    "mtime": 1792600816.8570244,
+    "seen": 1792600859.4206011,
+    "ast_hash": "c54bf0d1f943a44c7ca79ccd9b39a930",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/BackendCredentialStore.java": {
+    "mtime": 1792600816.8580244,
+    "seen": 1792600859.4206028,
+    "ast_hash": "72665b251fa694519e02b5cc5877503b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/BackendFiles.java": {
+    "mtime": 1792600816.8580244,
+    "seen": 1792600859.4206047,
+    "ast_hash": "e64768fe5b2c82118f74aa5e00ad6db4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/BackendGraphProjects.java": {
+    "mtime": 1792600816.8580244,
+    "seen": 1792600859.4206064,
+    "ast_hash": "52c896ecdf8eded04ea51aa7cf51495f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/BackendGraphs.java": {
+    "mtime": 1792600816.8580244,
+    "seen": 1792600859.4206085,
+    "ast_hash": "9b7d71084d6793d4d0cca2bd1aaa3cc8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/BackendMemories.java": {
+    "mtime": 1792600816.8590243,
+    "seen": 1792600859.4206102,
+    "ast_hash": "bdcd8209b8b8eaa174725e63fd6cdf6d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/BackendScripts.java": {
+    "mtime": 1792600816.8590243,
+    "seen": 1792600859.4206123,
+    "ast_hash": "c88a706ace594d4e6c2e6bbe32bb65f2",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/BackendSettingsResolver.java": {
+    "mtime": 1792600816.8590243,
+    "seen": 1792600859.4206142,
+    "ast_hash": "5bfefa23c72fd31abd19a86653f19375",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/BackendSkills.java": {
+    "mtime": 1792600816.8600245,
+    "seen": 1792600859.420616,
+    "ast_hash": "bf431bdd41c2f14e68358eeb8fa6bb35",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/CredentialRefresher.java": {
+    "mtime": 1792600816.8600245,
+    "seen": 1792600859.4206178,
+    "ast_hash": "d10bc925a017d774d54a162e09d4bf60",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/EmbeddedAccounts.java": {
+    "mtime": 1792600816.8600245,
+    "seen": 1792600859.4206197,
+    "ast_hash": "3853f8f9612423fef49a531db15231cc",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/EmbeddedBackend.java": {
+    "mtime": 1792600816.8600245,
+    "seen": 1792600859.4206219,
+    "ast_hash": "1eb874315cb722ab98a4c9f18748f6db",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/GraphQlGraphProvider.java": {
+    "mtime": 1792600816.8610244,
+    "seen": 1792600859.4206235,
+    "ast_hash": "08d6f0af4cd5df02f1b6e295464088aa",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/remote/ScriptCacheFile.java": {
+    "mtime": 1792600816.8610244,
+    "seen": 1792600859.4206257,
+    "ast_hash": "8823c3f128741c257d1a89f8128878a4",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/server/BearerTokenFilter.java": {
+    "mtime": 1792600816.8610244,
+    "seen": 1792600859.4206274,
+    "ast_hash": "71d7204d2d9ec88e4eedb8c456ca1c59",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/server/ChannelEventsController.java": {
+    "mtime": 1792600816.8610244,
+    "seen": 1792600859.4206293,
+    "ast_hash": "ed04c3e2343647391631a5a2a34ec3b0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/server/LocalOnlyFilter.java": {
+    "mtime": 1792600816.8620245,
+    "seen": 1792600859.4206314,
+    "ast_hash": "eb6122c39462382f0502fed1cc9f5ed0",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/syntax/Language.java": {
+    "mtime": 1792600816.8620245,
+    "seen": 1792600859.420633,
+    "ast_hash": "b164ca4566c9a19c1071d7bcf7ec29aa",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/syntax/SyntaxEngine.java": {
+    "mtime": 1792600816.8620245,
+    "seen": 1792600859.4206352,
+    "ast_hash": "b8316e5ee37fa78e619c39a86acd2c85",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/syntax/SyntaxNode.java": {
+    "mtime": 1792600816.8630245,
+    "seen": 1792600859.420637,
+    "ast_hash": "0f2768843045c18f31998eb08b8d7e9c",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/syntax/SyntaxTree.java": {
+    "mtime": 1792600816.8630245,
+    "seen": 1792600859.420639,
+    "ast_hash": "9077f0a7e97bd659c89e33eca30640db",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/syntax/SyntaxVisitor.java": {
+    "mtime": 1792600816.8630245,
+    "seen": 1792600859.4206407,
+    "ast_hash": "a8b0ccd37b3c118772b90a22292ac49f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/AppIcons.java": {
+    "mtime": 1792600816.8630245,
+    "seen": 1792600859.4206429,
+    "ast_hash": "1d24dd1e25ab34b5fb6270ce3e528ee6",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/ArtifactsView.java": {
+    "mtime": 1792600816.8630245,
+    "seen": 1792600859.4206445,
+    "ast_hash": "6ae55376334acde8b102b50072af9855",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/BackendView.java": {
+    "mtime": 1792600816.8640246,
+    "seen": 1792600859.4206467,
+    "ast_hash": "d2b3ec31fdbc1dda820b38c6c505f632",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/ClientConfigDialog.java": {
+    "mtime": 1792600816.8640246,
+    "seen": 1792600859.4206488,
+    "ast_hash": "f9ac10dc8b72389fbdb1162ae98f6c46",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/ConfigForm.java": {
+    "mtime": 1792600816.8650246,
+    "seen": 1792600859.4206507,
+    "ast_hash": "3bcbb20ef3d82ba980e932684496e5de",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/DiscoveryDialog.java": {
+    "mtime": 1792600816.8650246,
+    "seen": 1792600859.4206526,
+    "ast_hash": "181350100e32ab741f9f944e6c900e0d",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/InvocationLogView.java": {
+    "mtime": 1792600816.8650246,
+    "seen": 1792600859.4206545,
+    "ast_hash": "39674770ae8059cfd86d12dc5850167f",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/LoginWindow.java": {
+    "mtime": 1792600816.8660245,
+    "seen": 1792600859.4206567,
+    "ast_hash": "9f8ba91cae9c3286da42a295a173e23e",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/MainView.java": {
+    "mtime": 1792600816.8660245,
+    "seen": 1792600859.4206583,
+    "ast_hash": "e3f0f80db500ad3f72e18833b5c4c8ea",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/MemoriesView.java": {
+    "mtime": 1792600816.8670247,
+    "seen": 1792600859.4206603,
+    "ast_hash": "b4b661bff5e512317c9154abf272ec7e",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/ModuleActionPanel.java": {
+    "mtime": 1792600816.8670247,
+    "seen": 1792600859.420662,
+    "ast_hash": "71926c8247195c1417b6ce8c08de70d7",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/ModuleDetailPane.java": {
+    "mtime": 1792600816.8670247,
+    "seen": 1792600859.420664,
+    "ast_hash": "30b2f0b1b4685b2f65a9799e11a76529",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/MultiSelectComboBox.java": {
+    "mtime": 1792600816.8680246,
+    "seen": 1792600859.4206657,
+    "ast_hash": "ac7985855fb2f5489febb3ba5ebf3100",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/PluginsView.java": {
+    "mtime": 1792600816.8680246,
+    "seen": 1792600859.420668,
+    "ast_hash": "706fce5a619814db4fa070320466ac75",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/ScriptsView.java": {
+    "mtime": 1792600816.8690248,
+    "seen": 1792600859.4206858,
+    "ast_hash": "04515b1b201f954ad7b906989183dcc9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/SettingsDialog.java": {
+    "mtime": 1792600816.8690248,
+    "seen": 1792600859.4206877,
+    "ast_hash": "8cf7558673b93ed7424b4c6937d23fc5",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/ShareDialog.java": {
+    "mtime": 1792600816.8690248,
+    "seen": 1792600859.4206896,
+    "ast_hash": "2b7dc709a7de0e681470e3db8cd0fd1b",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/SkillsView.java": {
+    "mtime": 1792600816.8700247,
+    "seen": 1792600859.4206915,
+    "ast_hash": "7d8b5fb6fe712fb3ca47651a5dc9fa11",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/TrayManager.java": {
+    "mtime": 1792600816.8700247,
+    "seen": 1792600859.420694,
+    "ast_hash": "566936df57b9eb4d0308ee8910ac27b8",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/UsersAdminView.java": {
+    "mtime": 1792600816.8700247,
+    "seen": 1792600859.4206984,
+    "ast_hash": "388277b3c3e246712c6cd007d792c1dc",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/code/CodeEditor.java": {
+    "mtime": 1792600816.8710248,
+    "seen": 1792600859.4207027,
+    "ast_hash": "ba373a4306f764c4979b8a76901187ad",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/code/CompletionPopup.java": {
+    "mtime": 1792600816.8710248,
+    "seen": 1792600859.4207098,
+    "ast_hash": "611ab686e7d6372a94794c97076220b9",
+    "semantic_hash": ""
+  },
+  "desktop/src/main/java/systems/grebe/devtools/mcp/ui/code/Edits.java": {
+    "mtime": 1792600816.8710248,
+    "seen": 1792600859.4207177,
+    "ast_hash": "852b944d23171a62d24aba6e4136ebcc",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/AdvertisePropertiesTest.java": {
+    "mtime": 1792600817.1070313,
+    "seen": 1792600859.4207225,
+    "ast_hash": "923dbaeec84da7c452a881d5629b312b",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/McpServerIntegrationTest.java": {
+    "mtime": 1792600817.1080315,
+    "seen": 1792600859.4207265,
+    "ast_hash": "c207d5ea3fb991d9bb7dac7e0d457bc5",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ScriptsIntegrationTest.java": {
+    "mtime": 1792600817.1080315,
+    "seen": 1792600859.420731,
+    "ast_hash": "b9be9a0c34e95f899238b80b6b2958d6",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/channel/BridgeJarTest.java": {
+    "mtime": 1792600817.1080315,
+    "seen": 1792600859.4207351,
+    "ast_hash": "c2547866611d098803d53c7e30322cae",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/channel/ChannelBridgeAppIntegrationTest.java": {
+    "mtime": 1792600817.1090314,
+    "seen": 1792600859.4207394,
+    "ast_hash": "04929253e087bf31c1b9748ee554b5a6",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/channel/ChannelBridgeTest.java": {
+    "mtime": 1792600817.1090314,
+    "seen": 1792600859.4207435,
+    "ast_hash": "b8ee6b12f47893d9938b2e0a2bb76bb6",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/config/SettingsStoreTest.java": {
+    "mtime": 1792600817.1090314,
+    "seen": 1792600859.4207478,
+    "ast_hash": "4242cdd1c56b6e82384970bfcb840fa4",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/ContextLoaderProxyTest.java": {
+    "mtime": 1792600817.1100314,
+    "seen": 1792600859.4207523,
+    "ast_hash": "53449e37094c8e2fb909b494685fa821",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/CredentialsLoginTest.java": {
+    "mtime": 1792600817.1100314,
+    "seen": 1792600859.420757,
+    "ast_hash": "6e4b29f2f161548df8182d7190dda82b",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/CredentialsTest.java": {
+    "mtime": 1792600817.1100314,
+    "seen": 1792600859.4207613,
+    "ast_hash": "ac9400642eb47e46c37522f869eb3491",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/ErrorHintsTest.java": {
+    "mtime": 1792600817.1100314,
+    "seen": 1792600859.4207647,
+    "ast_hash": "88b3af10325b76f08c38f520c0efd7c5",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/InvocationServiceTest.java": {
+    "mtime": 1792600817.1110315,
+    "seen": 1792600859.420767,
+    "ast_hash": "ec9984bf0f41ab0b9f1df144ff161564",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/LiveInstructionsTransportTest.java": {
+    "mtime": 1792600817.1110315,
+    "seen": 1792600859.420769,
+    "ast_hash": "d6dbcfa0f83f9a954657a71fe584d420",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/McpRuntimeTest.java": {
+    "mtime": 1792600817.1110315,
+    "seen": 1792600859.4207714,
+    "ast_hash": "d4cdfcc15819bb85d92e78f1d636cb15",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/OutputCleanerTest.java": {
+    "mtime": 1792600817.1110315,
+    "seen": 1792600859.420773,
+    "ast_hash": "cac417a8b623edfd694bf791dc40e8b1",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/ServerInstructionsTest.java": {
+    "mtime": 1792600817.1110315,
+    "seen": 1792600859.4207752,
+    "ast_hash": "6ae475810ceca725f699cee0f60f6e47",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/SignatureTest.java": {
+    "mtime": 1792600817.1120315,
+    "seen": 1792600859.4207773,
+    "ast_hash": "99de23b642b7ce05463e5bd67df6f653",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/ToolProgressTest.java": {
+    "mtime": 1792600817.1120315,
+    "seen": 1792600859.4207792,
+    "ast_hash": "ec1c2fcd4c5986870718fe45277743ae",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/core/WorkspacesTest.java": {
+    "mtime": 1792600817.1120315,
+    "seen": 1792600859.4207814,
+    "ast_hash": "71a7f9ec53bdf73510ffe4b0ad89b3d4",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/asprof/AsyncProfilerContainerTest.java": {
+    "mtime": 1792600817.1120315,
+    "seen": 1792600859.420783,
+    "ast_hash": "f19bd96b8445882fcc8c1775e0ccd545",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/browser/BrowserEnvironmentTest.java": {
+    "mtime": 1792600817.1130316,
+    "seen": 1792600859.4207854,
+    "ast_hash": "2d74e99655c36cc36c4cffd461db5386",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/browser/BrowserOverlayTest.java": {
+    "mtime": 1792600817.1130316,
+    "seen": 1792600859.4207876,
+    "ast_hash": "62535efdcb1c7f81f439fccd586d0689",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/browser/BrowserToolsTest.java": {
+    "mtime": 1792600817.1130316,
+    "seen": 1792600859.4207892,
+    "ast_hash": "03de04c61f37e3ad1fbda4029859d1a7",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/chat/ChatModuleTest.java": {
+    "mtime": 1792600817.1140316,
+    "seen": 1792600859.4207916,
+    "ast_hash": "70fb9cc1405bb68ca9983070e7ecea41",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/chat/HttpStub.java": {
+    "mtime": 1792600817.1140316,
+    "seen": 1792600859.4207938,
+    "ast_hash": "15892367f772f570fff503503e5ccf8c",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/chat/MatrixChatTest.java": {
+    "mtime": 1792600817.1150317,
+    "seen": 1792600859.4207962,
+    "ast_hash": "b471c324efe27cbb7a38d27786af4ce3",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/chat/TeamsChatTest.java": {
+    "mtime": 1792600817.1150317,
+    "seen": 1792600859.4207983,
+    "ast_hash": "f125ff675386c21f6004be79719be8bb",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/chat/matrix/MatrixEventsTest.java": {
+    "mtime": 1792600817.1150317,
+    "seen": 1792600859.4208002,
+    "ast_hash": "082483f103d3d431451cf5fbd900976f",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/chat/teams/TeamsHtmlTest.java": {
+    "mtime": 1792600817.1160316,
+    "seen": 1792600859.4208024,
+    "ast_hash": "d0467c242c2e3329816aea2e2be1fdc9",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ci/CiModuleTest.java": {
+    "mtime": 1792600817.1160316,
+    "seen": 1792600859.4208043,
+    "ast_hash": "e56f06940f1636e48d33b1f2e00e8a03",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ci/GitHubCiProviderTest.java": {
+    "mtime": 1792600817.1160316,
+    "seen": 1792600859.4208064,
+    "ast_hash": "af9edd0900389947b70ee261e1fa3b2f",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ci/GitLabCiProviderTest.java": {
+    "mtime": 1792600817.1170316,
+    "seen": 1792600859.4208088,
+    "ast_hash": "b95848630878c2ef8adbeede1b2d1afc",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ci/JenkinsCiProviderTest.java": {
+    "mtime": 1792600817.1170316,
+    "seen": 1792600859.4208107,
+    "ast_hash": "a35f3e668be90ec9624a058a623fa133",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ci/StubServer.java": {
+    "mtime": 1792600817.1170316,
+    "seen": 1792600859.4208128,
+    "ast_hash": "db165b78b627559b844863052ed95c17",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/classify/ClassifyModuleTest.java": {
+    "mtime": 1792600817.1180317,
+    "seen": 1792600859.4208148,
+    "ast_hash": "daabf6998265631941f778e93c59abc9",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/container/ContainerModuleTest.java": {
+    "mtime": 1792600817.1180317,
+    "seen": 1792600859.4208167,
+    "ast_hash": "bab960fd176300b5a7512a83429e6ad9",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/container/ContainerRuntimeIntegrationTest.java": {
+    "mtime": 1792600817.1180317,
+    "seen": 1792600859.420819,
+    "ast_hash": "2f4d95fb3967b1599820f4fc78c2352f",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/container/FakeRuntimeProvider.java": {
+    "mtime": 1792600817.1180317,
+    "seen": 1792600859.4208212,
+    "ast_hash": "fc4f32ef258abb9b739046cba0c5a5da",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/context/ContextTextTest.java": {
+    "mtime": 1792600817.1190317,
+    "seen": 1792600859.4208233,
+    "ast_hash": "3d97c79ae513b3bf46a25997462dadf0",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/context/ResultBudgetTest.java": {
+    "mtime": 1792600817.1190317,
+    "seen": 1792600859.420825,
+    "ast_hash": "5361b618f65cf6422b5a40adef7269b9",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/debug/DebugToolsTest.java": {
+    "mtime": 1792600817.1190317,
+    "seen": 1792600859.4208274,
+    "ast_hash": "514aebc42c2b0db1b70c0c69b849d8fc",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/decide/DecideIntegrationTest.java": {
+    "mtime": 1792600817.1200318,
+    "seen": 1792600859.4208295,
+    "ast_hash": "b7acfe06e1a68d0291b5c07ef6c6128a",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/decide/DecideToolsTest.java": {
+    "mtime": 1792600817.1200318,
+    "seen": 1792600859.4208314,
+    "ast_hash": "f5beb85dbd30cb0519c9e86e440b6c75",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/decide/engine/KernelsTest.java": {
+    "mtime": 1792600817.1200318,
+    "seen": 1792600859.4208336,
+    "ast_hash": "090a78bb6b015faa18c61e45a069df82",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/decide/engine/LayaParityTest.java": {
+    "mtime": 1792600817.1200318,
+    "seen": 1792600859.4208353,
+    "ast_hash": "938b2ee2a7920e194e15e9bf88d2349d",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/decide/engine/LlamaModelTest.java": {
+    "mtime": 1792600817.1210318,
+    "seen": 1792600859.420846,
+    "ast_hash": "110c4d7b414a964bb0d55ab91278f0d5",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/decompile/DecompileSample.java": {
+    "mtime": 1792600817.1210318,
+    "seen": 1792600859.4208484,
+    "ast_hash": "f0c1fc97f131de023242940437b4af29",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/decompile/DecompileToolsTest.java": {
+    "mtime": 1792600817.1210318,
+    "seen": 1792600859.4208508,
+    "ast_hash": "f86033f874b1dee77639985e85e44e54",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/dolt/DoltBranchWatcherTest.java": {
+    "mtime": 1792600817.1210318,
+    "seen": 1792600859.4208527,
+    "ast_hash": "3870f9663db618512f3005f83c68d30d",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/dolt/DoltBranchesTest.java": {
+    "mtime": 1792600817.122032,
+    "seen": 1792600859.420855,
+    "ast_hash": "3ecb980557c255cdeee99b7ffdba85a0",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/dolt/DoltDatabaseTest.java": {
+    "mtime": 1792600817.122032,
+    "seen": 1792600859.4208572,
+    "ast_hash": "55db39a480990c3ff5b6c2e66f3b8a07",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/dolt/DoltServerContainerTest.java": {
+    "mtime": 1792600817.122032,
+    "seen": 1792600859.4208667,
+    "ast_hash": "1a10a351f6168b39e9ced1cfbec941b3",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/dolt/DoltliteBackendTest.java": {
+    "mtime": 1792600817.1230319,
+    "seen": 1792600859.4208696,
+    "ast_hash": "4ababfa1d1f7c889129acd94c1256a67",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/dolt/FakeDoltServer.java": {
+    "mtime": 1792600817.1230319,
+    "seen": 1792600859.420872,
+    "ast_hash": "e6ddd3eba7b47536749ee1cbb6783fa4",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/git/GitToolsExtendedTest.java": {
+    "mtime": 1792600817.1230319,
+    "seen": 1792600859.4208739,
+    "ast_hash": "b4bee612a46fd6a782c7f435697e3317",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/git/GitToolsTest.java": {
+    "mtime": 1792600817.1230319,
+    "seen": 1792600859.420876,
+    "ast_hash": "22134553b2141ac84249dbaa6c32203a",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/graph/DatabaseGraphStorageTest.java": {
+    "mtime": 1792600817.1240318,
+    "seen": 1792600859.4208782,
+    "ast_hash": "890d493ac426a859c1fd18a745857722",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/graph/GraphConcurrencyTest.java": {
+    "mtime": 1792600817.1240318,
+    "seen": 1792600859.42088,
+    "ast_hash": "416476931b418e555febb0886874add5",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/graph/GraphQlGraphProviderTest.java": {
+    "mtime": 1792600817.125032,
+    "seen": 1792600859.4208825,
+    "ast_hash": "655aef865249ae41de3fdac6766a0432",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/graph/GraphToolsTest.java": {
+    "mtime": 1792600817.125032,
+    "seen": 1792600859.4208844,
+    "ast_hash": "6719f8fd11b3140d71ff2de55373d928",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/graph/GraphToolsTestFixture.java": {
+    "mtime": 1792600817.125032,
+    "seen": 1792600859.4208865,
+    "ast_hash": "fb4cd95341ddef84f2cc8185155b5921",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ide/IdeModuleTest.java": {
+    "mtime": 1792600817.1260319,
+    "seen": 1792600859.4208887,
+    "ast_hash": "84314a5b28d381f43639b5d7816f9938",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ide/IdeProgramsTest.java": {
+    "mtime": 1792600817.1260319,
+    "seen": 1792600859.4208906,
+    "ast_hash": "d7a3095d7685ca840c102efa036affa7",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ide/eclipse/EclipseIdeProviderTest.java": {
+    "mtime": 1792600817.1260319,
+    "seen": 1792600859.4208927,
+    "ast_hash": "aafd26bed118e7b41799e89a3c1143b8",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ide/jetbrains/JetBrainsIdeProviderTest.java": {
+    "mtime": 1792600817.1260319,
+    "seen": 1792600859.4208946,
+    "ast_hash": "da3edf76f9b614aaef4e3ccb943160aa",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ide/visualstudio/VisualStudioIdeProviderTest.java": {
+    "mtime": 1792600817.127032,
+    "seen": 1792600859.4208965,
+    "ast_hash": "75f9f958a9ed9349672d4434583368bd",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ide/vscode/VsCodeFamilyProviderTest.java": {
+    "mtime": 1792600817.127032,
+    "seen": 1792600859.4208987,
+    "ast_hash": "4117cc70092fdf7d672bde5ee2204d3b",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ide/xcode/XcodeIdeProviderTest.java": {
+    "mtime": 1792600817.127032,
+    "seen": 1792600859.4209003,
+    "ast_hash": "0b85a7bc36955ba877deefb3507671db",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcConnectionProviderTest.java": {
+    "mtime": 1792600817.128032,
+    "seen": 1792600859.4209027,
+    "ast_hash": "8755063a97965b7ed5bed2372c73e50f",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/jdbc/JdbcToolsTest.java": {
+    "mtime": 1792600817.128032,
+    "seen": 1792600859.4209046,
+    "ast_hash": "4b90b0b1c8e46c2fc5bfb24a92f6e092",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/jdbc/SqlStatementsTest.java": {
+    "mtime": 1792600817.128032,
+    "seen": 1792600859.4209068,
+    "ast_hash": "e7dccf2aabd4b94c238c2f6eec8fc7ea",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/jfr/JfrToolsTest.java": {
+    "mtime": 1792600817.129032,
+    "seen": 1792600859.4209087,
+    "ast_hash": "ef47476a5491483f32ea1703cb89f770",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/jvm/JvmToolsTest.java": {
+    "mtime": 1792600817.129032,
+    "seen": 1792600859.420911,
+    "ast_hash": "37e04bbdae9cab4c72e8b722b3b35bca",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/mail/MailAccountServiceTest.java": {
+    "mtime": 1792600817.130032,
+    "seen": 1792600859.4209132,
+    "ast_hash": "5c91ccf8471341b37406c03e66de26dd",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/mail/MailModuleTest.java": {
+    "mtime": 1792600817.130032,
+    "seen": 1792600859.4209151,
+    "ast_hash": "092fdb2d096be0304d67fef1d4ba18df",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/mail/MailOAuthTest.java": {
+    "mtime": 1792600817.130032,
+    "seen": 1792600859.4209173,
+    "ast_hash": "c681e16377bc4ae48702dc870fcb9781",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/mail/MailSendTest.java": {
+    "mtime": 1792600817.130032,
+    "seen": 1792600859.4209192,
+    "ast_hash": "2e3f8ee5150b8cdd59cc04a551bf6909",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/maven/MavenToolsTest.java": {
+    "mtime": 1792600817.131032,
+    "seen": 1792600859.4209213,
+    "ast_hash": "c32447a1a8b333edfe045facf39ad62e",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/memories/MemoriesModuleTest.java": {
+    "mtime": 1792600817.131032,
+    "seen": 1792600859.4209232,
+    "ast_hash": "50235abf9e07fa1a14c945375082ae44",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/pr/BitbucketServerProviderTest.java": {
+    "mtime": 1792600817.1320322,
+    "seen": 1792600859.4209251,
+    "ast_hash": "80eef4c55e266c27ff7b5cd3573739e8",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/pr/GitHubServerProviderTest.java": {
+    "mtime": 1792600817.1320322,
+    "seen": 1792600859.4209273,
+    "ast_hash": "b517be09ad15261493f7054580a39420",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/pr/GitLabServerProviderTest.java": {
+    "mtime": 1792600817.133032,
+    "seen": 1792600859.420929,
+    "ast_hash": "b08b41ab5d5c8ddb0986e06aeb0d5460",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/pr/PrModuleTest.java": {
+    "mtime": 1792600817.133032,
+    "seen": 1792600859.4209313,
+    "ast_hash": "c7ec69803ffd55071abd5170756c55b2",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/pr/PrPushToolsTest.java": {
+    "mtime": 1792600817.133032,
+    "seen": 1792600859.420933,
+    "ast_hash": "dea280f866d026e00fd23eb870760a19",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/pr/StubServer.java": {
+    "mtime": 1792600817.133032,
+    "seen": 1792600859.4209352,
+    "ast_hash": "0e3f550b65202d3b00fca85c30e6ab1c",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/scripts/GherkinScriptCompilerTest.java": {
+    "mtime": 1792600817.1340322,
+    "seen": 1792600859.420937,
+    "ast_hash": "6660718d79740845d04bed10e88e2cbb",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/scripts/JavaScriptCompilerTest.java": {
+    "mtime": 1792600817.1340322,
+    "seen": 1792600859.4209387,
+    "ast_hash": "d008e5e934b3014647da97caf6e3e59b",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/scripts/RegistryToolCallerTest.java": {
+    "mtime": 1792600817.1340322,
+    "seen": 1792600859.4209409,
+    "ast_hash": "eb433069eac299611aad66e33818d521",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/scripts/ScriptCompilerTest.java": {
+    "mtime": 1792600817.1340322,
+    "seen": 1792600859.420943,
+    "ast_hash": "992bd86d8fba34115b86569a2f2822b8",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/scripts/ScriptRunToolsTest.java": {
+    "mtime": 1792600817.1350322,
+    "seen": 1792600859.4209452,
+    "ast_hash": "a6b4f687cc1f6b70970abb6ebd59f735",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/scripts/ScriptsModuleTest.java": {
+    "mtime": 1792600817.1350322,
+    "seen": 1792600859.4209468,
+    "ast_hash": "ac0b6225b433032786676fa4b75c4a37",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/scripts/assist/ScriptAssistTest.java": {
+    "mtime": 1792600817.1350322,
+    "seen": 1792600859.420949,
+    "ast_hash": "dd893a715d9f19bad3ca5c6fc3194a3c",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/scripts/assist/SyntaxHighlighterTest.java": {
+    "mtime": 1792600817.136032,
+    "seen": 1792600859.4209511,
+    "ast_hash": "15137216bed8c933c738a250845a02f1",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/share/ShareModuleTest.java": {
+    "mtime": 1792600817.136032,
+    "seen": 1792600859.420953,
+    "ast_hash": "88807dc8c43a88a970cdf5056bd99a5f",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/skills/RecallHintsTest.java": {
+    "mtime": 1792600817.1370323,
+    "seen": 1792600859.4209552,
+    "ast_hash": "b006729a22772e5aacaf3ac669885a8a",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/skills/SkillFileToolsTest.java": {
+    "mtime": 1792600817.1370323,
+    "seen": 1792600859.420957,
+    "ast_hash": "28ac85ee3bfb55c6e047d0a3f03f5da1",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/skills/SkillReviewTrackerTest.java": {
+    "mtime": 1792600817.1370323,
+    "seen": 1792600859.4209592,
+    "ast_hash": "e27f722078f0bf5761962cbdd762be2e",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/skills/SkillShareToolsTest.java": {
+    "mtime": 1792600817.1370323,
+    "seen": 1792600859.4209611,
+    "ast_hash": "d5443ae92baa8fa10a2727ecd34bd4d0",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/skills/SkillsModuleTest.java": {
+    "mtime": 1792600817.1370323,
+    "seen": 1792600859.420963,
+    "ast_hash": "fe3b6f4a1d1456e3a98ac760fb16bda3",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/sonar/SonarToolsTest.java": {
+    "mtime": 1792600817.1380322,
+    "seen": 1792600859.420965,
+    "ast_hash": "f41ca95c447a4407c936fd4784f42a7c",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ssh/SshToolsTest.java": {
+    "mtime": 1792600817.1380322,
+    "seen": 1792600859.420967,
+    "ast_hash": "72470307d976106cfbebb9caf8058a88",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/GitHubTicketProviderTest.java": {
+    "mtime": 1792600817.1390324,
+    "seen": 1792600859.4209692,
+    "ast_hash": "7c848b48f557a99076c5cfb9520a85d2",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/GitLabTicketProviderTest.java": {
+    "mtime": 1792600817.1390324,
+    "seen": 1792600859.4209712,
+    "ast_hash": "a4537d8861d75903656d72914ab59b50",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/JiraTicketProviderTest.java": {
+    "mtime": 1792600817.1390324,
+    "seen": 1792600859.4209733,
+    "ast_hash": "8d457d861ed18deb0a6067cf6a2c1d8c",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/OpenProjectTicketProviderTest.java": {
+    "mtime": 1792600817.1400323,
+    "seen": 1792600859.4209754,
+    "ast_hash": "b3301bae8ce23150cb12170e26e6802c",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/StubServer.java": {
+    "mtime": 1792600817.1400323,
+    "seen": 1792600859.4209774,
+    "ast_hash": "8453bcf8e34994fda58ee1ed55d4636a",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/TicketClassifyToolsTest.java": {
+    "mtime": 1792600817.1400323,
+    "seen": 1792600859.4209795,
+    "ast_hash": "8905878a3fcd8d625afd0604fd0e0a6d",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/TicketDeleteTest.java": {
+    "mtime": 1792600817.1400323,
+    "seen": 1792600859.4209814,
+    "ast_hash": "58be3effe17bfbea111d6bc34c70fedf",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/TicketLinkTest.java": {
+    "mtime": 1792600817.1410325,
+    "seen": 1792600859.4209833,
+    "ast_hash": "efab64a83520a7af62c5aa330d320545",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/TicketModuleTest.java": {
+    "mtime": 1792600817.1410325,
+    "seen": 1792600859.4209855,
+    "ast_hash": "5586df61c98297d684a36ba5503d3447",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/TicketProviderWriteTest.java": {
+    "mtime": 1792600817.1410325,
+    "seen": 1792600859.4209874,
+    "ast_hash": "797e352636e7cf97fb91842be8aeb7a8",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/TicketTimeToolsTest.java": {
+    "mtime": 1792600817.1420324,
+    "seen": 1792600859.4209893,
+    "ast_hash": "5a4cca92a30f6711ea4e7fa8ac672e57",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/TicketWriteGuardTest.java": {
+    "mtime": 1792600817.1420324,
+    "seen": 1792600859.4209914,
+    "ast_hash": "a149a4d82af34423d9179a8893eea679",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/YouTrackTicketProviderTest.java": {
+    "mtime": 1792600817.1420324,
+    "seen": 1792600859.4209933,
+    "ast_hash": "15712ab9ac2b5f2763f75d2102bf8ef8",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/ticket/jira/JiraCloudOAuthTest.java": {
+    "mtime": 1792600817.1430323,
+    "seen": 1792600859.4209952,
+    "ast_hash": "58cf5d4b7000dfc05bcf19e54458ff5a",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/modules/visualvm/VisualVmToolsTest.java": {
+    "mtime": 1792600817.1430323,
+    "seen": 1792600859.4209974,
+    "ast_hash": "5e7b621a69ab20cef91a17e10a710e28",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/plugin/PluginApiOnlyTest.java": {
+    "mtime": 1792600817.1430323,
+    "seen": 1792600859.420999,
+    "ast_hash": "dfaaf5cef959e3060e546a1c65ca850f",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/plugin/PluginIntegrationTest.java": {
+    "mtime": 1792600817.1440325,
+    "seen": 1792600859.4210012,
+    "ast_hash": "babd2e7b27c8014f18cc232d2fbe69aa",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/plugin/PluginManagerTest.java": {
+    "mtime": 1792600817.1440325,
+    "seen": 1792600859.421003,
+    "ast_hash": "4aa7a7c3fab4ec5369a650b8cb1a497f",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/plugin/PluginSignatureTest.java": {
+    "mtime": 1792600817.1440325,
+    "seen": 1792600859.421005,
+    "ast_hash": "9aa8592af84428a0f119119796222c00",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/plugin/TestPlugins.java": {
+    "mtime": 1792600817.1450324,
+    "seen": 1792600859.4210074,
+    "ast_hash": "ac5fe29ff8f070b5ad383669f7c7f0ef",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/plugin/store/PluginStoreTest.java": {
+    "mtime": 1792600817.1450324,
+    "seen": 1792600859.4210093,
+    "ast_hash": "0889ee8affc5db0ad991334043cf7e08",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/project/ProjectDirectoryProviderTest.java": {
+    "mtime": 1792600817.1450324,
+    "seen": 1792600859.4210114,
+    "ast_hash": "e7d819887b6666155f2cb797e0260fa2",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/remote/BackendApiVersionTest.java": {
+    "mtime": 1792600817.1460326,
+    "seen": 1792600859.4210136,
+    "ast_hash": "03f38d0343811e37f1221e7712701c73",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/remote/CredentialSyncTest.java": {
+    "mtime": 1792600817.1460326,
+    "seen": 1792600859.4210155,
+    "ast_hash": "879f5b35728ffd5c1611235c38305c91",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/remote/EmbeddedBackendIntegrationTest.java": {
+    "mtime": 1792600817.1460326,
+    "seen": 1792600859.4210176,
+    "ast_hash": "cc3ba845d5cc5fba8dd133713a87fc57",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/remote/ScriptCacheFileTest.java": {
+    "mtime": 1792600817.1470325,
+    "seen": 1792600859.4210196,
+    "ast_hash": "7864d96cf9a54796cacde2e39711826e",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/server/LocalOnlyFilterTest.java": {
+    "mtime": 1792600817.1470325,
+    "seen": 1792600859.4210217,
+    "ast_hash": "80f9390f11994794c3949f535fec2ec3",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/syntax/SyntaxEngineTest.java": {
+    "mtime": 1792600817.1470325,
+    "seen": 1792600859.4210238,
+    "ast_hash": "a0b821f5cb2a7b53fbd7837a26e81a28",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/testjvm/Fixture.java": {
+    "mtime": 1792600817.1480327,
+    "seen": 1792600859.4210258,
+    "ast_hash": "ff4bf112aa53a71766cf40d03f54d4ac",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/testjvm/FixtureApp.java": {
+    "mtime": 1792600817.1480327,
+    "seen": 1792600859.4210277,
+    "ast_hash": "a361a40e396ff2e80b9b0911b5c7a25e",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/ConfigFormTest.java": {
+    "mtime": 1792600817.1480327,
+    "seen": 1792600859.4210296,
+    "ast_hash": "a83e0c2ae6ee3af8a9d955e30ac6f242",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/LoginWindowSnapshot.java": {
+    "mtime": 1792600817.1490326,
+    "seen": 1792600859.421032,
+    "ast_hash": "ddb1b14b09a96bdda5a4479473addead",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/ModuleActionPanelTest.java": {
+    "mtime": 1792600817.1490326,
+    "seen": 1792600859.4210336,
+    "ast_hash": "19f70116ddcd5d96e1e4132d90885b75",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/PluginsViewSnapshot.java": {
+    "mtime": 1792600817.1490326,
+    "seen": 1792600859.4210358,
+    "ast_hash": "a779cff2329dac807a0e7a2c62a11a04",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/ScriptsViewSnapshot.java": {
+    "mtime": 1792600817.1490326,
+    "seen": 1792600859.421038,
+    "ast_hash": "ecb9c71a89b21ab5653c0aa59298e712",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/SkillsViewLiveUpdateTest.java": {
+    "mtime": 1792600817.1490326,
+    "seen": 1792600859.4210398,
+    "ast_hash": "aa8cf4d7dfb859d9b96f64e41972e45c",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/SkillsViewSnapshot.java": {
+    "mtime": 1792600817.1500325,
+    "seen": 1792600859.4210417,
+    "ast_hash": "7199835c66d2f3d8ca1f414f9a77636f",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/SkillsViewTest.java": {
+    "mtime": 1792600817.1500325,
+    "seen": 1792600859.4210436,
+    "ast_hash": "d02cfa1704d91a8772ab7ca0753a11a6",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/code/CodeEditorSnapshot.java": {
+    "mtime": 1792600817.1500325,
+    "seen": 1792600859.4210455,
+    "ast_hash": "d5a95d2d87c05e79d7428b898a2a7bcb",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/code/CodeEditorSnapshotTest.java": {
+    "mtime": 1792600817.1500325,
+    "seen": 1792600859.4210474,
+    "ast_hash": "c59d3cb8af11c9b35ec9e333dd0b66e7",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/java/systems/grebe/devtools/mcp/ui/code/EditsTest.java": {
+    "mtime": 1792600817.1510327,
+    "seen": 1792600859.4210494,
+    "ast_hash": "2350669bc4957fa510b2db59b1ed2520",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/resources/decide/laya/predict.json": {
+    "mtime": 1792600817.1520326,
+    "seen": 1792600859.4210515,
+    "ast_hash": "892afde0dd3224486c74570e2808092d",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/resources/decide/laya/tokenizer_ids.json": {
+    "mtime": 1792600817.1530328,
+    "seen": 1792600859.4210532,
+    "ast_hash": "55d091cda7434e8fca032bd5ad9ff319",
+    "semantic_hash": ""
+  },
+  "gradlew": {
+    "mtime": 1792600817.1540327,
+    "seen": 1792600859.4210556,
+    "ast_hash": "a43be8432bac3ffd05b3769aa42fe996",
+    "semantic_hash": ""
+  },
+  "plugin-api/build.gradle.kts": {
+    "mtime": 1792600817.1550326,
+    "seen": 1792600859.4210572,
+    "ast_hash": "5cf3b3811a596936afe932eb3387331b",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ConfigField.java": {
+    "mtime": 1792600817.1560328,
+    "seen": 1792600859.4210594,
+    "ast_hash": "d0730515a885c70996b925f62df3109d",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ConfigGroup.java": {
+    "mtime": 1792600817.1560328,
+    "seen": 1792600859.4210613,
+    "ast_hash": "b4be486c78a2cb05949852841b6de8fb",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ConnectionTestResult.java": {
+    "mtime": 1792600817.1560328,
+    "seen": 1792600859.4210634,
+    "ast_hash": "41ce878cd4e2e107d71aaaf526c1b512",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/CredentialField.java": {
+    "mtime": 1792600817.1570327,
+    "seen": 1792600859.4210656,
+    "ast_hash": "525053d7181e5f8c33317f66d5f0649d",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/DelegatingToolCallback.java": {
+    "mtime": 1792600817.1570327,
+    "seen": 1792600859.4210675,
+    "ast_hash": "643a780d5c57ab8674bd5d95c74e3d02",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/FieldType.java": {
+    "mtime": 1792600817.1570327,
+    "seen": 1792600859.4210696,
+    "ast_hash": "75648a2b3a48c561d2858344436afb3c",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ModuleAction.java": {
+    "mtime": 1792600817.1570327,
+    "seen": 1792600859.4210715,
+    "ast_hash": "b144eb860c79846dced93c03d6dd6fa7",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ModuleConfig.java": {
+    "mtime": 1792600817.1570327,
+    "seen": 1792600859.4210737,
+    "ast_hash": "b3a2e25710e4779539647fd2463287f9",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ServiceProvider.java": {
+    "mtime": 1792600817.158033,
+    "seen": 1792600859.4210758,
+    "ast_hash": "a48b6c2938aaf9347e4e7087afe8ee0f",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/Signature.java": {
+    "mtime": 1792600817.158033,
+    "seen": 1792600859.4210777,
+    "ast_hash": "ad53c469750dd1fa45c3d6bc999a9964",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ToolBeans.java": {
+    "mtime": 1792600817.158033,
+    "seen": 1792600859.4210796,
+    "ast_hash": "a7dfb877a7c96e1d2f5da76c6a3f929e",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ToolHints.java": {
+    "mtime": 1792600817.158033,
+    "seen": 1792600859.4210815,
+    "ast_hash": "d75096ee21ca25649dbe9e61ad14950e",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ToolImages.java": {
+    "mtime": 1792600817.158033,
+    "seen": 1792600859.4210837,
+    "ast_hash": "1792836068758ce350a6070e969955c1",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ToolModule.java": {
+    "mtime": 1792600817.1590328,
+    "seen": 1792600859.4210856,
+    "ast_hash": "0fe6799be10b2d2cc051e70c9a008dc3",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ToolProgress.java": {
+    "mtime": 1792600817.1590328,
+    "seen": 1792600859.4210877,
+    "ast_hash": "3af3abc46f43e97affa515e08edc79f3",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/core/ToolScope.java": {
+    "mtime": 1792600817.1590328,
+    "seen": 1792600859.4211056,
+    "ast_hash": "e5a12d72354e2946af23f644c74bffee",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/chat/spi/ChatProvider.java": {
+    "mtime": 1792600817.160033,
+    "seen": 1792600859.4211078,
+    "ast_hash": "465761a71c878ea68e7f3a5b4426b8fe",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/chat/spi/ChatSettings.java": {
+    "mtime": 1792600817.160033,
+    "seen": 1792600859.4211097,
+    "ast_hash": "4837db13d3a4308c08964e4303fe2a79",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/chat/spi/ChatSystem.java": {
+    "mtime": 1792600817.160033,
+    "seen": 1792600859.4211118,
+    "ast_hash": "50894b77c1cd5c33807529e6d3d5f211",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/chat/spi/ChatVault.java": {
+    "mtime": 1792600817.160033,
+    "seen": 1792600859.421114,
+    "ast_hash": "ee4d3c55029eadda6cdb249a844ec953",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/ci/spi/CiProvider.java": {
+    "mtime": 1792600817.161033,
+    "seen": 1792600859.4211159,
+    "ast_hash": "91895a530d570c2b745ce4be3031af27",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/ci/spi/CiSystem.java": {
+    "mtime": 1792600817.161033,
+    "seen": 1792600859.4211178,
+    "ast_hash": "af138152ee6432f40b418095276e40dd",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/container/spi/ContainerRuntimeProvider.java": {
+    "mtime": 1792600817.161033,
+    "seen": 1792600859.42112,
+    "ast_hash": "a95222b71d95071285ee8b62f233e2a9",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/container/spi/RuntimeSettings.java": {
+    "mtime": 1792600817.161033,
+    "seen": 1792600859.421122,
+    "ast_hash": "911de7959ef4dd46f370ecc2694fb775",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/ide/spi/Ide.java": {
+    "mtime": 1792600817.1620328,
+    "seen": 1792600859.421124,
+    "ast_hash": "2fdc85cc4f840fecb834a023db6ee7a0",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/ide/spi/IdeProvider.java": {
+    "mtime": 1792600817.1620328,
+    "seen": 1792600859.421126,
+    "ast_hash": "70d9700bde77c6308c71c2c9332f902d",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/spi/DatabaseConnectionInfo.java": {
+    "mtime": 1792600817.163033,
+    "seen": 1792600859.421128,
+    "ast_hash": "e5c3c4339edb29538d1633a97f334cae",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/jdbc/spi/DatabaseConnectionProvider.java": {
+    "mtime": 1792600817.163033,
+    "seen": 1792600859.4211366,
+    "ast_hash": "ca9a88252696e7a997e92c9f7c9550e5",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/MailAccountInfo.java": {
+    "mtime": 1792600817.163033,
+    "seen": 1792600859.421139,
+    "ast_hash": "3dcfc5130e974d162974e3433e5e036b",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/MailAccountProvider.java": {
+    "mtime": 1792600817.163033,
+    "seen": 1792600859.421141,
+    "ast_hash": "bcf90b1fdbeef460a1dfb88421a46569",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/MailAttachment.java": {
+    "mtime": 1792600817.163033,
+    "seen": 1792600859.421143,
+    "ast_hash": "6d555c38ba7dd08102b04dc1b254b2a3",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/MailAttachmentInfo.java": {
+    "mtime": 1792600817.163033,
+    "seen": 1792600859.4211454,
+    "ast_hash": "e24968f23f2464ebbb199d24d9c65552",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/MailDraft.java": {
+    "mtime": 1792600817.163033,
+    "seen": 1792600859.4211473,
+    "ast_hash": "7c0ed0fc745cd7c454d7c43aad1ef901",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/MailFolderInfo.java": {
+    "mtime": 1792600817.163033,
+    "seen": 1792600859.4211495,
+    "ast_hash": "9abaa240a353ab29c9f3b897fdc6c4cb",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/MailMessage.java": {
+    "mtime": 1792600817.163033,
+    "seen": 1792600859.4211514,
+    "ast_hash": "0e5bd05b28963f35c20cca57a09c7655",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/MailQuery.java": {
+    "mtime": 1792600817.163033,
+    "seen": 1792600859.4211535,
+    "ast_hash": "f6b9bc37f2ec6babc9bb434277113ddd",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/MailSend.java": {
+    "mtime": 1792600817.164033,
+    "seen": 1792600859.4211557,
+    "ast_hash": "1a216b6fe32d4297ee587a7af2c5f6b9",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/MailSummary.java": {
+    "mtime": 1792600817.164033,
+    "seen": 1792600859.4211576,
+    "ast_hash": "07463fb1e6e85b391f946ff0f6d1fc2a",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/mail/spi/NewMail.java": {
+    "mtime": 1792600817.164033,
+    "seen": 1792600859.4211597,
+    "ast_hash": "2dda9d8b1925d28014aaac87973faadc",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/pr/spi/GitServer.java": {
+    "mtime": 1792600817.164033,
+    "seen": 1792600859.421162,
+    "ast_hash": "e5934bc35455fc6a21aee6540978fb93",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/pr/spi/GitServerProvider.java": {
+    "mtime": 1792600817.164033,
+    "seen": 1792600859.421164,
+    "ast_hash": "27b93b65109d7705e8cb209d77277bd2",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/ticket/spi/HttpJson.java": {
+    "mtime": 1792600817.164033,
+    "seen": 1792600859.421166,
+    "ast_hash": "63d26ff0fc249ea7863f6692e44bf3ee",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/ticket/spi/ProviderSettings.java": {
+    "mtime": 1792600817.165033,
+    "seen": 1792600859.4211679,
+    "ast_hash": "0d387063bcec2b48d3569049b4294bcc",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/ticket/spi/TicketProvider.java": {
+    "mtime": 1792600817.165033,
+    "seen": 1792600859.42117,
+    "ast_hash": "892732dce52619086d7d886269b9bcc3",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/modules/ticket/spi/TicketSystem.java": {
+    "mtime": 1792600817.165033,
+    "seen": 1792600859.421172,
+    "ast_hash": "3e1780a9806414c743bf1f82a275749a",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/plugin/DevToolsPlugin.java": {
+    "mtime": 1792600817.165033,
+    "seen": 1792600859.4211738,
+    "ast_hash": "cb893fbf495355af35a44b2fc673b0bd",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/plugin/PluginApi.java": {
+    "mtime": 1792600817.165033,
+    "seen": 1792600859.4211757,
+    "ast_hash": "75514d5bf98c1c722c5a1b80844584ab",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/plugin/PluginContext.java": {
+    "mtime": 1792600817.165033,
+    "seen": 1792600859.4211779,
+    "ast_hash": "8a70b3e5f69e65c1fefda356825807c9",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/plugin/PluginDescriptor.java": {
+    "mtime": 1792600817.165033,
+    "seen": 1792600859.4211795,
+    "ast_hash": "68714bad95349442a6e88657db165517",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/project/spi/ProjectDirectory.java": {
+    "mtime": 1792600817.166033,
+    "seen": 1792600859.4211817,
+    "ast_hash": "fe1d75a6994cb4403195e671229fc8e6",
+    "semantic_hash": ""
+  },
+  "plugin-api/src/main/java/systems/grebe/devtools/mcp/project/spi/ProjectProvider.java": {
+    "mtime": 1792600817.166033,
+    "seen": 1792600859.4211836,
+    "ast_hash": "3aa6c1bfee1557b4f46ee941e3ad6848",
+    "semantic_hash": ""
+  },
+  "server/build.gradle.kts": {
+    "mtime": 1792600817.166033,
+    "seen": 1792600859.4211855,
+    "ast_hash": "c4aeace992ac8c18f860567d6d4cfc63",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/DevToolsServerApplication.java": {
+    "mtime": 1792600817.166033,
+    "seen": 1792600859.4211876,
+    "ast_hash": "994e516f8f98870e39609041b5cb6284",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/WildFlyInitializer.java": {
+    "mtime": 1792600817.166033,
+    "seen": 1792600859.4211895,
+    "ast_hash": "e638a783b1fd250318209a580c1e4e7b",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/server/SecurityConfig.java": {
+    "mtime": 1792600817.1670332,
+    "seen": 1792600859.4211917,
+    "ast_hash": "6b111ff28c9b28efafc2b2316e3a2af8",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/AccountView.java": {
+    "mtime": 1792600817.1670332,
+    "seen": 1792600859.4211938,
+    "ast_hash": "e4640c2440be137ce3fcddfd1d046865",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/CredentialsPanel.java": {
+    "mtime": 1792600817.1670332,
+    "seen": 1792600859.4211957,
+    "ast_hash": "2697942386e1630d7b30f132d06fb498",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/FieldEditor.java": {
+    "mtime": 1792600817.1670332,
+    "seen": 1792600859.421198,
+    "ast_hash": "6dc706b2e97d47ddebeee20ccca4aa30",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/GlobalSettingsView.java": {
+    "mtime": 1792600817.1670332,
+    "seen": 1792600859.4211996,
+    "ast_hash": "8d89f99b99b2474f0193ad7d42383bf8",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/LoginView.java": {
+    "mtime": 1792600817.1670332,
+    "seen": 1792600859.4212017,
+    "ast_hash": "383dc03d3f56fe6875d339899dab9007",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/MainLayout.java": {
+    "mtime": 1792600817.1670332,
+    "seen": 1792600859.4212034,
+    "ast_hash": "5fad524b4bd2fce09af94d61df83b577",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/OverviewView.java": {
+    "mtime": 1792600817.1670332,
+    "seen": 1792600859.4212058,
+    "ast_hash": "13caa56f9a0e4a66536027800b5df11c",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/ProfilesView.java": {
+    "mtime": 1792600817.1680331,
+    "seen": 1792600859.421208,
+    "ast_hash": "997be2e46a9eca36c7ea769d75eb63ea",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/ProjectsView.java": {
+    "mtime": 1792600817.1680331,
+    "seen": 1792600859.4212098,
+    "ast_hash": "689e6f4f24bc14fd8e18d7e60f035093",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/RolesView.java": {
+    "mtime": 1792600817.1680331,
+    "seen": 1792600859.421212,
+    "ast_hash": "44f0607432e0ad966655abf1537ac6f0",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/ScriptsView.java": {
+    "mtime": 1792600817.1680331,
+    "seen": 1792600859.4212139,
+    "ast_hash": "3ab27e17c70ef6d7add6507a4692e9d7",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/SessionRefreshFilter.java": {
+    "mtime": 1792600817.1680331,
+    "seen": 1792600859.421216,
+    "ast_hash": "fe7658ff08da49cfa29ac66de9e69496",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/SettingsView.java": {
+    "mtime": 1792600817.1680331,
+    "seen": 1792600859.4212177,
+    "ast_hash": "b89678e0c0f6ff8078dd54315c5185dc",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/Ui.java": {
+    "mtime": 1792600817.1680331,
+    "seen": 1792600859.4212196,
+    "ast_hash": "0eb3fc62b6d41b32e7a09394619a85da",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/UsersView.java": {
+    "mtime": 1792600817.1680331,
+    "seen": 1792600859.4212217,
+    "ast_hash": "084197b00f2199f1f6696da69d243080",
+    "semantic_hash": ""
+  },
+  "server/src/main/java/systems/grebe/devtools/mcp/web/WebLogin.java": {
+    "mtime": 1792600817.1680331,
+    "seen": 1792600859.4212236,
+    "ast_hash": "91079341f7633db69772d23eb659eeaf",
+    "semantic_hash": ""
+  },
+  "server/src/test/java/systems/grebe/devtools/mcp/server/GraphQlApiIntegrationTest.java": {
+    "mtime": 1792600817.1700332,
+    "seen": 1792600859.4212258,
+    "ast_hash": "5ae809122de39358bef11019aadce57d",
+    "semantic_hash": ""
+  },
+  "settings.gradle.kts": {
+    "mtime": 1792600817.1700332,
+    "seen": 1792600859.4212275,
+    "ast_hash": "e5233ebcc9a22e5cbdbdcbb8b708a514",
+    "semantic_hash": ""
+  },
+  "shared/build.gradle.kts": {
+    "mtime": 1792600817.1700332,
+    "seen": 1792600859.4212296,
+    "ast_hash": "b425149ee8ebf6d186337b6b14fc7dd5",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/ApiVersions.java": {
+    "mtime": 1792600817.1700332,
+    "seen": 1792600859.4212313,
+    "ast_hash": "ace3dbeca1688aef8a6192257c9f1c87",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/BrokerInfo.java": {
+    "mtime": 1792600817.1700332,
+    "seen": 1792600859.4212332,
+    "ast_hash": "f6f8e1e38e15d88de46d01a0f68383c9",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/Catalog.java": {
+    "mtime": 1792600817.1700332,
+    "seen": 1792600859.421235,
+    "ast_hash": "151fab4761116b3dac46f635cdcd7f2f",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/CredentialInfo.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.421237,
+    "ast_hash": "619bea70adb7df5eff18811ed8caad10",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/Grants.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.4212391,
+    "ast_hash": "f6fdb826538f9f8d2f4703dea18095c6",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/LoginResult.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.4212408,
+    "ast_hash": "16232cc6b647f5d4f1f396bed83ec9f8",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/Me.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.421243,
+    "ast_hash": "833fb1f2f4abecadae82495d85c8565e",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/MediaTypes.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.4212449,
+    "ast_hash": "a4156cd89a0477a6beec73ed8e673b6a",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/ModuleDescriptor.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.421247,
+    "ast_hash": "2aa6f593ed7b21e98082bf980743617f",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/ModuleOverlay.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.421249,
+    "ast_hash": "b53c3a6dc95d382584de7b602c7e9975",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/Permission.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.4212508,
+    "ast_hash": "4172331b4f41844908706208bf1811fa",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/PermissionInfo.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.421253,
+    "ast_hash": "01f01e16a837a21f30e4047cc7c980fc",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/ProjectInfo.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.4212549,
+    "ast_hash": "896a1aa7aad8f9754387efb9225912dd",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/RoleInfo.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.4212568,
+    "ast_hash": "6ace8d29859e80f85a4aaa7710a28107",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/SettingsSnapshot.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.4212587,
+    "ast_hash": "c13ecbb87af64c0b74e6c9aec7b522d8",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/UserInfo.java": {
+    "mtime": 1792600817.1710331,
+    "seen": 1792600859.4212606,
+    "ast_hash": "041d1fdce200d7911df2c8a3054ba241",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/api/package-info.java": {
+    "mtime": 1792600817.1720333,
+    "seen": 1792600859.4212623,
+    "ast_hash": "cd0df28a486b521706669904b587cfbf",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/config/DataHome.java": {
+    "mtime": 1792600817.1720333,
+    "seen": 1792600859.4212644,
+    "ast_hash": "520220361e0f09657259257019be192f",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/config/Home.java": {
+    "mtime": 1792600817.1720333,
+    "seen": 1792600859.4212668,
+    "ast_hash": "669b470c7130dcad485f57f02496aae3",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/config/ModuleSettings.java": {
+    "mtime": 1792600817.1720333,
+    "seen": 1792600859.4212685,
+    "ast_hash": "afcceb58f1b84c08cc58e74b44aa6abc",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/config/SecretCipher.java": {
+    "mtime": 1792600817.1720333,
+    "seen": 1792600859.4212706,
+    "ast_hash": "d2db35196ed05983182f1d614bc7b9c3",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/discovery/BackendDiscovery.java": {
+    "mtime": 1792600817.1720333,
+    "seen": 1792600859.4212725,
+    "ast_hash": "c9a53644748c4314fb307e5c2ae7d9ff",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/graph/CodeGraph.java": {
+    "mtime": 1792600817.1720333,
+    "seen": 1792600859.4212744,
+    "ast_hash": "a923547763a2ee41b211968878729d48",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphDelta.java": {
+    "mtime": 1792600817.1720333,
+    "seen": 1792600859.4212763,
+    "ast_hash": "bfae5ac80dfe0ad266dc6adab9a29a12",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphProvider.java": {
+    "mtime": 1792600817.1730332,
+    "seen": 1792600859.4212785,
+    "ast_hash": "cbb52de630a6166232ed1419eb228cc3",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/graph/GraphReader.java": {
+    "mtime": 1792600817.1730332,
+    "seen": 1792600859.4212801,
+    "ast_hash": "b1bf97699a009818be0bc597b9c96732",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/memories/MemoryBackend.java": {
+    "mtime": 1792600817.1730332,
+    "seen": 1792600859.4212825,
+    "ast_hash": "92edcd5bcb8f3e1378d632e8944f595b",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/memories/MemoryViews.java": {
+    "mtime": 1792600817.1730332,
+    "seen": 1792600859.4212847,
+    "ast_hash": "b3eab5d3fcd9c1540eaa632100191110",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptBackend.java": {
+    "mtime": 1792600817.1730332,
+    "seen": 1792600859.4212866,
+    "ast_hash": "d2e11548920315c0f3bdc7b8b5c88e46",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptTemplates.java": {
+    "mtime": 1792600817.1730332,
+    "seen": 1792600859.4212887,
+    "ast_hash": "075ff72911cdfa7f56bd7830cb9eadef",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/scripts/ScriptViews.java": {
+    "mtime": 1792600817.1730332,
+    "seen": 1792600859.4212906,
+    "ast_hash": "f963bcc0b8e2e8feca2716a415900358",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/share/ShareTopics.java": {
+    "mtime": 1792600817.1730332,
+    "seen": 1792600859.4212928,
+    "ast_hash": "49077ced3736e9b23012540aed1872ef",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/shares/ShareViews.java": {
+    "mtime": 1792600817.1740332,
+    "seen": 1792600859.421295,
+    "ast_hash": "0ec0470d8deaf73619588f1f9173573f",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillBackend.java": {
+    "mtime": 1792600817.1740332,
+    "seen": 1792600859.4212968,
+    "ast_hash": "e03fea4e10d5dbc6bf5c86cc9d702b01",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/modules/skills/SkillViews.java": {
+    "mtime": 1792600817.1740332,
+    "seen": 1792600859.4213507,
+    "ast_hash": "93d9fe491929377b66ae447356d3ac23",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/oauth/OAuthClient.java": {
+    "mtime": 1792600817.1740332,
+    "seen": 1792600859.4213536,
+    "ast_hash": "41c5c06ebec3a61c4442168263e1788b",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/oauth/OAuthException.java": {
+    "mtime": 1792600817.1740332,
+    "seen": 1792600859.4213555,
+    "ast_hash": "330551bb8549660fdf8f4c9bff4a0b8e",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/oauth/OAuthOptions.java": {
+    "mtime": 1792600817.1740332,
+    "seen": 1792600859.4213576,
+    "ast_hash": "96a6cae73757ab9d637ce9b91a17db2c",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/oauth/OAuthServer.java": {
+    "mtime": 1792600817.1740332,
+    "seen": 1792600859.4213595,
+    "ast_hash": "2a54b750c1cb3ffac63048386c6406d1",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/oauth/OAuthTokens.java": {
+    "mtime": 1792600817.1750333,
+    "seen": 1792600859.4213617,
+    "ast_hash": "f4834ccd8b0bea6ed3eedc498d19461c",
+    "semantic_hash": ""
+  },
+  "shared/src/main/java/systems/grebe/devtools/mcp/profile/Overrides.java": {
+    "mtime": 1792600817.1750333,
+    "seen": 1792600859.421364,
+    "ast_hash": "ddcd7514113b3dfc928315456f92d784",
+    "semantic_hash": ""
+  },
+  "shared/src/test/java/systems/grebe/devtools/mcp/api/ApiVersionsTest.java": {
+    "mtime": 1792600817.1750333,
+    "seen": 1792600859.4213657,
+    "ast_hash": "52691af918e7a7476c1e6f954f9106ee",
+    "semantic_hash": ""
+  },
+  "shared/src/test/java/systems/grebe/devtools/mcp/discovery/BackendDiscoveryTest.java": {
+    "mtime": 1792600817.1750333,
+    "seen": 1792600859.421368,
+    "ast_hash": "51d7202df224eca8f68e11f6b83f5200",
+    "semantic_hash": ""
+  },
+  "shared/src/test/java/systems/grebe/devtools/mcp/oauth/OAuthClientTest.java": {
+    "mtime": 1792600817.1750333,
+    "seen": 1792600859.4213698,
+    "ast_hash": "9ae88174274c4816b55b1fc87a200963",
+    "semantic_hash": ""
+  },
+  "shared/src/test/java/systems/grebe/devtools/mcp/oauth/OAuthOptionsTest.java": {
+    "mtime": 1792600817.1760333,
+    "seen": 1792600859.4213717,
+    "ast_hash": "d0d2ef29dce5932850a7f148ab40f2ee",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1792600816.6940198,
+    "seen": 1792600859.4213736,
+    "ast_hash": "3869d8902f987b374dcc0e6c3ac4a557",
+    "semantic_hash": ""
+  },
+  "desktop/src/test/resources/decide/laya/README.md": {
+    "mtime": 1792600817.1520326,
+    "seen": 1792600859.421376,
+    "ast_hash": "13a857447f3020687fc63d8f4feaccae",
+    "semantic_hash": ""
+  },
+  "container4j/build.gradle.kts": {
+    "mtime": 1792600908.6416147,
+    "seen": 1792600964.1008773,
+    "ast_hash": "7d1fa228df5440dba722ded7634d8787",
+    "semantic_hash": ""
+  },
+  "container4j/gradlew": {
+    "mtime": 1792600908.6426148,
+    "seen": 1792600964.1008873,
+    "ast_hash": "a43be8432bac3ffd05b3769aa42fe996",
+    "semantic_hash": ""
+  },
+  "container4j/settings.gradle.kts": {
+    "mtime": 1792600908.6436148,
+    "seen": 1792600964.1008935,
+    "ast_hash": "ccb6a4c0162d55b896d4fae8f858a864",
+    "semantic_hash": ""
+  },
+  "container4j/src/main/java/systems/grebe/container4j/ContainerRuntime.java": {
+    "mtime": 1792600908.644615,
+    "seen": 1792600964.1009095,
+    "ast_hash": "7fc1ec5aee0ef5432669d651de69c725",
+    "semantic_hash": ""
+  },
+  "container4j/src/main/java/systems/grebe/container4j/cli/CliContainerRuntime.java": {
+    "mtime": 1792600908.644615,
+    "seen": 1792600964.1009157,
+    "ast_hash": "eae2a0cea523dbd6bddf0259ce22caf8",
+    "semantic_hash": ""
+  },
+  "container4j/src/main/java/systems/grebe/container4j/cli/DockerRuntime.java": {
+    "mtime": 1792600908.644615,
+    "seen": 1792600964.1009212,
+    "ast_hash": "a76e747007bcb035fac6e4c0699a1670",
+    "semantic_hash": ""
+  },
+  "container4j/src/main/java/systems/grebe/container4j/cli/PodmanRuntime.java": {
+    "mtime": 1792600908.644615,
+    "seen": 1792600964.1009262,
+    "ast_hash": "8e8f696a57fa1e2d2a3d64d0175f266a",
+    "semantic_hash": ""
+  },
+  "container4j/src/main/java/systems/grebe/container4j/cli/ProcessRunner.java": {
+    "mtime": 1792600908.6456149,
+    "seen": 1792600964.1009326,
+    "ast_hash": "0d2b86dbc5742b663b88cec926cb5c55",
+    "semantic_hash": ""
+  },
+  "container4j/src/main/java/systems/grebe/container4j/cli/package-info.java": {
+    "mtime": 1792600908.6456149,
+    "seen": 1792600964.1009386,
+    "ast_hash": "5339aa95e9afd5d7221de6fe5656ed63",
+    "semantic_hash": ""
+  },
+  "container4j/src/main/java/systems/grebe/container4j/package-info.java": {
+    "mtime": 1792600908.6456149,
+    "seen": 1792600964.100944,
+    "ast_hash": "4567fb8bf1418b07b52c65bc1c891030",
+    "semantic_hash": ""
+  },
+  "container4j/src/test/java/systems/grebe/container4j/cli/CliContainerRuntimeTest.java": {
+    "mtime": 1792600908.6466148,
+    "seen": 1792600964.1009495,
+    "ast_hash": "4b1a5ab91a7daeac5ac5c52728d10442",
+    "semantic_hash": ""
+  },
+  "container4j/README.md": {
+    "mtime": 1792600908.6416147,
+    "seen": 1792600964.4059203,
+    "ast_hash": "5ae0472f5a97c56aa9ce311d9051ed34",
+    "semantic_hash": ""
+  }
+}
