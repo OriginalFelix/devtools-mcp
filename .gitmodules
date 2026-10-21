@@ -1,3 +1,6 @@
 [submodule "container4j"]
 	path = container4j
 	url = https://github.com/OriginalFelix/Container4J.git
+[submodule "performance-mcp"]
+	path = performance-mcp
+	url = https://github.com/OriginalFelix/performance-mcp.git

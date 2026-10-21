@@ -43,10 +43,9 @@ dependencies {
 
     implementation("org.eclipse.jgit:org.eclipse.jgit:$jgitVersion")
 
-    // Performance/Diagnose: Flame Graphs aus JFR (async-profiler-Konverter) und VisualVM-Engines (Heap, Sampler)
-    implementation("tools.profiler:jfr-converter:4.5")
-    implementation("org.graalvm.visualvm.modules:org-graalvm-visualvm-lib-jfluid-heap:2.2")
-    implementation("org.graalvm.visualvm.modules:org-graalvm-visualvm-lib-jfluid:2.2")
+    // Performance/Diagnose (JVM, JFR, async-profiler, VisualVM, Debugger): SDK performance-mcp (Git-Submodule, Composite Build);
+    // bringt Flame-Graph-Konverter und VisualVM-Engines selbst mit
+    implementation("systems.grebe:performance-mcp-core:0.1.0-SNAPSHOT")
 
     // Syntaxbäume (Code-Graph u.a.): tree-sitter samt Grammatiken als WebAssembly (src/main/resources/tree-sitter,
     // gebaut mit natives/build-tree-sitter-wasm.sh), ausgeführt von Chicory – reiner Java-Code, der Compiler übersetzt

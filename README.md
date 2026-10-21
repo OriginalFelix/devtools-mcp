@@ -4,6 +4,11 @@ Desktop-Anwendung (Spring Boot 4 + JavaFX 25, Java 25), die einen lokalen **MCP-
 LLM-Clients (Claude Code, Claude Desktop, Cursor, VS Code, Hermes …) erhalten darüber Werkzeuge für den
 Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge lassen sich mit einer Klasse ergänzen.
 
+JVM-Diagnose, Flight Recorder, async-profiler, VisualVM und der Debugger kommen aus dem SDK
+[performance-mcp](https://github.com/OriginalFelix/performance-mcp) (Git-Submodule, auch als eigenständiger MCP-Server
+nutzbar); devtools-mcp ergänzt Einstellungen, Berechtigungen und Oberfläche. Klonen mit
+`git clone --recurse-submodules`.
+
 | Modul | Tools |
 |---|---|
 | **Git** (JGit; Netzwerk über installiertes git) | `git_list_repositories` (inkl. Worktrees als `<repo>/<ordner>`), `git_status` (inkl. laufendem Merge/Rebase), `git_log` (auch `contentChange` wie `git log -S`), `git_diff`, `git_show_commit`, `git_branches`, `git_tags`, `git_remotes`, `git_stash_list`, `git_reflog`, `git_compare` (merge-base, voraus/zurück, Commits je Seite), `git_grep`, `git_blame`, `git_file_at_revision` · schreibend (Standard an): `git_create_branch`, `git_checkout`, `git_rename_branch`, `git_stage`, `git_unstage`, `git_commit`, `git_reset` (soft/mixed), `git_stash` (push/apply/pop), `git_tag` · eigener Schalter (Standard an): `git_cherry_pick` (Commits oder Bereiche `a..b`, Herkunftsvermerk wie `-x`, nur stagen wie `-n`, Merge-Commits mit `mainline` wie `-m`; inkl. `git_continue`/`git_abort`) · je Schalter (Standard aus): Remote-Abgleich `git_fetch`, `git_pull` (ff-only/rebase/merge), `git_push` (nie Force, nie auf „Nie pushen auf“, Standard main/master) · Integrieren `git_merge`, `git_rebase`, `git_revert`, `git_continue`, `git_abort` · Verwerfen `git_restore`, `git_reset mode=hard`, `git_delete_branch`, `git_delete_tag`, `git_stash_drop` |
@@ -889,7 +894,7 @@ Ergebnisse (`.jfr`, Flame Graphs `.html`, `.hprof`, `.nps`) landen im Ablageordn
 
 ## Projektstruktur
 
-Gradle-Multiprojekt, dazu [Container4J](https://github.com/OriginalFelix/Container4J) als Git-Submodule und eingebundener Build (`includeBuild`):
+Gradle-Multiprojekt, dazu [Container4J](https://github.com/OriginalFelix/Container4J) und [performance-mcp](https://github.com/OriginalFelix/performance-mcp) als Git-Submodule und eingebundene Builds (`includeBuild`):
 
 | Projekt | Inhalt | Artefakt |
 |---|---|---|
@@ -898,6 +903,7 @@ Gradle-Multiprojekt, dazu [Container4J](https://github.com/OriginalFelix/Contain
 | `server` | Team-Server: Backend + Web-UI (Vaadin) – **kein MCP** | `server/build/libs/devtools-server-<version>.jar` (Jetty), `…-wildfly.war` |
 | `shared` | Gemeinsam: Einstellungs-Ablage, Datenklassen der GraphQL-API (`api`), Zugriff auf die Code-Graphen (`GraphProvider`, `GraphReader`, `CodeGraph`) | – |
 | `container4j` | Eigenständige Bibliothek: OCI-Container (Docker, Podman, …) über die Docker-kompatible CLI steuern – `ContainerRuntime`, `CliContainerRuntime`, `DockerRuntime`, `PodmanRuntime`; ohne Abhängigkeiten | `container4j/build/libs/container4j-<version>.jar`, Maven `systems.grebe:container4j` |
+| `performance-mcp` | SDK (und eigenständiger MCP-Server) für JVM-Diagnose, Flight Recorder, async-profiler, VisualVM und den JDI-Debugger – die Tools `jvm_*`, `jfr_*`, `asprof_*`, `visualvm_*`, `debug_*` stammen von hier; die Module in `desktop` sind dünne Adapter (Einstellungen, Berechtigungen, Oberfläche) | Maven `systems.grebe:performance-mcp-core` |
 | `plugin-api` | Schnittstellen für Plugins: `DevToolsPlugin`, `PluginContext`, `ToolModule`, `ModuleAction`, `ToolScope`, Einstellungs-Modell (`ConfigField`, `ModuleConfig` …), Provider-SPIs (Tickets, Chat, Git-Server, Container), Datenbankverbindungen (`DatabaseConnectionProvider`), Projektverzeichnisse (`ProjectProvider`), E-Mail-Konten (`MailAccountProvider`), `ToolBeans`/`@ToolHints`, `ToolProgress` | `plugin-api/build/libs/plugin-api-<version>.jar`, Maven `systems.grebe:devtools-mcp-plugin-api` |
 
 MCP-Server ist nur die Desktop-App; Tools laufen immer auf dem Rechner des Entwicklers. Das **Backend läuft immer**:
@@ -918,9 +924,12 @@ verbinden. Die App läuft danach im Tray weiter und ist für alle Clients auf di
 
 ### Bauen
 
-[Container4J](https://github.com/OriginalFelix/Container4J) ist als Git-Submodule unter `container4j` eingebunden. Fehlt
-es (Klon ohne `--recurse-submodules`), führt Gradle beim ersten Aufruf selbst `git submodule update --init container4j`
-aus.
+[Container4J](https://github.com/OriginalFelix/Container4J) (`container4j`) und [performance-mcp](https://github.com/OriginalFelix/performance-mcp)
+(`performance-mcp`) sind Git-Submodule: `git clone --recurse-submodules …`. Fehlt eines (Klon ohne
+`--recurse-submodules`), führt Gradle beim ersten Aufruf selbst `git submodule update --init <name>` aus. performance-mcp
+bindet Container4J selbst ein (`performance-mcp/container4j`, wird von Gradle nachgeladen); devtools-mcp ersetzt
+`systems.grebe:container4j` ausdrücklich durch das eigene Submodule (siehe `settings.gradle.kts`), damit es im
+Composite nur einen Anbieter gibt.
 
 ```bash
 ./gradlew :desktop:bootJar          # desktop/build/libs/devtools-mcp-0.1.0-SNAPSHOT.jar

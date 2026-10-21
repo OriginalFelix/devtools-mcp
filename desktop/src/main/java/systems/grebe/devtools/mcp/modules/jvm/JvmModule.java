@@ -1,9 +1,7 @@
 package systems.grebe.devtools.mcp.modules.jvm;
 
-import java.util.ArrayList;
 import java.util.List;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -11,6 +9,10 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.modules.java.SdkTools;
+import systems.grebe.performance.mcp.PerformanceArea;
+import systems.grebe.performance.mcp.PerformanceTools;
+import systems.grebe.performance.mcp.settings.JvmSettings;
 
 /** JVM-Diagnose über jcmd bzw. die DiagnosticCommand-MBean (lokal, Container, JMX). */
 @Component
@@ -31,41 +33,32 @@ public class JvmModule implements ToolModule {
 
     @Override
     public String displayName() {
-        return "JVM-Diagnose (jcmd)";
+        return PerformanceArea.JVM.displayName();
     }
 
     @Override
     public String description() {
-        return "Laufende JVMs finden und untersuchen: Version/Flags, Thread-Dumps mit Deadlock-Erkennung, Heap und "
-                + "Klassenhistogramm, Native Memory, Heap-Dumps. Ziele: lokal, im Container oder über JMX "
-                + "(siehe Java-Grundeinstellungen).";
+        return PerformanceArea.JVM.description();
     }
 
     @Override
     public String instructions() {
-        return """
-                Für laufende JVMs diese Tools statt `jps`, `jcmd`, `jstack`, `jmap` oder `jinfo` in der Shell verwenden:
-                - `jvm_processes` zuerst: liefert die gültigen Ziele (PID, Name, `container:<name>`, `jmx:<alias>`).
-                - `jvm_info` (statt `jinfo`/`jcmd VM.flags`), `jvm_threads` (statt `jstack`, inkl. Deadlock-Erkennung), \
-                `jvm_heap` (statt `jmap -histo`), `jvm_native_memory` (statt `jcmd VM.native_memory`).
-                - Invasiv, nur wenn angeboten und nötig: `jvm_heap_dump` (statt `jmap -dump`), `jvm_gc_run`, `jvm_jcmd`.
-                PIDs ändern sich nach jedem Neustart der Ziel-JVM – vor Aufrufen mit PID erneut `jvm_processes` abfragen.""";
+        return PerformanceArea.JVM.instructions();
     }
 
     @Override
     public String briefInstructions() {
-        return "jvm_processes zuerst (PIDs ändern sich nach jedem Neustart), dann jvm_info, jvm_threads, "
-                + "jvm_heap.";
+        return PerformanceArea.JVM.briefInstructions();
     }
 
     @Override
     public int order() {
-        return 210;
+        return PerformanceArea.JVM.order();
     }
 
     @Override
     public boolean enabledByDefault() {
-        return true;
+        return PerformanceArea.JVM.enabledByDefault();
     }
 
     @Override
@@ -80,8 +73,6 @@ public class JvmModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        List<ToolCallback> tools = new ArrayList<>(List.of(ToolCallbacks.from(new JvmTools(env))));
-        tools.addAll(List.of(ToolCallbacks.from(new JvmInvasiveTools(env, config.getList(ALLOWED_COMMANDS)))));
-        return tools;
+        return SdkTools.adapt(PerformanceTools.jvmTools(env, new JvmSettings(config.getList(ALLOWED_COMMANDS))));
     }
 }
