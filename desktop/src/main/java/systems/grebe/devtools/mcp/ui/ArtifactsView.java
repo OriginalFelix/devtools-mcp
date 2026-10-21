@@ -25,8 +25,8 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
-import systems.grebe.devtools.mcp.modules.java.ArtifactStore;
-import systems.grebe.devtools.mcp.modules.java.JavaEnvironment;
+import systems.grebe.performance.mcp.java.ArtifactStore;
+import systems.grebe.performance.mcp.java.JavaEnvironment;
 
 /**
  * Liste der Diagnose-Artefakte (JFR, Heap-Dumps, Flame Graphs, Snapshots) mit Öffnen im Browser,

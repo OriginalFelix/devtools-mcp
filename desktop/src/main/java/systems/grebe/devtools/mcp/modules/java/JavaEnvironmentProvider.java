@@ -10,6 +10,8 @@ import systems.grebe.devtools.mcp.core.ToolRegistry;
 import systems.grebe.devtools.mcp.modules.container.ContainerEnvironment;
 import systems.grebe.devtools.mcp.modules.container.ContainerModule;
 import systems.grebe.devtools.mcp.modules.container.ContainerRuntimes;
+import systems.grebe.performance.mcp.PerformanceTools;
+import systems.grebe.performance.mcp.java.JavaEnvironment;
 
 /**
  * Liefert die {@link JavaEnvironment} aus den aktuell gespeicherten Grundeinstellungen und den Einstellungen
@@ -35,7 +37,7 @@ public class JavaEnvironmentProvider implements Supplier<JavaEnvironment> {
         ModuleConfig java = r.config(JavaSettingsModule.ID);
         ModuleConfig container = r.config(ContainerModule.ID);
         if (cached == null || !java.rawValues().equals(lastJava) || !container.rawValues().equals(lastContainer)) {
-            cached = new JavaEnvironment(java, new ContainerEnvironment(runtimes, container));
+            cached = environment(java, container);
             lastJava = java.rawValues();
             lastContainer = container.rawValues();
         }
@@ -44,6 +46,11 @@ public class JavaEnvironmentProvider implements Supplier<JavaEnvironment> {
 
     /** Für Verbindungsprüfungen mit ungespeicherten Java-Einstellungen. */
     public JavaEnvironment with(ModuleConfig java) {
-        return new JavaEnvironment(java, new ContainerEnvironment(runtimes, registry.getObject().config(ContainerModule.ID)));
+        return environment(java, registry.getObject().config(ContainerModule.ID));
+    }
+
+    private JavaEnvironment environment(ModuleConfig java, ModuleConfig container) {
+        return PerformanceTools.environment(JavaSettingsModule.settings(java),
+                new ContainerEnvironmentAccess(new ContainerEnvironment(runtimes, container)));
     }
 }

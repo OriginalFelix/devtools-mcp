@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.modules.debug;
 
 import java.util.List;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -11,6 +10,11 @@ import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.core.ToolScope;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.modules.java.SdkTools;
+import systems.grebe.performance.mcp.PerformanceArea;
+import systems.grebe.performance.mcp.PerformanceTools;
+import systems.grebe.performance.mcp.debug.DebugSessions;
+import systems.grebe.performance.mcp.settings.DebugSettings;
 
 /** Java-Debugger (JDI) – verbindet sich mit einer per JDWP gestarteten JVM. Nur lesend, keine Ausdrucksauswertung. */
 @Component
@@ -32,34 +36,27 @@ public class DebugModule implements ToolModule {
 
     @Override
     public String displayName() {
-        return "Debugger (JDI)";
+        return PerformanceArea.DEBUG.displayName();
     }
 
     @Override
     public String description() {
-        return "Hängt sich an eine JVM mit JDWP (-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005): "
-                + "Breakpoints setzen, auf Treffer warten, Stack und Variablen lesen, Schritte ausführen. "
-                + "Keine Ausdrucksauswertung und keine Wertänderung. Hält Threads an – nur für Entwicklungs-/Test-JVMs.";
+        return PerformanceArea.DEBUG.description();
     }
 
     @Override
     public String instructions() {
-        return """
-                Für Breakpoint-Debugging einer JVM mit JDWP diese Tools statt `jdb` verwenden: `debug_attach` → \
-                `debug_set_breakpoint` → `debug_wait_for_break` → `debug_stack`/`debug_variables` → `debug_step`/`debug_resume`; zum \
-                Schluss `debug_detach`. Breakpoints halten Threads der Ziel-JVM an – vorher mit dem Nutzer klären, wenn er gerade \
-                selbst in der JVM arbeitet oder einen eigenen Debugger verbunden hat.""";
+        return PerformanceArea.DEBUG.instructions();
     }
 
     @Override
     public String briefInstructions() {
-        return "debug_attach → debug_set_breakpoint → debug_wait_for_break → debug_stack/debug_variables → "
-                + "debug_detach; hält Threads der Ziel-JVM an.";
+        return PerformanceArea.DEBUG.briefInstructions();
     }
 
     @Override
     public int order() {
-        return 250;
+        return PerformanceArea.DEBUG.order();
     }
 
     @Override
@@ -77,8 +74,8 @@ public class DebugModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config, ToolScope scope) {
-        DebugSessions sessions = scope.state("debug.sessions", DebugSessions::new);
-        return List.of(ToolCallbacks.from(new DebugTools(env, sessions,
-                Math.max(1, config.getInt(MAX_WAIT, 120)), Math.max(0, Math.min(5, config.getInt(DEPTH, 2))))));
+        DebugSessions sessions = scope.state(PerformanceTools.DEBUG_SESSIONS_KEY, DebugSessions::new);
+        return SdkTools.adapt(PerformanceTools.debugTools(env,
+                new DebugSettings(config.getInt(MAX_WAIT, 120), config.getInt(DEPTH, 2)), sessions));
     }
 }

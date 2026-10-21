@@ -9,6 +9,11 @@ import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.config.SettingsStore;
+import systems.grebe.performance.mcp.PerformanceArea;
+import systems.grebe.performance.mcp.PerformanceTools;
+import systems.grebe.performance.mcp.java.JavaEnvironment;
+import systems.grebe.performance.mcp.settings.JavaSettings;
 
 /**
  * Gemeinsame Grundeinstellungen der Java-Diagnosemodule (JVM, JFR, async-profiler, VisualVM, Debugger).
@@ -50,13 +55,12 @@ public class JavaSettingsModule implements ToolModule {
 
     @Override
     public String displayName() {
-        return "Java-Grundeinstellungen";
+        return PerformanceArea.JAVA.displayName();
     }
 
     @Override
     public String description() {
-        return "Gemeinsame Einstellungen für JVM-Diagnose, Flight Recorder, async-profiler, VisualVM und Debugger: "
-                + "welche JVMs erreichbar sind (lokal, Container, JMX) und wohin Aufzeichnungen und Dumps geschrieben werden.";
+        return PerformanceArea.JAVA.description();
     }
 
     @Override
@@ -66,12 +70,12 @@ public class JavaSettingsModule implements ToolModule {
 
     @Override
     public boolean enabledByDefault() {
-        return true;
+        return true; // PerformanceArea.JAVA.enabledByDefault() ist false (Bereich ohne Tools), das Modul ist aber immer an
     }
 
     @Override
     public int order() {
-        return 200;
+        return PerformanceArea.JAVA.order();
     }
 
     @Override
@@ -100,6 +104,15 @@ public class JavaSettingsModule implements ToolModule {
                 ConfigField.of(MAX_LINES, "Max. Ausgabezeilen", FieldType.INT).withDefault("400"));
     }
 
+    /** Modulkonfiguration → Einstellungen des SDK (Schlüssel entsprechen den Feldern von {@link JavaSettings}). */
+    public static JavaSettings settings(ModuleConfig c) {
+        return new JavaSettings(SettingsStore.defaultHome(), c.getString(JDK_HOME, null), c.getString(ARTIFACT_DIR, null),
+                c.getInt(MAX_ARTIFACTS, 50), c.getString(INCLUDE, null), c.getString(EXCLUDE, null),
+                c.getList(JMX_TARGETS), c.getString(JMX_USER, null), c.getString(JMX_PASSWORD, null),
+                c.getString(DEBUG_HOSTS, JavaSettings.DEFAULT_DEBUG_HOSTS), c.getBoolean(ALLOW_INVASIVE),
+                c.getInt(MAX_LINES, 400), true);
+    }
+
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
         return List.of();
@@ -111,7 +124,9 @@ public class JavaSettingsModule implements ToolModule {
         if (!errors.isEmpty()) {
             return ConnectionTestResult.failed(String.join("\n", errors));
         }
-        JavaEnvironment env = envProvider == null ? new JavaEnvironment(config) : envProvider.getObject().with(config);
+        JavaEnvironment env = envProvider == null
+                ? PerformanceTools.environment(settings(config), systems.grebe.performance.mcp.container.ContainerAccess.none())
+                : envProvider.getObject().with(config);
         StringBuilder sb = new StringBuilder();
         sb.append("JDK: ").append(env.jdkHome()).append(env.jcmdAvailable() ? " (jcmd gefunden)" : " – jcmd FEHLT").append('\n');
         var procs = env.processes().list();

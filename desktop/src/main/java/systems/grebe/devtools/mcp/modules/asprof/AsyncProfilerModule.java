@@ -2,16 +2,20 @@ package systems.grebe.devtools.mcp.modules.asprof;
 
 import java.util.List;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
-import systems.grebe.devtools.mcp.core.CommandRunner;
+import systems.grebe.performance.mcp.support.CommandRunner;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
 import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.modules.java.SdkTools;
+import systems.grebe.performance.mcp.PerformanceArea;
+import systems.grebe.performance.mcp.PerformanceTools;
+import systems.grebe.performance.mcp.asprof.AsprofInstaller;
+import systems.grebe.performance.mcp.settings.AsprofSettings;
 
 /**
  * async-profiler 4.5: sampling-Profiler ohne Safepoint-Bias (CPU inkl. nativer/Kernel-Frames, Allokationen, Locks, Wall-Clock).
@@ -37,27 +41,22 @@ public class AsyncProfilerModule implements ToolModule {
 
     @Override
     public String displayName() {
-        return "async-profiler";
+        return PerformanceArea.ASPROF.displayName();
     }
 
     @Override
     public String description() {
-        return "Präziser Sampling-Profiler (CPU ohne Safepoint-Bias inkl. nativer Frames, Allokationen, Locks, Wall-Clock) "
-                + "mit Flame Graphs. Nativ auf Linux/macOS; unter Windows für JVMs in Linux-Containern (container:<name>). "
-                + "Lokale Windows-JVMs: Flight Recorder verwenden.";
+        return PerformanceArea.ASPROF.description();
     }
 
     @Override
     public String instructions() {
-        return """
-                Statt `asprof`/`profiler.sh` in der Shell: `asprof_profile` für eine feste Dauer, sonst \
-                `asprof_start` → `asprof_stop`; `asprof_status` zeigt verfügbare Events. Genauer als JFR bei nativen Frames und ohne \
-                Safepoint-Bias; fehlt das Modul, `jfr_record` verwenden.""";
+        return PerformanceArea.ASPROF.instructions();
     }
 
     @Override
     public int order() {
-        return 230;
+        return PerformanceArea.ASPROF.order();
     }
 
     @Override
@@ -72,15 +71,19 @@ public class AsyncProfilerModule implements ToolModule {
                 ConfigField.of(MAX_SECONDS, "Max. Profildauer (Sekunden)", FieldType.INT).withDefault("300"));
     }
 
+    static AsprofSettings settings(ModuleConfig config) {
+        return new AsprofSettings(config.getString(HOME, null), config.getBoolean(AUTO_DOWNLOAD),
+                config.getInt(MAX_SECONDS, 300));
+    }
+
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new AsyncProfilerTools(env, new AsprofInstaller(config),
-                Math.max(5, config.getInt(MAX_SECONDS, 300)))));
+        return SdkTools.adapt(PerformanceTools.asprofTools(env, settings(config)));
     }
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
-        AsprofInstaller installer = new AsprofInstaller(config);
+        AsprofInstaller installer = PerformanceTools.asprofInstaller(env, settings(config));
         StringBuilder sb = new StringBuilder();
         if (CommandRunner.WINDOWS) {
             sb.append("Windows: lokale JVMs werden nicht unterstützt, nur Container-Ziele.\n");

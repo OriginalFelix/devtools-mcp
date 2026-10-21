@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.modules.visualvm;
 
 import java.util.List;
 
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import systems.grebe.devtools.mcp.core.ConfigField;
@@ -11,6 +10,11 @@ import systems.grebe.devtools.mcp.core.FieldType;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolModule;
 import systems.grebe.devtools.mcp.modules.java.JavaEnvironmentProvider;
+import systems.grebe.devtools.mcp.modules.java.SdkTools;
+import systems.grebe.performance.mcp.PerformanceArea;
+import systems.grebe.performance.mcp.PerformanceTools;
+import systems.grebe.performance.mcp.settings.VisualVmSettings;
+import systems.grebe.performance.mcp.visualvm.VisualVmLauncher;
 
 /**
  * VisualVM: eingebettete Engines (Heap-Analyse, CPU-Sampler über JMX) als Tools für das LLM sowie die
@@ -39,34 +43,27 @@ public class VisualVmModule implements ToolModule {
 
     @Override
     public String displayName() {
-        return "VisualVM";
+        return PerformanceArea.VISUALVM.displayName();
     }
 
     @Override
     public String description() {
-        return "Heap-Dump-Analyse (größte Objekte, Pfad zur GC-Wurzel) und CPU-Sampling über JMX mit den eingebetteten "
-                + "VisualVM-Engines – auch für entfernte JVMs. Zusätzlich öffnet die VisualVM-Oberfläche Prozesse, "
-                + "Heap-Dumps, JFR-Dateien und Snapshots, um Befunde selbst anzusehen.";
+        return PerformanceArea.VISUALVM.description();
     }
 
     @Override
     public String instructions() {
-        return """
-                - `visualvm_heap_analyze` für `.hprof`-Dateien (größte Objekte, Retained Size, Pfad zur GC-Wurzel) – statt \
-                Heap-Dumps selbst zu parsen oder `jhat`/Eclipse MAT per Shell zu starten.
-                - `visualvm_sample_cpu` für CPU-Sampling über JMX, auch bei entfernten JVMs.
-                - `visualvm_open`/`visualvm_open_file` nur, wenn der Nutzer die Oberfläche selbst sehen will; sie öffnen ein Fenster \
-                bei ihm und liefern keine Auswertung.""";
+        return PerformanceArea.VISUALVM.instructions();
     }
 
     @Override
     public int order() {
-        return 240;
+        return PerformanceArea.VISUALVM.order();
     }
 
     @Override
     public boolean enabledByDefault() {
-        return true;
+        return PerformanceArea.VISUALVM.enabledByDefault();
     }
 
     @Override
@@ -80,21 +77,26 @@ public class VisualVmModule implements ToolModule {
                         .withHelp("Abstand der Thread-Dumps beim CPU-Sampler. Kleiner = genauer, aber mehr Last."));
     }
 
+    static VisualVmSettings settings(ModuleConfig config) {
+        return new VisualVmSettings(config.getString(HOME, null), config.getBoolean(AUTO_DOWNLOAD),
+                config.getInt(SAMPLE_INTERVAL, 20));
+    }
+
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return List.of(ToolCallbacks.from(new VisualVmTools(env, config)));
+        return SdkTools.adapt(PerformanceTools.visualVmTools(env, settings(config)));
     }
 
     /** Für die UI: Datei in der VisualVM-Oberfläche öffnen (mit der gespeicherten Modulkonfiguration). */
     public String openFile(java.nio.file.Path file) {
         ModuleConfig config = registry.getObject().config(id());
-        return new VisualVmLauncher(config, env.get().jdkHome()).launch(List.of("--openfile", file.toString()));
+        return PerformanceTools.visualVmLauncher(env, settings(config)).launch(List.of("--openfile", file.toString()));
     }
 
     @Override
     public ConnectionTestResult testConnection(ModuleConfig config) {
         try {
-            var exe = new VisualVmLauncher(config, env.get().jdkHome()).executable();
+            var exe = PerformanceTools.visualVmLauncher(env, settings(config)).executable();
             return ConnectionTestResult.ok("Heap-Analyse und Sampler: eingebettet (VisualVM 2.2 Engines).\nOberfläche: " + exe);
         } catch (RuntimeException e) {
             return ConnectionTestResult.failed("Heap-Analyse und Sampler: eingebettet.\nOberfläche nicht verfügbar: " + e.getMessage());
