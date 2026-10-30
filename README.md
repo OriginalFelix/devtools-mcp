@@ -30,6 +30,7 @@ nutzbar); devtools-mcp ergänzt Einstellungen, Berechtigungen und Oberfläche. K
 | **IDE** (IntelliJ IDEA, PyCharm, WebStorm, Rider, CLion, GoLand, Android Studio, VS Code, VSCodium, Cursor, Eclipse, NetBeans, Visual Studio, Xcode; erweiterbar per ServiceLoader) | `ide_providers` (aktive IDEs, gefundene Installation, was jede kann), `ide_open_project`, `ide_close_project`, `ide_show` (dem Nutzer eine Code-Stelle zeigen: Datei, Zeile, Spalte), `ide_diff` (zwei Dateien im Vergleich) – nur in freigegebenen Projekten; IDE je Aufruf, als Standard oder automatisch nach Spuren im Projekt (`.idea`, `.vscode`, `*.sln` …) (siehe [IDE](#ide-serviceloader)) (Modul Standard: aus) |
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
+| **SQL-Protokoll** (p6spy) | `p6spy_statements` (ausgeführte Statements mit Zeit, Dauer, Kategorie, Connection und eingesetzten Werten; filterbar nach Mindestdauer, Text, Kategorie, Connection), `p6spy_analyze` (teuerste Statements gruppiert nach SQL ohne Werte, N+1-Verdacht) – liest `spy.log` aus freigegebenen Verzeichnissen, mit `since` nur das seit dem letzten Aufruf Protokollierte (siehe [SQL-Protokoll](#sql-protokoll-p6spy)) (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
 | **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort), `mail_send` (SMTP, auch als Antwort; Rückfrage beim Nutzer, erlaubte Empfänger, Grenze pro Stunde) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über den stdio-Proxy (Channel) an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
@@ -671,6 +672,23 @@ in der Datenbank noch keinen gleichnamigen Branch, wird er angelegt – vom Bran
 
 Tests: `DoltServerContainerTest` startet `dolthub/dolt-sql-server` und `dolthub/doltgresql` mit podman oder docker
 (übersprungen ohne Image), `DoltliteBackendTest` braucht `doltlite` im `PATH` oder `-Pdoltlite=<pfad>`.
+
+### SQL-Protokoll (p6spy)
+
+Liest das Protokoll, das eine Anwendung mit dem JDBC-Proxy [p6spy](https://github.com/p6spy/p6spy) schreibt – welche
+Statements eine Aktion ausgelöst hat, welche teuer sind und wo dasselbe Statement in einer Schleife läuft (N+1). Die
+Anwendung bindet p6spy selbst ein (Treiber `com.p6spy.engine.spy.P6SpyDriver` mit URL `jdbc:p6spy:…` oder Spring Boot
+`com.github.gavlyukovskiy:p6spy-spring-boot-starter`) und schreibt per `appender=com.p6spy.engine.spy.appender.FileLogger`
+in `logfile` (Standard `spy.log`). Erkannt werden `SingleLineFormat` (mit und ohne `url`) und das Standardmuster von
+`CustomLineFormat`; andere Zeilen (Stacktraces) werden übergangen, `MultiLineFormat` nicht unterstützt.
+
+* Dateien nur aus *Verzeichnisse mit p6spy-Protokollen* und den globalen *Freigaben*.
+* Jedes Ergebnis endet mit `since=<Byte-Position>`; mit diesem Wert liefert der nächste Aufruf nur das seither
+  Protokollierte – vor einer Aktion merken, danach auswerten. Ist die Datei kürzer (neu angelegt), wird von vorn gelesen.
+* Große Protokolle werden nur vom Ende her gelesen (*Max. gelesene MB*, Standard 32).
+* `p6spy_analyze` fasst Statements nach SQL ohne Werte zusammen (Strings, Zahlen, `IN (…)`-Listen → `?`) und meldet
+  N+1-Verdacht, wenn dasselbe Statement mindestens `repeats`-mal (Standard 5) direkt hintereinander auf einer Connection
+  läuft.
 
 ### Chat-Systeme (ServiceLoader)
 
