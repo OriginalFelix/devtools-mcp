@@ -25,6 +25,9 @@ public final class ShellHints {
     public static final String SONAR = " SonarQube immer über die sonar_*-Tools abfragen, nicht per `curl` gegen die "
             + "Web-API oder im Browser.";
 
+    public static final String SENTRY = " Sentry immer über die sentry_*-Tools abfragen, nicht per `curl` gegen die "
+            + "Web-API oder im Browser.";
+
     public static final String MAVEN = " Maven-Artefakte (Versionen, POM-Metadaten, Breaking Changes) immer über die "
             + "maven_*-Tools abfragen, nicht per `curl` gegen Maven Central, mit `mvn` in der Shell oder im Browser.";
 
@@ -108,6 +111,7 @@ public final class ShellHints {
     static final java.util.Map<String, String> BY_MODULE = java.util.Map.ofEntries(
             java.util.Map.entry("git", GIT), java.util.Map.entry("build", BUILD),
             java.util.Map.entry("container", CONTAINER), java.util.Map.entry("sonar", SONAR),
+            java.util.Map.entry("sentry", SENTRY),
             java.util.Map.entry("maven", MAVEN), java.util.Map.entry("jvm", JVM), java.util.Map.entry("jfr", JFR),
             java.util.Map.entry("asprof", ASPROF), java.util.Map.entry("visualvm", VISUALVM),
             java.util.Map.entry("decompile", DECOMPILE), java.util.Map.entry("debug", DEBUG),
