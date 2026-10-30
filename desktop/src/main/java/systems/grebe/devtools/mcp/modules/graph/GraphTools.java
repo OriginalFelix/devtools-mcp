@@ -23,7 +23,7 @@ import systems.grebe.devtools.mcp.modules.graph.GraphProvider.Stored;
 public class GraphTools {
 
     private static final String PROJECT_PARAM = "Projektname (Ordnername) oder Pfad; Worktree als <projekt>/<ordner> "
-            + "oder Pfad darin (eigener Branch); leer = Standardprojekt";
+            + "oder Pfad darin (eigener Branch); dyn:<n> = dynamischer Graph aus graph_dynamic; leer = Standardprojekt";
     private static final String BRANCH_PARAM = "Git-Branch; leer = ausgecheckter Branch. Andere Branches nur, wenn "
             + "ihr Graph gespeichert ist (graph_branches)";
     private static final String NODE_PARAM = "Knoten: Typ ('OrderService' oder FQN), Member ('OrderService#save', "
@@ -87,6 +87,60 @@ public class GraphTools {
             sb.append("\nEntfernt (Branch existiert nicht mehr): ").append(String.join(", ", r.removedBranches()));
         }
         return sb.append("\n\n").append(new GraphQueries(r.graph()).report(10)).toString();
+    }
+
+    @ToolHints(destructive = false, idempotent = false, openWorld = false)
+    @Tool(name = "dynamic", description = "Legt einen dynamischen (virtuellen) Code-Graphen an – nur im Speicher, nie "
+            + "gespeichert, verfällt nach ttlMinutes ohne Nutzung. Genauer als der gespeicherte Graph, weil Bibliotheken "
+            + "mitgelesen werden: das Projekt wird mit Klassenpfad (JDK + JARs aus dem Projekt, den Angaben und dem "
+            + "Maven-/Gradle-Cache) neu aufgelöst – Aufrufe in Bibliotheken (z.B. RestTemplate#exchange), Aufrufketten "
+            + "über Bibliotheks-Rückgabetypen, Überschreibungen von Bibliotheksmethoden und Aufrufe über "
+            + "Bibliotheks-Interfaces bis in die eigenen Implementierungen. libraries holt zusätzlich ganze Klassen, "
+            + "Pakete oder JARs mit exakten Kanten aus dem Bytecode hinein (auch ohne project, z.B. um eine Bibliothek "
+            + "zu erkunden). Liefert die ID dyn:<n> – als project an graph_find/explain/neighbors/path/query/files/"
+            + "report übergeben. Ohne project/libraries: Liste der vorhandenen; drop entfernt einen." + ShellHints.GRAPH)
+    public String dynamic(
+            @ToolParam(required = false, description = "Projekt (wie bei den anderen graph_*-Tools); leer = nur "
+                    + "Bibliotheken") String project,
+            @ToolParam(required = false, description = "Bibliotheksmuster: Paket ('org.springframework.web.client' "
+                    + "bzw. '…client.*'), Klasse ('com.fasterxml.jackson.databind.ObjectMapper'), Muster mit * "
+                    + "('org.springframework.*Template') oder JAR-Pfad. Nur passende Bibliotheksknoten bleiben im "
+                    + "Graphen; leer = alle vom Projekt verwendeten außer JDK") List<String> libraries,
+            @ToolParam(required = false, description = "Zusätzliche JARs oder Ordner mit JARs für den Klassenpfad "
+                    + "(z.B. build/libs)") List<String> jars,
+            @ToolParam(required = false, description = "Minuten ohne Nutzung bis zum Verfall (Standard 30, max. 240)")
+            Integer ttlMinutes,
+            @ToolParam(required = false, description = "ID eines dynamischen Graphen, der entfernt werden soll")
+            String drop) {
+        if (drop != null && !drop.isBlank()) {
+            return DynamicGraphs.drop(drop) ? "Dynamischer Graph " + drop.strip() + " entfernt."
+                    : "Kein dynamischer Graph " + drop.strip() + " vorhanden.";
+        }
+        boolean create = (project != null && !project.isBlank())
+                || (libraries != null && libraries.stream().anyMatch(l -> l != null && !l.isBlank()));
+        if (!create) {
+            List<DynamicGraphs.Entry> all = DynamicGraphs.list();
+            if (all.isEmpty()) {
+                return "Keine dynamischen Graphen vorhanden – mit project und/oder libraries anlegen.";
+            }
+            StringBuilder sb = new StringBuilder("Dynamische Graphen:\n");
+            all.forEach(e -> sb.append("- ").append(e.id()).append(": ").append(e.description()).append(" · ")
+                    .append(e.reader().info().stat("nodes")).append(" Knoten · verfällt ")
+                    .append(e.expires().truncatedTo(java.time.temporal.ChronoUnit.SECONDS)).append('\n'));
+            return sb.toString().stripTrailing();
+        }
+        int ttl = ttlMinutes == null ? 30 : Math.max(1, Math.min(ttlMinutes, 240));
+        GraphService.Dynamic d = service.dynamic(project, libraries, jars, java.time.Duration.ofMinutes(ttl),
+                systems.grebe.devtools.mcp.core.ModuleAction.Progress.NONE);
+        DynamicGraphs.Entry e = d.entry();
+        StringBuilder sb = new StringBuilder("Dynamischer Graph ").append(e.id()).append(" angelegt in ")
+                .append(d.duration().toMillis()).append(" ms: ").append(e.description())
+                .append("\nTemporär im Speicher, verfällt nach ").append(ttl).append(" min ohne Nutzung. Abfragen mit "
+                        + "project='").append(e.id()).append("' in graph_find/explain/neighbors/path/query/files/report.");
+        sb.append("\nBibliotheksknoten: ").append(e.reader().info().stat("libraryNodes"))
+                .append(", gelesene Bibliotheken (Typen je JAR): ").append(e.reader().info().stats().get("libraries"));
+        d.notes().forEach(n -> sb.append("\nHinweis: ").append(n));
+        return sb.append("\n\n").append(new GraphQueries(e.reader()).report(10)).toString();
     }
 
     @Tool(name = "branches", description = "Listet die gespeicherten Code-Graphen eines Projekts je Git-Branch "

@@ -108,9 +108,9 @@ class GraphToolsTest {
         Edge add = edge(g, save, "com.acme.shop.Money#add(int)", Relation.CALLS);
         assertThat(add.conf()).isEqualTo(Confidence.INFERRED);
         assertThat(add.score()).isEqualTo(0.8);
-        // Überladung gleicher Stelligkeit -> AMBIGUOUS auf beide
-        assertThat(edge(g, save, "com.acme.shop.Printer#print(Order)", Relation.CALLS).conf()).isEqualTo(Confidence.AMBIGUOUS);
-        assertThat(edge(g, save, "com.acme.shop.Printer#print(String)", Relation.CALLS).conf()).isEqualTo(Confidence.AMBIGUOUS);
+        // Überladung gleicher Stelligkeit: über den Argumenttyp (o ist Order) eindeutig
+        assertThat(edge(g, save, "com.acme.shop.Printer#print(Order)", Relation.CALLS).conf()).isEqualTo(Confidence.EXTRACTED);
+        assertThat(g.outgoing(save)).noneMatch(e -> e.to().equals("com.acme.shop.Printer#print(String)"));
         // Konstruktor und Instanziierung
         edge(g, "com.acme.shop.Order#total()", "com.acme.shop.Money", Relation.INSTANTIATES);
         edge(g, "com.acme.shop.OrderService#printer", "com.acme.shop.Printer", Relation.INSTANTIATES);
@@ -258,7 +258,7 @@ class GraphToolsTest {
         String deep = t.files(null, null, List.of("OrderService#save"), "out", List.of("calls"), 2, null, null, null);
         assertThat(deep).contains("vom Ausgang verwendet, Tiefe 2",
                 "src/main/java/com/acme/shop/OrderService.java  (45 Z.)  [Ausgangsdatei]",
-                "OrderService#save(Order) --calls--> Money#add(int) (INFERRED 0.8, Z26)");
+                "OrderService#save(Order) --calls--> Printer#print(Order) (Z29)", "… 1 weitere Stelle");
 
         assertThatThrownBy(() -> t.files(null, "x", List.of("OrderService"), null, null, null, null, null, null))
                 .hasMessageContaining("Genau eins angeben");

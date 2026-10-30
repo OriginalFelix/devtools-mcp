@@ -34,6 +34,7 @@ public class GraphModule implements ToolModule {
     static final String MAX_FILES = "maxFiles";
     static final String AUTO_INDEX = "autoIndex";
     static final String STORAGE = "storage";
+    static final String LIBRARY_PATHS = "libraryPaths";
     static final String STORAGE_DATABASE = "database";
     static final String STORAGE_FILE = "file";
 
@@ -71,13 +72,14 @@ public class GraphModule implements ToolModule {
 
     @Override
     public String displayName() {
-        return "Code-Graph (Java)";
+        return "Code-Graph";
     }
 
     @Override
     public String description() {
-        return "Baut per tree-sitter einen Graphen aus Klassen, Methoden, Imports, Vererbung und Aufrufen, dazu allen "
-                + "übrigen Dateien des Projekts – je Projekt "
+        return "Baut per tree-sitter einen Graphen aus Klassen, Funktionen, Methoden, Imports, Vererbung und Aufrufen "
+                + "(Java mit Typauflösung; Kotlin, Scala, Python, JS/TS, Go, Rust, C/C++, C#, PHP, Ruby, Bash über Namen), "
+                + "dazu allen übrigen Dateien des Projekts – je Projekt "
                 + "und Git-Branch in der Graph-Datenbank des Backends (ArcadeDB) oder als Datei im Projekt – und "
                 + "beantwortet Struktur- und Aufruffragen daraus per OpenCypher.";
     }
@@ -90,10 +92,11 @@ public class GraphModule implements ToolModule {
                 `graph_files`, `graph_query` oder `graph_find` aufrufen und danach mit `graph_read` nur die nötigen \
                 Stellen lesen. `grep`, `rg`, `find`, Glob oder das Öffnen ganzer Dateien erst, wenn der Graph nichts \
                 liefert (z.B. Texte in Strings, Kommentaren oder im Inhalt von Nicht-Java-Dateien) – dann kurz sagen, \
-                warum. Der Graph kennt alle Dateien des Projekts (außer Ausschlüssen und versteckten Ordnern): Java \
-                mit Typen, Membern und Aufrufen, alle übrigen (Build-Skripte, Konfiguration, Ressourcen, Doku …) als \
-                Dateiknoten – auch sie per `graph_files` (Name, Pfad, Muster wie `*.yml`) finden und per `graph_read` \
-                lesen.
+                warum. Der Graph kennt alle Dateien des Projekts (außer Ausschlüssen und versteckten Ordnern): Quelltext \
+                aller gängigen Sprachen mit Typen, Funktionen und Aufrufen (Java mit Typauflösung, Kotlin, Scala, \
+                Python, JS/TS, Go, Rust, C/C++, C#, PHP, Ruby, Bash über Namen), alle übrigen (Konfiguration, \
+                Ressourcen, Doku …) als Dateiknoten – auch sie per `graph_files` (Name, Pfad, Muster wie `*.yml`) \
+                finden und per `graph_read` lesen.
                 Für Struktur- und Architekturfragen ebenso den Code-Graphen verwenden:
                 - `graph_report`: Überblick (God Nodes, Communities, überraschende Verbindungen) – vor Architekturfragen.
                 - `graph_query`: Frage in Stichworten → passende Typen/Methoden und ihr Zusammenhang.
@@ -113,6 +116,9 @@ public class GraphModule implements ToolModule {
                 - Worktrees (`git worktree add`): als `project` den Pfad des Worktrees (oder einen darin) bzw. \
                 `<projekt>/<ordner>` übergeben – gebaut wird aus dem Worktree und unter seinem Branch gespeichert, als \
                 Graph desselben Projekts.
+                - `graph_dynamic`: temporärer Graph im Speicher mit Bibliotheken (JDK, JARs) – wenn es auf Aufrufe in \
+                Bibliotheken, Bibliotheks-Interfaces/-Oberklassen oder den Aufbau einer Bibliothek ankommt; danach mit \
+                `project='dyn:<n>'` abfragen. Verfällt von selbst.
                 - `graph_cypher`: lesendes OpenCypher für alles, was die übrigen Tools nicht abdecken (nur Datenbank-Ablage).
                 Kanten sind als EXTRACTED (steht im Code), INFERRED (abgeleitet) oder AMBIGUOUS (mehrere Ziele) markiert – \
                 bei INFERRED/AMBIGUOUS die angegebene Zeile im Quelltext prüfen, bevor darauf eine Aussage beruht.""";
@@ -155,6 +161,12 @@ public class GraphModule implements ToolModule {
                         .withHelp("Aus = Ordner src/test/… werden übersprungen."),
                 ConfigField.of(MAX_FILES, "Max. Dateien", FieldType.INT).withDefault("30000")
                         .withHelp("Schutz gegen versehentlich riesige Verzeichnisse."),
+                ConfigField.of(LIBRARY_PATHS, "Bibliotheken (Suchpfade)", FieldType.DIRECTORY_LIST)
+                        .withDefault(java.nio.file.Path.of(System.getProperty("user.home"), ".m2", "repository") + "\n"
+                                + java.nio.file.Path.of(System.getProperty("user.home"), ".gradle", "caches", "modules-2",
+                                "files-2.1"))
+                        .withHelp("Hier sucht graph_dynamic die JARs der Bibliotheken (Maven-Repository, Gradle-Cache). "
+                                + "JARs im Projekt und ausdrücklich angegebene gehen vor, das JDK ist immer dabei."),
                 ConfigField.of(AUTO_INDEX, "Automatisch indizieren", FieldType.BOOLEAN).withDefault("true")
                         .withHelp("Bei jedem Commit, Branch-Wechsel und neuen Branch den Graphen des Projekts im "
                                 + "Hintergrund aktualisieren – inkrementell: nur geänderte Dateien werden gelesen und nur "

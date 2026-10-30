@@ -24,7 +24,7 @@ import org.eclipse.aether.version.Version;
  * Sucht Klassen im JDK und in den JARs der Suchpfade (lokales Maven-Repository, Gradle-Cache …). Die JAR-Liste wird
  * kurz zwischengespeichert, damit aufeinanderfolgende Aufrufe nicht jedes Mal den Cache-Baum durchlaufen.
  */
-final class ClassFinder {
+public final class ClassFinder {
 
     /** Fundstelle: {@code source} ist ein Pfad oder {@code jrt:/<modul>} und kann direkt als Quelle übergeben werden. */
     record Hit(String source, String className, String version) {
@@ -150,7 +150,7 @@ final class ClassFinder {
     }
 
     /** Version aus dem Pfad: Maven {@code …/<artefakt>/<version>/x.jar}, Gradle {@code …/<version>/<hash>/x.jar}. */
-    static String version(Path jar) {
+    public static String version(Path jar) {
         Path dir = jar.getParent();
         if (dir != null && dir.getFileName() != null && HASH_DIR.matcher(dir.getFileName().toString()).matches()) {
             dir = dir.getParent();
@@ -164,7 +164,8 @@ final class ClassFinder {
                 .orElseGet(() -> hits.stream().max(Comparator.comparing(h -> parse(h.version()))).orElseThrow());
     }
 
-    private static Version parse(String v) {
+    /** Version zum Vergleichen; Unlesbares zählt als 0. */
+    public static Version parse(String v) {
         try {
             return VERSIONS.parseVersion(Objects.requireNonNullElse(v, ""));
         } catch (InvalidVersionSpecificationException e) {

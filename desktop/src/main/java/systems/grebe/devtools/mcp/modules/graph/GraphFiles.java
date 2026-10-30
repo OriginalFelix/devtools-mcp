@@ -10,6 +10,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.Set;
 
 import systems.grebe.devtools.mcp.modules.graph.CodeGraph.Edge;
@@ -347,12 +348,17 @@ final class GraphFiles {
                 + "statt ganzer Dateien.";
     }
 
-    /** Liegt in einem Testquellordner oder heißt wie eine Testklasse. */
+    /** Testdatei: Testquellordner bzw. Namenskonvention der Sprache ({@code FooTest.java}, {@code foo.spec.ts}, …). */
     static boolean isTestPath(String path) {
-        if (path.startsWith("src/test/") || path.contains("/src/test/")) {
+        String p = "/" + path;
+        if (p.contains("/src/test/") || p.contains("/__tests__/") || p.contains("/tests/") || p.startsWith("/test/")) {
             return true;
         }
         String name = path.substring(path.lastIndexOf('/') + 1);
-        return name.endsWith("Test.java") || name.endsWith("Tests.java") || name.endsWith("IT.java");
+        String base = name.contains(".") ? name.substring(0, name.lastIndexOf('.')) : name;
+        return TEST_NAME.matcher(base).matches();
     }
+
+    private static final Pattern TEST_NAME = Pattern.compile(
+            ".*(Test|Tests|IT|Spec)|.*[._](test|spec)|test_.*");
 }

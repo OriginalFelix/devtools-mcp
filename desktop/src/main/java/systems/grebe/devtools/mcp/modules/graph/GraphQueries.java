@@ -834,7 +834,7 @@ final class GraphQueries {
     /** Liegt in einem Testquellordner oder heißt wie eine Testklasse. */
     static boolean isTestCode(Node n) {
         String f = n.file();
-        if (f != null && (f.startsWith("src/test/") || f.contains("/src/test/"))) {
+        if (f != null && GraphFiles.isTestPath(f)) {
             return true;
         }
         String owner = n.kind().isMember() ? CodeGraph.ownerOf(n.id()) : n.id();

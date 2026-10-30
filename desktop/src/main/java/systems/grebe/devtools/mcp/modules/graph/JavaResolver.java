@@ -17,10 +17,12 @@ import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.MemberDecl;
 import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.TypeDecl;
 
 /**
- * Namensauflösung über alle Deklarationen eines Projekts – wie der Compiler, aber ohne Classpath:
- * Typparameter → verschachtelte/umschließende Typen (inkl. geerbter) → Einzel-Imports → eigenes Paket →
- * Stern-Imports → {@code java.lang} → vollqualifizierte Namen. Typen außerhalb des Projekts werden nur über
- * Einzel-Imports (bzw. {@code java.lang}) erkannt.
+ * Namensauflösung über alle Deklarationen eines Projekts – wie der Compiler: Typparameter → verschachtelte/umschließende
+ * Typen (inkl. geerbter) → Einzel-Imports → eigenes Paket → Stern-Imports → {@code java.lang} → vollqualifizierte
+ * Namen. Typen außerhalb des Projekts kennt der {@link Libraries}-Klassenpfad: für den gespeicherten Graphen nur die
+ * Namen der JDK-Typen ({@link Libraries#JDK_NAMES}, Stern-Imports wie {@code java.util.*}), im dynamischen Graphen
+ * JDK und Bibliotheks-JARs mit Membern und Obertypen – dann führen Aufrufketten, Überschreibungen und Aufrufe über
+ * Interfaces auch durch Bibliothekstypen.
  */
 final class JavaResolver {
 
@@ -46,6 +48,7 @@ final class JavaResolver {
     private final Map<String, FileDecl> fileOf = new HashMap<>();
     private final Map<String, List<String>> typesByPackage = new HashMap<>();
     private final Map<String, List<MemberDecl>> methodsByName = new HashMap<>();
+    private final Libraries libs;
 
     // Caches: werden während der Referenzauflösung parallel beschrieben.
     private final Map<String, List<String>> supertypesCache = new ConcurrentHashMap<>();
@@ -58,6 +61,11 @@ final class JavaResolver {
     private final ThreadLocal<Set<String>> supertypesInProgress = ThreadLocal.withInitial(HashSet::new);
 
     JavaResolver(List<FileDecl> files) {
+        this(files, Libraries.JDK_NAMES);
+    }
+
+    JavaResolver(List<FileDecl> files, Libraries libs) {
+        this.libs = libs;
         for (FileDecl f : files) {
             for (TypeDecl t : f.types()) {
                 if (types.putIfAbsent(t.fqn(), t) != null) {
@@ -84,21 +92,37 @@ final class JavaResolver {
         return fqn != null && types.containsKey(fqn);
     }
 
+    /** Projekttyp oder (im dynamischen Graphen) Bibliothekstyp mit Membern – Aufrufe darauf werden aufgelöst. */
+    boolean isKnown(String fqn) {
+        return fqn != null && (types.containsKey(fqn) || libs.type(fqn) != null);
+    }
+
+    /** Typ aus einer Bibliothek bzw. dem JDK (nur im dynamischen Graphen). */
+    boolean isLibraryType(String fqn) {
+        return fqn != null && !types.containsKey(fqn) && libs.type(fqn) != null;
+    }
+
+    /** Projekttyp, sonst Bibliothekstyp (FQNs bereits aufgelöst, {@code file == null}). */
     TypeDecl type(String fqn) {
-        return types.get(fqn);
+        TypeDecl t = types.get(fqn);
+        return t != null ? t : libs.type(fqn);
+    }
+
+    private static boolean isLibrary(TypeDecl t) {
+        return t.file() == null;
     }
 
     String outerOf(String fqn) {
-        TypeDecl t = types.get(fqn);
+        TypeDecl t = type(fqn);
         return t == null ? null : t.outer();
     }
 
     String superclass(String fqn) {
-        TypeDecl t = types.get(fqn);
+        TypeDecl t = type(fqn);
         if (t == null || t.superclass() == null) {
             return null;
         }
-        return resolveType(JavaExtractor.erase(t.superclass()), ctxOf(t));
+        return isLibrary(t) ? t.superclass() : resolveType(JavaExtractor.erase(t.superclass()), ctxOf(t));
     }
 
     /** Direkte Obertypen (Oberklasse zuerst), aufgelöst; externe als Name, sofern über Imports erkennbar. */
@@ -112,9 +136,12 @@ final class JavaResolver {
             return List.of(); // Zyklus in dieser Berechnung – nicht cachen
         }
         try {
-            TypeDecl t = types.get(fqn);
+            TypeDecl t = type(fqn);
             List<String> out = new ArrayList<>();
-            if (t != null) {
+            if (t != null && isLibrary(t)) {
+                add(out, t.superclass());
+                t.interfaces().forEach(i -> add(out, i));
+            } else if (t != null) {
                 Ctx ctx = ctxOf(t);
                 if (t.superclass() != null) {
                     add(out, resolveType(JavaExtractor.erase(t.superclass()), ctx));
@@ -249,8 +276,14 @@ final class JavaResolver {
                 }
             }
         }
+        // 5b. Stern-Imports aus JDK bzw. Bibliotheken
+        for (Import imp : f.imports()) {
+            if (imp.wildcard() && libs.exists(imp.name() + "." + name)) {
+                return imp.name() + "." + name;
+            }
+        }
         // 6. java.lang
-        if (JAVA_LANG.contains(name)) {
+        if (JAVA_LANG.contains(name) || libs.exists("java.lang." + name)) {
             return "java.lang." + name;
         }
         return null;
@@ -263,13 +296,13 @@ final class JavaResolver {
     /** Direkt verschachtelter Typ {@code outer.name}, falls vorhanden. */
     String nested(String outer, String name) {
         String candidate = outer + "." + name;
-        TypeDecl t = types.get(candidate);
+        TypeDecl t = type(candidate);
         return t != null && outer.equals(t.outer()) ? candidate : nestedInSupertypes(outer, name);
     }
 
     private String nestedInSupertypes(String type, String name) {
         for (String s : supertypes(type)) {
-            if (isProjectType(s)) {
+            if (isKnown(s)) {
                 String n = nestedInHierarchy(s, name, new HashSet<>());
                 if (n != null) {
                     return n;
@@ -280,11 +313,11 @@ final class JavaResolver {
     }
 
     private String nestedInHierarchy(String type, String name, Set<String> seen) {
-        if (type == null || !seen.add(type) || !isProjectType(type)) {
+        if (type == null || !seen.add(type) || !isKnown(type)) {
             return null;
         }
         String candidate = type + "." + name;
-        TypeDecl t = types.get(candidate);
+        TypeDecl t = type(candidate);
         if (t != null && type.equals(t.outer())) {
             return candidate;
         }
@@ -309,7 +342,7 @@ final class JavaResolver {
     }
 
     List<MemberDecl> constructors(String type, int arity) {
-        TypeDecl t = types.get(type);
+        TypeDecl t = type(type);
         if (t == null) {
             return List.of();
         }
@@ -323,7 +356,7 @@ final class JavaResolver {
 
     /** Methode mit exakt diesen (einfachen, gelöschten) Parametertypen, nur im Typ selbst. */
     MemberDecl declaredMethod(String type, String name, List<String> paramTypes) {
-        TypeDecl t = types.get(type);
+        TypeDecl t = type(type);
         if (t == null) {
             return null;
         }
@@ -353,7 +386,7 @@ final class JavaResolver {
             } else {
                 continue;
             }
-            if (isProjectType(owner)) {
+            if (isKnown(owner)) {
                 out.addAll(methods(owner, name, arity));
             }
         }
@@ -362,9 +395,12 @@ final class JavaResolver {
 
     /** Aufgelöster Typ eines Felds bzw. Rückgabetyp einer Methode im Kontext ihres Besitzers. */
     String memberType(MemberDecl m) {
-        TypeDecl owner = types.get(m.owner());
+        TypeDecl owner = type(m.owner());
         if (owner == null || m.type() == null) {
             return null;
+        }
+        if (isLibrary(owner)) {
+            return isPrimitive(m.type()) || m.type().endsWith("[]") ? null : m.type();
         }
         String erased = JavaExtractor.erase(m.type());
         Ctx ctx = ctxOf(owner);
@@ -390,7 +426,7 @@ final class JavaResolver {
                 if (!seen.add(t)) {
                     continue;
                 }
-                TypeDecl decl = types.get(t);
+                TypeDecl decl = type(t);
                 if (decl == null) {
                     continue;
                 }

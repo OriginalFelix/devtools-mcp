@@ -15,7 +15,7 @@ nutzbar); devtools-mcp ergänzt Einstellungen, Berechtigungen und Oberfläche. K
 | **SonarQube** / SonarCloud | `sonar_list_projects`, `sonar_quality_gate`, `sonar_issues`, `sonar_issue_detail`, `sonar_rule`, `sonar_measures`, `sonar_hotspots`, `sonar_source` |
 | **Sentry** (sentry.io oder selbst betrieben) | `sentry_list_projects`, `sentry_issues` (Sentry-Suchsyntax, Sortierung, Zeitraum, Cursor), `sentry_issue_detail` (Issue mit letztem Event: Ausnahmekette mit Stacktrace – eigener Code markiert, mit Quelltextzeile –, Request, Tags, letzte Breadcrumbs); nur lesend, Token mit `event:read`, `project:read`, `org:read` (Modul Standard: aus) |
 | **Build** (Gradle/Maven) | `build_list_projects`, `build_run`, `build_test`, `build_test_report` |
-| **Code-Graph** (Java, tree-sitter) | `graph_build`, `graph_branches`, `graph_report`, `graph_find`, `graph_files`, `graph_read`, `graph_explain`, `graph_neighbors`, `graph_path`, `graph_query`, `graph_cypher` – je Projekt und Git-Branch in der Graph-Storage des Backends (ArcadeDB, eingebettet oder extern) oder als Datei im Projekt (Standard: aus) |
+| **Code-Graph** (alle Sprachen, tree-sitter) | `graph_build`, `graph_branches`, `graph_report`, `graph_find`, `graph_files`, `graph_read`, `graph_explain`, `graph_neighbors`, `graph_path`, `graph_query`, `graph_cypher`, `graph_dynamic` – je Projekt und Git-Branch in der Graph-Storage des Backends (ArcadeDB, eingebettet oder extern) oder als Datei im Projekt (Standard: aus) |
 | **JVM-Diagnose** (jcmd) | `jvm_processes`, `jvm_info`, `jvm_threads` (inkl. Deadlock-Erkennung), `jvm_heap`, `jvm_native_memory` · invasiv: `jvm_heap_dump`, `jvm_gc_run`, `jvm_jcmd` (Allowlist) |
 | **Flight Recorder** | `jfr_record`, `jfr_start`, `jfr_status`, `jfr_dump`, `jfr_stop`, `jfr_analyze` (cpu/allocation/gc/locks/io/exceptions/threads), `jfr_flamegraph` |
 | **async-profiler** 4.5 | `asprof_profile`, `asprof_start`, `asprof_stop`, `asprof_status` – Linux/macOS nativ, unter Windows für JVMs in Docker/Podman-Containern (Standard: aus) |
@@ -1358,7 +1358,7 @@ im Team-Server zentral für alle, im eingebetteten Backend für diesen Rechner. 
 
 #### Graph-Storage für die Code-Graphen
 
-Die Code-Graphen des Moduls [Code-Graph](#code-graph-java) liegen zentral im Backend, in der **Graph-Storage**
+Die Code-Graphen des Moduls [Code-Graph](#code-graph) liegen zentral im Backend, in der **Graph-Storage**
 (`backend/graph/GraphStorage`) auf Basis von [ArcadeDB](https://github.com/ArcadeData/arcadedb) – wahlweise
 **eingebettet** (Standard: Datenbank `graphdb/` im Datenverzeichnis des Backends, im selben Prozess) oder **extern**
 (ein ArcadeDB-Server über HTTP). Abfragen laufen als OpenCypher in der Datenbank (native Engine von ArcadeDB).
@@ -1534,11 +1534,13 @@ tree.root().toSExpression(3);                     // (program (class_declaration
   337 Java-Dateien dieses Projekts (3,3 MB, ein Thread): ~0,7 MB/s, die frühere native Anbindung schaffte ~3,9 MB/s;
   ohne die Zerlegung waren es 0,16 MB/s.
 
-### Code-Graph (Java)
+### Code-Graph
 
 Angelehnt an den AST-Durchlauf von [graphify](https://github.com/safishamsi/graphify), aber in Java und ohne LLM:
-tree-sitter liest alle `.java`-Dateien eines freigegebenen Projekts in zwei Durchläufen – erst Deklarationen, dann
-Referenzen, aufgelöst über die Deklarationen aller Dateien. Gemessen an eGECKO (~10.800 Dateien, noch mit der
+tree-sitter liest alle Quelldateien eines freigegebenen Projekts in zwei Durchläufen – erst Deklarationen, dann
+Referenzen, aufgelöst über die Deklarationen aller Dateien. Java mit Typauflösung (`JavaExtractor`), alle übrigen
+Sprachen der [Syntaxbäume](#syntaxbäume-für-viele-sprachen-reines-java) – Kotlin, Scala, Python, JavaScript/TypeScript,
+Go, Rust, C/C++, C#, PHP, Ruby, Bash – über Namen (`SourceExtractor`); alle anderen Dateien als Dateiknoten. Gemessen an eGECKO (~10.800 Dateien, noch mit der
 früheren nativen Anbindung): Aufbau ~20 s, Datei ~115 MB, ~280 MB Heap für den geladenen Graphen, Abfragen im
 Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Umstellung auf reines Java (siehe
 [Syntaxbäume](#syntaxbäume-für-viele-sprachen-reines-java)) etwa 5× langsamer, der Aufbau entsprechend länger.
@@ -1550,19 +1552,50 @@ Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Um
 * **Knoten:** `package`, `file`, `class`/`interface`/`enum`/`record`/`annotation`, `method`, `constructor`, `field`
   (mit Datei, Zeilen, Modifiern, Signatur, erstem Javadoc-Satz) sowie `external` für referenzierte Bibliothekstypen.
   IDs: `com.acme.OrderService`, `com.acme.OrderService#save(Order)`, `…#<init>(Repo)`, `…#repo`, `file:src/…`.
+  Andere Sprachen: Typen mit Paket/Namespace (Kotlin, Scala, C#, PHP, C++), sonst mit dem Modul der Datei
+  (`web/src/user.service.ts` → `web.src.user_service.UserService`; Go: Verzeichnis = Paket); Funktionen außerhalb von
+  Typen gehören dem Modul (`web.src.user_service#helper(string)`), in Kotlin der Datei-Fassade wie in der JVM
+  (`com.acme.UtilsKt#hello(String)`) – Java-Aufrufe in Kotlin-Code werden so aufgelöst. Parameter in den IDs: Typ,
+  wo die Sprache ihn nennt, sonst der Name; Konstruktoren (`__init__`, `constructor`, `__construct`, `initialize`) als
+  `<init>`. Sehr große oder minifizierte Dateien (über 1 MB bzw. im Schnitt über 300 Zeichen je Zeile) bleiben
+  Dateiknoten.
 * **Kanten:** `contains`, `imports`, `extends`, `implements`, `overrides`, `calls`, `instantiates`, `has_type`
   (Feld-/Rückgabetyp innerhalb des Projekts), `annotated_with`. Jede Kante trägt die Sicherheit wie bei graphify:
   `EXTRACTED` (steht so im Code, z.B. Aufruf über ein Feld mit deklariertem Typ), `INFERRED` mit Score (abgeleitet,
   z.B. über den Rückgabetyp einer Aufrufkette 0.8, über den Methodennamen bei unbekanntem Empfänger 0.6,
-  `overrides` ohne `@Override` 0.9), `AMBIGUOUS` (Überladungen gleicher Stelligkeit – Kante zu jedem Kandidaten).
+  `overrides` ohne `@Override` 0.9), `AMBIGUOUS` (mehrere Kandidaten – Kante zu jedem). Überladungen gleicher
+  Stelligkeit werden über die Argumenttypen eingegrenzt (Literale, Variablen, Felder, Rückgabetypen; passt ein bekannter
+  Typ sicher nicht, fällt die Überladung weg) und sind nur dann noch `AMBIGUOUS`, wenn die Argumente es offenlassen.
+  Andere Sprachen: Aufrufe im eigenen Typ (`self`/`this`, in Kotlin/Scala/C#/C++/Ruby auch ohne), in derselben Datei
+  bzw. demselben Modul und über den Typnamen sind `EXTRACTED`; `modul.funktion()` (Go-Pakete, Python-Module) 0.9,
+  Typen über den Namen projektweit 0.8, Funktionen 0.7, Methoden unbekannter Empfänger 0.6 – bei mehr als drei
+  Kandidaten keine Kante. `imports` verbinden Dateien (JS/TS relativ, Python, C-Includes) bzw. Typen (Kotlin, Scala, PHP).
   Mehrfache Fundstellen werden zu einer Kante mit `count` zusammengefasst. **Aufrufe über Interfaces und
   Oberklassen:** Ruft Code eine Methode auf, die überschrieben wird, kommt je Implementierung (auch über mehrere
   Stufen) eine Kante `calls` dazu – `INFERRED`, Score 0.7 –, damit Aufrufketten und `graph_path` bis in die
   Implementierungen führen; bei mehr als 12 Implementierungen unterbleibt das (Rauschen). Gemessen an diesem
   Repository: rund 1.700 solcher Kanten bei gut 50.000.
-* **Grenzen:** keine vollständige Typinferenz (Lambdas, Generics-Rückgaben, `var` aus externen Aufrufen) und kein
-  Classpath – Aufrufe auf Bibliothekstypen erzeugen keine Kante, Obertypen außerhalb des Projekts werden nur über
-  Imports erkannt.
+* **Grenzen:** keine vollständige Typinferenz (Lambdas, Generics-Rückgaben, `var` aus externen Aufrufen). Der
+  gespeicherte Graph kennt außerhalb des Projekts nur die Namen der JDK-Typen (Stern-Imports wie `java.util.*`,
+  `java.lang` vollständig) – Aufrufe auf Bibliothekstypen erzeugen dort keine Kante; dafür gibt es die dynamischen
+  Graphen. Andere Sprachen ohne Typinferenz (Auflösung über Namen); Aufrufer einer Zeile mit mehreren Funktionen
+  (Einzeiler) werden der kleinsten zugeordnet.
+* **Dynamische Graphen (`graph_dynamic`):** temporär, nur im Speicher der App (`DynamicGraphs`), nie gespeichert;
+  ID `dyn:<n>`, die alle Abfrage-Tools statt eines Projekts annehmen. Verfällt nach `ttlMinutes` ohne Nutzung
+  (Standard 30), höchstens fünf gleichzeitig, `drop` entfernt einen. Genauer, weil Bibliotheken mitgelesen werden:
+  * **Projekt mit Klassenpfad:** der `JavaResolver` kennt JDK und Bibliotheks-JARs (`Libraries`, gelesen mit
+    `java.lang.classfile`): Aufrufe in Bibliotheken (`RestTemplate#exchange`), Ketten über Bibliotheks-Rückgabetypen,
+    Überschreibungen von Bibliotheksmethoden, Obertypen außerhalb des Projekts – und Aufrufe über Interfaces bzw.
+    Template-Methoden einer Bibliothek bis in die eigenen Implementierungen.
+  * **Bibliotheken aus dem Bytecode:** `libraries` (Paket, Klasse, `*`-Muster oder JAR-Pfad) holt die Klassen mit
+    allen nicht-privaten Membern hinein; ihre Kanten (`calls`, `instantiates`, Methodenreferenzen) stammen aus dem
+    Bytecode und sind exakt, Lambdas und anonyme Klassen zählen zur umschließenden Methode. Auch ohne Projekt, z.B. um
+    eine Bibliothek zu erkunden. Höchstens 4.000 Klassen je Graph.
+  * **Welche JARs:** zuerst `jars` und JARs im Projekt (`lib/`, `WEB-INF/lib` …), dann die Suchpfade (Maven-Repository,
+    Gradle-Cache) – dort nur Gruppen, deren Name mit den ersten zwei Paketsegmenten beginnt. Mehrere Versionen: eine in
+    den Build-Dateien des Projekts genannte gewinnt, sonst die höchste. Ohne `libraries` bleiben alle vom Projekt
+    verwendeten Bibliotheken außer dem JDK im Graphen, mit `libraries` nur die passenden; das JDK hilft beim Auflösen
+    immer mit.
 * **Communities:** Louvain über die auf Typen hochgezogenen Kanten, deterministisch (graphify verwendet Leiden).
   Member erben die Community ihres Typs.
 * **Je Projekt und Branch:** Gebaut wird immer der im Arbeitsverzeichnis ausgecheckte Git-Branch (JGit); gespeichert
@@ -1591,7 +1624,8 @@ Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Um
   zum Neubau. Abfragen laufen auf dem geladenen Graphen (höchstens zwei im Speicher). Soll die Datei nicht ins
   Repository, `devtools-fileinfo*.graph` in `.gitignore` aufnehmen.
 * **Aktualität:** `graph_build` baut nur neu, wenn sich eine Quelldatei geändert hat (SHA-256) oder Dateien
-  hinzugekommen/entfallen sind; die Abfrage-Tools bauen, falls der Graph des ausgecheckten Branches fehlt, und
+  hinzugekommen/entfallen sind; die Prüfsumme einer Datei mit unveränderter Größe und Änderungszeit wird aus dem
+  Zwischenstand übernommen statt neu gelesen (`force` liest alles); die Abfrage-Tools bauen, falls der Graph des ausgecheckten Branches fehlt, und
   suchen dann – ein Hinweis vor der Antwort meldet den Aufbau.
 * **Automatisch und inkrementell:** Bei jedem Commit (egal ob aus DevTools, IDE oder Shell), Branch-Wechsel und
   neuen Branch aktualisiert die App den Graphen des Projekts im Hintergrund (`GraphAutoIndexer`, prüft alle 5 s
@@ -1628,7 +1662,8 @@ Millisekundenbereich, Prüfung „aktuell?“ ~1,5 s. Das Parsen ist seit der Um
   Stellen zu lesen – `grep`, `find`, Glob oder ganze Dateien erst, wenn der Graph nichts liefert (Nicht-Java-Dateien,
   Konfiguration, Texte in Strings/Kommentaren). Suchbegriffe behalten Umlaute (*veröffentlicht* bleibt ein Wort).
 * **Einstellungen:** Projekte/Sammelordner, Standardprojekt, Ablage (`database`/`file`), Ausschlüsse (Ordnername
-  außerhalb von `src/`, relativer Pfad oder `*.endung`), Tests einbeziehen, max. Dateien, automatisch indizieren.
+  außerhalb von `src/`, relativer Pfad oder `*.endung`), Tests einbeziehen, max. Dateien, Bibliotheken (Suchpfade
+  für `graph_dynamic`, Standard Maven-Repository und Gradle-Cache), automatisch indizieren.
   Eingebettete oder externe ArcadeDB stellt das Backend ein (`devtools.graph.*`). *Verbindung testen* prüft die
   Graph-Storage (mit Version) und listet die gespeicherten Branches.
 * **Indizieren in der App:** Im Modul unter **Aktionen** ein Projekt wählen und *Indizieren* klicken (optional
