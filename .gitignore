@@ -19,3 +19,7 @@ build/
 /server/tsconfig.json
 /server/types.d.ts
 /server/vite.config.ts
+
+# IntelliJ-Plugin (eigener Gradle-Build): Gradle-Cache, heruntergeladene Plattform und Sandbox
+/ide-plugins/*/.gradle/
+.intellijPlatform/

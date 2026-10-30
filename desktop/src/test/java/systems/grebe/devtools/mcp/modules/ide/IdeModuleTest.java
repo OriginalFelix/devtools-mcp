@@ -138,7 +138,7 @@ class IdeModuleTest {
     }
 
     private IdeModule module(IdeProviders providers) {
-        return new IdeModule(providers, () -> projects);
+        return new IdeModule(providers, () -> projects, new IdeLink(tmp.resolve("locks")));
     }
 
     private IdeEnvironment env(Map<String, String> values) {
@@ -147,7 +147,7 @@ class IdeModuleTest {
     }
 
     private IdeTools tools(Map<String, String> values) {
-        return new IdeTools(env(values));
+        return new IdeTools(env(values), new IdeLink(tmp.resolve("locks")));
     }
 
     @Test
@@ -170,7 +170,8 @@ class IdeModuleTest {
         IdeModule m = module(fakes);
         List<ToolCallback> tools = m.createTools(ModuleConfig.of(m.configSchema(), Map.of()));
         assertThat(tools).extracting(t -> t.getToolDefinition().name())
-                .containsExactlyInAnyOrder("providers", "open_project", "close_project", "show", "diff");
+                .containsExactlyInAnyOrder("providers", "open_project", "close_project", "show", "diff", "editor",
+                        "cursor");
     }
 
     @Test

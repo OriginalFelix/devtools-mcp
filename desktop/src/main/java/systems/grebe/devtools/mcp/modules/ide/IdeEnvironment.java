@@ -166,6 +166,16 @@ public final class IdeEnvironment {
         return new Ide.Location(f, line == null ? 0 : line, column == null ? 0 : column, dir);
     }
 
+    /** Ob eine Datei bzw. ein Verzeichnis in einem freigegebenen Projekt liegt. */
+    public boolean released(Path path) {
+        try {
+            projects.resolve((Files.isDirectory(path) ? path : path.getParent()).toString(), marker);
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     /** Nächstes Projektverzeichnis ab {@code dir} aufwärts, höchstens bis {@code root}. */
     private Path nearestProject(Path dir, Path root) {
         for (Path d = dir; d != null && d.startsWith(root); d = d.getParent()) {
