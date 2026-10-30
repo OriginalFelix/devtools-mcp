@@ -11,6 +11,7 @@ import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ModuleConfig;
 import systems.grebe.devtools.mcp.core.ToolBeans;
 import systems.grebe.devtools.mcp.core.ToolModule;
+import systems.grebe.devtools.mcp.core.ToolScope;
 
 /** Liest die SQL-Protokolle von p6spy ({@code spy.log}), die eine Anwendung mit dem p6spy-JDBC-Proxy schreibt. */
 @Component
@@ -43,7 +44,9 @@ public class P6SpyModule implements ToolModule {
                 Für eine einzelne Aktion: vorher since aus einem Aufruf merken, Aktion auslösen, dann mit since \
                 nur das Neue auswerten. Schreibt die Anwendung kein spy.log: p6spy einbinden (Treiber \
                 com.p6spy.engine.spy.P6SpyDriver, URL jdbc:p6spy:… bzw. Spring Boot p6spy-spring-boot-starter) \
-                und in spy.properties appender=com.p6spy.engine.spy.appender.FileLogger setzen.""";
+                und in spy.properties appender=com.p6spy.engine.spy.appender.FileLogger setzen – oder ohne Umbau \
+                der Anwendung mit `p6spy_proxy_start` einen SQL-Proxy vor die Datenbank setzen (Anwendung auf \
+                localhost:<port>, TLS aus) und dessen Protokoll mit denselben Tools lesen.""";
     }
 
     @Override
@@ -63,10 +66,17 @@ public class P6SpyModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
+        return createTools(config, ToolScope.LOCAL);
+    }
+
+    @Override
+    public List<ToolCallback> createTools(ModuleConfig config, ToolScope scope) {
         LocalFiles files = new LocalFiles(config.getList(LOG_DIRS),
                 "Module → SQL-Protokoll (p6spy) → „Verzeichnisse mit p6spy-Protokollen“ oder global unter „Freigaben“");
         // Obergrenze 1 GB: der gelesene Bereich liegt am Stück im Speicher
         long maxBytes = Math.clamp(config.getInt(MAX_MB, 32), 1, 1024) * 1024L * 1024L;
-        return ToolBeans.callbacks(new P6SpyTools(files, maxBytes));
+        // Proxys laufen über Konfigurationsänderungen hinweg weiter und enden mit dem Scope
+        var proxies = scope.state("p6spy.proxies", P6SpyProxyTools.Proxies::new);
+        return ToolBeans.callbacks(new P6SpyTools(files, maxBytes), new P6SpyProxyTools(files, proxies));
     }
 }
