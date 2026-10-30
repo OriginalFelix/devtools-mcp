@@ -1180,29 +1180,35 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         }
     }
 
-    /** Nächste Generation nach {@code :last} – über den Index auf {@code g} in dessen Reihenfolge, ohne Scan. */
+    /** Nächster Schlüssel nach {@code :last} im Index auf {@code g} – in dessen Reihenfolge, ohne Scan. */
     static String nextGenerationQuery(String type) {
-        return "SELECT g FROM `" + type + "` WHERE g > :last ORDER BY g LIMIT 1";
+        return "SELECT key FROM index:`" + new IndexDef(type, "g", false).name() + "` WHERE key > :last LIMIT 1";
     }
 
     /**
      * Die Generationen eines Typs, von Schlüssel zu Schlüssel im Index auf {@code g} gesprungen: eine Abfrage je
      * Generation statt eines Durchlaufs über alle Knoten ({@code GROUP BY g} liest jeden Datensatz).
      * <p>
-     * Ein beschädigter Index (Einträge gelöschter Datensätze, Schlüssel außer der Reihe) kann auf {@code g > :last}
-     * einen kleineren Schlüssel liefern – der Sprung liefe dann endlos im Kreis. Dann wird der Index neu aufgebaut und
-     * die Generationen dieses Laufs einmalig per Scan gelesen.
+     * Gesprungen wird nur im Index, ohne Datensätze zu laden: ArcadeDB liefert bei {@code > :last} auch Einträge
+     * gelöschter Datensätze. Über die Datensätze gefragt ({@code SELECT g FROM …}) protokollierte das je Eintrag
+     * "Record #… not found" und übersprang Generationen. Schlüssel, die nur noch aus solchen Einträgen bestehen,
+     * fallen per {@code = :g} heraus – das filtert gelöschte Einträge zuverlässig.
+     * <p>
+     * Ein beschädigter Index (Schlüssel außer der Reihe) kann auf {@code > :last} einen kleineren Schlüssel liefern –
+     * der Sprung liefe dann endlos im Kreis. Dann wird der Index neu aufgebaut und die Generationen dieses Laufs
+     * einmalig per Scan gelesen.
      */
     List<String> generations(String type) {
-        String q = nextGenerationQuery(type);
-        List<String> out = ascendingKeys(after -> {
-            List<Map<String, Object>> r = rows("sql", q, params("last", after));
-            return r.isEmpty() ? null : (String) r.getFirst().get("g");
-        });
-        if (out != null) {
-            return out;
-        }
         String index = new IndexDef(type, "g", false).name();
+        String q = nextGenerationQuery(type);
+        List<String> keys = ascendingKeys(after -> {
+            List<Map<String, Object>> r = rows("sql", q, params("last", after));
+            return r.isEmpty() ? null : indexKey(r.getFirst().get("key"));
+        });
+        if (keys != null) {
+            String live = "SELECT FROM index:`" + index + "` WHERE key = :g LIMIT 1";
+            return keys.stream().filter(g -> !rows("sql", live, params("g", g)).isEmpty()).toList();
+        }
         LOG.warn("Graph-Storage: Index {} liefert Schlüssel außer der Reihe – wird neu aufgebaut", index);
         try (ResultSet rs = db().command("sql", "REBUILD INDEX `" + index + "`")) {
             while (rs.hasNext()) {
@@ -1216,6 +1222,11 @@ public class GraphStorage implements GraphProvider, AutoCloseable {
         rows("sql", "SELECT g FROM `" + type + "` GROUP BY g", Map.of()).forEach(r -> scanned.add((String) r.get("g")));
         scanned.remove(null);
         return scanned;
+    }
+
+    /** Schlüssel eines Index-Eintrags (einspaltig): eingebettet ein Array, extern eine JSON-Liste. */
+    private static String indexKey(Object key) {
+        return (String) (key instanceof Object[] a ? a[0] : key instanceof List<?> l ? l.getFirst() : key);
     }
 
     /**
