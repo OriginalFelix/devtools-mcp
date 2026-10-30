@@ -90,7 +90,9 @@ final class GraphSource {
     private void appendNode(StringBuilder sb, Node n, Boolean outline, int context, int[] budget) {
         if (n.kind() == Kind.EXTERNAL || n.kind() == Kind.PACKAGE || n.file() == null) {
             throw new IllegalArgumentException(n.id() + " hat keinen Quelltext im Projekt ("
-                    + (n.kind() == Kind.EXTERNAL ? "externer Typ" : n.kind().label()) + ").");
+                    + (n.kind() == Kind.EXTERNAL ? "externer Typ" : n.kind().label())
+                    + (n.doc() != null && n.doc().startsWith("Bibliothek") ? ", " + n.doc()
+                    + " – Quelltext mit decompile_class" : "") + ").");
         }
         List<String> text = text(n.file());
         int start = n.kind() == Kind.FILE ? 1 : n.line() == null ? 1 : n.line();

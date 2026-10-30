@@ -52,7 +52,13 @@ final class JavaExtractor {
                     List<String> interfaces, List<MemberDecl> members, String doc) {
     }
 
-    record FileDecl(String path, String pkg, List<Import> imports, List<TypeDecl> types, int lines, boolean errors) {
+    /** {@code functions}: Funktionen außerhalb von Typen (andere Sprachen als Java), Besitzer ist das Modul der Datei. */
+    record FileDecl(String path, String pkg, List<Import> imports, List<TypeDecl> types, int lines, boolean errors,
+                    List<MemberDecl> functions) {
+
+        FileDecl(String path, String pkg, List<Import> imports, List<TypeDecl> types, int lines, boolean errors) {
+            this(path, pkg, imports, types, lines, errors, List.of());
+        }
     }
 
     /** Kante vor dem Zusammenfassen (gleiche Quelle/Ziel/Relation werden im Builder gezählt). */
@@ -141,7 +147,7 @@ final class JavaExtractor {
         if (type == null) {
             return null;
         }
-        String t = ANNOTATION_IN_TYPE.matcher(type).replaceAll("");
+        String t = type.indexOf('@') < 0 ? type : ANNOTATION_IN_TYPE.matcher(type).replaceAll("");
         StringBuilder sb = new StringBuilder(t.length());
         int depth = 0;
         for (int i = 0; i < t.length(); i++) {
@@ -453,7 +459,7 @@ final class JavaExtractor {
     // ================================================================== Durchlauf 2
 
     /** Namen, bei denen ein Aufruf mit unbekanntem Empfänger nicht per Namenssuche geraten wird. */
-    private static final Set<String> NO_GUESS = Set.of(
+    static final Set<String> NO_GUESS = Set.of(
             "equals", "hashCode", "toString", "getClass", "clone", "finalize", "notify", "notifyAll", "wait",
             "compareTo", "get", "set", "add", "put", "remove", "size", "isEmpty", "contains", "clear", "addAll",
             "stream", "map", "filter", "forEach", "collect", "iterator", "next", "hasNext", "close", "append",
@@ -608,8 +614,9 @@ final class JavaExtractor {
                 edges.add(new RawEdge(from, erased, rel, Confidence.INFERRED, 0.5, line));
                 return;
             }
-            if (rel == Relation.HAS_TYPE && !r.isProjectType(resolved)) {
-                return; // Feld-/Rückgabetypen nur innerhalb des Projekts – String, List … wären nur Rauschen
+            if (rel == Relation.HAS_TYPE && !r.isProjectType(resolved)
+                    && !(r.isLibraryType(resolved) && !resolved.startsWith("java.lang."))) {
+                return; // Feld-/Rückgabetypen im Projekt (dynamisch auch Bibliotheken) – String, List … wären Rauschen
             }
             edges.add(new RawEdge(from, resolved, rel, Confidence.EXTRACTED, 1, line));
         }
@@ -630,7 +637,7 @@ final class JavaExtractor {
             boolean explicit = m.annotations().contains("Override");
             while (!queue.isEmpty()) {
                 String s = queue.removeFirst();
-                if (!seen.add(s) || !r.isProjectType(s)) {
+                if (!seen.add(s) || !r.isKnown(s)) {
                     continue;
                 }
                 MemberDecl hit = r.declaredMethod(s, m.name(), m.paramTypes());
@@ -750,13 +757,12 @@ final class JavaExtractor {
             private void creation(SyntaxNode n) {
                 String type = erase(p.text(field(n, "type")));
                 String fqn = r.resolveType(type, ctx);
-                if (fqn == null || !r.isProjectType(fqn)) {
+                if (fqn == null || !r.isKnown(fqn)) {
                     return;
                 }
                 edges.add(new RawEdge(owner, fqn, Relation.INSTANTIATES, Confidence.EXTRACTED, 1, line(n)));
                 SyntaxNode args = field(n, "arguments");
-                int arity = args == null ? 0 : args.namedChildCount();
-                emit(choose(r.constructors(fqn, arity), false), line(n));
+                emit(choose(narrow(r.constructors(fqn, arity(args)), args), false), line(n));
             }
 
             private void constructorCall(SyntaxNode n) {
@@ -765,11 +771,11 @@ final class JavaExtractor {
                     return;
                 }
                 String target = ctor.type().equals("super") ? r.superclass(ctx.type()) : ctx.type();
-                if (target == null || !r.isProjectType(target)) {
+                if (target == null || !r.isKnown(target)) {
                     return;
                 }
                 SyntaxNode args = field(n, "arguments");
-                emit(choose(r.constructors(target, args == null ? 0 : args.namedChildCount()), false), line(n));
+                emit(choose(narrow(r.constructors(target, arity(args)), args), false), line(n));
             }
 
             private void methodReference(SyntaxNode n) {
@@ -786,7 +792,7 @@ final class JavaExtractor {
                     String fqn = r.resolveType(erase(p.text(recv)), ctx);
                     t = fqn == null ? null : new TypeRef(fqn, false, true);
                 }
-                if (t == null || !r.isProjectType(t.fqn())) {
+                if (t == null || !r.isKnown(t.fqn())) {
                     return;
                 }
                 if (name.equals("new")) {
@@ -800,28 +806,158 @@ final class JavaExtractor {
             CallTargets resolveCall(SyntaxNode n) {
                 String name = p.text(field(n, "name"));
                 SyntaxNode args = field(n, "arguments");
-                int arity = args == null ? 0 : args.namedChildCount();
+                int arity = arity(args);
                 SyntaxNode obj = field(n, "object");
                 if (obj == null) {
                     if (ctx.type() != null) {
                         for (String t = ctx.type(); t != null; t = r.outerOf(t)) {
                             List<MemberDecl> found = r.methods(t, name, arity);
                             if (!found.isEmpty()) {
-                                return choose(found, false);
+                                return choose(narrow(found, args), false);
                             }
                         }
                     }
                     List<MemberDecl> statics = r.staticImportMethods(decl, name, arity);
-                    return statics.isEmpty() ? CallTargets.NONE : choose(statics, false);
+                    return statics.isEmpty() ? CallTargets.NONE : choose(narrow(statics, args), false);
                 }
                 TypeRef t = exprType(obj);
                 if (t != null) {
-                    if (!r.isProjectType(t.fqn())) {
-                        return CallTargets.NONE; // externe Bibliothek
+                    if (!r.isKnown(t.fqn())) {
+                        return CallTargets.NONE; // externe Bibliothek (dynamischer Graph: mit Klassenpfad bekannt)
                     }
-                    return choose(r.methods(t.fqn(), name, arity), t.inferred());
+                    return choose(narrow(r.methods(t.fqn(), name, arity), args), t.inferred());
                 }
                 return guess(name, arity);
+            }
+
+            /** Argumente ohne Kommentare. */
+            private static List<SyntaxNode> arguments(SyntaxNode args) {
+                return args == null ? List.of() : args.namedChildren().stream()
+                        .filter(a -> !a.type().endsWith("comment")).toList();
+            }
+
+            private static int arity(SyntaxNode args) {
+                return arguments(args).size();
+            }
+
+            /**
+             * Überladungen gleicher Stelligkeit über die Argumenttypen eingrenzen: verworfen wird, was sicher nicht passt
+             * (bekannter Typ ohne passenden Obertyp, primitiv gegen Referenz); von den übrigen gewinnen die mit den
+             * meisten genauen Treffern. Unbekannte Argumenttypen schließen nichts aus.
+             */
+            private List<MemberDecl> narrow(List<MemberDecl> found, SyntaxNode args) {
+                if (found.size() < 2) {
+                    return found;
+                }
+                List<String> argTypes = arguments(args).stream().map(this::argType).toList();
+                List<MemberDecl> best = new ArrayList<>();
+                int bestScore = -1;
+                for (MemberDecl m : found) {
+                    int score = match(m, argTypes);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best.clear();
+                    }
+                    if (score >= 0 && score == bestScore) {
+                        best.add(m);
+                    }
+                }
+                return best.isEmpty() ? found : best;
+            }
+
+            private int match(MemberDecl m, List<String> args) {
+                Set<String> typeVars = new HashSet<>(m.typeParams());
+                TypeDecl owner = r.type(m.owner());
+                if (owner != null) {
+                    typeVars.addAll(owner.typeParams());
+                }
+                int score = 0;
+                List<String> ps = m.paramTypes();
+                for (int i = 0; i < args.size(); i++) {
+                    String a = args.get(i);
+                    if (a == null || ps.isEmpty()) {
+                        continue;
+                    }
+                    String p = i < ps.size() ? ps.get(i) : ps.getLast();
+                    if (m.varargs() && i >= ps.size() - 1 && !(args.size() == ps.size() && a.endsWith("[]"))) {
+                        p = p.endsWith("[]") ? p.substring(0, p.length() - 2) : p;
+                    }
+                    int c = compatible(p, a, typeVars);
+                    if (c < 0) {
+                        return -1;
+                    }
+                    score += c;
+                }
+                return score;
+            }
+
+            /** 2 = gleicher Typ, 1 = Obertyp/Boxing, 0 = unklar, -1 = passt nicht. */
+            private int compatible(String param, String arg, Set<String> typeVars) {
+                if (typeVars.contains(param) || param.equals("Object") || (param.length() == 1
+                        && Character.isUpperCase(param.charAt(0)))) {
+                    return 0;
+                }
+                if (arg.equals("null")) {
+                    return JavaResolver.isPrimitive(param) ? -1 : 0;
+                }
+                String simple = arg.substring(arg.lastIndexOf('.') + 1);
+                if (simple.equals(param)) {
+                    return 2;
+                }
+                boolean pPrim = BOXES.containsKey(param) || BOXES.containsValue(param);
+                boolean aPrim = BOXES.containsKey(simple) || BOXES.containsValue(simple);
+                if (pPrim || aPrim) {
+                    boolean pNum = NUMERIC.contains(param);
+                    boolean aNum = NUMERIC.contains(simple);
+                    return pPrim && aPrim && (pNum == aNum) && (pNum || box(param).equals(box(simple))) ? 1 : -1;
+                }
+                if (!r.isKnown(arg)) {
+                    return 0;
+                }
+                boolean[] unknown = {false};
+                return extendsSimple(arg, param, new HashSet<>(), unknown) ? 1 : unknown[0] ? 0 : -1;
+            }
+
+            /** Hat {@code type} (transitiv) einen Obertyp mit diesem einfachen Namen? Merkt sich unbekannte Obertypen. */
+            private boolean extendsSimple(String type, String simple, Set<String> seen, boolean[] unknown) {
+                if (!seen.add(type) || seen.size() > 50) {
+                    return false;
+                }
+                TypeDecl t = r.type(type);
+                if (t == null) {
+                    unknown[0] = true;
+                    return false;
+                }
+                if (t.superclass() != null && r.superclass(type) == null) {
+                    unknown[0] = true; // Oberklasse nicht auflösbar
+                }
+                for (String s : r.supertypes(type)) {
+                    if (s.substring(s.lastIndexOf('.') + 1).equals(simple) || extendsSimple(s, simple, seen, unknown)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            /** Typ eines Arguments als FQN bzw. primitiver Name; {@code null} = unbekannt. */
+            private String argType(SyntaxNode a) {
+                String t = a.type();
+                if (t.endsWith("integer_literal")) {
+                    return p.text(a).matches("(?i).*l") ? "long" : "int";
+                }
+                if (t.endsWith("floating_point_literal")) {
+                    return p.text(a).matches("(?i).*f") ? "float" : "double";
+                }
+                return switch (t) {
+                    case "true", "false" -> "boolean";
+                    case "character_literal" -> "char";
+                    case "null_literal" -> "null";
+                    case "text_block" -> "java.lang.String";
+                    default -> {
+                        TypeRef ref = exprType(a);
+                        yield ref == null || ref == UNKNOWN || ref == UNKNOWN_FIELD ? null : ref.fqn();
+                    }
+                };
             }
 
             /** Empfängertyp unbekannt: über den Methodennamen raten, aber nur bei wenigen Kandidaten. */
@@ -881,7 +1017,7 @@ final class JavaExtractor {
                         SyntaxNode obj = field(n, "object");
                         String fieldName = p.text(field(n, "field"));
                         TypeRef t = obj == null ? null : exprType(obj);
-                        if (t != null && r.isProjectType(t.fqn())) {
+                        if (t != null && r.isKnown(t.fqn())) {
                             TypeRef f = fieldType(t.fqn(), fieldName);
                             if (f != null) {
                                 return t.inferred() ? new TypeRef(f.fqn(), true, false) : f;
@@ -936,6 +1072,16 @@ final class JavaExtractor {
                 return fqn == null ? UNKNOWN_FIELD : new TypeRef(fqn, false, false);
             }
         }
+    }
+
+    /** Primitive Typen und ihre Hüllklassen. */
+    private static final Map<String, String> BOXES = Map.of("int", "Integer", "long", "Long", "short", "Short",
+            "byte", "Byte", "char", "Character", "boolean", "Boolean", "float", "Float", "double", "Double");
+    private static final Set<String> NUMERIC = Set.of("int", "long", "short", "byte", "char", "float", "double",
+            "Integer", "Long", "Short", "Byte", "Character", "Float", "Double");
+
+    private static String box(String t) {
+        return BOXES.getOrDefault(t, t);
     }
 
     /** Variable bekannt, Typ aber nicht ermittelbar (verdeckt gleichnamige Felder/Typen). */

@@ -49,17 +49,20 @@ import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.FileDecl;
 import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.MemberDecl;
 import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.RawEdge;
 import systems.grebe.devtools.mcp.modules.graph.JavaExtractor.TypeDecl;
+import systems.grebe.devtools.mcp.syntax.Language;
 
 /**
- * Baut aus allen Dateien eines Projekts den {@link CodeGraph}: {@code .java}-Dateien liest tree-sitter (Typen, Member,
- * Aufrufe …), alle übrigen – Build-Skripte, Konfiguration, Ressourcen, Doku, auch Binärdateien – werden als
- * Dateiknoten mit Länge und Prüfsumme aufgenommen, damit {@code graph_files}/{@code graph_read} sie finden.
+ * Baut aus allen Dateien eines Projekts den {@link CodeGraph}: {@code .java}-Dateien liest tree-sitter mit
+ * Typauflösung ({@link JavaExtractor}), Quelltext der übrigen tree-sitter-Sprachen (Kotlin, Scala, Python, JS/TS, Go,
+ * Rust, C/C++, C#, PHP, Ruby, Bash) über Namen ({@link SourceExtractor}); alle übrigen – Konfiguration, Ressourcen,
+ * Doku, auch Binärdateien – werden als Dateiknoten mit Länge und Prüfsumme aufgenommen, damit
+ * {@code graph_files}/{@code graph_read} sie finden.
  */
 final class GraphBuilder {
 
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(GraphBuilder.class);
 
-    static final String GENERATOR = "devtools-mcp graph (tree-sitter-java, alle Dateien) 4";
+    static final String GENERATOR = "devtools-mcp graph (tree-sitter, alle Sprachen und Dateien) 5";
 
     /** So viele Bytes am Anfang einer Datei entscheiden, ob sie binär ist (enthält ein NUL-Byte). */
     static final int BINARY_PROBE = 8192;
@@ -80,6 +83,23 @@ final class GraphBuilder {
     GraphBuilder threads(int n) {
         this.threads = n;
         return this;
+    }
+
+    /** Dynamischer Graph: Klassenpfad (JDK + JARs) und Bibliotheksmuster ({@link LibraryGraph}); sonst {@code null}. */
+    private Libraries libraries;
+    /** Knoten aus Bibliotheken (für das Ausdünnen am Ende). */
+    private final Set<String> libraryIds = new java.util.HashSet<>();
+    private LibraryGraph libraryGraph;
+
+    GraphBuilder libraries(Libraries libs, List<String> patterns) {
+        this.libraries = libs;
+        this.libraryGraph = new LibraryGraph(libs, patterns);
+        return this;
+    }
+
+    /** Hinweise des letzten Aufbaus mit Bibliotheken (z.B. Muster gekappt). */
+    List<String> libraryNotes() {
+        return libraryGraph == null ? List.of() : libraryGraph.notes();
     }
 
     GraphBuilder(Path root, List<String> excludes, boolean includeTests, int maxFiles) {
@@ -206,6 +226,37 @@ final class GraphBuilder {
         }
     }
 
+    /** Prüfsumme samt Größe und Änderungszeit einer Datei beim letzten Lesen. */
+    record Stamp(long size, long modified, String sha256) {
+    }
+
+    /**
+     * Wie {@link #read(Path)}, aber ohne die Datei zu lesen, wenn Größe und Änderungszeit zum letzten Mal passen
+     * ({@code stamps}, wird aktualisiert). Frisch geänderte Dateien (unter 2 s alt) werden nicht gemerkt – sie könnten
+     * sich in derselben Zeitspanne noch einmal ändern, ohne dass die Änderungszeit es zeigt.
+     */
+    Source read(Path rel, Map<String, Stamp> stamps) {
+        String path = rel.toString().replace('\\', '/');
+        try {
+            BasicFileAttributes a = Files.readAttributes(root.resolve(rel), BasicFileAttributes.class);
+            long size = a.size();
+            long modified = a.lastModifiedTime().toMillis();
+            Stamp known = stamps.get(path);
+            if (known != null && known.size() == size && known.modified() == modified) {
+                return new Source(path, known.sha256());
+            }
+            Source s = read(rel);
+            if (System.currentTimeMillis() - modified > 2000) {
+                stamps.put(path, new Stamp(size, modified, s.sha256()));
+            } else {
+                stamps.remove(path);
+            }
+            return s;
+        } catch (IOException e) {
+            return read(rel);
+        }
+    }
+
     private String text(Source s) {
         try {
             return decode(Files.readAllBytes(root.resolve(s.path())));
@@ -308,6 +359,8 @@ final class GraphBuilder {
                 : Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), 8));
         int n = sources.size();
         Map<String, ParseCache.CachedFile> previous = cache == null ? Map.of() : cache.files;
+        // mit Klassenpfad lösen sich Kanten anders auf: Deklarationen aus dem Cache ja, Kanten neu, Cache unverändert
+        boolean readOnly = libraries != null;
         try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
             List<Future<FileDecl>> declFutures = new ArrayList<>(n);
             int parsedDecls = 0;
@@ -316,7 +369,8 @@ final class GraphBuilder {
                 if (c != null && c.sha256().equals(s.sha256())) {
                     declFutures.add(CompletableFuture.completedFuture(c.decl()));
                 } else if (!isJava(s.path())) {
-                    declFutures.add(pool.submit(() -> plainFile(s)));
+                    Language lang = SourceExtractor.language(s.path());
+                    declFutures.add(pool.submit(() -> lang == null ? plainFile(s) : sourceDeclarationsOrPlain(s, lang)));
                     parsedDecls++;
                 } else {
                     declFutures.add(pool.submit(() -> declarationsOrEmpty(s)));
@@ -334,23 +388,29 @@ final class GraphBuilder {
                 apis.add(c != null && c.decl() == decls.get(i) ? c.api() : api(decls.get(i)));
             }
             String fingerprint = fingerprint(sources, apis);
-            boolean sameDeclarations = cache != null && fingerprint.equals(cache.fingerprint);
+            boolean sameDeclarations = !readOnly && cache != null && fingerprint.equals(cache.fingerprint);
 
             Map<String, Node> nodes = new LinkedHashMap<>();
             Map<String, EdgeAcc> edges = new LinkedHashMap<>();
             List<FileEntry> files = declarationNodes(sources, decls, nodes, edges);
 
-            JavaResolver resolver = new JavaResolver(decls);
+            JavaResolver resolver = new JavaResolver(decls.stream().filter(d -> isJvm(d.path())).toList(),
+                    libraries != null ? libraries : Libraries.JDK_NAMES);
+            SourceExtractor.Index index = new SourceExtractor.Index(decls, sources.stream().map(Source::path).toList());
             List<Future<List<RawEdge>>> futures = new ArrayList<>();
             int parsedRefs = 0;
             for (int i = 0; i < sources.size(); i++) {
                 FileDecl d = decls.get(i);
                 Source s = sources.get(i);
                 ParseCache.CachedFile c = previous.get(s.path());
-                if (!isJava(s.path())) {
+                Language lang = isJava(s.path()) ? null : SourceExtractor.language(s.path());
+                if (!isJava(s.path()) && lang == null) {
                     futures.add(CompletableFuture.completedFuture(List.of())); // kein Quelltext mit Referenzen
                 } else if (sameDeclarations && c != null && c.decl() == d && c.refs() != null) {
                     futures.add(CompletableFuture.completedFuture(c.refs()));
+                } else if (lang != null) {
+                    futures.add(pool.submit(() -> sourceReferencesOrEmpty(d, s, lang, index)));
+                    parsedRefs++;
                 } else {
                     futures.add(pool.submit(() -> referencesOrEmpty(d, s, resolver)));
                     parsedRefs++;
@@ -361,21 +421,33 @@ final class GraphBuilder {
                 List<RawEdge> refs = get(pool, futures.get(i));
                 referenceEdges(refs, nodes, edges);
                 futures.set(i, null); // Ergebnis freigeben
-                if (cache != null) {
+                if (cache != null && !readOnly) {
                     Source s = sources.get(i);
                     next.put(s.path(), new ParseCache.CachedFile(s.sha256(), decls.get(i), apis.get(i), refs));
                 }
                 report(progress, "Aufrufe und Referenzen", i + 1, n, 0.45, 0.85);
             }
-            if (cache != null) {
+            if (cache != null && !readOnly) {
                 cache.files = next;
                 cache.fingerprint = fingerprint;
                 cache.parsedDeclarations = parsedDecls;
                 cache.parsedReferences = parsedRefs;
             }
+            if (libraries != null) {
+                progress.update("Bibliotheken …", 0.86);
+                libraryLayer(nodes, edges);
+            }
             dispatchEdges(edges);
+            if (libraries != null) {
+                pruneLibraries(nodes, edges);
+            }
             progress.update("Communities …", 0.9);
-            return finish(files, nodes, edges, projectName);
+            GraphFile data = finish(files, nodes, edges, projectName);
+            if (libraries != null) {
+                data.stats().put("libraryNodes", libraryIds.stream().filter(nodes::containsKey).count());
+                data.stats().put("libraries", libraries.used());
+            }
+            return data;
         }
     }
 
@@ -388,6 +460,9 @@ final class GraphBuilder {
         for (JavaExtractor.Import i : d.imports()) {
             sb.append("i ").append(i.name()).append(i.isStatic() ? " s" : "").append(i.wildcard() ? " *" : "")
                     .append('\n');
+        }
+        for (MemberDecl m : d.functions()) {
+            sb.append("f ").append(m.id()).append('|').append(m.kind()).append('|').append(m.type()).append('\n');
         }
         for (TypeDecl t : d.types()) {
             sb.append("t ").append(t.fqn()).append('|').append(t.simpleName()).append('|').append(t.kind()).append('|')
@@ -446,6 +521,40 @@ final class GraphBuilder {
         }
     }
 
+    /** Java und die JVM-Sprachen, deren Typen der {@link JavaResolver} kennt (Kotlin/Scala aus Java aufrufbar). */
+    static boolean isJvm(String path) {
+        Language l = SourceExtractor.language(path);
+        return isJava(path) || l == Language.KOTLIN || l == Language.SCALA;
+    }
+
+    /** Wie {@link #declarationsOrEmpty}; sehr große oder minifizierte Dateien bleiben reine Dateiknoten. */
+    private FileDecl sourceDeclarationsOrPlain(Source s, Language lang) {
+        try {
+            String text = text(s);
+            return SourceExtractor.readable(text) ? SourceExtractor.declarations(s.path(), lang, text) : plainFile(s);
+        } catch (RuntimeException e) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw e;
+            }
+            LOG.warn("Graph: Deklarationen aus {} nicht lesbar – nur als Datei übernommen", s.path(), e);
+            FileDecl plain = plainFile(s);
+            return new FileDecl(s.path(), "", List.of(), List.of(), plain.lines(), true);
+        }
+    }
+
+    private List<RawEdge> sourceReferencesOrEmpty(FileDecl d, Source s, Language lang, SourceExtractor.Index index) {
+        try {
+            String text = text(s);
+            return SourceExtractor.readable(text) ? SourceExtractor.references(d, lang, text, index) : List.of();
+        } catch (RuntimeException e) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw e;
+            }
+            LOG.warn("Graph: Referenzen aus {} nicht lesbar – Kanten der Datei fehlen", s.path(), e);
+            return List.of();
+        }
+    }
+
     private List<RawEdge> referencesOrEmpty(FileDecl d, Source s, JavaResolver resolver) {
         try {
             return JavaExtractor.references(d, text(s), resolver);
@@ -488,17 +597,19 @@ final class GraphBuilder {
             Source s = sources.get(i);
             files.add(new FileEntry(d.path(), s.sha256(), d.lines(), d.errors() ? Boolean.TRUE : null));
             String fId = fileId(d.path());
-            if (!isJava(d.path())) {
+            if (!isJava(d.path()) && d.types().isEmpty() && d.functions().isEmpty() && d.pkg().isEmpty()) {
                 // ohne Paket: Ressourcen, Build-Skripte, Doku … – über Pfad und Dateinamen auffindbar
                 nodes.put(fId, new Node(fId, Kind.FILE, d.path(), d.path(), null, d.lines() > 0 ? d.lines() : null,
                         null, null, null, null));
                 continue;
             }
-            String pkgId = packageId(d.pkg());
-            nodes.putIfAbsent(pkgId, new Node(pkgId, Kind.PACKAGE, d.pkg().isEmpty() ? "(default)" : d.pkg(),
-                    null, null, null, null, null, null, null));
             nodes.put(fId, new Node(fId, Kind.FILE, d.path(), d.path(), null, d.lines(), null, null, null, null));
-            edge(edges, pkgId, fId, Relation.CONTAINS, Confidence.EXTRACTED, 1, null);
+            if (isJava(d.path()) || !d.pkg().isEmpty()) {
+                String pkgId = packageId(d.pkg());
+                nodes.putIfAbsent(pkgId, new Node(pkgId, Kind.PACKAGE, d.pkg().isEmpty() ? "(default)" : d.pkg(),
+                        null, null, null, null, null, null, null));
+                edge(edges, pkgId, fId, Relation.CONTAINS, Confidence.EXTRACTED, 1, null);
+            }
             for (TypeDecl t : d.types()) {
                 if (nodes.containsKey(t.fqn())) {
                     continue; // doppelt deklariert
@@ -516,25 +627,106 @@ final class GraphBuilder {
                 }
             }
         }
+        // Funktionen außerhalb von Typen – erst jetzt, weil Go-/Rust-Methoden zu einem Typ aus einer anderen Datei gehören
+        for (FileDecl d : decls) {
+            for (MemberDecl m : d.functions()) {
+                if (nodes.putIfAbsent(m.id(), new Node(m.id(), m.kind(), m.name(), d.path(), m.line(), m.endLine(),
+                        m.modifiers(), m.signature(), m.doc(), null)) == null) {
+                    String owner = nodes.containsKey(m.owner()) ? m.owner() : fileId(d.path());
+                    edge(edges, owner, m.id(), Relation.CONTAINS, Confidence.EXTRACTED, 1, null);
+                }
+            }
+        }
         return files;
     }
 
-    private static void referenceEdges(List<RawEdge> list, Map<String, Node> nodes, Map<String, EdgeAcc> edges) {
+    private void referenceEdges(List<RawEdge> list, Map<String, Node> nodes, Map<String, EdgeAcc> edges) {
         for (RawEdge e : list) {
             if (e.from().equals(e.to())) {
                 continue;
             }
-            if (!nodes.containsKey(e.from())) {
+            if (!nodes.containsKey(e.from()) && !libraryNode(e.from(), nodes)) {
                 // Member einer doppelt deklarierten Klasse (gleicher FQN in zwei Modulen): nur die erste Deklaration
                 // ist Knoten, Kanten ihrer übersprungenen Member hätten keinen Ursprung
                 continue;
             }
-            if (!nodes.containsKey(e.to())) {
+            if (!nodes.containsKey(e.to()) && !libraryNode(e.to(), nodes)) {
                 nodes.put(e.to(), new Node(e.to(), Kind.EXTERNAL, e.to().substring(e.to().lastIndexOf('.') + 1),
                         null, null, null, null, null, null, null));
             }
-            edge(edges, e.from(), e.to(), e.rel(), e.conf(), e.score(), e.line());
+            edge(edges, e.from(), e.to(), e.rel(), e.conf(), e.score(), e.line() > 0 ? e.line() : null);
         }
+    }
+
+    /** Legt einen Knoten für einen Bibliothekstyp bzw. -member an (nur im dynamischen Graphen). */
+    private boolean libraryNode(String id, Map<String, Node> nodes) {
+        Node n = libraryGraph == null ? null : libraryGraph.node(id);
+        if (n == null) {
+            return false;
+        }
+        nodes.put(id, n);
+        libraryIds.add(id);
+        return true;
+    }
+
+    /**
+     * Bibliotheken: Klassen der Muster mit ihren Bytecode-Kanten, dann für alle Bibliotheksknoten Besitzer (enthält),
+     * Obertypen (extends/implements) und Überschreibungen (auch Bibliothek → Bibliothek) – damit Aufrufe über Interfaces
+     * einer Bibliothek bis in die Implementierungen des Projekts führen ({@link #dispatchEdges}).
+     */
+    private void libraryLayer(Map<String, Node> nodes, Map<String, EdgeAcc> edges) {
+        referenceEdges(libraryGraph.bytecode(libraryGraph.classes()), nodes, edges);
+        // Überschreibungen aus dem Projekt in Bibliotheken: Ziele sind Bibliotheksknoten
+        List<String> targets = edges.values().stream().filter(e -> e.rel == Relation.OVERRIDES).map(e -> e.to)
+                .filter(libraryIds::contains).toList();
+        Deque<String> todo = new ArrayDeque<>(libraryIds);
+        todo.addAll(targets);
+        Set<String> done = new java.util.HashSet<>();
+        while (!todo.isEmpty()) {
+            String id = todo.poll();
+            if (!done.add(id) || !nodes.containsKey(id)) {
+                continue;
+            }
+            Node n = nodes.get(id);
+            List<RawEdge> more = new ArrayList<>();
+            if (n.kind().isMember()) {
+                String owner = CodeGraph.ownerOf(id);
+                more.add(new RawEdge(owner, id, Relation.CONTAINS, Confidence.EXTRACTED, 1, 0));
+                MemberDecl m = libraryGraph.memberDecl(id);
+                if (m != null) {
+                    libraryGraph.overridden(owner, m).forEach(o -> more.add(new RawEdge(id, o, Relation.OVERRIDES,
+                            Confidence.EXTRACTED, 1, 0)));
+                }
+            } else if (n.kind().isType()) {
+                TypeDecl t = libraryGraph.typeDecl(id);
+                if (t != null && t.superclass() != null && !t.superclass().equals("java.lang.Object")) {
+                    more.add(new RawEdge(id, t.superclass(), Relation.EXTENDS, Confidence.EXTRACTED, 1, 0));
+                }
+                if (t != null) {
+                    Relation rel = t.kind() == Kind.INTERFACE ? Relation.EXTENDS : Relation.IMPLEMENTS;
+                    t.interfaces().forEach(i -> more.add(new RawEdge(id, i, rel, Confidence.EXTRACTED, 1, 0)));
+                }
+            }
+            for (RawEdge e : more) {
+                // nur Kanten zwischen Knoten, die es gibt bzw. als Bibliotheksknoten geben kann
+                if ((nodes.containsKey(e.from()) || libraryNode(e.from(), nodes))
+                        && (nodes.containsKey(e.to()) || libraryNode(e.to(), nodes))) {
+                    edge(edges, e.from(), e.to(), e.rel(), e.conf(), e.score(), null);
+                    todo.add(e.from());
+                    todo.add(e.to());
+                }
+            }
+        }
+    }
+
+    /** Entfernt Bibliotheksknoten außerhalb der Muster (ohne Muster: das JDK) samt ihren Kanten. */
+    private void pruneLibraries(Map<String, Node> nodes, Map<String, EdgeAcc> edges) {
+        for (String id : libraryIds) {
+            if (!libraryGraph.keep(CodeGraph.ownerOf(id))) {
+                nodes.remove(id);
+            }
+        }
+        edges.values().removeIf(e -> !nodes.containsKey(e.from) || !nodes.containsKey(e.to));
     }
 
     /** Höchstens so viele Implementierungen je aufgerufener Methode bekommen abgeleitete Aufrufkanten. */

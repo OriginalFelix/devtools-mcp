@@ -44,6 +44,7 @@ final class GraphService {
     private final boolean includeTests;
     private final int maxFiles;
     private final ModuleConfig config;
+    private final List<Path> libraryPaths;
     private final Supplier<GraphProvider> database;
     private final GraphProjects identities;
     private GraphProvider storage;
@@ -70,6 +71,8 @@ final class GraphService {
         this.excludes = config.getList(GraphModule.EXCLUDES);
         this.includeTests = config.getBoolean(GraphModule.INCLUDE_TESTS);
         this.maxFiles = Math.max(1, config.getInt(GraphModule.MAX_FILES, 30000));
+        this.libraryPaths = config.getList(GraphModule.LIBRARY_PATHS).stream().filter(s -> !s.isBlank())
+                .map(s -> Path.of(s.strip()).toAbsolutePath().normalize()).toList();
     }
 
     /** Ein Projekt ist ein Verzeichnis mit Build-Datei, Git-Repository oder {@code src}-Ordner. */
@@ -133,6 +136,10 @@ final class GraphService {
      * @param branch gewünschter Branch; leer = ausgecheckter Branch (ohne Git: kein Branch)
      */
     Key key(String project, String branch) {
+        if (DynamicGraphs.isId(project)) {
+            DynamicGraphs.Entry e = DynamicGraphs.get(project);
+            return new Key(e.id(), e.root() == null ? "" : e.root(), null);
+        }
         Path root = resolve(project);
         if (branch != null && !branch.isBlank()) {
             return key(root, branch.strip());
@@ -182,6 +189,8 @@ final class GraphService {
      */
     static final class Session {
         final GraphBuilder.ParseCache parse = new GraphBuilder.ParseCache();
+        /** Prüfsummen je Datei mit Größe und Änderungszeit – unveränderte Dateien werden nicht neu gelesen. */
+        final Map<String, GraphBuilder.Stamp> stamps = new ConcurrentHashMap<>();
         Key key;
         String storage;
         String generation;
@@ -262,6 +271,10 @@ final class GraphService {
         try {
             long start = System.nanoTime();
             GraphBuilder builder = new GraphBuilder(root, excludes, includeTests, maxFiles);
+            Session session = session(root);
+            if (force) {
+                session.stamps.clear();
+            }
             progress.update("Suche Dateien …", -1);
             List<Path> paths = builder.scan();
             List<GraphBuilder.Source> sources = new ArrayList<>(paths.size());
@@ -269,10 +282,15 @@ final class GraphService {
                 if (Thread.currentThread().isInterrupted()) {
                     throw new IllegalStateException("Graph-Aufbau abgebrochen", new InterruptedException());
                 }
-                sources.add(builder.read(paths.get(i)));
+                sources.add(builder.read(paths.get(i), session.stamps));
                 if ((i + 1) % Math.max(1, paths.size() / 50) == 0 || i + 1 == paths.size()) {
                     progress.update("Prüfsummen " + (i + 1) + "/" + paths.size(), 0.05 * (i + 1) / paths.size());
                 }
+            }
+            if (session.stamps.size() > sources.size()) {
+                Set<String> present = new HashSet<>();
+                sources.forEach(s -> present.add(s.path()));
+                session.stamps.keySet().retainAll(present); // gelöschte Dateien vergessen
             }
             GraphProvider.State existing = force ? null : safeState(store, key);
             int changed = 0;
@@ -311,7 +329,6 @@ final class GraphService {
             }
             // nur lesend freigegeben: vorhandenen Graphen nutzen, nicht neu bauen (Worktree: Freigabe des Projekts)
             Workspaces.requireWritable(GitWorktrees.main(worktrees(), root));
-            Session session = session(root);
             if (force) {
                 session.last = null;
                 session.parse.clear(); // komplett neu lesen, den Cache dabei neu füllen
@@ -506,6 +523,9 @@ final class GraphService {
 
     /** Wie {@link #graph(String, String)}, meldet aber, ob der Graph dafür gebaut wurde. */
     Opened open(String project, String branch) {
+        if (DynamicGraphs.isId(project)) {
+            return new Opened(DynamicGraphs.get(project).reader(), null);
+        }
         Key key = key(project, branch);
         GraphReader reader = storage().reader(key);
         if (reader != null) {
@@ -528,5 +548,107 @@ final class GraphService {
 
     GraphReader graph(String project) {
         return graph(project, null);
+    }
+
+    /** Ergebnis von {@link #dynamic}: der neue Graph, Dauer und Hinweise (z.B. gekappte Muster). */
+    record Dynamic(DynamicGraphs.Entry entry, Duration duration, List<String> notes) {
+    }
+
+    /** Build-Dateien, deren Versionsangaben bei mehreren Versionen einer Bibliothek im Cache den Ausschlag geben. */
+    private static final Set<String> BUILD_FILES = Set.of("pom.xml", "build.gradle", "build.gradle.kts",
+            "libs.versions.toml", "gradle.properties", "settings.gradle", "settings.gradle.kts");
+    private static final java.util.regex.Pattern VERSION = java.util.regex.Pattern.compile(
+            "\\b\\d+\\.\\d+(?:\\.\\d+)*(?:[-.][A-Za-z0-9]+)*\\b");
+
+    /**
+     * Dynamischer Graph – nur im Speicher, verfällt nach {@code ttl} ohne Nutzung ({@link DynamicGraphs}): das Projekt
+     * (Arbeitsverzeichnis) neu aufgelöst mit Klassenpfad aus JDK und Bibliotheks-JARs (Aufrufe in Bibliotheken,
+     * Überschreibungen von Bibliotheksmethoden, Aufrufe über Bibliotheks-Interfaces bis in die eigenen
+     * Implementierungen) und/oder die Klassen der Bibliotheksmuster mit exakten Kanten aus dem Bytecode.
+     *
+     * @param libraries Muster (Paket, Klasse, {@code *}, JAR-Pfad); leer = alle vom Projekt verwendeten außer JDK
+     * @param jars      zusätzliche JARs oder Ordner mit JARs für den Klassenpfad
+     */
+    Dynamic dynamic(String project, List<String> libraries, List<String> jars, Duration ttl,
+                    ModuleAction.Progress progress) {
+        long start = System.nanoTime();
+        List<String> patterns = libraries == null ? List.of() : libraries.stream()
+                .filter(l -> l != null && !l.isBlank()).map(String::strip).toList();
+        boolean withProject = project != null && !project.isBlank();
+        if (!withProject && patterns.isEmpty()) {
+            throw new IllegalArgumentException("project und/oder libraries angeben – z.B. libraries="
+                    + "['org.springframework.web.client.*'] oder project='shop' (alle verwendeten Bibliotheken).");
+        }
+        List<Path> pinned = new ArrayList<>();
+        for (String j : jars == null ? List.<String>of() : jars) {
+            if (j == null || j.isBlank()) {
+                continue;
+            }
+            Path p = Path.of(j.strip()).toAbsolutePath().normalize();
+            if (Files.isDirectory(p)) {
+                try (var files = Files.walk(p, 6)) {
+                    files.filter(f -> f.toString().endsWith(".jar")).forEach(pinned::add);
+                } catch (java.io.IOException e) {
+                    throw new java.io.UncheckedIOException("Ordner nicht lesbar: " + p, e);
+                }
+            } else if (Files.isRegularFile(p)) {
+                pinned.add(p);
+            } else {
+                throw new IllegalArgumentException("JAR bzw. Ordner nicht gefunden: " + p);
+            }
+        }
+        for (Path jar : LibraryGraph.jarsOf(patterns)) {
+            if (!Files.isRegularFile(jar)) {
+                throw new IllegalArgumentException("JAR nicht gefunden: " + jar);
+            }
+            pinned.add(jar);
+        }
+        Path root = withProject ? resolve(project) : pinned.isEmpty() ? Path.of("").toAbsolutePath()
+                : pinned.getFirst().getParent();
+        GraphBuilder builder = new GraphBuilder(root, excludes, includeTests, maxFiles);
+        List<GraphBuilder.Source> sources = new ArrayList<>();
+        Set<String> versions = new HashSet<>();
+        Key key = null;
+        GitState git = null;
+        if (withProject) {
+            progress.update("Suche Dateien …", -1);
+            List<Path> paths = builder.scan();
+            for (int i = 0; i < paths.size(); i++) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new IllegalStateException("Aufbau abgebrochen", new InterruptedException());
+                }
+                Path rel = paths.get(i);
+                sources.add(builder.read(rel, session(root).stamps));
+                String name = rel.getFileName().toString();
+                if (name.endsWith(".jar")) {
+                    pinned.add(root.resolve(rel)); // JARs im Projekt (lib/, WEB-INF/lib …) zuerst
+                } else if (BUILD_FILES.contains(name)) {
+                    try {
+                        java.util.regex.Matcher m = VERSION.matcher(Files.readString(root.resolve(rel)));
+                        while (m.find()) {
+                            versions.add(m.group());
+                        }
+                    } catch (java.io.IOException | java.io.UncheckedIOException e) {
+                        // Build-Datei nicht lesbar: dann eben die höchste Version
+                    }
+                }
+            }
+            git = GitState.of(root);
+            key = key(root, git == null ? null : git.branch());
+        }
+        String name = key != null ? key.project() : "bibliotheken";
+        try (Libraries libs = new Libraries(pinned, libraryPaths, versions, true)) {
+            builder.libraries(libs, patterns);
+            GraphFile data = builder.build(sources, name, progress, withProject ? session(root).parse : null);
+            if (git != null) {
+                data = data.withBranch(git.branch(), git.commit());
+            }
+            String what = (withProject ? "Projekt " + name + " (Branch " + key.branchLabel() + ")" : "")
+                    + (withProject ? " + " : "") + (patterns.isEmpty() ? "verwendete Bibliotheken (ohne JDK)"
+                    : String.join(", ", patterns));
+            DynamicGraphs.Entry e = DynamicGraphs.put(data, name, withProject ? root.toString() : null, what, ttl);
+            progress.update("Fertig", 1);
+            return new Dynamic(e, Duration.ofNanos(System.nanoTime() - start), builder.libraryNotes());
+        }
     }
 }
