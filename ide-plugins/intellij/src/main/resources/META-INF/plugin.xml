@@ -1,0 +1,38 @@
+<idea-plugin>
+    <id>systems.grebe.devtools-mcp</id>
+    <name>DevTools MCP</name>
+    <vendor>grebe.systems</vendor>
+    <description><![CDATA[
+    Verbindet die IDE mit der DevTools-MCP-App und mit MCP-Clients wie Claude Code:
+    <ul>
+      <li>Die KI sieht, welche Datei geöffnet ist und was markiert ist (<code>ide_editor</code>).</li>
+      <li>Die KI hat einen eigenen, beschrifteten Cursor im Editor – wie bei Code With Me – und die IDE folgt ihm
+      und ihren Änderungen live (<code>ide_cursor</code>; abschaltbar unter Tools → Claude → Claude folgen).</li>
+      <li>Eigener MCP-Endpunkt (Streamable HTTP) auf 127.0.0.1 – Tools → Claude → MCP-Verbindung kopieren.</li>
+    </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="DevTools MCP" displayType="BALLOON"/>
+        <postStartupActivity implementation="systems.grebe.devtools.mcp.intellij.LinkStartup"/>
+    </extensions>
+
+    <applicationListeners>
+        <listener class="systems.grebe.devtools.mcp.intellij.ReloadFollower"
+                  topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
+    </applicationListeners>
+
+    <actions>
+        <group id="DevToolsMcp.Group" text="Claude" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <action id="DevToolsMcp.Follow" class="systems.grebe.devtools.mcp.intellij.FollowAction"
+                    text="Claude folgen" description="Dateien öffnen und hinscrollen, wenn Claude seinen Cursor setzt oder etwas ändert"/>
+            <action id="DevToolsMcp.Clear" class="systems.grebe.devtools.mcp.intellij.ClearAction"
+                    text="Claude-Cursor ausblenden"/>
+            <action id="DevToolsMcp.CopyMcp" class="systems.grebe.devtools.mcp.intellij.CopyMcpAction"
+                    text="MCP-Verbindung kopieren" description="Befehl für claude mcp add in die Zwischenablage"/>
+        </group>
+    </actions>
+</idea-plugin>

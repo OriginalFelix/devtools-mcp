@@ -11,6 +11,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import systems.grebe.devtools.mcp.config.SettingsStore;
 import systems.grebe.devtools.mcp.core.ConfigField;
 import systems.grebe.devtools.mcp.core.ConfigGroup;
 import systems.grebe.devtools.mcp.core.ConnectionTestResult;
@@ -38,17 +39,19 @@ public class IdeModule implements ToolModule {
 
     private final IdeProviders providers;
     private final Supplier<ProjectProvider> projects;
+    private final IdeLink link;
     private volatile Map<String, String> installed;
 
     @Autowired
     public IdeModule(IdeProviders providers, ObjectProvider<ProjectProvider> projects) {
-        this(providers, (Supplier<ProjectProvider>) projects::getObject);
+        this(providers, projects::getObject, new IdeLink(SettingsStore.defaultHome().resolve("ide")));
     }
 
-    /** Für Tests: Projekte direkt. */
-    IdeModule(IdeProviders providers, Supplier<ProjectProvider> projects) {
+    /** Für Tests: Projekte und Lock-Verzeichnis der IDE-Plugins direkt. */
+    IdeModule(IdeProviders providers, Supplier<ProjectProvider> projects, IdeLink link) {
         this.providers = providers;
         this.projects = projects;
+        this.link = link;
     }
 
     @Override
@@ -65,7 +68,8 @@ public class IdeModule implements ToolModule {
     public String description() {
         return "IntelliJ IDEA (und weitere JetBrains-IDEs), VS Code, Eclipse, NetBeans, Visual Studio, Xcode und weitere "
                 + "IDEs (erweiterbar per ServiceLoader): Projekte in der IDE des Nutzers öffnen und schließen, ihm "
-                + "Code-Stellen zeigen, Dateien vergleichen – nur in freigegebenen Projekten.";
+                + "Code-Stellen zeigen, Dateien vergleichen – nur in freigegebenen Projekten. Mit dem DevTools-Plugin in "
+                + "der IDE (IntelliJ-Plattform) auch: geöffnete Datei und Markierung lesen, eigener Cursor der KI.";
     }
 
     @Override
@@ -77,14 +81,20 @@ public class IdeModule implements ToolModule {
                 Ursache eines Fehlers, eine geänderte Stelle, eine Fundstelle. Zum eigenen Lesen von Code nicht nötig.
                 - `ide_open_project`/`ide_close_project`: Projekt öffnen bzw. schließen, wenn der Nutzer es möchte; \
                 `ide_diff` zeigt zwei Dateien im Vergleich.
+                - `ide_editor`: was der Nutzer gerade offen bzw. markiert hat – aufrufen, wenn er sich auf „das \
+                hier“, „die Markierung“ oder „diese Datei/Methode“ bezieht, ohne die Stelle zu nennen.
+                - `ide_cursor` (Datei, Zeile, optional Bereich): dein eigener, beschrifteter Cursor in seiner IDE. \
+                Setzen, bevor du eine Datei bearbeitest oder wenn du eine Stelle erklärst – der Nutzer sieht, wo du \
+                bist, und verfolgt deine Änderungen live mit. Am Ende der Aufgabe ohne `file` aufrufen (entfernt ihn). \
+                Beide brauchen das DevTools-Plugin in der IDE (IntelliJ-Plattform); fehlt es, sagt das Tool es.
                 - Welche IDEs aktiv sind und was sie können, sagt `ide_providers`. Kann eine IDE etwas nicht von außen \
                 (z.B. Projekte schließen in IntelliJ oder VS Code), den Nutzer bitten, es selbst zu tun.""";
     }
 
     @Override
     public String briefInstructions() {
-        return "Dem Nutzer Code-Stellen in seiner IDE zeigen (ide_show) und Projekte öffnen/schließen über ide_* statt "
-                + "`idea`/`code`/`open -a` in der Shell.";
+        return "Dem Nutzer Code-Stellen in seiner IDE zeigen (ide_show, eigener Cursor: ide_cursor), seine Markierung "
+                + "lesen (ide_editor) und Projekte öffnen/schließen über ide_* statt `idea`/`code`/`open -a` in der Shell.";
     }
 
     @Override
@@ -120,7 +130,7 @@ public class IdeModule implements ToolModule {
 
     @Override
     public List<ToolCallback> createTools(ModuleConfig config) {
-        return ToolBeans.callbacks(new IdeTools(new IdeEnvironment(providers, projects.get(), config)));
+        return ToolBeans.callbacks(new IdeTools(new IdeEnvironment(providers, projects.get(), config), link));
     }
 
     @Override

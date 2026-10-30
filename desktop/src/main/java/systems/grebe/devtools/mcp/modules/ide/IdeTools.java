@@ -2,7 +2,10 @@ package systems.grebe.devtools.mcp.modules.ide;
 
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.ai.tool.annotation.Tool;
@@ -12,10 +15,12 @@ import systems.grebe.devtools.mcp.core.ToolHints;
 import systems.grebe.devtools.mcp.modules.ide.spi.Ide;
 import systems.grebe.devtools.mcp.modules.ide.spi.Ide.Capability;
 import systems.grebe.devtools.mcp.modules.ide.spi.IdeProvider;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Tools des Moduls IDE. Sie wirken auf dem Bildschirm des Nutzers (Fenster öffnen, Cursor setzen) und verändern keine
- * Dateien.
+ * Dateien. {@code ide_editor} und {@code ide_cursor} sprechen das DevTools-Plugin in der laufenden IDE an
+ * ({@link IdeLink}), die übrigen die Befehlszeilen-Starter der Provider.
  */
 @ToolHints(readOnly = false, destructive = false, idempotent = true, openWorld = false)
 public class IdeTools {
@@ -25,10 +30,16 @@ public class IdeTools {
     static final String PROJECT = "Projekt: Name (wie in projects_list bzw. git_list_repositories) oder absoluter Pfad "
             + "eines freigegebenen Projekts bzw. eines Verzeichnisses darin. Leer = das einzige Projekt.";
 
-    private final IdeEnvironment env;
+    static final String NO_PLUGIN = "Keine IDE mit DevTools-Plugin läuft. Den Nutzer bitten, das Plugin "
+            + "„DevTools MCP“ zu installieren (ide-plugins/intellij, für IntelliJ IDEA und die anderen JetBrains-IDEs) "
+            + "und die IDE zu starten.";
 
-    IdeTools(IdeEnvironment env) {
+    private final IdeEnvironment env;
+    private final IdeLink link;
+
+    IdeTools(IdeEnvironment env, IdeLink link) {
         this.env = env;
+        this.link = link;
     }
 
     @Tool(name = "providers", description = "Listet die aktiven IDEs mit gefundener Installation und dem, was jede kann "
@@ -110,6 +121,129 @@ public class IdeTools {
         IdeEnvironment.Entry e = env.select(ide, l.project());
         require(e, Capability.DIFF);
         return e.name() + ": " + e.ide().diff(l.file(), r.file());
+    }
+
+    @Tool(name = "editor", description = "Was der Nutzer gerade in seiner IDE vor sich hat: aktive Datei mit "
+            + "Cursor-Position, markierter Text und weitere offene Dateien – je geöffnetem Projekt. Aufrufen, wenn er "
+            + "sich auf „das hier“, „die Markierung“, „diese Datei/Methode/Zeile“ bezieht, ohne die Stelle zu nennen. "
+            + "Braucht das DevTools-Plugin in der IDE (IntelliJ-Plattform)." + ShellHints.IDE)
+    @ToolHints(readOnly = true, openWorld = false)
+    public String editor() {
+        StringBuilder sb = new StringBuilder();
+        int hidden = 0;
+        for (IdeLink.Instance i : linked()) {
+            for (JsonNode p : link.editor(i).path("projects")) {
+                Path dir = Path.of(p.path("path").asString("/"));
+                if (!env.released(dir)) {
+                    hidden++;
+                    continue;
+                }
+                sb.append(i.ide()).append(" · Projekt ").append(p.path("name").asString()).append(" (").append(dir)
+                        .append(')').append(p.path("active").asBoolean() ? " – zuletzt aktiv" : "").append('\n');
+                String file = p.path("file").asString("");
+                if (file.isEmpty()) {
+                    sb.append("Keine Datei im Editor.\n");
+                } else if (!env.released(Path.of(file))) {
+                    sb.append("Datei außerhalb der Freigaben: ").append(Path.of(file).getFileName()).append('\n');
+                } else {
+                    sb.append("Datei: ").append(file).append(" – Cursor Zeile ").append(p.path("line").asInt())
+                            .append(", Spalte ").append(p.path("column").asInt()).append('\n');
+                    JsonNode sel = p.path("selection");
+                    if (sel.isObject()) {
+                        sb.append("Markiert: Zeile ").append(sel.path("startLine").asInt()).append(", Spalte ")
+                                .append(sel.path("startColumn").asInt()).append(" bis Zeile ")
+                                .append(sel.path("endLine").asInt()).append(", Spalte ")
+                                .append(sel.path("endColumn").asInt()).append(":\n```\n")
+                                .append(sel.path("text").asString().stripTrailing()).append("\n```\n");
+                    }
+                }
+                List<String> open = p.path("openFiles").valueStream().map(JsonNode::asString)
+                        .filter(f -> !f.equals(file)).map(f -> Path.of(f).startsWith(dir)
+                                ? dir.relativize(Path.of(f)).toString() : Path.of(f).getFileName().toString())
+                        .toList();
+                if (!open.isEmpty()) {
+                    sb.append("Weitere offene Dateien: ").append(String.join(", ", open)).append('\n');
+                }
+                sb.append('\n');
+            }
+        }
+        if (hidden > 0) {
+            sb.append(hidden).append(hidden == 1 ? " Projekt" : " Projekte").append(" außerhalb der Freigaben ausgeblendet.");
+        }
+        String out = sb.toString().strip();
+        return out.isEmpty() ? "In der IDE ist kein Projekt geöffnet." : out;
+    }
+
+    @Tool(name = "cursor", description = "Zeigt dem Nutzer in seiner IDE, wo du gerade bist: ein eigener, beschrifteter "
+            + "Cursor (wie bei Code With Me) an Zeile/Spalte, mit endLine/endColumn auch ein markierter Bereich. Die "
+            + "IDE folgt ihm (öffnet die Datei, scrollt hin), solange der Nutzer „Claude folgen“ eingeschaltet hat, und "
+            + "zeigt danach deine Änderungen an der Datei live mit. Setzen, bevor du eine Datei bearbeitest oder wenn "
+            + "du eine Stelle erklärst; ohne file entfernen. Braucht das DevTools-Plugin in der IDE." + ShellHints.IDE)
+    public String cursor(
+            @ToolParam(required = false, description = "Datei: absoluter Pfad oder relativ zum Projekt. Leer = Cursor "
+                    + "entfernen") String file,
+            @ToolParam(required = false, description = "Zeile (ab 1), Standard 1") Integer line,
+            @ToolParam(required = false, description = "Spalte (ab 1), Standard 1") Integer column,
+            @ToolParam(required = false, description = "Ende eines markierten Bereichs: Zeile (ab 1)") Integer endLine,
+            @ToolParam(required = false, description = "Ende des Bereichs: Spalte (ab 1), Standard Zeilenende")
+            Integer endColumn,
+            @ToolParam(required = false, description = "Beschriftung des Cursors, Standard „Claude“") String label,
+            @ToolParam(required = false, description = PROJECT + " Für relative Pfade.") String project) {
+        List<IdeLink.Instance> all = linked();
+        if (IdeEnvironment.blank(file)) {
+            for (IdeLink.Instance i : all) {
+                try {
+                    link.cursor(i, Map.of("clear", "true"));
+                } catch (RuntimeException ignored) {
+                    // IDE gerade nicht erreichbar – ihr Cursor verschwindet mit ihr
+                }
+            }
+            return "Cursor entfernt.";
+        }
+        Ide.Location l = env.location(file, line == null ? 1 : line, column == null ? 1 : column, project);
+        if (endLine != null && endLine < l.line() || endColumn != null && endColumn < 1) {
+            throw new IllegalArgumentException("'endLine' liegt vor 'line' bzw. 'endColumn' zählt ab 1.");
+        }
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("file", l.file().toString());
+        params.put("line", String.valueOf(l.line()));
+        params.put("column", String.valueOf(Math.max(1, l.column())));
+        if (endLine != null) {
+            params.put("endLine", String.valueOf(endLine));
+            params.put("endColumn", String.valueOf(endColumn == null ? Integer.MAX_VALUE : endColumn));
+        }
+        params.put("label", IdeEnvironment.blank(label) ? "Claude" : label.strip());
+        IdeLink.Instance target = owner(all, l.file());
+        return target.ide() + ": " + link.cursor(target, params);
+    }
+
+    private List<IdeLink.Instance> linked() {
+        List<IdeLink.Instance> all = link.instances();
+        if (all.isEmpty()) {
+            throw new IllegalStateException(NO_PLUGIN);
+        }
+        return all;
+    }
+
+    /** Die IDE, die das Projekt der Datei offen hat (das speziellste), sonst die erste. */
+    private IdeLink.Instance owner(List<IdeLink.Instance> all, Path file) {
+        if (all.size() == 1) {
+            return all.getFirst();
+        }
+        record Hit(IdeLink.Instance instance, int depth) {
+        }
+        return all.stream().<Hit>mapMulti((i, out) -> {
+                    try {
+                        for (JsonNode p : link.editor(i).path("projects")) {
+                            Path dir = Path.of(p.path("path").asString("/"));
+                            if (file.startsWith(dir)) {
+                                out.accept(new Hit(i, dir.getNameCount()));
+                            }
+                        }
+                    } catch (RuntimeException ignored) {
+                        // nicht erreichbar
+                    }
+                }).max(Comparator.comparingInt(Hit::depth)).map(Hit::instance).orElse(all.getFirst());
     }
 
     private static void require(IdeEnvironment.Entry e, Capability c) {

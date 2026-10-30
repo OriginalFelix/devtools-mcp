@@ -27,7 +27,7 @@ nutzbar); devtools-mcp ergänzt Einstellungen, Berechtigungen und Oberfläche. K
 | **CI/CD** (Jenkins, GitLab CI/CD, GitHub Actions; erweiterbar per ServiceLoader) | `ci_providers`, `ci_list` (Builds/Pipelines/Läufe nach Status, Branch, Workflow), `ci_get` (Status, Branch, Commit, Auslöser, Dauer, Parameter, Jobs/Stages mit fehlgeschlagenen Schritten), `ci_log` (Log eines Jobs, ohne Angabe der erste fehlgeschlagene; letzte Zeilen oder `grep`), `ci_workflows` (startbare Jenkins-Jobs, GitHub-Workflows) · je Schalter (Standard aus): `ci_start` (Branch, Parameter/Variablen/Inputs), `ci_cancel`, `ci_retry` (nur fehlgeschlagene Jobs oder ganzer Lauf), einschränkbar auf Projekte; System und Projekt aus dem Remote des lokalen Repositories (Jenkins über eine Job-Zuordnung) (Modul Standard: aus) |
 | **SSH** (JSch) | `ssh_connections`, `ssh_disconnect`, `ssh_list_dir`, `ssh_read_file` · je Schalter: `ssh_exec` und interaktive Shells `ssh_shell_open`/`exec`/`read`/`send`/`close` (Standard an), `ssh_write_file`, `ssh_upload`/`ssh_download`, `ssh_sudo` (Standard aus) – für in der App hinterlegte Verbindungen (Name, Host, Port, Benutzer, Passwort oder Schlüsseldatei; Modul Standard: aus) |
 | **Browser** (Selenium WebDriver 4.51: Chrome, Firefox, Edge, Safari, Brave/Vivaldi/Opera/LibreWolf …, Selenium Grid) | lesend: `browser_sessions`, `browser_screenshot` (als Bild: Ausschnitt, Element oder ganze Seite), `browser_read_page` (bedienbare Elemente bzw. Seitenstruktur mit Referenzen `[e12]`), `browser_text`, `browser_find`, `browser_console`, `browser_network` (über WebDriver BiDi) · steuernd: `browser_open` (optional headless, Grid oder an laufenden Chrome/Edge anhängen), `browser_close`, `browser_navigate`, `browser_tabs`, `browser_resize`, `browser_wait`, `browser_dialog` · Schalter (Standard an): `browser_click`, `browser_type`, `browser_key`, `browser_select`, `browser_hover`, `browser_scroll`, `browser_drag` · Schalter (Standard aus): `browser_execute_js`, `browser_upload` – Treiber über Selenium Manager, erlaubte/gesperrte Hosts (siehe [Browser](#browser-selenium)) (Modul Standard: aus) |
-| **IDE** (IntelliJ IDEA, PyCharm, WebStorm, Rider, CLion, GoLand, Android Studio, VS Code, VSCodium, Cursor, Eclipse, NetBeans, Visual Studio, Xcode; erweiterbar per ServiceLoader) | `ide_providers` (aktive IDEs, gefundene Installation, was jede kann), `ide_open_project`, `ide_close_project`, `ide_show` (dem Nutzer eine Code-Stelle zeigen: Datei, Zeile, Spalte), `ide_diff` (zwei Dateien im Vergleich) – nur in freigegebenen Projekten; IDE je Aufruf, als Standard oder automatisch nach Spuren im Projekt (`.idea`, `.vscode`, `*.sln` …) (siehe [IDE](#ide-serviceloader)) (Modul Standard: aus) |
+| **IDE** (IntelliJ IDEA, PyCharm, WebStorm, Rider, CLion, GoLand, Android Studio, VS Code, VSCodium, Cursor, Eclipse, NetBeans, Visual Studio, Xcode; erweiterbar per ServiceLoader) | `ide_providers` (aktive IDEs, gefundene Installation, was jede kann), `ide_open_project`, `ide_close_project`, `ide_show` (dem Nutzer eine Code-Stelle zeigen: Datei, Zeile, Spalte), `ide_diff` (zwei Dateien im Vergleich), mit dem [IDE-Plugin](#ide-plugin-editor-und-cursor-der-ki) auch `ide_editor` (geöffnete Datei, Cursor, Markierung) und `ide_cursor` (eigener Cursor der KI, Änderungen live) – nur in freigegebenen Projekten; IDE je Aufruf, als Standard oder automatisch nach Spuren im Projekt (`.idea`, `.vscode`, `*.sln` …) (siehe [IDE](#ide-serviceloader)) (Modul Standard: aus) |
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
@@ -567,6 +567,39 @@ dann und das LLM bittet den Nutzer darum. Eine weitere IDE (z.B. Zed, Sublime Te
 `IdeProvider`-Klasse und eine Zeile in
 `src/main/resources/META-INF/services/systems.grebe.devtools.mcp.modules.ide.spi.IdeProvider` – auch aus einem Plugin
 (`api-version: 4`).
+
+### IDE-Plugin: Editor und Cursor der KI
+
+Die Starter oben können eine IDE nur von außen anstoßen. Was der Nutzer gerade offen und markiert hat und ein eigener
+Cursor der KI brauchen das Plugin **DevTools MCP** in der IDE (`ide-plugins/intellij`, IntelliJ IDEA und die anderen
+JetBrains-IDEs ab 2025.1):
+
+- `ide_editor`: je geöffnetem Projekt aktive Datei, Cursor-Position, markierter Text und weitere offene Dateien –
+  Projekte und Dateien außerhalb der Freigaben blendet die App aus. Das LLM ruft es auf, wenn der Nutzer sich auf „das
+  hier“ oder „die Markierung“ bezieht.
+- `ide_cursor` (Datei, Zeile, Spalte, optional Bereich bis `endLine`/`endColumn`, Beschriftung): ein beschrifteter
+  Cursor der KI wie bei Code With Me – farbiger Strich, Namensschild hinter dem Zeilenende, Bereich hinterlegt, Marke
+  in der Scrollleiste. Mit *Tools → Claude → Claude folgen* (Standard: an) öffnet die IDE die Datei ohne Fokuswechsel
+  und scrollt hin; der Cursor des Nutzers bleibt, wo er ist. Bis zehn Minuten nach dem letzten Befehl springt der
+  Cursor auch auf jede Änderung, die die KI von außen an einer geladenen Datei macht – so lässt sich live zusehen.
+  Ohne `file` bzw. mit *Claude-Cursor ausblenden* verschwindet er.
+
+Das Plugin lauscht nur auf `127.0.0.1` und verlangt ein Zugriffstoken (Anfragen mit `Origin`-Header, also aus dem
+Browser, lehnt es ab). Port und Token legt es in `~/.devtools-mcp/ide/<pid>.json` ab (nur für den Nutzer lesbar); dort
+findet die App jede laufende IDE. Zusätzlich ist es selbst ein MCP-Server (Streamable HTTP, `POST /mcp`, Tools `editor`
+und `cursor`, ohne die Freigaben der App) – *Tools → Claude → MCP-Verbindung kopieren* legt den Befehl
+`claude mcp add --transport http intellij http://127.0.0.1:<port>/mcp --header "Authorization: Bearer <token>"` in die
+Zwischenablage; Port und Token bleiben über Neustarts gleich.
+
+Bauen (eigener Gradle-Build, nicht Teil des Haupt-Builds), Ergebnis in `ide-plugins/intellij/build/distributions`,
+installieren über *Settings → Plugins → ⚙ → Install Plugin from Disk*:
+
+```bash
+./gradlew -p ide-plugins/intellij buildPlugin
+```
+
+Ohne Download gegen eine installierte IDE: `-PlocalIde="/Applications/IntelliJ IDEA.app"`; `runIde` startet eine
+Sandbox-IDE mit dem Plugin.
 
 ### Datenbanken (JDBC)
 
