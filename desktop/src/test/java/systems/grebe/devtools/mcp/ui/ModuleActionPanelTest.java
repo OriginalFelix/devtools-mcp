@@ -98,7 +98,8 @@ class ModuleActionPanelTest {
         onFx(() -> {
             ModuleDetailPane p = new ModuleDetailPane(registry, graph);
             Scene s = new Scene(p, 900, 900);
-            s.getStylesheets().add(getClass().getResource("/ui/app.css").toExternalForm());
+            Theme.install();
+            s.getStylesheets().addAll(Theme.stylesheets());
             Stage stage = new Stage();
             stage.setScene(s);
             stage.show();

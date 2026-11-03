@@ -41,6 +41,7 @@ public final class LoginWindowSnapshot {
         CountDownLatch done = new CountDownLatch(1);
         Platform.setImplicitExit(false); // Fenster werden zwischendurch geschlossen
         Platform.startup(() -> {
+            Theme.install();
             LoginWindow.show(backend, css, "", () -> { }, () -> { });
             new Thread(() -> {
                 try {
@@ -106,7 +107,8 @@ public final class LoginWindowSnapshot {
 
     private static Scene scene(javafx.scene.Parent root, double w, double h) {
         Scene scene = new Scene(root, w, h);
-        scene.getStylesheets().add(LoginWindowSnapshot.class.getResource("/ui/app.css").toExternalForm());
+        Theme.install();
+        scene.getStylesheets().addAll(Theme.stylesheets());
         return scene;
     }
 

@@ -1,0 +1,25 @@
+/* Dunkelmodus (nach app.css geladen): Skript-Editor wie das IntelliJ-Schema „Dark“ */
+.code-editor { -fx-background-color: #1e1f22; }
+.code-editor .text { -fx-fill: #bcbec4; }
+.code-editor .caret { -fx-stroke: #ced0d6; }
+.code-editor .selection { -fx-fill: #214283; }
+.code-editor .paragraph-box:has-caret { -fx-background-color: #26282e; }
+.code-editor .lineno { -fx-background-color: #1e1f22; -fx-text-fill: #4b5059; }
+.code-editor .lineno .text { -fx-fill: #4b5059; }
+.code-editor .lineno-error .text { -fx-fill: #f75464; }
+.code-editor .text.kw { -fx-fill: #cf8e6d; }
+.code-editor .text.str { -fx-fill: #6aab73; }
+.code-editor .text.esc, .code-editor .text.interp { -fx-fill: #cf8e6d; }
+.code-editor .text.num { -fx-fill: #2aacb8; }
+.code-editor .text.cmt, .code-editor .text.doc, .code-editor .text.directive { -fx-fill: #7a7e85; }
+.code-editor .text.ann { -fx-fill: #b3ae60; }
+.code-editor .text.const, .code-editor .text.field { -fx-fill: #c77dbb; }
+.code-editor .text.decl, .code-editor .text.dsl { -fx-fill: #56a8f5; }
+.code-editor .text.bracket { -rtfx-background-color: #43454a; }
+.code-editor .text.error { -rtfx-underline-color: #f75464; }
+.code-editor .text.g-kw, .code-editor .text.g-step { -fx-fill: #cf8e6d; }
+.code-editor .text.tag { -fx-fill: #b3ae60; }
+.code-editor .text.ph { -fx-fill: #c77dbb; }
+.code-editor .text.var { -fx-fill: #56a8f5; }
+.code-editor .text.pipe { -fx-fill: #7a7e85; }
+.code-editor .text.docstr { -fx-fill: #6aab73; }

@@ -1,105 +1,130 @@
-/* DevTools MCP – helles, ruhiges Theme auf Basis von Modena */
+/*
+ * DevTools MCP – App-Stile über AtlantaFX Primer (hell/dunkel, siehe Theme.java).
+ * Farben nur über die Tokens des Themes (-color-…), damit beide Modi passen; Ausnahme: Skript-Editor (app-dark.css).
+ */
 .root {
     -fx-font-family: "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
     -fx-font-size: 13px;
-    -accent: #2b6cb0;
-    -fx-accent: #2b6cb0;
-    -fx-focus-color: #2b6cb0;
-    -fx-faint-focus-color: #2b6cb022;
-    -fx-base: #f4f6f8;
-    -fx-background: #ffffff;
 }
 
+/* Kopfzeile */
 .header {
-    -fx-background-color: #ffffff;
-    -fx-border-color: transparent transparent #dde2e8 transparent;
+    -fx-background-color: -color-bg-default;
+    -fx-border-color: transparent transparent -color-border-default transparent;
 }
-.app-title { -fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #1a202c; }
-.endpoint { -fx-font-family: "Consolas", "Menlo", monospace; -fx-text-fill: #4a5568; }
-.status-dot { -fx-fill: #38a169; }
+.app-title { -fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: -color-fg-default; }
+.endpoint {
+    -fx-font-family: "Consolas", "Menlo", monospace;
+    -fx-font-size: 12px;
+    -fx-text-fill: -color-fg-muted;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 6;
+    -fx-padding: 3 8 3 8;
+}
+.status-dot { -fx-fill: -color-success-emphasis; }
 
 .badge {
-    -fx-background-color: #edf2f7;
+    -fx-background-color: -color-neutral-muted;
     -fx-background-radius: 10;
-    -fx-padding: 2 8 2 8;
-    -fx-text-fill: #4a5568;
+    -fx-padding: 2 9 2 9;
+    -fx-text-fill: -color-fg-muted;
     -fx-font-size: 11px;
 }
 
-.button.accent {
-    -fx-background-color: -accent;
-    -fx-text-fill: white;
-    -fx-background-radius: 4;
-}
-.button.accent:hover { -fx-background-color: #2c5282; }
-.button.accent:disabled { -fx-opacity: 0.45; }
+.button { -fx-cursor: hand; }
+.button:disabled { -fx-cursor: default; }
 
-.tab-pane > .tab-header-area > .headers-region > .tab { -fx-padding: 4 14 4 14; }
+/* Hauptreiter */
+.main > .tab-pane > .tab-header-area {
+    -fx-padding: 0 12 0 12;
+    -fx-background-color: -color-bg-default;
+}
+.tab-pane > .tab-header-area > .headers-region > .tab { -fx-padding: 6 14 6 14; -fx-cursor: hand; }
 
 /* Modulliste */
-.module-list { -fx-background-color: #f7f9fb; -fx-border-color: transparent #dde2e8 transparent transparent; }
-.module-list .list-cell { -fx-padding: 10 12 10 12; -fx-background-color: transparent; }
-.module-list .list-cell:selected { -fx-background-color: #e2ecf7; }
-.module-list .list-cell:hover { -fx-background-color: #edf2f7; }
-.module-list .list-cell:selected:hover { -fx-background-color: #e2ecf7; }
-.module-name { -fx-font-weight: bold; -fx-text-fill: #1a202c; }
-.module-sub { -fx-font-size: 11px; -fx-text-fill: #718096; }
-.module-dot.on { -fx-fill: #38a169; }
-.module-dot.off { -fx-fill: #cbd5e0; }
-.module-dot.error { -fx-fill: #e53e3e; }
-.module-dot.settings { -fx-fill: #805ad5; }
+.module-list {
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-insets: 0;
+    -fx-border-color: transparent -color-border-default transparent transparent;
+    -fx-padding: 6 0 6 0;
+}
+.module-list .list-cell {
+    -fx-padding: 9 12 9 12;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 0 3;
+    -fx-cursor: hand;
+}
+.module-list .list-cell:hover { -fx-background-color: -color-neutral-subtle; }
+.module-list .list-cell:selected, .module-list .list-cell:selected:hover {
+    -fx-background-color: -color-accent-subtle;
+    -fx-border-color: -color-accent-emphasis;
+}
+.module-list .list-cell:empty { -fx-cursor: default; }
+.module-name { -fx-font-weight: bold; -fx-text-fill: -color-fg-default; }
+.module-sub { -fx-font-size: 11px; -fx-text-fill: -color-fg-muted; }
+.module-dot.on { -fx-fill: -color-success-emphasis; }
+.module-dot.off { -fx-fill: -color-neutral-emphasis; }
+.module-dot.error { -fx-fill: -color-danger-emphasis; }
+.module-dot.settings { -fx-fill: -color-accent-emphasis; }
 
 /* Detailbereich */
-.detail-scroll, .detail-scroll > .viewport { -fx-background-color: white; }
-.detail-title { -fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #1a202c; }
-.detail-description { -fx-text-fill: #4a5568; }
-.section-title { -fx-font-weight: bold; -fx-text-fill: #2d3748; -fx-font-size: 13px; }
-.form-label { -fx-text-fill: #2d3748; }
-.form-help { -fx-font-size: 11px; -fx-text-fill: #718096; }
-.status-text { -fx-font-size: 12px; -fx-text-fill: #4a5568; }
-.status-text.ok { -fx-text-fill: #276749; }
-.status-text.error { -fx-text-fill: #c53030; }
+.detail-scroll, .detail-scroll > .viewport { -fx-background-color: -color-bg-default; }
+.detail { -fx-max-width: 960; }
+.detail-title { -fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: -color-fg-default; }
+.detail-description { -fx-text-fill: -color-fg-muted; }
+.section-title { -fx-font-weight: bold; -fx-text-fill: -color-fg-default; -fx-font-size: 14px; -fx-padding: 6 0 0 0; }
+.form-label { -fx-text-fill: -color-fg-default; }
+.form-help { -fx-font-size: 11px; -fx-text-fill: -color-fg-muted; }
+.status-text { -fx-font-size: 12px; -fx-text-fill: -color-fg-muted; }
+.status-text.ok { -fx-text-fill: -color-success-fg; }
+.status-text.error { -fx-text-fill: -color-danger-fg; }
+.dialog-error { -fx-text-fill: -color-danger-fg; -fx-padding: 8 12 0 12; }
 
+/* Ein/Aus-Schalter eines Moduls */
 .toggle-button.switch {
     -fx-background-radius: 14;
+    -fx-border-radius: 14;
     -fx-padding: 4 14 4 14;
-    -fx-background-color: #e2e8f0;
-    -fx-text-fill: #4a5568;
+    -fx-background-color: -color-neutral-muted;
+    -fx-text-fill: -color-fg-default;
+    -fx-cursor: hand;
 }
-.toggle-button.switch:selected { -fx-background-color: #38a169; -fx-text-fill: white; }
+.toggle-button.switch:hover { -fx-background-color: -color-neutral-emphasis; -fx-text-fill: -color-fg-emphasis; }
+.toggle-button.switch:selected { -fx-background-color: -color-success-emphasis; -fx-text-fill: -color-fg-emphasis; }
+.toggle-button.switch:selected:hover { -fx-opacity: 0.9; }
 
 /* Mehrfachauswahl (MultiSelectComboBox): Feld wie ein Textfeld, gewählte Einträge als Chips */
 .multi-select {
-    -fx-background-color: -fx-text-box-border, -fx-control-inner-background;
+    -fx-background-color: -color-border-default, -color-bg-default;
     -fx-background-insets: 0, 1;
-    -fx-background-radius: 3, 2;
+    -fx-background-radius: 6, 5;
     -fx-padding: 2 4 2 3;
-    -fx-min-height: 26;
+    -fx-min-height: 30;
     -fx-cursor: hand;
 }
 .multi-select:focused, .multi-select:showing {
-    -fx-background-color: -fx-focus-color, -fx-control-inner-background, -fx-faint-focus-color, -fx-control-inner-background;
-    -fx-background-insets: -0.2, 1, -1.4, 3;
-    -fx-background-radius: 3, 2, 4, 0;
+    -fx-background-color: -color-accent-emphasis, -color-bg-default;
+    -fx-background-insets: 0, 2;
+    -fx-background-radius: 6, 4;
 }
-.multi-select .label.prompt { -fx-text-fill: #a0aec0; -fx-padding: 0 0 0 4; }
+.multi-select .label.prompt { -fx-text-fill: -color-fg-subtle; -fx-padding: 0 0 0 4; }
 .multi-select > .arrow-button { -fx-padding: 0 4 0 8; }
 .multi-select > .arrow-button > .arrow {
-    -fx-background-color: -fx-mark-highlight-color, -fx-mark-color;
-    -fx-background-insets: 0 0 -1 0, 0;
+    -fx-background-color: -color-fg-muted;
     -fx-padding: 0.166667em 0.333333em;
     -fx-shape: "M 0 0 h 7 l -3.5 4 z";
 }
 .multi-select .chip {
-    -fx-background-color: #e2ecf7;
+    -fx-background-color: -color-accent-subtle;
     -fx-background-radius: 10;
     -fx-padding: 1 3 1 9;
 }
-.multi-select .chip > .label { -fx-text-fill: #2c5282; -fx-font-size: 12px; }
+.multi-select .chip > .label { -fx-text-fill: -color-accent-fg; -fx-font-size: 12px; }
 .multi-select .chip-remove { -fx-padding: 4; -fx-background-radius: 8; }
-.multi-select .chip-remove:hover { -fx-background-color: #c3d5ea; }
+.multi-select .chip-remove:hover { -fx-background-color: -color-accent-muted; }
 .multi-select .chip-remove-icon {
-    -fx-background-color: #2c5282;
+    -fx-background-color: -color-accent-fg;
     -fx-shape: "M1.4 0 L4 2.6 L6.6 0 L8 1.4 L5.4 4 L8 6.6 L6.6 8 L4 5.4 L1.4 8 L0 6.6 L2.6 4 L0 1.4 Z";
     -fx-min-width: 7; -fx-pref-width: 7; -fx-max-width: 7;
     -fx-min-height: 7; -fx-pref-height: 7; -fx-max-height: 7;
@@ -108,49 +133,61 @@
 
 /* Provider-Gruppen: Kasten mit Umschalter zwischen den aktiven Gruppen */
 .group-panel {
-    -fx-background-color: #f7f9fb;
-    -fx-border-color: #e2e8f0;
-    -fx-background-radius: 6;
-    -fx-border-radius: 6;
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
     -fx-padding: 10 12 12 0;
 }
 .segmented > .toggle-button {
-    -fx-background-color: #cbd5e0, #ffffff;
+    -fx-background-color: -color-border-default, -color-bg-default;
     -fx-background-insets: 0, 1 1 1 0;
     -fx-background-radius: 0;
-    -fx-text-fill: #2d3748;
+    -fx-text-fill: -color-fg-default;
     -fx-padding: 4 14 4 14;
     -fx-cursor: hand;
 }
-.segmented > .toggle-button.first { -fx-background-insets: 0, 1; -fx-background-radius: 4 0 0 4, 3 0 0 3; }
-.segmented > .toggle-button.last { -fx-background-radius: 0 4 4 0, 0 3 3 0; }
-.segmented > .toggle-button.first.last { -fx-background-radius: 4, 3; }
-.segmented > .toggle-button:hover { -fx-background-color: #cbd5e0, #edf2f7; }
-.segmented > .toggle-button:selected { -fx-background-color: -accent, -accent; -fx-text-fill: white; -fx-cursor: default; }
-.segmented > .toggle-button:focused { -fx-background-color: -fx-focus-color, #ffffff; }
-.segmented > .toggle-button:selected:focused { -fx-background-color: -fx-focus-color, -accent; }
+.segmented > .toggle-button.first { -fx-background-insets: 0, 1; -fx-background-radius: 6 0 0 6, 5 0 0 5; }
+.segmented > .toggle-button.last { -fx-background-radius: 0 6 6 0, 0 5 5 0; }
+.segmented > .toggle-button.first.last { -fx-background-radius: 6, 5; }
+.segmented > .toggle-button:hover { -fx-background-color: -color-border-default, -color-neutral-subtle; }
+.segmented > .toggle-button:selected {
+    -fx-background-color: -color-accent-emphasis, -color-accent-emphasis;
+    -fx-text-fill: -color-fg-emphasis;
+    -fx-cursor: default;
+}
+.segmented > .toggle-button:focused { -fx-background-color: -color-accent-emphasis, -color-bg-default; }
+.segmented > .toggle-button:selected:focused { -fx-background-color: -color-accent-fg, -color-accent-emphasis; }
 
-.tool-row { -fx-padding: 6 8 6 8; -fx-background-color: #f7f9fb; -fx-background-radius: 4; }
-.tool-name { -fx-font-family: "Consolas", "Menlo", monospace; -fx-font-weight: bold; }
-.tool-description { -fx-font-size: 11px; -fx-text-fill: #4a5568; -fx-padding: 0 0 0 24; }
+/* Tool-Liste eines Moduls */
+.tool-row {
+    -fx-padding: 7 10 7 10;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 6;
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 6;
+}
+.tool-name { -fx-font-family: "Consolas", "Menlo", monospace; -fx-font-weight: bold; -fx-text-fill: -color-fg-default; }
+.tool-description { -fx-font-size: 11px; -fx-text-fill: -color-fg-muted; -fx-padding: 0 0 0 24; }
 
 /* Protokoll */
 .mono, .mono .content { -fx-font-family: "Monospaced"; -fx-font-size: 12px; } /* JavaFX kennt keine Ausweichliste */
-.table-cell.ok { -fx-text-fill: #38a169; -fx-alignment: center; }
-.table-cell.error { -fx-text-fill: #e53e3e; -fx-alignment: center; }
+.table-cell.ok { -fx-text-fill: -color-success-fg; -fx-alignment: center; }
+.table-cell.error { -fx-text-fill: -color-danger-fg; -fx-alignment: center; }
 
 /* Skills */
-.skills-view .split-pane { -fx-background-color: white; -fx-padding: 0; }
-.skills-view .text-area.mono { -fx-background-color: #f7f9fb; }
+.skills-view .split-pane { -fx-background-color: -color-bg-default; -fx-padding: 0; }
+.skills-view .text-area.mono, .skills-view .text-area.mono .content { -fx-background-color: -color-bg-subtle; }
 
 .skill-readonly {
     -fx-padding: 6 10 6 10;
-    -fx-background-color: rgba(120, 140, 200, 0.14);
+    -fx-background-color: -color-accent-subtle;
+    -fx-text-fill: -color-fg-default;
     -fx-background-radius: 6;
     -fx-font-size: 12px;
 }
 
-/* Skript-Editor (RichTextFX) – Farben wie das IntelliJ-Schema „IntelliJ Light“ */
+/* Skript-Editor (RichTextFX) – Farben wie das IntelliJ-Schema „IntelliJ Light“, dunkel: app-dark.css */
 .code-editor { -fx-background-color: #ffffff; -fx-font-size: 13px; }
 .code-editor .text { -fx-fill: #080808; }
 .code-editor .caret { -fx-stroke: #000000; }
@@ -193,14 +230,14 @@
 
 /* Lookup-Liste der Vervollständigung */
 .completion-popup {
-    -fx-background-color: #ffffff;
-    -fx-border-color: #c9ccd6;
-    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.18), 12, 0, 0, 3);
+    -fx-background-color: -color-bg-overlay;
+    -fx-border-color: -color-border-default;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.22), 12, 0, 0, 3);
 }
-.completion-list { -fx-background-color: #ffffff; -fx-background-insets: 0; -fx-padding: 2; }
-.completion-list .list-cell { -fx-padding: 0 10 0 6; -fx-background-color: #ffffff; }
-.completion-list .list-cell:hover { -fx-background-color: #f2f5fb; }
-.completion-list .list-cell:selected { -fx-background-color: #d5e1ff; }
+.completion-list { -fx-background-color: -color-bg-overlay; -fx-background-insets: 0; -fx-padding: 2; }
+.completion-list .list-cell { -fx-padding: 0 10 0 6; -fx-background-color: -color-bg-overlay; }
+.completion-list .list-cell:hover { -fx-background-color: -color-neutral-subtle; }
+.completion-list .list-cell:selected { -fx-background-color: -color-accent-subtle; }
 .completion-list .scroll-bar:vertical { -fx-pref-width: 10; }
 .completion-icon {
     -fx-min-width: 16; -fx-pref-width: 16; -fx-max-width: 16;
@@ -223,16 +260,16 @@
 .icon-package { -fx-background-color: #8a8f99; }
 .icon-snippet { -fx-background-color: #d9932b; }
 .icon-step, .icon-tool { -fx-background-color: #00838f; }
-.icon-keyword { -fx-background-color: transparent; -fx-text-fill: #0033b3; }
+.icon-keyword { -fx-background-color: transparent; -fx-text-fill: -color-accent-fg; }
 .completion-list Text { -fx-font-size: 13px; }
-.completion-label { -fx-fill: #080808; }
-.completion-keyword { -fx-fill: #0033b3; -fx-font-weight: bold; }
-.completion-match { -fx-fill: #2f65ca; -fx-font-weight: bold; }
-.completion-tail { -fx-fill: #8c8c8c; }
-.completion-detail { -fx-text-fill: #8c8c8c; -fx-font-size: 12px; }
+.completion-label { -fx-fill: -color-fg-default; }
+.completion-keyword { -fx-fill: -color-accent-fg; -fx-font-weight: bold; }
+.completion-match { -fx-fill: -color-accent-fg; -fx-font-weight: bold; }
+.completion-tail { -fx-fill: -color-fg-subtle; }
+.completion-detail { -fx-text-fill: -color-fg-subtle; -fx-font-size: 12px; }
 .completion-doc-pane, .completion-doc-pane > .viewport {
-    -fx-background-color: #f7f8fa;
+    -fx-background-color: -color-bg-subtle;
     -fx-background-insets: 0;
-    -fx-border-color: transparent transparent transparent #e4e6eb;
+    -fx-border-color: transparent transparent transparent -color-border-muted;
 }
-.completion-doc { -fx-padding: 8 10 8 10; -fx-text-fill: #303030; -fx-font-size: 12px; }
+.completion-doc { -fx-padding: 8 10 8 10; -fx-text-fill: -color-fg-default; -fx-font-size: 12px; }

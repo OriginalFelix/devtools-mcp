@@ -48,7 +48,8 @@ public final class ScriptsViewSnapshot {
             ScriptsView view = new ScriptsView(scripts, ctx.getBean(BackendConnection.class)::me);
             Stage stage = new Stage();
             Scene scene = new Scene(view, 1180, 640);
-            scene.getStylesheets().add(ScriptsViewSnapshot.class.getResource("/ui/app.css").toExternalForm());
+            Theme.install();
+            scene.getStylesheets().addAll(Theme.stylesheets());
             stage.setScene(scene);
             stage.show();
             new Thread(() -> {
