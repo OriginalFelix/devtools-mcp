@@ -1,4 +1,11 @@
-/* Dunkelmodus (nach app.css geladen): Skript-Editor wie das IntelliJ-Schema „Dark“ */
+/* Dunkelmodus (nach app.css geladen): Akzent Indigo, Skript-Editor wie das IntelliJ-Schema „Dark“ */
+.root {
+    -color-accent-fg: #a5b4fc;
+    -color-accent-emphasis: #6366f1;
+    -color-accent-muted: #4f46e5;
+    -color-accent-subtle: #6366f12e;
+}
+
 .code-editor { -fx-background-color: #1e1f22; }
 .code-editor .text { -fx-fill: #bcbec4; }
 .code-editor .caret { -fx-stroke: #ced0d6; }
