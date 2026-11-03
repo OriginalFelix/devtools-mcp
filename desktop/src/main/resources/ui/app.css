@@ -134,11 +134,20 @@
 .module-dot.settings { -fx-fill: -color-accent-emphasis; }
 
 /* Detailbereich */
-.detail-scroll, .detail-scroll > .viewport { -fx-background-color: -color-bg-default; }
+.detail-scroll, .detail-scroll > .viewport { -fx-background-color: -color-bg-subtle; }
 .detail { -fx-max-width: 960; }
-.detail-title { -fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: -color-fg-default; }
+.detail-title { -fx-font-family: "Segoe UI Variable Display"; -fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: -color-fg-default; }
 .detail-description { -fx-text-fill: -color-fg-muted; }
-.section-title { -fx-font-weight: bold; -fx-text-fill: -color-fg-default; -fx-font-size: 14px; -fx-padding: 6 0 0 0; }
+.card {
+    -fx-background-color: -color-bg-default;
+    -fx-border-color: -color-border-muted;
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+    -fx-padding: 18 20 20 20;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.06), 8, 0, 0, 1);
+}
+.section-title { -fx-font-family: "Segoe UI Variable Display"; -fx-font-weight: bold; -fx-text-fill: -color-fg-default; -fx-font-size: 15px; }
+.card > .module-action { -fx-padding: 4 0 0 0; }
 .form-label { -fx-text-fill: -color-fg-default; }
 .form-help { -fx-font-size: 11px; -fx-text-fill: -color-fg-muted; }
 .status-text { -fx-font-size: 12px; -fx-text-fill: -color-fg-muted; }
