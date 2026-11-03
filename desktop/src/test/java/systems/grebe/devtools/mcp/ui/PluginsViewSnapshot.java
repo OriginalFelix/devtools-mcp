@@ -72,7 +72,8 @@ public final class PluginsViewSnapshot {
             PluginsView view = new PluginsView(manager, store);
             Stage stage = new Stage();
             Scene scene = new Scene(view, 1180, 640);
-            scene.getStylesheets().add(PluginsViewSnapshot.class.getResource("/ui/app.css").toExternalForm());
+            Theme.install();
+            scene.getStylesheets().addAll(Theme.stylesheets());
             stage.setScene(scene);
             stage.show();
             new Thread(() -> {

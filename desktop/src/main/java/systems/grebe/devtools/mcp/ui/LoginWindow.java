@@ -75,9 +75,9 @@ public final class LoginWindow {
         change.setOnAction(e -> changeBackend(backend.embedded() ? "" : backend.url()));
         Hyperlink discover = new Hyperlink("Im Netzwerk suchen…");
         discover.setOnAction(e -> DiscoveryDialog.search(stage, discover::setDisable, this::changeBackend));
-        HBox backendLine = new HBox(6, where, change, discover);
-        backendLine.setAlignment(Pos.BASELINE_LEFT);
-        HBox head = new HBox(12, icon, new VBox(2, title, backendLine));
+        HBox links = new HBox(4, change, discover);
+        links.setPadding(new Insets(0, 0, 0, -4)); // Hyperlinks bringen eigenen Innenabstand mit
+        HBox head = new HBox(12, icon, new VBox(2, title, where, links));
         head.setAlignment(Pos.CENTER_LEFT);
 
         error.getStyleClass().addAll("status-text", "error");

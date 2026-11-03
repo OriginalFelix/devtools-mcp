@@ -8,12 +8,12 @@ import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
-import javafx.scene.control.Separator;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -92,23 +92,24 @@ public class ModuleDetailPane extends ScrollPane {
         VBox formHolder = new VBox();
         overlay.setWrapText(true);
         overlay.getStyleClass().add("form-help");
-        content.getChildren().addAll(header, description, overlay, new Separator(), configTitle, formHolder, actions,
-                status);
+        VBox intro = new VBox(6, header, description, overlay);
+        content.getChildren().addAll(intro, card(configTitle, formHolder, actions, status));
         if (!module.actions().isEmpty()) {
             Label actionsTitle = new Label("Aktionen");
             actionsTitle.getStyleClass().add("section-title");
             Label actionsHint = new Label("Laufen mit der gespeicherten Konfiguration, auch wenn das Modul inaktiv ist.");
             actionsHint.getStyleClass().add("form-help");
             actionsHint.setWrapText(true);
-            content.getChildren().addAll(new Separator(), actionsTitle, actionsHint);
+            VBox actionsCard = card(actionsTitle, actionsHint);
             for (ModuleAction a : module.actions()) {
                 ModuleActionPanel panel = new ModuleActionPanel(registry, module.id(), a);
                 actionPanels.add(panel);
-                content.getChildren().add(panel);
+                actionsCard.getChildren().add(panel);
             }
+            content.getChildren().add(actionsCard);
         }
         if (module.hasTools()) {
-            content.getChildren().addAll(new Separator(), toolsTitle, toolsHint, toolBox);
+            content.getChildren().add(card(toolsTitle, toolsHint, toolBox));
         } else {
             enabled.setVisible(false);
             enabled.setManaged(false);
@@ -120,6 +121,12 @@ public class ModuleDetailPane extends ScrollPane {
     }
 
     private final VBox formHolder;
+
+    private static VBox card(Node... children) {
+        VBox card = new VBox(10, children);
+        card.getStyleClass().add("card");
+        return card;
+    }
 
     /** Formular und Tool-Liste aus dem aktuellen Stand der Registry neu aufbauen. */
     public final void reload() {
@@ -262,6 +269,7 @@ public class ModuleDetailPane extends ScrollPane {
             boolean permitted = registry.toolPermitted(module.id(), t.name());
             CheckBox cb = new CheckBox(permitted ? t.name() : t.name() + " (keine Berechtigung)");
             cb.getStyleClass().add("tool-name");
+            cb.setMnemonicParsing(false); // sonst verschluckt die CheckBox den ersten Unterstrich (graph_path → graphpath)
             cb.setSelected(permitted && !registry.settings(module.id()).disabledTools().contains(t.name()));
             cb.setDisable(!moduleOn || !permitted);
             cb.setOnAction(e -> {

@@ -19,6 +19,7 @@ import javafx.stage.Popup;
 import systems.grebe.devtools.mcp.modules.scripts.assist.CamelMatcher;
 import systems.grebe.devtools.mcp.modules.scripts.assist.Completion;
 import systems.grebe.devtools.mcp.modules.scripts.assist.CompletionResult.Ranked;
+import systems.grebe.devtools.mcp.ui.Theme;
 
 /**
  * Lookup-Liste der Vervollständigung wie in IntelliJ: Symbol je Art, Name mit fett markierten Treffern, Parameter grau
@@ -55,8 +56,8 @@ final class CompletionPopup {
         docPane.setPrefWidth(360);
         docPane.setFocusTraversable(false);
         HBox box = new HBox(list, docPane);
-        box.getStyleClass().addAll("root", "completion-popup"); // eigene Szene: Modena-Variablen hängen an .root
-        box.getStylesheets().add(CompletionPopup.class.getResource("/ui/app.css").toExternalForm());
+        box.getStyleClass().addAll("root", "completion-popup"); // eigene Szene: Theme-Tokens hängen an .root
+        popup.getScene().getStylesheets().addAll(Theme.stylesheets());
         popup.getContent().add(box);
         popup.setAutoFix(true);
         popup.setAutoHide(true);

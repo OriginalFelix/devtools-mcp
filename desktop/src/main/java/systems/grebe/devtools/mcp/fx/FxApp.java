@@ -41,6 +41,7 @@ import systems.grebe.devtools.mcp.ui.MemoriesView;
 import systems.grebe.devtools.mcp.ui.PluginsView;
 import systems.grebe.devtools.mcp.ui.ScriptsView;
 import systems.grebe.devtools.mcp.ui.SkillsView;
+import systems.grebe.devtools.mcp.ui.Theme;
 import systems.grebe.devtools.mcp.ui.TrayManager;
 import systems.grebe.devtools.mcp.ui.UsersAdminView;
 
@@ -73,6 +74,7 @@ public class FxApp extends Application {
 
     @Override
     public void start(Stage stage) {
+        Theme.install();
         if (startupError != null) {
             showStartupError(startupError);
             Platform.exit();
@@ -109,7 +111,7 @@ public class FxApp extends Application {
                         context.getBean(SettingsStore.class)))));
         Scene scene = new Scene(view, 1180, 760);
         String css = getClass().getResource("/ui/app.css").toExternalForm();
-        scene.getStylesheets().add(css);
+        scene.getStylesheets().addAll(Theme.stylesheets());
         stage.setScene(scene);
         stage.setTitle("DevTools MCP – " + endpoint);
         Runnable account = () -> {

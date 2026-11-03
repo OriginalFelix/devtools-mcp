@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 import javafx.application.Platform;
 import javafx.scene.Scene;
+import systems.grebe.devtools.mcp.ui.Theme;
 import javafx.scene.image.PixelReader;
 import javafx.scene.image.WritableImage;
 import javafx.stage.Popup;
@@ -64,7 +65,8 @@ public final class CodeEditorSnapshot {
             CodeEditor editor = new CodeEditor(assist);
             Stage stage = new Stage();
             Scene scene = new Scene(editor, 900, 520);
-            scene.getStylesheets().add(CodeEditorSnapshot.class.getResource("/ui/app.css").toExternalForm());
+            Theme.install();
+            scene.getStylesheets().addAll(Theme.stylesheets());
             stage.setScene(scene);
             stage.setX(40);
             stage.setY(40);

@@ -101,6 +101,11 @@ dependencies {
     }
     // Skript-Editor: Code-Bereich mit Stil je Zeichen (Syntaxhervorhebung), Zeilennummern und Undo
     implementation("org.fxmisc.richtext:richtextfx:0.11.7")
+    // Basistheme (Primer hell/dunkel) mit Farb-Tokens, auf denen app.css aufsetzt
+    implementation("io.github.mkpaz:atlantafx-base:2.1.0")
+    // Icons (Feather) für Navigation und Schaltflächen
+    implementation("org.kordamp.ikonli:ikonli-javafx:12.4.0")
+    implementation("org.kordamp.ikonli:ikonli-feather-pack:12.4.0")
 
     testImplementation("io.projectreactor:reactor-test")
     testImplementation(testFixtures(project(":backend")))

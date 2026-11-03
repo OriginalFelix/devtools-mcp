@@ -418,7 +418,7 @@ public class ConfigForm {
         dialog.getDialogPane().setContent(scroll);
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         Label errors = new Label();
-        errors.setStyle("-fx-text-fill: #c53030; -fx-padding: 8 12 0 12;");
+        errors.getStyleClass().add("dialog-error");
         errors.setWrapText(true);
         dialog.getDialogPane().setHeader(errors);
         errors.setVisible(false);

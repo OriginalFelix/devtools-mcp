@@ -78,7 +78,8 @@ class ConfigFormTest {
             VBox root = new VBox(form.node());
             root.setStyle("-fx-padding: 20 24 24 24; -fx-background-color: white;");
             scene = new Scene(root, 900, 760);
-            scene.getStylesheets().add(getClass().getResource("/ui/app.css").toExternalForm());
+            Theme.install();
+            scene.getStylesheets().addAll(Theme.stylesheets());
             Stage stage = new Stage();
             stage.setScene(scene);
             stage.show();

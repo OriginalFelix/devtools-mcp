@@ -31,7 +31,8 @@ public final class SkillsViewSnapshot {
             SkillsView view = new SkillsView(ctx.getBean(SkillService.class), java.util.Optional::empty);
             Stage stage = new Stage();
             Scene scene = new Scene(view, 1180, 640);
-            scene.getStylesheets().add(SkillsViewSnapshot.class.getResource("/ui/app.css").toExternalForm());
+            Theme.install();
+            scene.getStylesheets().addAll(Theme.stylesheets());
             stage.setScene(scene);
             stage.show();
             // Laden läuft im Hintergrund – kurz warten, dann auswählen und fotografieren
