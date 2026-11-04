@@ -40,6 +40,22 @@ if (!file("performance-mcp/settings.gradle.kts").exists()) {
 }
 includeBuild("performance-mcp")
 
+// sqlproxy: SQL-Proxy vor beliebigen Datenbanken, spy.log lesen und auswerten, mit eigener Oberfläche (Git-Submodule
+// github.com/OriginalFelix/sqlproxy), als Composite Build eingebunden; systems.grebe:sqlproxy-core wird durch den
+// Quellcode ersetzt. Fehlt das Submodule, holt Gradle es selbst.
+if (!file("sqlproxy/settings.gradle.kts").exists()) {
+    val init = providers.exec {
+        commandLine("git", "submodule", "update", "--init", "sqlproxy")
+        workingDir = settingsDir
+        isIgnoreExitValue = true
+    }
+    if (init.result.get().exitValue != 0) {
+        throw GradleException("sqlproxy fehlt und 'git submodule update --init sqlproxy' ist fehlgeschlagen:\n"
+                + init.standardError.asText.get().trim())
+    }
+}
+includeBuild("sqlproxy")
+
 // plugin-api: Schnittstellen für Plugins (Modul-Vertrag, Einstellungs-Modell, Plugin-Basisklasse) – als Maven-Artefakt veröffentlichbar
 // shared: Einstellungs-Modell und API zwischen Desktop und Server
 // backend: Benutzer, Profile, Einstellungen, Projekte, Skills mit GraphQL-API – im Server und eingebettet im Desktop

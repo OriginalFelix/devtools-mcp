@@ -12,32 +12,16 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import systems.grebe.devtools.mcp.core.LocalFiles;
+import systems.grebe.sqlproxy.SqlProxy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** SQL im Datenverkehr erkennen und als p6spy-Protokoll schreiben. */
-class SqlProxyTest {
+/** SQL-Proxy über die Tools starten, stoppen und sein Protokoll mit den p6spy-Tools auswerten. */
+class P6SpyProxyToolsTest {
 
     @TempDir
     Path dir;
-
-    @Test
-    void findsSqlInWireMessages() {
-        // PostgreSQL Query: 'Q', Länge (druckbar: '*'), SQL, 0
-        assertThat(SqlProxy.find(bytes("Q\0\0\0*select * from t where id = 1\0")))
-                .containsExactly("select * from t where id = 1");
-        // MySQL COM_QUERY mit mehrzeiligem SQL
-        assertThat(SqlProxy.find(bytes("\u001d\0\0\0\u0003UPDATE t\n  SET a = 'x||y'")))
-                .containsExactly("UPDATE t SET a = 'x||y'");
-        // SQL Server: UTF-16LE
-        byte[] tds = ("\u0001\u0001" + "SELECT name FROM sys.tables").getBytes(StandardCharsets.UTF_16LE);
-        assertThat(SqlProxy.find(tds)).containsExactly("SELECT name FROM sys.tables");
-        // Anmeldung, Spaltennamen mit Schlüsselwort, kein SQL
-        assertThat(SqlProxy.find(bytes("\0\0\0Puser\0felix\0database\0last_update set\0client_encoding\0UTF8\0")))
-                .isEmpty();
-        assertThat(SqlProxy.find(bytes("\u0003COMMIT"))).containsExactly("COMMIT");
-    }
 
     @Test
     void forwardsTrafficAndLogsStatementsForP6SpyTools() throws Exception {

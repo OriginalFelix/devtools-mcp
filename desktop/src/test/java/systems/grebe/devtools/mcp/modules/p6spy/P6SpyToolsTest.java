@@ -20,28 +20,6 @@ class P6SpyToolsTest {
     Path dir;
 
     @Test
-    void parsesSingleLineFormatWithAndWithoutUrlAndCustomFormat() {
-        var withUrl = P6SpyLog.parse(0, "1700000000000|3|statement|connection 7|url jdbc:h2:mem:t|"
-                + "select a || b from t where id=?|select a || b from t where id=42");
-        assertThat(withUrl.millis()).isEqualTo(3);
-        assertThat(withUrl.connection()).isEqualTo("7");
-        assertThat(withUrl.prepared()).isEqualTo("select a || b from t where id=?");
-        assertThat(withUrl.sql()).isEqualTo("select a || b from t where id=42");
-
-        var old = P6SpyLog.parse(0, "1700000000000|0|commit|connection 1||");
-        assertThat(old.category()).isEqualTo("commit");
-        assertThat(old.sql()).isEmpty();
-
-        var custom = P6SpyLog.parse(0, "12:00:01|5|statement|connection3|update t set x='a|b' where id=1");
-        assertThat(custom.connection()).isEqualTo("3");
-        assertThat(custom.sql()).isEqualTo("update t set x='a|b' where id=1");
-
-        assertThat(P6SpyLog.parse(0, "\tat com.example.Foo.bar(Foo.java:12)")).isNull();
-        assertThat(P6SpyLog.normalize("select * from t1 where id in (1, 2, 3) and n = 'x''y'"))
-                .isEqualTo("select * from t1 where id in (?) and n = ?");
-    }
-
-    @Test
     void statementsFiltersAndContinuesWithSince() throws IOException {
         Path log = dir.resolve("spy.log");
         Files.writeString(log, String.join("\n",
@@ -87,21 +65,6 @@ class P6SpyToolsTest {
         assertThat(result.indexOf("6×  Summe")).isLessThan(result.indexOf("1×  Summe"));
         assertThat(result).endsWith("since=" + (Files.size(log) - "1700000000000|1|statement|conn".length()));
         assertThat(tools.analyze(log.toString(), null, null, 7, null)).doesNotContain("N+1-Verdacht");
-    }
-
-    @Test
-    void readsOnlyTheTailOfLargeLogs() throws IOException {
-        Path log = dir.resolve("spy.log");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 100; i++) {
-            sb.append(line(1, 1, "select " + i, "select " + i)).append('\n');
-        }
-        Files.writeString(log, sb);
-        P6SpyLog.Chunk chunk = P6SpyLog.read(log, null, 500);
-        assertThat(chunk.skipped()).isTrue();
-        assertThat(chunk.entries()).isNotEmpty().allSatisfy(e -> assertThat(e.offset()).isGreaterThan(0));
-        assertThat(chunk.entries().getLast().sql()).isEqualTo("select 99");
-        assertThat(P6SpyLog.read(log, Files.size(log) + 10, 1 << 20).rotated()).isTrue();
     }
 
     private static String line(int conn, long ms, String prepared, String sql) {

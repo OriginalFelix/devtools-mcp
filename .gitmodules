@@ -4,3 +4,6 @@
 [submodule "performance-mcp"]
 	path = performance-mcp
 	url = https://github.com/OriginalFelix/performance-mcp.git
+[submodule "sqlproxy"]
+	path = sqlproxy
+	url = https://github.com/OriginalFelix/sqlproxy.git

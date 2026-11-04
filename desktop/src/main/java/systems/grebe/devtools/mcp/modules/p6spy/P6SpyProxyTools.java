@@ -11,6 +11,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ToolHints;
+import systems.grebe.sqlproxy.SqlProxy;
 
 /** SQL-Proxys vor einer Datenbank starten und stoppen; ihr Protokoll lesen {@link P6SpyTools}. */
 @ToolHints(destructive = false)
@@ -46,7 +47,7 @@ public class P6SpyProxyTools {
             @ToolParam(description = "Protokolldatei oder Verzeichnis dafür (in den freigegebenen Verzeichnissen); "
                     + "ein Verzeichnis bekommt spy-proxy-<host>-<port>.log") String logFile,
             @ToolParam(required = false, description = "Lokaler Port (Standard: frei gewählt)") Integer port) {
-        InetSocketAddress address = address(target);
+        InetSocketAddress address = SqlProxy.target(target);
         Path log = files.writable(logFile, "spy-proxy-" + address.getHostString().replaceAll("[^\\w.-]", "_") + "-"
                 + address.getPort() + ".log");
         SqlProxy proxy;
@@ -88,24 +89,5 @@ public class P6SpyProxyTools {
                 .append(p.connections()).append(" Verbindungen, ").append(p.statements()).append(" Statements, ")
                 .append(p.log()));
         return sb.toString();
-    }
-
-    private static InetSocketAddress address(String target) {
-        String t = target == null ? "" : target.strip();
-        int colon = t.lastIndexOf(':');
-        if (colon <= 0) {
-            throw new IllegalArgumentException("target als host:port angeben, z.B. localhost:5432 – nicht " + target);
-        }
-        String host = t.substring(0, colon).replaceAll("^\\[|]$", "");
-        int port;
-        try {
-            port = Integer.parseInt(t.substring(colon + 1));
-        } catch (NumberFormatException e) {
-            port = -1;
-        }
-        if (port < 1 || port > 65535) {
-            throw new IllegalArgumentException("Ungültiger Port in " + target);
-        }
-        return InetSocketAddress.createUnresolved(host, port);
     }
 }

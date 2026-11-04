@@ -6,7 +6,9 @@ Entwickleralltag. Alles wird in der Oberfläche konfiguriert; neue Werkzeuge las
 
 JVM-Diagnose, Flight Recorder, async-profiler, VisualVM und der Debugger kommen aus dem SDK
 [performance-mcp](https://github.com/OriginalFelix/performance-mcp) (Git-Submodule, auch als eigenständiger MCP-Server
-nutzbar); devtools-mcp ergänzt Einstellungen, Berechtigungen und Oberfläche. Klonen mit
+nutzbar); der SQL-Proxy und die Auswertung von p6spy-Protokollen aus [sqlproxy](https://github.com/OriginalFelix/sqlproxy)
+(Git-Submodule, auch als eigenständige Anwendung mit Oberfläche nutzbar); devtools-mcp ergänzt Einstellungen,
+Berechtigungen und Oberfläche. Klonen mit
 `git clone --recurse-submodules`.
 
 | Modul | Tools |
@@ -720,6 +722,8 @@ in `logfile` (Standard `spy.log`). Erkannt werden `SingleLineFormat` (mit und oh
 * Jedes Ergebnis endet mit `since=<Byte-Position>`; mit diesem Wert liefert der nächste Aufruf nur das seither
   Protokollierte – vor einer Aktion merken, danach auswerten. Ist die Datei kürzer (neu angelegt), wird von vorn gelesen.
 * Große Protokolle werden nur vom Ende her gelesen (*Max. gelesene MB*, Standard 32).
+* Proxy, Leser und Auswertung stammen aus `sqlproxy-core` (Submodule [sqlproxy](https://github.com/OriginalFelix/sqlproxy));
+  dieselben Protokolle zeigt auch dessen eigenständige Oberfläche (`./gradlew -p sqlproxy :sqlproxy-app:run`).
 * `p6spy_analyze` fasst Statements nach SQL ohne Werte zusammen (Strings, Zahlen, `IN (…)`-Listen → `?`) und meldet
   N+1-Verdacht, wenn dasselbe Statement mindestens `repeats`-mal (Standard 5) direkt hintereinander auf einer Connection
   läuft.
@@ -961,7 +965,7 @@ Ergebnisse (`.jfr`, Flame Graphs `.html`, `.hprof`, `.nps`) landen im Ablageordn
 
 ## Projektstruktur
 
-Gradle-Multiprojekt, dazu [Container4J](https://github.com/OriginalFelix/Container4J) und [performance-mcp](https://github.com/OriginalFelix/performance-mcp) als Git-Submodule und eingebundene Builds (`includeBuild`):
+Gradle-Multiprojekt, dazu [Container4J](https://github.com/OriginalFelix/Container4J), [performance-mcp](https://github.com/OriginalFelix/performance-mcp) und [sqlproxy](https://github.com/OriginalFelix/sqlproxy) als Git-Submodule und eingebundene Builds (`includeBuild`):
 
 | Projekt | Inhalt | Artefakt |
 |---|---|---|
@@ -991,8 +995,8 @@ verbinden. Die App läuft danach im Tray weiter und ist für alle Clients auf di
 
 ### Bauen
 
-[Container4J](https://github.com/OriginalFelix/Container4J) (`container4j`) und [performance-mcp](https://github.com/OriginalFelix/performance-mcp)
-(`performance-mcp`) sind Git-Submodule: `git clone --recurse-submodules …`. Fehlt eines (Klon ohne
+[Container4J](https://github.com/OriginalFelix/Container4J) (`container4j`), [performance-mcp](https://github.com/OriginalFelix/performance-mcp)
+(`performance-mcp`) und [sqlproxy](https://github.com/OriginalFelix/sqlproxy) (`sqlproxy`) sind Git-Submodule: `git clone --recurse-submodules …`. Fehlt eines (Klon ohne
 `--recurse-submodules`), führt Gradle beim ersten Aufruf selbst `git submodule update --init <name>` aus. performance-mcp
 bindet Container4J selbst ein (`performance-mcp/container4j`, wird von Gradle nachgeladen); devtools-mcp ersetzt
 `systems.grebe:container4j` ausdrücklich durch das eigene Submodule (siehe `settings.gradle.kts`), damit es im
