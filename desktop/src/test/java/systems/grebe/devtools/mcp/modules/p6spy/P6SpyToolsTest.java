@@ -58,13 +58,13 @@ class P6SpyToolsTest {
         Files.writeString(log, sb);
         P6SpyTools tools = new P6SpyTools(new LocalFiles(List.of(dir.toString()), "Test"), 1 << 20);
 
-        String result = tools.analyze(log.toString(), null, "count", null, null);
+        String result = tools.analyze(log.toString(), null, "count", null, null, null);
         assertThat(result).contains("7 Statements, 2 verschiedene, zusammen 52 ms",
                 "6×  Summe 12 ms", "select * from child where parent_id=?", "N+1-Verdacht",
                 "bis zu 6× in Folge, 6× insgesamt");
         assertThat(result.indexOf("6×  Summe")).isLessThan(result.indexOf("1×  Summe"));
         assertThat(result).endsWith("since=" + (Files.size(log) - "1700000000000|1|statement|conn".length()));
-        assertThat(tools.analyze(log.toString(), null, null, 7, null)).doesNotContain("N+1-Verdacht");
+        assertThat(tools.analyze(log.toString(), null, null, 7, null, null)).doesNotContain("N+1-Verdacht");
     }
 
     private static String line(int conn, long ms, String prepared, String sql) {
