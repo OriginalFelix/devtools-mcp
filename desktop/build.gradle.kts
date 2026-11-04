@@ -46,6 +46,8 @@ dependencies {
     // Performance/Diagnose (JVM, JFR, async-profiler, VisualVM, Debugger): SDK performance-mcp (Git-Submodule, Composite Build);
     // bringt Flame-Graph-Konverter und VisualVM-Engines selbst mit
     implementation("systems.grebe:performance-mcp-core:0.1.0-SNAPSHOT")
+    // SQL-Proxy und spy.log-Auswertung (Modul p6spy): Submodule sqlproxy, Composite Build
+    implementation("systems.grebe:sqlproxy-core:0.1.0-SNAPSHOT")
 
     // Syntaxbäume (Code-Graph u.a.): tree-sitter samt Grammatiken als WebAssembly (src/main/resources/tree-sitter,
     // gebaut mit natives/build-tree-sitter-wasm.sh), ausgeführt von Chicory – reiner Java-Code, der Compiler übersetzt
