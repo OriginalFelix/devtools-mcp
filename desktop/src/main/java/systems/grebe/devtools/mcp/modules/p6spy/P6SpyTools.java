@@ -2,7 +2,6 @@ package systems.grebe.devtools.mcp.modules.p6spy;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -10,6 +9,7 @@ import systems.grebe.devtools.mcp.core.LocalFiles;
 import systems.grebe.devtools.mcp.core.ToolHints;
 import systems.grebe.sqlproxy.SpyAnalysis;
 import systems.grebe.sqlproxy.SpyAnalysis.Group;
+import systems.grebe.sqlproxy.SpyAnalysis.Repeat;
 import systems.grebe.sqlproxy.SpyLog;
 import systems.grebe.sqlproxy.SpyLog.Chunk;
 import systems.grebe.sqlproxy.SpyLog.Entry;
@@ -73,15 +73,18 @@ public class P6SpyTools {
 
     @Tool(name = "analyze", description = "Wertet das p6spy-Protokoll einer Anwendung aus: Anzahl und Gesamtdauer der "
             + "Statements, die teuersten Statements gruppiert nach SQL ohne Werte (Anzahl, Summe, Mittel, Maximum, "
-            + "Beispiel mit Werten) und N+1-Verdacht – dasselbe Statement viele Male direkt hintereinander auf einer "
-            + "Connection. Mit since nur das seit dem letzten Aufruf Protokollierte, etwa eine einzelne Aktion.")
+            + "Beispiel mit Werten) und N+1-Verdacht – dasselbe Statement mit Tabellenzugriff viele Male kurz "
+            + "hintereinander auf einer Connection (andere Statements dazwischen erlaubt), unterschieden nach identischen "
+            + "Werten (Cache-Kandidat) und verschiedenen Werten (klassisches N+1). Mit since nur das seit dem letzten Aufruf Protokollierte, etwa eine einzelne Aktion.")
     public String analyze(
             @ToolParam(description = PATH_PARAM) String path,
             @ToolParam(required = false, description = SINCE_PARAM) Long since,
             @ToolParam(required = false, description = "Sortierung: total (Gesamtdauer, Standard), count (Anzahl) "
                     + "oder max (langsamste Ausführung)") String orderBy,
-            @ToolParam(required = false, description = "Ab so vielen Wiederholungen direkt hintereinander gilt ein "
+            @ToolParam(required = false, description = "Ab so vielen Wiederholungen kurz hintereinander gilt ein "
                     + "Statement als N+1-Verdacht (Standard 5)") Integer repeats,
+            @ToolParam(required = false, description = "Höchstens so viele andere Statements dürfen zwischen zwei "
+                    + "Wiederholungen liegen (Standard 10; 0 = direkt hintereinander)") Integer gap,
             @ToolParam(required = false, description = "Anzahl der gezeigten Statements (Standard 15, max. 200)") Integer limit) {
         Chunk chunk = SpyLog.read(files.readable(path), since, maxBytes);
         SpyAnalysis a = SpyAnalysis.of(chunk.entries());
@@ -117,14 +120,17 @@ public class P6SpyTools {
         }
 
         int min = repeats == null || repeats < 2 ? 5 : repeats;
-        Map<String, Integer> runs = a.repeatedRuns(min);
+        int maxGap = gap == null || gap < 0 ? 10 : gap;
+        List<Repeat> runs = a.repeats(min, maxGap);
         if (!runs.isEmpty()) {
-            sb.append("\nN+1-Verdacht (dasselbe Statement ≥ ").append(min)
-                    .append("× direkt hintereinander auf einer Connection):\n");
-            runs.entrySet().stream().sorted(Map.Entry.<String, Integer>comparingByValue().reversed()).limit(n)
-                    .forEach(r -> sb.append("bis zu ").append(r.getValue()).append("× in Folge, ")
-                            .append(a.group(r.getKey()).count()).append("× insgesamt\n  ").append(r.getKey())
-                            .append('\n'));
+            sb.append("\nN+1-Verdacht (dasselbe Statement mit Tabellenzugriff ≥ ").append(min)
+                    .append("× auf einer Connection, höchstens ").append(maxGap)
+                    .append(" andere dazwischen):\n");
+            runs.stream().limit(n).forEach(r -> sb.append("bis zu ").append(r.inARow()).append("× in Folge, ")
+                    .append(r.group().count()).append("× insgesamt, ")
+                    .append(r.identical() ? "immer dieselben Werte (Cache-Kandidat)"
+                            : r.group().variants() + " verschiedene Werte")
+                    .append("\n  ").append(r.group().key()).append('\n'));
         }
         return sb.append(footer(chunk)).toString().trim();
     }

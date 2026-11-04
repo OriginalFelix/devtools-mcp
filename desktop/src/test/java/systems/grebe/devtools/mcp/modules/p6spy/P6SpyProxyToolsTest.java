@@ -47,7 +47,7 @@ class P6SpyProxyToolsTest {
                 String log = proxy.log().toString();
                 assertThat(tools.statements(log, null, "customer where", null, null, null, null))
                         .contains("1 passende von 7 Einträgen", "conn 1", "select * from customer where id = 1");
-                assertThat(tools.analyze(log, null, null, null, null))
+                assertThat(tools.analyze(log, null, null, null, null, null))
                         .contains("6 Statements", "1 Commits", "N+1-Verdacht",
                                 "select * from orders where customer_id = ?");
                 assertThat(new P6SpyProxyTools(files, proxies).proxyStop(proxy.port()))
