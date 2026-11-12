@@ -1,12 +1,15 @@
 package systems.grebe.devtools.mcp.core;
 
 import java.time.Duration;
+import java.lang.reflect.Field;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
+import io.modelcontextprotocol.server.McpRequestHandler;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpStreamableServerSession;
 import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
@@ -32,6 +35,9 @@ import reactor.core.publisher.Mono;
  * Verbinden mit dem Backend) wären so Hunderte Meldungen je Session, bei einer abgerissenen Verbindung jede davon mit
  * einem ERROR im Log. Stattdessen geht nach einer kurzen Ruhepause genau eine Meldung raus; der Inhalt ist ohnehin
  * immer derselbe (der Client lädt die Liste neu).
+ *
+ * <p>Und sie nimmt eigene JSON-RPC-Methoden auf ({@link #addRequestHandler}, z.B. {@code skills/list} der
+ * Skills-Extension), für die das SDK keinen Erweiterungspunkt hat.
  */
 public final class LiveInstructionsTransport implements McpStreamableServerTransportProvider {
 
@@ -48,6 +54,10 @@ public final class LiveInstructionsTransport implements McpStreamableServerTrans
     private final Duration quietPeriod;
     /** Je Methode die geplante (noch nicht gesendete) Meldung. */
     private final Map<String, Disposable> pending = new HashMap<>();
+    /** Eigene Methoden; landen beim Setzen der Session-Fabrik in deren Handler-Tabelle. */
+    private final Map<String, McpRequestHandler<?>> extraHandlers = new LinkedHashMap<>();
+    /** Handler-Tabelle des SDK (gemeinsam für alle Sessions) – {@code null}, solange keine Fabrik gesetzt ist. */
+    private Map<String, McpRequestHandler<?>> sdkHandlers;
 
     public LiveInstructionsTransport(McpStreamableServerTransportProvider delegate, Supplier<String> instructions) {
         this(delegate, instructions, DEFAULT_QUIET_PERIOD);
@@ -60,13 +70,52 @@ public final class LiveInstructionsTransport implements McpStreamableServerTrans
         this.quietPeriod = quietPeriod;
     }
 
+    /**
+     * Eigene Methode, die jede Client-Session beantwortet. Vor dem Start des Webservers aufrufen (z.B. im Konstruktor
+     * einer Bean) – die Handler-Tabelle des SDK ist eine einfache {@code HashMap}, die Sessions ohne Sperre lesen.
+     */
+    public synchronized void addRequestHandler(String method, McpRequestHandler<?> handler) {
+        extraHandlers.put(method, handler);
+        if (sdkHandlers != null) {
+            sdkHandlers.put(method, handler);
+        }
+    }
+
     @Override
     public void setSessionFactory(McpStreamableServerSession.Factory sessionFactory) {
+        synchronized (this) {
+            sdkHandlers = requestHandlers(sessionFactory);
+            if (sdkHandlers != null) {
+                sdkHandlers.putAll(extraHandlers);
+            }
+        }
         delegate.setSessionFactory(request -> {
             McpStreamableServerSession.McpStreamableServerSessionInit init = sessionFactory.startSession(request);
             return new McpStreamableServerSession.McpStreamableServerSessionInit(init.session(),
                     init.initResult().map(this::withCurrentInstructions));
         });
+    }
+
+    /**
+     * Die Handler-Tabelle der SDK-Fabrik ({@code DefaultMcpStreamableServerSessionFactory#requestHandlers}).
+     * shortcut: liest ein internes Feld per Reflection, weil das SDK (2.0) keine eigenen Methoden zulässt – nach einem
+     * SDK-Update prüfen, ob es dafür eine API gibt (der Test {@code LiveInstructionsTransportTest} schlägt sonst an).
+     */
+    @SuppressWarnings("unchecked")
+    static Map<String, McpRequestHandler<?>> requestHandlers(McpStreamableServerSession.Factory factory) {
+        for (Class<?> c = factory.getClass(); c != null; c = c.getSuperclass()) {
+            try {
+                Field f = c.getDeclaredField("requestHandlers");
+                f.setAccessible(true);
+                return (Map<String, McpRequestHandler<?>>) f.get(factory);
+            } catch (NoSuchFieldException e) {
+                // weiter in der Oberklasse
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                break;
+            }
+        }
+        LOG.warn("Eigene MCP-Methoden nicht verfügbar: Handler-Tabelle von {} nicht gefunden", factory.getClass());
+        return null;
     }
 
     McpSchema.InitializeResult withCurrentInstructions(McpSchema.InitializeResult result) {
