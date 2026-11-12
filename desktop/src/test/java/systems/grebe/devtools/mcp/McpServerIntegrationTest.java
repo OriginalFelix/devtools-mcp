@@ -341,6 +341,60 @@ class McpServerIntegrationTest {
     }
 
     @Test
+    void skillsAsMcpSkillsExtension() throws Exception {
+        client.callTool(callRequest("skills_create", Map.of("name", "mcp-ext",
+                "description", "Verwenden, wenn: die Skills-Extension geprüft wird.", "content", "Siehe `references/a.md`.\n")));
+        client.callTool(callRequest("skills_write_file", Map.of("name", "mcp-ext", "file_path", "references/a.md",
+                "file_content", "# A\n")));
+        client.callTool(callRequest("skills_write_file", Map.of("name", "mcp-ext", "file_path", "assets/b.bin",
+                "content_base64", java.util.Base64.getEncoder().encodeToString(new byte[]{1, 2, 3}))));
+
+        // Resources (auch für Clients ohne die Extension) – der Abgleich läuft asynchron
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (client.listResources().resources().stream().noneMatch(r -> r.uri().equals("skill://mcp-ext/assets/b.bin"))
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(100);
+        }
+        assertThat(client.listResources().resources()).extracting(McpSchema.Resource::uri)
+                .contains("skill://mcp-ext/SKILL.md", "skill://mcp-ext/references/a.md", "skill://mcp-ext/assets/b.bin");
+        String md = ((McpSchema.TextResourceContents) client.readResource(
+                new McpSchema.ReadResourceRequest("skill://mcp-ext/SKILL.md")).contents().getFirst()).text();
+        assertThat(md).isEqualTo("---\nname: mcp-ext\ndescription: \"Verwenden, wenn: die Skills-Extension geprüft "
+                + "wird.\"\n---\n\nSiehe `references/a.md`.\n");
+        String blob = ((McpSchema.BlobResourceContents) client.readResource(
+                new McpSchema.ReadResourceRequest("skill://mcp-ext/assets/b.bin")).contents().getFirst()).blob();
+        assertThat(java.util.Base64.getDecoder().decode(blob)).containsExactly(1, 2, 3);
+
+        // Extension: Deklaration im initialize, skills/list und skills/get mit Manifest
+        var http = java.net.http.HttpClient.newHttpClient();
+        var init = rawRpc(http, null, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":"
+                + "{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"clientInfo\":{\"name\":\"t\",\"version\":\"1\"}}}");
+        assertThat(init.body()).contains("\"extensions\":{\"io.modelcontextprotocol/skills\":{}}");
+        String session = init.headers().firstValue("mcp-session-id").orElseThrow();
+        String list = rawRpc(http, session, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"skills/list\"}").body();
+        String sha = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(md.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        assertThat(list).contains("\"uri\":\"skill://mcp-ext/SKILL.md\"", "\"digest\":\"sha256:" + sha + "\"",
+                "skill://mcp-ext/references/a.md", "skill://mcp-ext/assets/b.bin", "\"resultType\":\"complete\"",
+                "\"name\":\"mcp-ext\"");
+        assertThat(rawRpc(http, session, "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"skills/get\",\"params\":"
+                + "{\"uri\":\"skill://mcp-ext/SKILL.md\"}}").body()).contains("\"skill\":{", "sha256:" + sha);
+        assertThat(rawRpc(http, session, "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"skills/get\",\"params\":"
+                + "{\"uri\":\"skill://gibts-nicht/SKILL.md\"}}").body()).contains("-32602");
+    }
+
+    private java.net.http.HttpResponse<String> rawRpc(java.net.http.HttpClient http, String session, String body)
+            throws Exception {
+        var request = java.net.http.HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/mcp"))
+                .header("Content-Type", "application/json").header("Accept", "application/json, text/event-stream")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body));
+        if (session != null) {
+            request.header("Mcp-Session-Id", session).header("MCP-Protocol-Version", "2025-11-25");
+        }
+        return http.send(request.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
     void memoriesRoundTripOverMcp() {
         // delete ist ohne Schalter registriert – dann nur für temporäre Memories
         assertThat(toolNames()).contains("memories_search", "memories_view", "memories_save", "memories_update",

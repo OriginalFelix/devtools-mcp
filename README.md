@@ -1732,6 +1732,14 @@ eindeutig sein). Wann das passieren soll, steht in den Server-Instructions und i
     Tool-Katalog von Hermes.
   * **MCP-Prompt** `skills_review` (Argument `focus`) für den manuellen Anstoß, z.B. als Slash-Befehl.
   * Review, Prompt und Erinnerung gibt es nur, wenn „Anlegen und Bearbeiten“ an ist.
+* **Als MCP-Skills ([Skills-Extension](https://modelcontextprotocol.io/extensions/skills/overview),
+  `io.modelcontextprotocol/skills`):** Jeder sichtbare Skill ist ein Agent Skill unter `skill://<name>/SKILL.md`
+  (Frontmatter `name`, `description` + Inhalt), Zusatzdateien unter `skill://<name>/<pfad>` – gelistet in
+  `resources/list` und lesbar per `resources/read`, also auch in Clients ohne die Extension (z.B. als @-Erwähnung in
+  Claude Code). Dazu `skills/list` und `skills/get` mit Manifest (SHA-256 und Größe je Datei) und die Extension in
+  den Capabilities des `initialize`. Angeboten, solange `skills_view` aktiv ist. Das Java-SDK kennt die Extension
+  noch nicht; Methoden und Capability sind deshalb nachgerüstet (`SkillResources`, `SkillsCapability`) und nach
+  einem SDK-Update zu prüfen.
   * **Mit Hermes:** Hermes hat einen eigenen Hintergrund-Review, der in `~/.hermes/skills` schreibt. Sollen die
     Skills nur hier liegen, dort `skills.creation_nudge_interval: 0` setzen – sonst entstehen zwei Bibliotheken.
     Hermes' System-Prompt verweist trotzdem auf sein eigenes `skill_manage`; damit das Modell die `skills_*`-Tools
