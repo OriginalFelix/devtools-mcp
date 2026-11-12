@@ -69,13 +69,13 @@ public class MemoriesModule implements ToolModule {
 
     @Override
     public String displayName() {
-        return "Memories";
+        return "Memories (AgentMemory)";
     }
 
     @Override
     public String description() {
-        return "Gedächtnis für frühere Aktionen: Das LLM hält nach einer Aufgabe fest, was getan, entschieden und "
-                + "herausgefunden wurde (z.B. ein Ticket-Review mit Ergebnis), samt angehängter Dateien (Screenshots, "
+        return "Das Gedächtnis des Agenten (AgentMemory): Das LLM hält nach einer Aufgabe fest, was getan, "
+                + "entschieden und herausgefunden wurde (z.B. ein Ticket-Review mit Ergebnis), samt angehängter Dateien (Screenshots, "
                 + "Logs … ohne Größengrenze), und findet es später per Suche wieder. "
                 + "Gespeichert im Backend (eingebettet oder Team-Server) je Benutzerkonto.";
     }
@@ -83,6 +83,9 @@ public class MemoriesModule implements ToolModule {
     @Override
     public String instructions() {
         return """
+                Dies ist dein Agent-Gedächtnis (AgentMemory): Gedächtniseinträge – was du dir über die Sitzung hinaus \
+                merken willst – gehören in die Memories dieses Servers (`memories_save`), nicht in eigene \
+                Memory-Dateien des Clients (z.B. MEMORY.md oder ein lokales memory-Verzeichnis).
                 Memories = was bei früheren Aufgaben konkret passiert ist (Ticket, Ergebnis, Entscheidung); `skill` \
                 verweist auf den Ablauf (z.B. `ticket-review`), nach dem gearbeitet wurde.
                 - Vor einer Aufgabe zu einem Ticket, PR, Fehler oder bekannten Thema: `memories_search` mit \
@@ -105,7 +108,9 @@ public class MemoriesModule implements ToolModule {
 
     @Override
     public String briefInstructions() {
-        return "Vor Aufgaben zu Ticket, PR, Fehler oder bekanntem Thema memories_search; nach einer "
+        return "Dein Agent-Gedächtnis (AgentMemory): Gedächtniseinträge per memories_save hier, nicht in eigenen "
+                + "Memory-Dateien des Clients. Vor Aufgaben zu Ticket, PR, Fehler oder bekanntem Thema "
+                + "memories_search; nach einer "
                 + "abgeschlossenen Aktion memories_save. Nennt der Server „Frühere Aktionen …“, diese Memory "
                 + "laden statt neu zu recherchieren.";
     }

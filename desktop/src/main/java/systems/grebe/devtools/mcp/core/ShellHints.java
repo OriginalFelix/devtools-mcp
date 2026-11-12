@@ -50,7 +50,8 @@ public final class ShellHints {
 
     public static final String SKILLS = " Skills nur über skills_*-Tools, nicht als SKILL.md-Dateien.";
 
-    public static final String MEMORIES = " Memories nur über memories_*-Tools, nicht als Notizdateien.";
+    public static final String MEMORIES = " Gedächtniseinträge (AgentMemory) nur über memories_*-Tools, nicht als "
+            + "Notiz- oder Memory-Dateien des Clients.";
 
     public static final String SCRIPTS = " Eigene Tools als Groovy-Skripte immer über die scripts_*-Tools anlegen und "
             + "pflegen, nicht als Dateien im Dateisystem und nicht per `groovy` in der Shell ausführen.";

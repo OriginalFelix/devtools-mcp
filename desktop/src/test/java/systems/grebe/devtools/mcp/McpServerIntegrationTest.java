@@ -209,7 +209,7 @@ class McpServerIntegrationTest {
                 .contains("Tools `build_*`", "Tools `container_*`", "Tools `sonar_*`", "Tools `jvm_*`",
                         "Tools `jfr_*`", "Tools `asprof_*`", "Tools `visualvm_*`", "Tools `debug_*`", "Tools `graph_*`",
                         "Tools `ticket_*`", "ticket_get", "## Skills – Tools `skills_*`", "skills_list", "skills_patch",
-                        "Tools `maven_*`", "## Memories – Tools `memories_*`", "memories_search", "memories_save",
+                        "Tools `maven_*`", "## Memories (AgentMemory) – Tools `memories_*`", "Agent-Gedächtnis", "memories_search", "memories_save",
                         "## Berechtigungen – Tools `permissions_*`", "permissions_request")
                 .doesNotContain("Java-Grundeinstellungen") // reines Einstellungsmodul ohne Instructions
                 .doesNotContain("`git_commit` (statt `git commit`)"); // die Tabelle liefert context_guide
