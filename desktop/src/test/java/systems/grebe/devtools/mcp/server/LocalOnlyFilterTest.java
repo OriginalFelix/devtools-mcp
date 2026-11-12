@@ -32,6 +32,9 @@ class LocalOnlyFilterTest {
         assertThat(status("192.168.1.30", "/api/versions")).isEqualTo(200);
         assertThat(status("192.168.1.30", "/api/v0/graphql")).isEqualTo(200);
         assertThat(status("192.168.1.30", "/api/v0/blobs/abc")).isEqualTo(200);
+        assertThat(status("192.168.1.30", "/a2a")).isEqualTo(200);
+        assertThat(status("192.168.1.30", "/.well-known/agent-card.json")).isEqualTo(200);
+        assertThat(status("192.168.1.30", "/a2ax")).isEqualTo(403);
         assertThat(status("192.168.1.30", "/mcp")).isEqualTo(403);
         assertThat(status("192.168.1.30", "/graphqlx")).isEqualTo(403);
         assertThat(status("192.168.1.30", "/apix")).isEqualTo(403);
