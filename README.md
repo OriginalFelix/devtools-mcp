@@ -34,6 +34,7 @@ Berechtigungen und Oberfläche. Klonen mit
 | **Datenbanken (JDBC)** (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, DB2, H2, SQLite … – jede Datenbank mit JDBC-Treiber) | Struktur: `jdbc_connections`, `jdbc_databases` (Kataloge, Schemas), `jdbc_tables`, `jdbc_describe` (Spalten, Primär-/Fremdschlüssel, Indizes), `jdbc_disconnect` · je Schalter: `jdbc_query` (lesen, Standard an), `jdbc_insert`, `jdbc_update`, `jdbc_delete`, `jdbc_ddl` (CREATE/ALTER/DROP/TRUNCATE), `jdbc_execute` (beliebiges SQL) (Standard aus) – für in der App hinterlegte Verbindungen (Name, JDBC-URL, Benutzer, Passwort), Zugriff je Verbindung deckelbar; Treiber automatisch per Maven (Modul Standard: aus) |
 | **Datenbank-Branches** (Dolt, Doltgres, Doltlite) | `dolt_status`, `dolt_sync` – beim Wechsel des Git-Branches eines eingetragenen Arbeitsverzeichnisses (git_checkout, IDE, Shell) wird der gleichnamige Datenbank-Branch ausgecheckt und bei Bedarf angelegt; Änderungen stehen im Ergebnis der git_*-Tools (Modul Standard: aus) |
 | **SQL-Protokoll** (p6spy) | `p6spy_statements` (ausgeführte Statements mit Zeit, Dauer, Kategorie, Connection und eingesetzten Werten; filterbar nach Mindestdauer, Text, Kategorie, Connection), `p6spy_analyze` (teuerste Statements gruppiert nach SQL ohne Werte, N+1-Verdacht), `p6spy_proxy_start`/`p6spy_proxy_stop` (SQL-Proxy vor einer beliebigen Datenbank, ohne p6spy in der Anwendung) – liest `spy.log` aus freigegebenen Verzeichnissen, mit `since` nur das seit dem letzten Aufruf Protokollierte (siehe [SQL-Protokoll](#sql-protokoll-p6spy)) (Modul Standard: aus) |
+| **HTTP-Proxy** (Mitschnitt & Mocks) | `http_proxy_start`/`http_proxy_stop` (lokaler HTTP(S)-Proxy wie Fiddler, HTTPS über eine eigene CA entschlüsselt; liefert Umgebungsvariablen und JVM-Optionen für den Prozess), `http_traffic` (Mitschnitt, filterbar, mit `since`), `http_exchange` (Header und Bodies einer Anfrage), `http_analyze` (Endpunkte nach Dauer, Fehler, Wiederholungen, N+1-Verdacht), `http_mock_add`/`http_mock_remove` (feste Antworten statt Weiterleitung, auch verzögert oder begrenzt oft) (siehe [HTTP-Proxy](#http-proxy-mitschnitt--mocks)) (Modul Standard: aus) |
 | **Chat** (Matrix, Microsoft Teams; erweiterbar per ServiceLoader) | `chat_conversations`, `chat_send` (Markdown, Antwort/Thread), `chat_ask` (Frage stellen und auf die Antwort warten), `chat_receive` (neue Nachrichten/Anweisungen seit dem letzten Abruf, optional wartend, aus allen aktiven Systemen), `chat_history`, `chat_react`, `chat_login` (Teams: Anmeldung im Browser per Device Code) – beschränkbar auf Räume/Chats und freigegebene Absender (Modul Standard: aus) |
 | **Mail** (IMAP, Angus Mail) | `mail_accounts`, `mail_folders` (freigegebene Ordner mit Anzahl gesamt/ungelesen), `mail_list` (neueste zuerst, Filter Text/Absender/Betreff/ungelesen/seit), `mail_read` (Kopf, Text – HTML als Text –, Anhänge; markiert nicht als gelesen), `mail_receive` (neue Mails der überwachten Ordner, optional wartend) · je Schalter (Standard aus): `mail_mark` (gelesen/markiert), `mail_move` (in freigegebene Ordner, nie endgültig löschen), `mail_draft` (Entwurf, auch als Antwort), `mail_send` (SMTP, auch als Antwort; Rückfrage beim Nutzer, erlaubte Empfänger, Grenze pro Stunde) · `mail_login` (Exchange Online: Anmeldung im Browser) – Konten ganz oder nur einzelne Ordner freigeben, Anmeldung per Passwort oder **Exchange Online / Microsoft 365 (OAuth2)**; **neue Mails stoßen das LLM an**: per IMAP IDLE überwacht, gemeldet über den stdio-Proxy (Channel) an Claude Code, per „Befehl bei neuer E-Mail“ (z.B. `claude -p`) und über `mail_receive`; für Plugins als `MailAccountProvider` (Modul Standard: aus) |
 | **Modellwahl** | `classify_task` – Pre-Classifier für beliebige Aufgaben (Feature, Bugfix, Analyse, Text …): Komplexität einschätzen, Modell für die Umsetzung empfehlen (einfach → Haiku, normal → Sonnet, komplex → Opus) – über das LLM des aufrufenden Clients (MCP-Sampling bzw. Prompt zum Selbst-Ausführen, kein API-Key) oder die Claude API mit Claude Opus 5.5; Einstellungen auch für `ticket_classify` (Modul Standard: aus) |
@@ -742,6 +743,25 @@ Wire-Protokoll wird nicht ausgewertet, daher:
 * bei Oracle können in langen Statements einzelne Längenbytes (`@`) stehen.
 
 Proxys laufen bis `p6spy_proxy_stop` (ohne `port` alle) oder bis die App beendet bzw. das Profil gewechselt wird.
+
+### HTTP-Proxy (Mitschnitt & Mocks)
+
+Lokaler Forward-Proxy wie Fiddler/FiddlerCore, für Prozesse in jeder Sprache: `http_proxy_start` startet ihn auf
+`127.0.0.1` und nennt, womit ein Prozess darüber läuft – `HTTP_PROXY`/`HTTPS_PROXY` plus CA-Datei (`SSL_CERT_FILE`,
+`REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, `NODE_EXTRA_CA_CERTS`) bzw. für Java `-Dhttp(s).proxyHost/-Port` und
+`-Djavax.net.ssl.trustStore` (auch über `JAVA_TOOL_OPTIONS`). Je Prozess ein eigener Proxy hält die Mitschnitte getrennt.
+
+* HTTPS wird per CONNECT angenommen und mit einer eigenen Root-CA entschlüsselt; sie entsteht einmal unter
+  `~/.devtools-mcp/http-proxy` (`ca.p12` nur für den Benutzer lesbar, dazu `ca.pem`, `ca-bundle.pem` und
+  `truststore.p12` = CA plus die CAs der JDK). Vertraut ein Prozess der CA nicht, erscheint im Mitschnitt
+  „TLS-Handshake fehlgeschlagen“.
+* Weitergereicht wird mit dem HTTP-Client der JDK (Zertifikate der Server werden normal geprüft, Redirects nicht
+  verfolgt); Fehler beim Weiterreichen beantwortet der Proxy mit 502 und zeichnet sie auf.
+* Mocks (`http_mock_add`): regulärer Ausdruck auf die volle URL, optional Methode, Status, Header, Body, Verzögerung und
+  Anzahl; passende Anfragen erreichen den Server nicht – auch für Hosts, die es (noch) nicht gibt.
+* Aufgezeichnet werden die letzten 2000 Anfragen je Proxy, je Body bis 1 MB; `http_exchange` entpackt gzip/deflate.
+* Grenzen: Bodies werden am Stück gepuffert (bis 64 MB) – kein Streaming, also kein SSE und keine WebSockets; HTTP/1.1
+  zum Client; der Proxy lauscht nur auf localhost.
 
 ### Chat-Systeme (ServiceLoader)
 
