@@ -19,14 +19,20 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
@@ -34,6 +40,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -63,6 +70,8 @@ final class HttpProxy implements AutoCloseable {
     private static final Set<String> SKIPPED_HEADERS = Set.of("connection", "keep-alive", "proxy-connection",
             "proxy-authorization", "proxy-authenticate", "te", "trailer", "transfer-encoding", "upgrade", "host",
             "content-length", "expect", "http2-settings");
+
+    private static final Pattern HOST = Pattern.compile("^https?://(\\[[^]]+]|[^/:?#]+)");
 
     record Header(String name, String value) {
     }
@@ -113,6 +122,9 @@ final class HttpProxy implements AutoCloseable {
 
     private final int port;
     private final CertificateAuthority ca;
+    /** Host-Muster wie übergeben, {@code null} = alle. */
+    final String hosts;
+    private final Predicate<String> intercept;
     private final EventLoopGroup group;
     private final Channel server;
     private final HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER)
@@ -122,8 +134,14 @@ final class HttpProxy implements AutoCloseable {
     private final Deque<Exchange> exchanges = new ConcurrentLinkedDeque<>();
     final List<Mock> mocks = new CopyOnWriteArrayList<>();
 
-    HttpProxy(int port, CertificateAuthority ca) throws InterruptedException {
+    /**
+     * @param hosts Muster der Hosts, die entschlüsselt, aufgezeichnet und gemockt werden (siehe {@link #hosts(String)});
+     *              alle anderen werden unbesehen weitergereicht (HTTPS als reiner Tunnel). Leer = alle.
+     */
+    HttpProxy(int port, CertificateAuthority ca, String hosts) throws InterruptedException {
         this.ca = ca;
+        this.hosts = hosts == null || hosts.isBlank() ? null : hosts.strip();
+        this.intercept = hosts(hosts);
         this.group = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
         try {
             this.server = new ServerBootstrap().group(group).channel(NioServerSocketChannel.class)
@@ -249,10 +267,13 @@ final class HttpProxy implements AutoCloseable {
             String method = req.method().name();
             List<Header> headers = headers(req);
             byte[] body = ByteBufUtil.getBytes(req.content());
-            Exchange ex = record(method, url, headers, body);
+            Matcher host = HOST.matcher(url);
+            // nicht ausgewählte Hosts: weiterreichen, aber weder aufzeichnen noch mocken
+            Exchange ex = host.find() && intercept.test(host.group(1).replaceAll("^\\[|]$", ""))
+                    ? record(method, url, headers, body) : null;
             // eine Anfrage je Verbindung zurzeit: Antworten kommen asynchron, die Reihenfolge muss stimmen
             ctx.channel().config().setAutoRead(false);
-            Mock mock = mockFor(method, url);
+            Mock mock = ex == null ? null : mockFor(method, url);
             CompletableFuture<Reply> future;
             if (mock != null) {
                 ex.mockId = mock.id();
@@ -268,13 +289,20 @@ final class HttpProxy implements AutoCloseable {
                 }
             }
             future.whenComplete((r, err) -> {
-                ex.millis = Duration.between(ex.start, Instant.now()).toMillis();
                 if (err != null) {
                     Throwable cause = err.getCause() != null ? err.getCause() : err;
-                    ex.error = cause.getClass().getSimpleName() + ": " + cause.getMessage();
+                    String error = cause.getClass().getSimpleName() + ": " + cause.getMessage();
                     r = new Reply(502, List.of(new Header("Content-Type", "text/plain; charset=utf-8")),
-                            bytes("DevTools-Proxy: " + ex.error));
+                            bytes("DevTools-Proxy: " + error));
+                    if (ex != null) {
+                        ex.error = error;
+                    }
                 }
+                if (ex == null) {
+                    reply(ctx, r, keepAlive, head);
+                    return;
+                }
+                ex.millis = Duration.between(ex.start, Instant.now()).toMillis();
                 ex.status = r.status();
                 ex.responseHeaders = List.copyOf(r.headers());
                 ex.responseSize = r.body().length;
@@ -288,9 +316,11 @@ final class HttpProxy implements AutoCloseable {
             int colon = target.lastIndexOf(':');
             String host = (colon > 0 ? target.substring(0, colon) : target).replaceAll("^\\[|]$", "");
             String port = colon > 0 ? target.substring(colon + 1) : "443";
-            FullHttpResponse ok = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
-                    new HttpResponseStatus(200, "Connection established"));
-            ctx.writeAndFlush(ok).addListener(f -> {
+            if (!intercept.test(host)) {
+                passThrough(ctx, host, port);
+                return;
+            }
+            ctx.writeAndFlush(established()).addListener(f -> {
                 if (!f.isSuccess()) {
                     ctx.close();
                     return;
@@ -315,6 +345,46 @@ final class HttpProxy implements AutoCloseable {
                     }
                 });
             });
+        }
+
+        /** Reiner TCP-Tunnel: der Proxy sieht nur verschlüsselte Bytes, nichts wird aufgezeichnet. */
+        private void passThrough(ChannelHandlerContext ctx, String host, String port) {
+            Channel in = ctx.channel();
+            in.config().setAutoRead(false);
+            int p;
+            try {
+                p = Integer.parseInt(port);
+            } catch (NumberFormatException e) {
+                reply(ctx, new Reply(400, List.of(), bytes("Ungültiger Port: " + port)), false, false);
+                return;
+            }
+            new Bootstrap().group(in.eventLoop()).channel(NioSocketChannel.class)
+                    .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10_000).handler(new Relay(in))
+                    .connect(host, p).addListener((ChannelFutureListener) f -> {
+                        if (!f.isSuccess()) {
+                            reply(ctx, new Reply(502, List.of(), bytes("DevTools-Proxy: " + host + ":" + port
+                                    + " nicht erreichbar: " + f.cause().getMessage())), false, false);
+                            return;
+                        }
+                        Channel out = f.channel();
+                        ctx.writeAndFlush(established()).addListener(w -> {
+                            if (!w.isSuccess()) {
+                                out.close();
+                                ctx.close();
+                                return;
+                            }
+                            ChannelPipeline pipeline = ctx.pipeline();
+                            pipeline.remove("aggregator");
+                            pipeline.remove("codec");
+                            pipeline.replace(this, "relay", new Relay(out));
+                            in.config().setAutoRead(true);
+                        });
+                    });
+        }
+
+        private static FullHttpResponse established() {
+            return new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
+                    new HttpResponseStatus(200, "Connection established"));
         }
 
         private void reply(ChannelHandlerContext ctx, Reply r, boolean keepAlive, boolean head) {
@@ -346,6 +416,51 @@ final class HttpProxy implements AutoCloseable {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             ctx.close();
         }
+    }
+
+    /** Reicht Bytes an die Gegenseite eines Tunnels weiter und schließt sie mit. */
+    // shortcut: ohne Gegendruck (Bytes stauen sich, wenn eine Seite langsamer liest); bei großen Downloads auf autoRead-Steuerung umbauen
+    private static final class Relay extends ChannelInboundHandlerAdapter {
+        private final Channel peer;
+
+        Relay(Channel peer) {
+            this.peer = peer;
+        }
+
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) {
+            peer.writeAndFlush(msg).addListener((ChannelFutureListener) f -> {
+                if (!f.isSuccess()) {
+                    ctx.close();
+                }
+            });
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) {
+            if (peer.isActive()) {
+                peer.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE);
+            }
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+            ctx.close();
+        }
+    }
+
+    /**
+     * Filter aus Host-Mustern wie {@code api.example.com, *.intern} ({@code *} = beliebige Zeichen); leer = alle.
+     */
+    static Predicate<String> hosts(String spec) {
+        if (spec == null || spec.isBlank()) {
+            return h -> true;
+        }
+        List<Pattern> patterns = new ArrayList<>();
+        for (String s : spec.strip().split("[,;\\s]+")) {
+            patterns.add(Pattern.compile(Pattern.quote(s).replace("*", "\\E.*\\Q"), Pattern.CASE_INSENSITIVE));
+        }
+        return h -> patterns.stream().anyMatch(p -> p.matcher(h).matches());
     }
 
     static byte[] bytes(String s) {

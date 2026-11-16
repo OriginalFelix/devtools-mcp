@@ -37,11 +37,27 @@ public class HttpProxyTools {
     /** Laufende Proxys je Benutzer/Profil (lokaler Port → Proxy); schließt mit dem Scope. */
     static final class Proxies implements AutoCloseable {
         final Map<Integer, HttpProxy> byPort = new ConcurrentSkipListMap<>();
+        /** Port des Proxys, der als System-Proxy eingetragen ist, und wer ihn wieder austrägt. */
+        volatile Integer systemPort;
+        volatile SystemProxy system;
 
         @Override
         public void close() {
+            restoreSystem();
             byPort.values().forEach(HttpProxy::close);
             byPort.clear();
+        }
+
+        /** Trägt den System-Proxy aus; scheitert das, bleibt er vermerkt, damit ein erneuter Versuch möglich ist. */
+        String restoreSystem() {
+            SystemProxy s = system;
+            if (s == null) {
+                return "";
+            }
+            String restored = s.restore();
+            system = null;
+            systemPort = null;
+            return restored;
         }
     }
 
@@ -53,24 +69,43 @@ public class HttpProxyTools {
 
     private final Path caDir;
     private final Proxies proxies;
+    private final SystemProxy system;
 
-    HttpProxyTools(Path caDir, Proxies proxies) {
+    HttpProxyTools(Path caDir, Proxies proxies, SystemProxy system) {
         this.caDir = caDir;
         this.proxies = proxies;
+        this.system = system;
     }
 
     @Tool(name = "proxy_start", description = "Startet einen HTTP(S)-Proxy auf localhost (wie Fiddler): zeichnet "
-            + "Anfragen und Antworten des Prozesses auf, der ihn benutzt, entschlüsselt HTTPS mit einer eigenen CA "
-            + "und beantwortet Anfragen, auf die ein Mock passt (http_mock_add), ohne sie weiterzureichen. Liefert "
-            + "die Umgebungsvariablen bzw. JVM-Optionen, mit denen ein Prozess (Java, Node, Python, curl, Go …) über "
-            + "den Proxy läuft. Je Prozess ein eigener Proxy hält den Mitschnitt getrennt.")
+            + "Anfragen und Antworten auf, entschlüsselt HTTPS mit einer eigenen CA und beantwortet Anfragen, auf die "
+            + "ein Mock passt (http_mock_add), ohne sie weiterzureichen. Liefert die Umgebungsvariablen bzw. "
+            + "JVM-Optionen, mit denen ein Prozess (Java, Node, Python, curl, Go …) über den Proxy läuft; je Prozess "
+            + "ein eigener Proxy hält den Mitschnitt getrennt. Mit system=true trägt er sich wie Fiddler als "
+            + "System-Proxy ein (macOS/Windows; Browser, .NET, macOS-Apps …) und beim Stoppen wieder aus – dann nur "
+            + "mit hosts, damit nicht aller private Verkehr mitgeschnitten wird.")
     public String proxyStart(
-            @ToolParam(required = false, description = "Lokaler Port (Standard: frei gewählt)") Integer port) {
+            @ToolParam(required = false, description = "Lokaler Port (Standard: frei gewählt)") Integer port,
+            @ToolParam(required = false, description = "Nur diese Hosts entschlüsseln, aufzeichnen und mocken, z.B. "
+                    + "\"api.example.com, *.intern\" (* = beliebige Zeichen, \"*\" = alle); andere werden unbesehen "
+                    + "durchgereicht. Standard: alle; bei system=true Pflicht.") String hosts,
+            @ToolParam(required = false, description = "Als System-Proxy eintragen (Standard false); die vorherigen "
+                    + "Einstellungen kommen mit http_proxy_stop, beim Beenden der App oder nach einem Absturz beim "
+                    + "nächsten Start zurück") Boolean system) {
+        boolean systemWide = Boolean.TRUE.equals(system);
+        if (systemWide && (hosts == null || hosts.isBlank())) {
+            throw new IllegalArgumentException("system=true braucht hosts (z.B. \"api.example.com, *.intern\"), "
+                    + "sonst landet aller Verkehr des Rechners im Mitschnitt; \"*\" schneidet bewusst alles mit.");
+        }
+        if (systemWide && proxies.systemPort != null) {
+            throw new IllegalStateException("Als System-Proxy ist schon 127.0.0.1:" + proxies.systemPort
+                    + " eingetragen.\n" + list());
+        }
         HttpProxy proxy;
         CertificateAuthority ca;
         try {
             ca = CertificateAuthority.load(caDir);
-            proxy = new HttpProxy(port == null ? 0 : port, ca);
+            proxy = new HttpProxy(port == null ? 0 : port, ca, hosts);
         } catch (IOException e) {
             throw new UncheckedIOException("HTTP-Proxy nicht gestartet: " + e.getMessage(), e);
         } catch (GeneralSecurityException e) {
@@ -79,11 +114,29 @@ public class HttpProxyTools {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Abgebrochen", e);
         }
+        String warnings = "";
+        if (systemWide) {
+            try {
+                warnings = this.system.enable(proxy.port());
+            } catch (RuntimeException e) {
+                proxy.close();
+                throw e;
+            }
+            proxies.system = this.system;
+            proxies.systemPort = proxy.port();
+        }
         proxies.byPort.put(proxy.port(), proxy);
         String url = "http://127.0.0.1:" + proxy.port();
+        String systemText = !systemWide ? "" : """
+                Als System-Proxy eingetragen: Browser (außer Firefox), .NET- und macOS-Apps gehen jetzt über den \
+                Proxy. Damit sie HTTPS annehmen, die CA einmal mit http_ca_trust ins System eintragen. Java nur mit \
+                -Djava.net.useSystemProxies=true (plus Truststore unten); curl, Python, Node und Go ignorieren den \
+                System-Proxy und brauchen die Umgebungsvariablen unten.
+                %s
+                """.formatted(warnings).replace("\n\n", "\n");
         return """
-                HTTP-Proxy läuft auf %1$s (HTTPS wird mit der CA %2$s entschlüsselt).
-
+                HTTP-Proxy läuft auf %1$s (HTTPS wird mit der CA %2$s entschlüsselt%8$s).
+                %9$s
                 Prozess damit starten – Umgebung (curl, Python, Node, Go, Ruby, .NET …):
                   HTTP_PROXY=%1$s HTTPS_PROXY=%1$s http_proxy=%1$s https_proxy=%1$s
                   SSL_CERT_FILE=%3$s REQUESTS_CA_BUNDLE=%3$s CURL_CA_BUNDLE=%3$s NODE_EXTRA_CA_CERTS=%2$s
@@ -93,29 +146,50 @@ public class HttpProxyTools {
                 -Djavax.net.ssl.trustStore=%5$s -Djavax.net.ssl.trustStorePassword=%6$s
                   Apache HttpClient nutzt diese Properties nur mit useSystemProperties(); Aufrufe an localhost gehen \
                 nur mit -Dhttp.nonProxyHosts= (leer) über den Proxy.
-                Browser/System: %2$s als vertrauenswürdige CA eintragen, Proxy 127.0.0.1:%4$d.
 
                 Danach: http_traffic, http_exchange, http_analyze; Mocks mit http_mock_add.
 
                 %7$s""".formatted(url, ca.pem, ca.bundle, proxy.port(), ca.truststore,
-                CertificateAuthority.TRUSTSTORE_PASSWORD, list());
+                CertificateAuthority.TRUSTSTORE_PASSWORD, list(),
+                proxy.hosts == null ? "" : ", nur für " + proxy.hosts, systemText);
     }
 
     @Tool(name = "proxy_stop", description = "Stoppt einen mit http_proxy_start gestarteten HTTP-Proxy (oder ohne "
-            + "port alle); Mitschnitt und Mocks dieses Proxys sind danach weg.")
+            + "port alle); Mitschnitt und Mocks dieses Proxys sind danach weg. War er als System-Proxy eingetragen, "
+            + "kommen die vorherigen Proxy-Einstellungen des Systems zurück.")
     public String proxyStop(
             @ToolParam(required = false, description = "Lokaler Port des Proxys (Standard: alle)") Integer port) {
         if (port == null) {
             int n = proxies.byPort.size();
+            String restored = proxies.restoreSystem();
             proxies.close();
-            return n + " HTTP-Proxy(s) gestoppt.";
+            return (n + " HTTP-Proxy(s) gestoppt. " + restored).strip();
         }
-        HttpProxy proxy = proxies.byPort.remove(port);
+        HttpProxy proxy = proxies.byPort.get(port);
         if (proxy == null) {
             throw new IllegalArgumentException("Kein HTTP-Proxy auf Port " + port + ".\n" + list());
         }
+        // erst das System zurück: scheitert das, läuft der Proxy weiter und der Rechner bleibt online
+        String restored = port.equals(proxies.systemPort) ? proxies.restoreSystem() + "\n" : "";
+        proxies.byPort.remove(port);
         proxy.close();
-        return "HTTP-Proxy auf Port " + port + " gestoppt.\n" + list();
+        return "HTTP-Proxy auf Port " + port + " gestoppt.\n" + restored + list();
+    }
+
+    @Tool(name = "ca_trust", description = "Trägt die CA des HTTP-Proxys in den Vertrauensspeicher des Benutzers ein "
+            + "(macOS: Anmelde-Schlüsselbund, Windows: Zertifikatspeicher des Benutzers), damit Browser und andere "
+            + "Programme am System-Proxy HTTPS annehmen; das System fragt dabei nach Passwort bzw. Bestätigung. Mit "
+            + "remove=true wieder austragen. Firefox und Java haben eigene Speicher (Java: Truststore aus "
+            + "http_proxy_start).")
+    public String caTrust(
+            @ToolParam(required = false, description = "true = CA wieder austragen (Standard false)") Boolean remove) {
+        try {
+            return system.trust(CertificateAuthority.load(caDir).pem, Boolean.TRUE.equals(remove));
+        } catch (IOException e) {
+            throw new UncheckedIOException("CA nicht geladen: " + e.getMessage(), e);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("CA nicht geladen: " + e.getMessage(), e);
+        }
     }
 
     @Tool(name = "traffic", description = "Listet die mitgeschnittenen Anfragen eines HTTP-Proxys: Nummer, Zeit, "
@@ -320,7 +394,9 @@ public class HttpProxyTools {
             return "Keine HTTP-Proxys aktiv.";
         }
         StringBuilder sb = new StringBuilder("Aktive HTTP-Proxys:");
-        proxies.byPort.values().forEach(p -> sb.append("\n127.0.0.1:").append(p.port()).append("  ")
+        proxies.byPort.values().forEach(p -> sb.append("\n127.0.0.1:").append(p.port())
+                .append(Integer.valueOf(p.port()).equals(proxies.systemPort) ? " (System-Proxy)" : "")
+                .append(p.hosts == null ? "" : ", nur " + p.hosts).append("  ")
                 .append(p.exchanges().size()).append(" Anfragen, ").append(p.mocks.size()).append(" Mocks"));
         return sb.toString();
     }

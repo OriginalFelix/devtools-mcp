@@ -51,6 +51,8 @@ final class CertificateAuthority {
 
     /** Kennwort von {@code truststore.p12} – wie das der JDK-cacerts, Clients kennen es. */
     static final String TRUSTSTORE_PASSWORD = "changeit";
+    /** Common Name der CA – darüber findet {@code http_ca_trust} sie im Vertrauensspeicher wieder. */
+    static final String NAME = "DevTools MCP HTTP Proxy CA";
     private static final char[] CA_PASSWORD = "devtools-mcp".toCharArray();
     private static final Object LOCK = new Object();
 
@@ -137,7 +139,7 @@ final class CertificateAuthority {
 
     private static X509Certificate createCa(KeyPair keys) throws GeneralSecurityException, IOException {
         Instant now = Instant.now();
-        X500Name name = new X500Name("CN=DevTools MCP HTTP Proxy CA, O=DevTools MCP");
+        X500Name name = new X500Name("CN=" + NAME + ", O=DevTools MCP");
         X509v3CertificateBuilder b = new JcaX509v3CertificateBuilder(name, serial(),
                 Date.from(now.minus(Duration.ofDays(1))), Date.from(now.plus(Duration.ofDays(3650))), name,
                 keys.getPublic());

@@ -1,9 +1,15 @@
 package systems.grebe.devtools.mcp.modules.http;
 
+import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ProxySelector;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -42,8 +48,8 @@ class HttpProxyToolsTest {
         upstream.start();
         var proxies = new HttpProxyTools.Proxies();
         try (proxies) {
-            var tools = new HttpProxyTools(dir, proxies);
-            assertThat(tools.proxyStart(null)).contains("HTTP-Proxy läuft auf http://127.0.0.1:", "HTTPS_PROXY=",
+            var tools = tools(proxies);
+            assertThat(tools.proxyStart(null, null, null)).contains("HTTP-Proxy läuft auf http://127.0.0.1:", "HTTPS_PROXY=",
                     "-Djavax.net.ssl.trustStore=" + dir.resolve("truststore.p12"));
             int port = proxies.byPort.keySet().iterator().next();
             HttpClient client = client(port);
@@ -78,8 +84,82 @@ class HttpProxyToolsTest {
         } finally {
             upstream.stop(0);
         }
-        assertThatThrownBy(() -> new HttpProxyTools(dir, new HttpProxyTools.Proxies()).traffic(null, null, null,
-                null, null)).hasMessageContaining("http_proxy_start");
+        assertThatThrownBy(() -> tools(new HttpProxyTools.Proxies()).traffic(null, null, null, null, null))
+                .hasMessageContaining("http_proxy_start");
+    }
+
+    @Test
+    void hostFilterTunnelsOtherHostsUnseen() throws Exception {
+        try (ServerSocket echo = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
+                var proxies = new HttpProxyTools.Proxies()) {
+            Thread.ofVirtual().start(() -> {
+                try (Socket s = echo.accept()) {
+                    s.getInputStream().transferTo(s.getOutputStream());
+                } catch (IOException e) {
+                    // Test vorbei
+                }
+            });
+            var tools = tools(proxies);
+            assertThat(tools.proxyStart(null, "*.example.invalid", null)).contains("nur für *.example.invalid");
+            int port = proxies.byPort.keySet().iterator().next();
+
+            // nicht ausgewählter Host: CONNECT wird zum reinen Tunnel, die Bytes kommen unverändert zurück
+            try (Socket app = new Socket(InetAddress.getLoopbackAddress(), port)) {
+                OutputStream out = app.getOutputStream();
+                out.write(("CONNECT 127.0.0.1:" + echo.getLocalPort() + " HTTP/1.1\r\n\r\n")
+                        .getBytes(StandardCharsets.US_ASCII));
+                out.flush();
+                var in = new BufferedReader(new InputStreamReader(app.getInputStream(), StandardCharsets.US_ASCII));
+                assertThat(in.readLine()).startsWith("HTTP/1.1 200");
+                while (!in.readLine().isEmpty()) {
+                    // Header der 200-Antwort
+                }
+                out.write("ping\n".getBytes(StandardCharsets.US_ASCII));
+                out.flush();
+                assertThat(in.readLine()).isEqualTo("ping");
+            }
+            // ausgewählter Host: entschlüsselt, gemockt, aufgezeichnet
+            tools.mockAdd("api\\.example\\.invalid", null, null, "ok", null, null, null, null);
+            assertThat(client(port).send(HttpRequest.newBuilder(URI.create("https://api.example.invalid/x")).build(),
+                    HttpResponse.BodyHandlers.ofString()).body()).isEqualTo("ok");
+            assertThat(tools.traffic(null, null, null, null, null)).contains("1 passende von 1 Anfragen",
+                    "https://api.example.invalid/x");
+        }
+        assertThat(HttpProxy.hosts("api.example.com, *.intern").test("x.y.INTERN")).isTrue();
+        assertThat(HttpProxy.hosts("api.example.com, *.intern").test("example.com")).isFalse();
+        assertThat(HttpProxy.hosts(null).test("egal")).isTrue();
+    }
+
+    @Test
+    void systemModeNeedsHostsAndRestoresOnStop() {
+        var shell = new SystemProxyTest.FakeShell(SystemProxyTest::mac);
+        Path backup = dir.resolve("system-proxy.properties");
+        var proxies = new HttpProxyTools.Proxies();
+        try (proxies) {
+            var tools = new HttpProxyTools(dir, proxies, new SystemProxy(backup, shell, SystemProxy.Os.MAC));
+            assertThatThrownBy(() -> tools.proxyStart(null, null, true)).hasMessageContaining("braucht hosts");
+            assertThat(proxies.byPort).isEmpty();
+
+            assertThat(tools.proxyStart(null, "*.intern", true)).contains("Als System-Proxy eingetragen",
+                    "http_ca_trust", "(System-Proxy), nur *.intern");
+            int port = proxies.systemPort;
+            assertThat(backup).exists();
+            assertThat(shell.commands).contains("networksetup -setwebproxy Wi-Fi 127.0.0.1 " + port);
+            assertThatThrownBy(() -> tools.proxyStart(null, "x", true)).hasMessageContaining("schon");
+
+            assertThat(tools.proxyStop(port)).contains("gestoppt", "wiederhergestellt");
+            assertThat(backup).doesNotExist();
+            assertThat(proxies.systemPort).isNull();
+
+            // Scope endet mit System-Proxy (z.B. App beendet): close() setzt zurück
+            tools.proxyStart(null, "*", true);
+        }
+        assertThat(backup).doesNotExist();
+    }
+
+    private HttpProxyTools tools(HttpProxyTools.Proxies proxies) {
+        return new HttpProxyTools(dir, proxies, new SystemProxy(dir.resolve("unused"),
+                c -> { throw new AssertionError("System nicht anfassen: " + c); }, SystemProxy.Os.OTHER));
     }
 
     @Test
