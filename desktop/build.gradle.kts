@@ -80,6 +80,8 @@ dependencies {
     // netty-codec-http (beim Client optional)
     implementation("com.hivemq:hivemq-mqtt-client:1.4.0")
     implementation("io.netty:netty-codec-http")
+    // HTTP-Proxy-Modul: Root-CA und Host-Zertifikate für das Entschlüsseln von HTTPS (kommt ohnehin über HiveMQ mit)
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.84")
 
     // Matrix-Modul: Markdown der Nachrichten als HTML (formatted_body), mit Tabellen und Durchstreichen wie GFM
     val commonmarkVersion = "0.30.0"
